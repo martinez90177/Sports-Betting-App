@@ -1,0 +1,6929 @@
+import React, { useState, useMemo } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
+} from "recharts";
+
+// ---------- Seeded RNG so the mock data is stable across renders ----------
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const TEAMS = ["BOS","MIA","PHI","NYK","MIL","CLE","ORL","ATL","IND","CHI","BKN","TOR","DET","CHA","WAS","SAS","LAL","DEN","OKC","DAL","MIN","GSW","PHX","MEM","NOP","SAC","POR","UTA","HOU","LAC"];
+
+// Mock defensive ratings (lower = tougher defense). Ranks derived by sorting.
+const defRatingRng = mulberry32(777);
+const TEAM_DEF = (() => {
+  const raw = TEAMS.map((t) => ({ team: t, rating: Math.round((106 + defRatingRng() * 14) * 10) / 10 }));
+  raw.sort((a, b) => a.rating - b.rating); // rank 1 = best (lowest) defensive rating
+  raw.forEach((r, i) => (r.rank = i + 1));
+  const byTeam = {};
+  raw.forEach((r) => (byTeam[r.team] = r));
+  return byTeam;
+})();
+
+const defTier = (rank) => (rank <= 10 ? "tough" : rank >= 21 ? "soft" : "mid");
+
+// Team abbreviation -> ESPN team-logo CDN slug (mostly lowercase of the
+// abbreviation itself; only a handful of teams use a different slug).
+const NBA_LOGO_SLUG = {
+  BOS: "bos", MIA: "mia", PHI: "phi", NYK: "ny", MIL: "mil", CLE: "cle", ORL: "orl",
+  ATL: "atl", IND: "ind", CHI: "chi", BKN: "bkn", TOR: "tor", DET: "det",
+  CHA: "cha", WAS: "wsh", SAS: "sa", LAL: "lal", DEN: "den", OKC: "okc",
+  DAL: "dal", MIN: "min", GSW: "gs", PHX: "phx", MEM: "mem", NOP: "no",
+  SAC: "sac", POR: "por", UTA: "utah", HOU: "hou", LAC: "lac",
+};
+const nbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/nba/500/${NBA_LOGO_SLUG[abbr] || abbr.toLowerCase()}.png`;
+
+// Official-ish NBA brand colors (primary/secondary), used only to tint the
+// player avatar's background ring -- not for logos, charts, or anything else.
+const NBA_TEAM_COLORS = {
+  ATL: { primary: "#E03A3E", secondary: "#26282A" },
+  BOS: { primary: "#007A33", secondary: "#BA9653" },
+  BKN: { primary: "#000000", secondary: "#777D84" },
+  CHA: { primary: "#1D1160", secondary: "#00788C" },
+  CHI: { primary: "#CE1141", secondary: "#000000" },
+  CLE: { primary: "#860038", secondary: "#FDBB30" },
+  DAL: { primary: "#00538C", secondary: "#B8C4CA" },
+  DEN: { primary: "#0E2240", secondary: "#FEC524" },
+  DET: { primary: "#C8102E", secondary: "#1D42BA" },
+  GSW: { primary: "#1D428A", secondary: "#FFC72C" },
+  HOU: { primary: "#CE1141", secondary: "#000000" },
+  IND: { primary: "#002D62", secondary: "#FDBB30" },
+  LAC: { primary: "#C8102E", secondary: "#1D428A" },
+  LAL: { primary: "#552583", secondary: "#FDB927" },
+  MEM: { primary: "#5D76A9", secondary: "#12173F" },
+  MIA: { primary: "#98002E", secondary: "#F9A01B" },
+  MIL: { primary: "#00471B", secondary: "#EEE1C6" },
+  MIN: { primary: "#0C2340", secondary: "#236192" },
+  NOP: { primary: "#0C2340", secondary: "#C8102E" },
+  NYK: { primary: "#006BB6", secondary: "#F58426" },
+  OKC: { primary: "#007AC1", secondary: "#EF3B24" },
+  ORL: { primary: "#0077C0", secondary: "#C4CED4" },
+  PHI: { primary: "#006BB6", secondary: "#ED174C" },
+  PHX: { primary: "#1D1160", secondary: "#E56020" },
+  POR: { primary: "#E03A3E", secondary: "#000000" },
+  SAC: { primary: "#5A2D81", secondary: "#63727A" },
+  SAS: { primary: "#8A8D8F", secondary: "#000000" },
+  TOR: { primary: "#CE1141", secondary: "#000000" },
+  UTA: { primary: "#002B5C", secondary: "#F9A01B" },
+  WAS: { primary: "#002B5C", secondary: "#E31837" },
+};
+
+// Subtle team-tinted background for a player avatar's ring: a diagonal blend
+// of the team's two brand colors, darkened with a black overlay so it always
+// reads as a muted frame rather than a bright disc competing with the
+// headshot. Shared by every page's avatar (NBA/NFL/MLB) -- each just passes
+// its own team-color map. Falls back to a neutral dark gradient for any
+// team missing from that map.
+const AVATAR_FALLBACK_COLORS = { primary: "#282c31", secondary: "#15171b" };
+const teamAvatarBackground = (colorMap, teamAbbr) => {
+  const c = colorMap[teamAbbr] || AVATAR_FALLBACK_COLORS;
+  return `linear-gradient(135deg, rgba(0,0,0,0.2), rgba(0,0,0,0.45)), linear-gradient(135deg, ${c.primary} 0%, ${c.secondary} 100%)`;
+};
+
+// Groups a sport's matchup list by calendar date for its matchup dropdown,
+// sorted chronologically both across days (earliest date first) and within
+// a single day (earliest kickoff/first pitch first) -- shared by every
+// sport's selector so "which game is this" sorts the same way everywhere,
+// regardless of the order matchups were added to the source array.
+function groupMatchupsByDate(matchups) {
+  const sorted = [...matchups].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const groups = [];
+  const byLabel = new Map();
+  sorted.forEach((m) => {
+    const label = new Date(m.date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    if (!byLabel.has(label)) {
+      const group = { label, matchups: [] };
+      byLabel.set(label, group);
+      groups.push(group);
+    }
+    byLabel.get(label).matchups.push(m);
+  });
+  return groups;
+}
+
+// Formats a matchup's kickoff/first-pitch time for the dropdown option text
+// (e.g. "7:35 PM") so each game is identifiable by time without leaving the
+// select closed.
+function matchupTimeLabel(dateStr) {
+  return new Date(dateStr).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+// New York Knicks and San Antonio Spurs starting fives from the 2026 NBA Finals,
+// so matchups can be researched the way they would have looked during that series.
+const PLAYERS = [
+  { id: "brunson", name: "Jalen Brunson", team: "NYK", pos: "PG", espnId: "3934672", nbaId: "1628973",
+    base: { pts: 26, oreb: 0.5, dreb: 2.9, ast: 7.2, stl: 0.9, blk: 0.2, fg3m: 3.0, fg3a: 7.5, ftm: 5.5, fta: 6.3, tov: 2.5 },
+    var:  { pts: 7,  oreb: 0.5, dreb: 1.5, ast: 2.6, stl: 0.7, blk: 0.3, fg3m: 1.6, fg3a: 2.2, ftm: 2.0, fta: 2.2, tov: 1.2 } },
+  { id: "bridges", name: "Mikal Bridges", team: "NYK", pos: "SG", espnId: "3147657", nbaId: "1628969",
+    base: { pts: 14.6, oreb: 0.6, dreb: 3.6, ast: 3.0, stl: 1.0, blk: 0.4, fg3m: 2.4, fg3a: 6.2, ftm: 1.8, fta: 2.1, tov: 1.3 },
+    var:  { pts: 5,    oreb: 0.5, dreb: 1.4, ast: 1.4, stl: 0.6, blk: 0.4, fg3m: 1.3, fg3a: 1.9, ftm: 1.1, fta: 1.2, tov: 0.8 } },
+  { id: "hart", name: "Josh Hart", team: "NYK", pos: "SF", espnId: "3062679", nbaId: "1628404",
+    base: { pts: 10.2, oreb: 2.4, dreb: 5.9, ast: 4.6, stl: 1.1, blk: 0.3, fg3m: 1.0, fg3a: 2.8, ftm: 1.5, fta: 2.0, tov: 1.6 },
+    var:  { pts: 4,    oreb: 1.2, dreb: 2.0, ast: 1.9, stl: 0.6, blk: 0.3, fg3m: 0.9, fg3a: 1.4, ftm: 1.0, fta: 1.2, tov: 0.9 } },
+  { id: "ogA", name: "OG Anunoby", team: "NYK", pos: "PF", espnId: "3934719", nbaId: "1628384",
+    base: { pts: 19.3, oreb: 0.8, dreb: 3.3, ast: 2.0, stl: 1.3, blk: 0.6, fg3m: 2.6, fg3a: 6.0, ftm: 2.0, fta: 2.3, tov: 1.1 },
+    var:  { pts: 5,    oreb: 0.6, dreb: 1.5, ast: 1.2, stl: 0.7, blk: 0.5, fg3m: 1.3, fg3a: 1.8, ftm: 1.2, fta: 1.3, tov: 0.7 } },
+  { id: "kat", name: "Karl-Anthony Towns", team: "NYK", pos: "C", espnId: "3136195", nbaId: "1626157",
+    base: { pts: 22, oreb: 2.6, dreb: 9.2, ast: 3.1, stl: 0.8, blk: 1.1, fg3m: 2.0, fg3a: 5.0, ftm: 4.5, fta: 5.2, tov: 2.6 },
+    var:  { pts: 6,  oreb: 1.3, dreb: 2.6, ast: 1.6, stl: 0.6, blk: 0.7, fg3m: 1.2, fg3a: 1.7, ftm: 1.8, fta: 2.0, tov: 1.1 } },
+  { id: "fox", name: "De'Aaron Fox", team: "SAS", pos: "PG", espnId: "4066259", nbaId: "1628368",
+    base: { pts: 22.5, oreb: 0.4, dreb: 3.1, ast: 5.8, stl: 1.3, blk: 0.3, fg3m: 1.8, fg3a: 4.8, ftm: 4.8, fta: 5.8, tov: 2.8 },
+    var:  { pts: 6.5,  oreb: 0.4, dreb: 1.4, ast: 2.2, stl: 0.7, blk: 0.3, fg3m: 1.2, fg3a: 1.7, ftm: 1.8, fta: 2.1, tov: 1.2 } },
+  { id: "castle", name: "Stephon Castle", team: "SAS", pos: "SG", espnId: "4845367", nbaId: "1642264",
+    base: { pts: 15.8, oreb: 0.7, dreb: 4.1, ast: 4.5, stl: 1.1, blk: 0.4, fg3m: 1.5, fg3a: 4.0, ftm: 3.0, fta: 3.6, tov: 2.0 },
+    var:  { pts: 5,    oreb: 0.6, dreb: 1.6, ast: 1.8, stl: 0.6, blk: 0.4, fg3m: 1.0, fg3a: 1.5, ftm: 1.4, fta: 1.6, tov: 0.9 } },
+  { id: "vassell", name: "Devin Vassell", team: "SAS", pos: "SF", espnId: "4395630", nbaId: "1630170",
+    base: { pts: 17.4, oreb: 0.6, dreb: 3.4, ast: 2.4, stl: 1.0, blk: 0.5, fg3m: 2.2, fg3a: 5.5, ftm: 2.0, fta: 2.4, tov: 1.2 },
+    var:  { pts: 5.5,  oreb: 0.5, dreb: 1.4, ast: 1.2, stl: 0.6, blk: 0.4, fg3m: 1.2, fg3a: 1.7, ftm: 1.2, fta: 1.4, tov: 0.7 } },
+  { id: "champagnie", name: "Julian Champagnie", team: "SAS", pos: "PF", espnId: "4592479", nbaId: "1630577",
+    base: { pts: 11.9, oreb: 1.2, dreb: 3.9, ast: 1.5, stl: 0.8, blk: 0.4, fg3m: 1.8, fg3a: 4.5, ftm: 1.5, fta: 1.8, tov: 0.9 },
+    var:  { pts: 4,    oreb: 0.9, dreb: 1.6, ast: 0.9, stl: 0.5, blk: 0.4, fg3m: 1.1, fg3a: 1.5, ftm: 1.0, fta: 1.2, tov: 0.6 } },
+  { id: "wemby", name: "Victor Wembanyama", team: "SAS", pos: "C", espnId: "5104157", nbaId: "1641705",
+    base: { pts: 24.3, oreb: 2.2, dreb: 9.6, ast: 3.7, stl: 1.1, blk: 3.5, fg3m: 2.3, fg3a: 6.0, ftm: 5.5, fta: 7.0, tov: 3.0 },
+    var:  { pts: 6.5,  oreb: 1.2, dreb: 2.8, ast: 1.6, stl: 0.6, blk: 1.4, fg3m: 1.3, fg3a: 1.9, ftm: 2.0, fta: 2.4, tov: 1.3 } },
+];
+
+// Primary: ESPN's combiner image proxy, requested at 350x350 with a server-
+// side crop -- the same source and approach the NFL page uses, and it frames
+// every player consistently as a head-and-shoulders circle. Fallback:
+// NBA.com's official headshot CDN, a raw 1040x760 landscape photo -- used
+// to be the primary source, but forcing that wide, inconsistently-framed
+// image into a circle made some players look oddly cropped/zoomed compared
+// to the ESPN version, so it's now only used if ESPN's is missing.
+const nbaHeadshot = (nbaId) => `https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaId}.png`;
+const espnHeadshot = (espnId) =>
+  `https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${espnId}.png&w=350&h=350&scale=crop`;
+
+// Row 1 = core box-score stats.
+// Row 2 = defense + hustle counting stats (Turnovers grouped here since it has
+// no natural "attempt" pair, same as steals/blocks/stocks).
+// Row 3 = combo props.
+// Row 4 = shooting/FT makes+attempts pairs.
+// Row 5 = binary milestone props (Yes/No), not a numeric line.
+const MARKETS_ROW_1 = [
+  { id: "pts", label: "Points" },
+  { id: "reb", label: "Rebounds" },
+  { id: "ast", label: "Assists" },
+];
+const MARKETS_ROW_2 = [
+  { id: "stl", label: "Steals" },
+  { id: "blk", label: "Blocks" },
+  { id: "stk", label: "Stocks" },
+];
+const MARKETS_ROW_3 = [
+  { id: "pra", label: "PRA" },
+  { id: "ra", label: "RA" },
+  { id: "pr", label: "PR" },
+  { id: "pa", label: "PA" },
+];
+const MARKETS_ROW_4 = [
+  { id: "3pm", label: "3PM" },
+  { id: "3pa", label: "3PA" },
+  { id: "ftm", label: "FTM" },
+  { id: "fta", label: "FTA" },
+];
+const MARKETS_ROW_5 = [
+  { id: "td", label: "Triple-Double", binary: true },
+  { id: "dd", label: "Double-Double", binary: true },
+];
+const MARKETS = [...MARKETS_ROW_1, ...MARKETS_ROW_2, ...MARKETS_ROW_3, ...MARKETS_ROW_4, ...MARKETS_ROW_5];
+
+// When market === "reb", this controls whether we're looking at total boards,
+// offensive boards only, or defensive boards only.
+const REB_SPLITS = [
+  { id: "total", label: "Total" },
+  { id: "off", label: "Offensive" },
+  { id: "def", label: "Defensive" },
+];
+
+function genGames(player, seedOffset) {
+  const rng = mulberry32(1000 + seedOffset);
+  const games = [];
+  const startDate = new Date("2026-04-01T00:00:00Z");
+  for (let i = 0; i < 20; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() - (19 - i) * 3);
+    const home = rng() > 0.48;
+    const opp = TEAMS[Math.floor(rng() * TEAMS.length)];
+    const minutes = Math.round(26 + rng() * 12);
+    const noise = (mean, spread) => Math.max(0, Math.round(mean + (rng() - 0.5) * 2 * spread));
+    const pts = noise(player.base.pts, player.var.pts);
+    const oreb = noise(player.base.oreb, player.var.oreb);
+    const dreb = noise(player.base.dreb, player.var.dreb);
+    const ast = noise(player.base.ast, player.var.ast);
+    const stl = noise(player.base.stl, player.var.stl);
+    const blk = noise(player.base.blk, player.var.blk);
+    const fg3m = noise(player.base.fg3m, player.var.fg3m);
+    const fg3a = Math.max(fg3m, noise(player.base.fg3a, player.var.fg3a));
+    const ftm = noise(player.base.ftm, player.var.ftm);
+    const fta = Math.max(ftm, noise(player.base.fta, player.var.fta));
+    const tov = noise(player.base.tov, player.var.tov);
+    games.push({ date: d.toISOString().slice(0, 10), opp, home, minutes, pts, oreb, dreb, ast, stl, blk, fg3m, fg3a, ftm, fta, tov });
+  }
+  return games;
+}
+
+// Simple string hash used to deterministically decide things like "did these
+// two teams meet in the playoffs" without needing a real schedule.
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+// Builds out multi-season head-to-head history for a player against one
+// specific opponent: two prior regular seasons (a few meetings each, since
+// teams in the same conference play 3-4x/season and cross-conference 2x) plus
+// an optional playoff series. Everything is seeded off the player+opponent
+// pairing so it's stable across renders but varies matchup to matchup.
+function genOpponentHistory(player, seedOffset, opp) {
+  const rng = mulberry32(5000 + seedOffset + (hashStr(opp) % 997));
+  const mkGame = (dateStr, home, tag) => {
+    const noise = (mean, spread) => Math.max(0, Math.round(mean + (rng() - 0.5) * 2 * spread));
+    const minutes = Math.round(26 + rng() * 12);
+    const fg3m = noise(player.base.fg3m, player.var.fg3m);
+    const ftm = noise(player.base.ftm, player.var.ftm);
+    return {
+      date: dateStr, opp, home, minutes, tag,
+      pts: noise(player.base.pts, player.var.pts),
+      oreb: noise(player.base.oreb, player.var.oreb),
+      dreb: noise(player.base.dreb, player.var.dreb),
+      ast: noise(player.base.ast, player.var.ast),
+      stl: noise(player.base.stl, player.var.stl),
+      blk: noise(player.base.blk, player.var.blk),
+      fg3m,
+      fg3a: Math.max(fg3m, noise(player.base.fg3a, player.var.fg3a)),
+      ftm,
+      fta: Math.max(ftm, noise(player.base.fta, player.var.fta)),
+      tov: noise(player.base.tov, player.var.tov),
+    };
+  };
+
+  const priorSeasons = [];
+  // Two prior regular seasons, ~2-4 meetings each.
+  [2025, 2024].forEach((year) => {
+    const meetings = 2 + Math.floor(rng() * 3);
+    for (let i = 0; i < meetings; i++) {
+      const d = new Date(Date.UTC(year, (10 + i) % 12, 3 + i * 6));
+      priorSeasons.push(mkGame(d.toISOString().slice(0, 10), rng() > 0.5, `${year}-${year + 1}`));
+    }
+  });
+  priorSeasons.sort((a, b) => a.date.localeCompare(b.date));
+
+  // ~1 in 5 opponents get a mock playoff series in the history (kept
+  // deterministic per player+opponent so it doesn't flicker between renders).
+  const playoffs = [];
+  if (hashStr(player.id + opp) % 5 === 0) {
+    const games = 5 + Math.floor(rng() * 3); // 5-7 game series
+    for (let i = 0; i < games; i++) {
+      const d = new Date(Date.UTC(2025, 3, 18 + i * 2));
+      playoffs.push(mkGame(d.toISOString().slice(0, 10), i % 2 === 0, "PO"));
+    }
+  }
+
+  return { priorSeasons, playoffs };
+}
+
+// ---------- NFL (Dallas Cowboys offense) mock data ----------
+const NFL_TEAMS = [
+  "PHI","WAS","NYG","DAL","GB","CHI","DET","MIN","SF","SEA","LAR","ARI","NO","TB","ATL","CAR",
+  "BUF","MIA","NYJ","NE","BAL","CIN","PIT","CLE","HOU","IND","JAX","TEN","KC","LAC","LV","DEN",
+];
+
+// Builds one category's team-by-team defensive ranking (lower rating =
+// tougher defense in that specific category, e.g. pass yards allowed/game).
+// Shared across sports: each category gets its own seed so a team's rank
+// varies realistically across categories (a strong run defense can still be
+// a weak pass defense; a good hits-allowed pitching staff can still be
+// homer-prone).
+function buildDefenseCategoryFor(teams, seed, base, spread) {
+  const rng = mulberry32(seed);
+  const raw = teams.map((t) => ({ team: t, rating: Math.round((base + rng() * spread) * 10) / 10 }));
+  raw.sort((a, b) => a.rating - b.rating);
+  raw.forEach((r, i) => (r.rank = i + 1));
+  const byTeam = {};
+  raw.forEach((r) => (byTeam[r.team] = r));
+  return byTeam;
+}
+
+function buildNFLDefenseCategory(seed, base, spread) {
+  return buildDefenseCategoryFor(NFL_TEAMS, seed, base, spread);
+}
+
+// Overall total-yards defense — used only as the Def# fallback for markets
+// with no defensive-matchup concept (kicking).
+const NFL_TEAM_DEF = buildNFLDefenseCategory(4200, 300, 120);
+
+// Every individual prop type gets its own independent defensive ranking —
+// a team's defense vs. receptions, vs. receiving yards, and vs. receiving
+// TDs are three different numbers in reality (and against real teams,
+// vs. WR / vs. TE / vs. RB differ too), so none of them may share a bucket.
+// [base, spread] is a rough plausible per-game range for that stat, just
+// used to seed a believable rating; the rank ordering is what matters.
+const NFL_MARKET_DEF_RANGE = {
+  passYds: [180, 100],
+  passTd: [1.2, 1.6],
+  comp: [16, 10],
+  int: [0.5, 1.2],
+  rushYds: [80, 80],
+  passRushYds: [260, 110],
+  rushAtt: [16, 12],
+  rec: [3.5, 3],
+  recYds: [50, 80],
+  longRec: [22, 14],
+  passAtt: [32, 12],
+  scrim: [90, 90],
+  anytimeTd: [0.5, 1.0],
+};
+const NFL_MARKET_DEF_BASE_LABEL = {
+  passYds: "pass yards defense",
+  passTd: "pass TD defense",
+  comp: "completions allowed",
+  int: "interception rate",
+  rushYds: "rush yards defense",
+  passRushYds: "total yards defense",
+  rushAtt: "rush volume allowed",
+  rec: "receptions allowed",
+  recYds: "receiving yards allowed",
+  longRec: "explosive-play defense",
+  passAtt: "pass volume allowed",
+  scrim: "scrimmage yards defense",
+  anytimeTd: "TD defense",
+};
+const NFL_POS_QUALIFIER = { WR: "vs WR", TE: "vs TE", RB: "vs RB", QB: "" };
+
+// Lazily-built, memoized per (market, position) so each prop type's ranking
+// is computed once and reused, instead of re-sorting 31 teams every render.
+const nflDefCategoryCache = {};
+function getNFLDefRank(market, pos, opp) {
+  const range = NFL_MARKET_DEF_RANGE[market];
+  if (!range) return NFL_TEAM_DEF[opp]; // kicking markets — no defensive-matchup concept
+  const key = `${market}_${pos}`;
+  if (!nflDefCategoryCache[key]) {
+    const seed = 4300 + (hashStr(key) % 5000);
+    nflDefCategoryCache[key] = buildNFLDefenseCategory(seed, range[0], range[1]);
+  }
+  return nflDefCategoryCache[key][opp];
+}
+
+function nflDefCategoryLabel(market, pos) {
+  const base = NFL_MARKET_DEF_BASE_LABEL[market];
+  if (!base) return "total defense";
+  const qualifier = NFL_POS_QUALIFIER[pos];
+  return qualifier ? `${base} ${qualifier}` : base;
+}
+
+const nflDefTier = (rank) => (rank <= 10 ? "tough" : rank >= 22 ? "soft" : "mid");
+
+// Team abbreviation -> ESPN team-logo CDN slug (mostly lowercase of the
+// abbreviation itself; only a handful of teams use a different slug).
+const NFL_LOGO_SLUG = {
+  PHI: "phi", WAS: "wsh", NYG: "nyg", DAL: "dal", GB: "gb", CHI: "chi", DET: "det",
+  MIN: "min", SF: "sf", SEA: "sea", LAR: "lar", ARI: "ari", NO: "no",
+  TB: "tb", ATL: "atl", CAR: "car", BUF: "buf", MIA: "mia", NYJ: "nyj",
+  NE: "ne", BAL: "bal", CIN: "cin", PIT: "pit", CLE: "cle", HOU: "hou",
+  IND: "ind", JAX: "jax", TEN: "ten", KC: "kc", LAC: "lac", LV: "lv", DEN: "den",
+};
+const nflTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/nfl/500/${NFL_LOGO_SLUG[abbr] || abbr.toLowerCase()}.png`;
+
+// Official-ish NFL brand colors (primary/secondary), used only to tint the
+// player avatar's background ring -- see teamAvatarBackground above.
+const NFL_TEAM_COLORS = {
+  ARI: { primary: "#97233F", secondary: "#000000" },
+  ATL: { primary: "#A71930", secondary: "#000000" },
+  BAL: { primary: "#241773", secondary: "#9E7C0C" },
+  BUF: { primary: "#00338D", secondary: "#C60C30" },
+  CAR: { primary: "#0085CA", secondary: "#101820" },
+  CHI: { primary: "#0B162A", secondary: "#C83803" },
+  CIN: { primary: "#FB4F14", secondary: "#000000" },
+  CLE: { primary: "#311D00", secondary: "#FF3C00" },
+  DAL: { primary: "#041E42", secondary: "#869397" },
+  DEN: { primary: "#FB4F14", secondary: "#002244" },
+  DET: { primary: "#0076B6", secondary: "#B0B7BC" },
+  GB: { primary: "#203731", secondary: "#FFB612" },
+  HOU: { primary: "#03202F", secondary: "#A71930" },
+  IND: { primary: "#002C5F", secondary: "#A2AAAD" },
+  JAX: { primary: "#101820", secondary: "#D7A22A" },
+  KC: { primary: "#E31837", secondary: "#FFB81C" },
+  LV: { primary: "#000000", secondary: "#A5ACAF" },
+  LAC: { primary: "#0080C6", secondary: "#FFC20E" },
+  LAR: { primary: "#003594", secondary: "#FFA300" },
+  MIA: { primary: "#008E97", secondary: "#FC4C02" },
+  MIN: { primary: "#4F2683", secondary: "#FFC62F" },
+  NE: { primary: "#002244", secondary: "#C60C30" },
+  NO: { primary: "#D3BC8D", secondary: "#101820" },
+  NYG: { primary: "#0B2265", secondary: "#A71930" },
+  NYJ: { primary: "#125740", secondary: "#000000" },
+  PHI: { primary: "#004C54", secondary: "#A5ACAF" },
+  PIT: { primary: "#FFB612", secondary: "#101820" },
+  SF: { primary: "#AA0000", secondary: "#B3995D" },
+  SEA: { primary: "#002244", secondary: "#69BE28" },
+  TB: { primary: "#D50A0A", secondary: "#34302B" },
+  TEN: { primary: "#0C2340", secondary: "#4B92DB" },
+  WAS: { primary: "#5A1414", secondary: "#FFB612" },
+};
+
+// ESPN player IDs (from espn.com/nfl/team/roster) -> combiner-image headshot URLs.
+const NFL_ESPN_ID = {
+  dak: "2577417",
+  lamb: "4241389",
+  pickens: "4426354",
+  javonte: "4361579",
+  ferguson: "4242355",
+  tolbert: "4249417",
+  dowdle: "4045163",
+  aubrey: "3953687",
+  dart: "4689114",
+  nabers: "4595348",
+  slayton: "3916945",
+  hyatt: "4692590",
+  skattebo: "4696981",
+  tracy: "4360516",
+  theojohnson: "4429148",
+  sauls: "4566158",
+  purdy: "4361741",
+  mccaffrey: "3117251",
+  guerendo: "4372561",
+  evans: "16737",
+  pearsall: "4428209",
+  cowing: "4575665",
+  mclachlan: "4384171",
+  pineiro: "4034949",
+  stafford: "12483",
+  kyren: "4430737",
+  corum: "4429096",
+  nacua: "4426515",
+  adams: "16800",
+  whittington: "4569382",
+  higbee: "2573401",
+  mevis: "4574716",
+  nix: "4426338",
+  sutton: "3128429",
+  waddle: "4372016",
+  mims: "4686472",
+  jdobbins: "4241985",
+  harveyrj: "4568490",
+  engram: "3051876",
+  lutz: "2985659",
+  mahomes: "3139477",
+  rice: "4428331",
+  worthy: "4683062",
+  thornton: "4362921",
+  kwalker: "4567048",
+  bsmith: "4596602",
+  kelce: "15847",
+  butker: "3055899",
+};
+// Direct full-resolution asset (not the low-res 200x200 combiner crop) — the
+// browser's own object-fit: cover crop looks sharper than ESPN's server-side one.
+// The raw "full" asset isn't a tight headshot crop (lots of jersey/background,
+// odd framing) — the combiner endpoint's scale=crop does a proper face-focused
+// crop; requesting it at 350x350 (vs. the earlier 200x200) keeps that framing
+// while giving the browser a much sharper source to scale down from.
+const NFL_HEADSHOTS = Object.fromEntries(
+  Object.entries(NFL_ESPN_ID).map(([id, espnId]) => [
+    id,
+    `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${espnId}.png&w=350&h=350&scale=crop`,
+  ])
+);
+
+const NFL_PLAYERS = [
+  { id: "dak", name: "Dak Prescott", team: "DAL", pos: "QB" },
+  { id: "lamb", name: "CeeDee Lamb", team: "DAL", pos: "WR" },
+  { id: "pickens", name: "George Pickens", team: "DAL", pos: "WR" },
+  { id: "javonte", name: "Javonte Williams", team: "DAL", pos: "RB" },
+  { id: "ferguson", name: "Jake Ferguson", team: "DAL", pos: "TE" },
+  { id: "tolbert", name: "Jalen Tolbert", team: "DAL", pos: "WR" },
+  { id: "dowdle", name: "Miles Sanders", team: "DAL", pos: "RB" },
+  { id: "aubrey", name: "Brandon Aubrey", team: "DAL", pos: "K" },
+];
+
+// New York Giants -- the Cowboys' real Week 1 2026 opponent (Sunday Night
+// Football, per the NFL's released 2026 schedule) -- added so the NFL page
+// can show both teams' rosters side by side the same way the NBA page shows
+// both Finals teams, rather than just a one-line "next matchup" summary.
+// Real players/positions/ids; game logs are seeded synthetic data around
+// realistic season-average baselines (see SYNTHETIC_NFL_STAT_BASE/
+// genSyntheticNFLGames below) rather than hand-transcribed box scores, since
+// there's no live NFL stats feed wired in yet -- same "sample data" caveat
+// already called out for the Cowboys logs in the footer below.
+const GIANTS_PLAYERS = [
+  { id: "dart", name: "Jaxson Dart", team: "NYG", pos: "QB" },
+  { id: "nabers", name: "Malik Nabers", team: "NYG", pos: "WR" },
+  { id: "slayton", name: "Darius Slayton", team: "NYG", pos: "WR" },
+  { id: "hyatt", name: "Jalin Hyatt", team: "NYG", pos: "WR" },
+  { id: "skattebo", name: "Cam Skattebo", team: "NYG", pos: "RB" },
+  { id: "tracy", name: "Tyrone Tracy Jr.", team: "NYG", pos: "RB" },
+  { id: "theojohnson", name: "Theo Johnson", team: "NYG", pos: "TE" },
+  { id: "sauls", name: "Ben Sauls", team: "NYG", pos: "K" },
+];
+
+// San Francisco 49ers -- real Week 1 2026 opponent for the Rams. Same
+// treatment as the Giants above: real players/positions/ids, seeded
+// synthetic game logs (see SYNTHETIC_NFL_STAT_BASE/genSyntheticNFLGames
+// below) since there's no live NFL stats feed wired in yet.
+const SF_PLAYERS = [
+  { id: "purdy", name: "Brock Purdy", team: "SF", pos: "QB" },
+  { id: "evans", name: "Mike Evans", team: "SF", pos: "WR" },
+  { id: "pearsall", name: "Ricky Pearsall", team: "SF", pos: "WR" },
+  { id: "cowing", name: "Jacob Cowing", team: "SF", pos: "WR" },
+  { id: "mccaffrey", name: "Christian McCaffrey", team: "SF", pos: "RB" },
+  { id: "guerendo", name: "Isaac Guerendo", team: "SF", pos: "RB" },
+  { id: "mclachlan", name: "Tanner McLachlan", team: "SF", pos: "TE" },
+  { id: "pineiro", name: "Eddy Pineiro", team: "SF", pos: "K" },
+];
+
+// Los Angeles Rams -- the 49ers' real Week 1 2026 opponent.
+const RAMS_PLAYERS = [
+  { id: "stafford", name: "Matthew Stafford", team: "LAR", pos: "QB" },
+  { id: "nacua", name: "Puka Nacua", team: "LAR", pos: "WR" },
+  { id: "adams", name: "Davante Adams", team: "LAR", pos: "WR" },
+  { id: "whittington", name: "Jordan Whittington", team: "LAR", pos: "WR" },
+  { id: "kyren", name: "Kyren Williams", team: "LAR", pos: "RB" },
+  { id: "corum", name: "Blake Corum", team: "LAR", pos: "RB" },
+  { id: "higbee", name: "Tyler Higbee", team: "LAR", pos: "TE" },
+  { id: "mevis", name: "Harrison Mevis", team: "LAR", pos: "K" },
+];
+
+// Denver Broncos -- real Week 1 2026 opponent for the Chiefs on Monday
+// Night Football, the marquee national-TV opener of the week.
+const BRONCOS_PLAYERS = [
+  { id: "nix", name: "Bo Nix", team: "DEN", pos: "QB" },
+  { id: "sutton", name: "Courtland Sutton", team: "DEN", pos: "WR" },
+  { id: "waddle", name: "Jaylen Waddle", team: "DEN", pos: "WR" },
+  { id: "mims", name: "Marvin Mims Jr.", team: "DEN", pos: "WR" },
+  { id: "jdobbins", name: "J.K. Dobbins", team: "DEN", pos: "RB" },
+  { id: "harveyrj", name: "RJ Harvey", team: "DEN", pos: "RB" },
+  { id: "engram", name: "Evan Engram", team: "DEN", pos: "TE" },
+  { id: "lutz", name: "Wil Lutz", team: "DEN", pos: "K" },
+];
+
+// Kansas City Chiefs -- the Broncos' real Week 1 2026 opponent, hosting on
+// Monday Night Football.
+const CHIEFS_PLAYERS = [
+  { id: "mahomes", name: "Patrick Mahomes", team: "KC", pos: "QB" },
+  { id: "rice", name: "Rashee Rice", team: "KC", pos: "WR" },
+  { id: "worthy", name: "Xavier Worthy", team: "KC", pos: "WR" },
+  { id: "thornton", name: "Tyquan Thornton", team: "KC", pos: "WR" },
+  { id: "kwalker", name: "Kenneth Walker III", team: "KC", pos: "RB" },
+  { id: "bsmith", name: "Brashard Smith", team: "KC", pos: "RB" },
+  { id: "kelce", name: "Travis Kelce", team: "KC", pos: "TE" },
+  { id: "butker", name: "Harrison Butker", team: "KC", pos: "K" },
+];
+
+const ALL_NFL_PLAYERS = [
+  ...NFL_PLAYERS, ...GIANTS_PLAYERS, ...SF_PLAYERS, ...RAMS_PLAYERS,
+  ...BRONCOS_PLAYERS, ...CHIEFS_PLAYERS,
+];
+
+// Each entry is one week's matchup the Prop Ledger can scout -- the "matchup
+// selector" dropdown on the NFL page switches between these, swapping which
+// two rosters populate the left/right sidebars. More weeks/games get added
+// here over time; for now it's just the two real Week 1 2026 games modeled.
+const NFL_MATCHUPS = [
+  {
+    id: "dal-nyg",
+    label: "Cowboys @ Giants",
+    teamA: { label: "Dallas Cowboys", players: NFL_PLAYERS },
+    teamB: { label: "New York Giants", players: GIANTS_PLAYERS },
+    date: "2026-09-14T00:20:00Z",
+    venue: "MetLife Stadium",
+    city: "East Rutherford, NJ",
+  },
+  {
+    id: "sf-lar",
+    label: "49ers @ Rams",
+    teamA: { label: "San Francisco 49ers", players: SF_PLAYERS },
+    teamB: { label: "Los Angeles Rams", players: RAMS_PLAYERS },
+    // Real 2026 schedule quirk -- this is the Rams' "home" game, but the NFL
+    // played it at Melbourne Cricket Ground as part of its international
+    // series, not at SoFi Stadium.
+    date: "2026-09-11T00:35:00Z",
+    venue: "Melbourne Cricket Ground",
+    city: "Melbourne, Australia",
+  },
+  {
+    id: "den-kc",
+    label: "Broncos @ Chiefs",
+    teamA: { label: "Denver Broncos", players: BRONCOS_PLAYERS },
+    teamB: { label: "Kansas City Chiefs", players: CHIEFS_PLAYERS },
+    // Week 1's Monday Night Football opener -- the marquee national-TV slot,
+    // per the NFL's released 2026 schedule.
+    date: "2026-09-15T00:15:00Z",
+    venue: "GEHA Field at Arrowhead Stadium",
+    city: "Kansas City, MO",
+  },
+];
+const NFL_MATCHUPS_BY_DATE = groupMatchupsByDate(NFL_MATCHUPS);
+
+// pos: which positions can bet this market. binary markets get a fixed 0.5 threshold.
+const NFL_MARKETS = [
+  { id: "passYds", label: "Pass Yds", pos: ["QB"] },
+  { id: "passTd", label: "Pass TD", pos: ["QB"] },
+  { id: "passAtt", label: "Pass Attempts", pos: ["QB"] },
+  { id: "comp", label: "Completions", pos: ["QB"] },
+  { id: "int", label: "INT", pos: ["QB"] },
+  { id: "rushYds", label: "Rush Yds", pos: ["QB", "RB"] },
+  { id: "passRushYds", label: "Pass + Rush Yds", pos: ["QB"] },
+  { id: "rushAtt", label: "Rush Att", pos: ["RB"] },
+  { id: "rec", label: "Receptions", pos: ["RB", "WR", "TE"] },
+  { id: "recYds", label: "Rec Yds", pos: ["RB", "WR", "TE"] },
+  { id: "longRec", label: "Longest Reception", pos: ["WR"] },
+  { id: "scrim", label: "Rush + Rec Yds", pos: ["RB", "WR"] },
+  { id: "anytimeTd", label: "Anytime TD", pos: ["QB", "RB", "WR", "TE"] },
+  { id: "fgm", label: "FG Made", pos: ["K"] },
+  { id: "fga", label: "FG Attempts", pos: ["K"] },
+  { id: "xpm", label: "XP Made", pos: ["K"] },
+  { id: "kickPts", label: "Kicking Points", pos: ["K"] },
+];
+
+// Position-appropriate stat set for the player snapshot card — a QB's
+// season-at-a-glance looks nothing like a kicker's, so each position gets
+// its own small, relevant set rather than one generic stat line.
+const NFL_SNAPSHOT_STATS = {
+  QB: [
+    { label: "PASS YDS", key: "passYds", decimals: 1 },
+    { label: "PASS TD", key: "passTd", decimals: 1 },
+    { label: "COMP", key: "comp", decimals: 1 },
+    { label: "INT", key: "int", decimals: 1 },
+  ],
+  RB: [
+    { label: "RUSH YDS", key: "rushYds", decimals: 1 },
+    { label: "RUSH ATT", key: "rushAtt", decimals: 1 },
+    { label: "REC", key: "rec", decimals: 1 },
+    { label: "TD", key: "anytimeTd", decimals: 2 },
+  ],
+  WR: [
+    { label: "REC", key: "rec", decimals: 1 },
+    { label: "REC YDS", key: "recYds", decimals: 1 },
+    { label: "TD", key: "anytimeTd", decimals: 2 },
+  ],
+  TE: [
+    { label: "REC", key: "rec", decimals: 1 },
+    { label: "REC YDS", key: "recYds", decimals: 1 },
+    { label: "TD", key: "anytimeTd", decimals: 2 },
+  ],
+  K: [
+    { label: "FG MADE", key: "fgm", decimals: 1 },
+    { label: "XP MADE", key: "xpm", decimals: 1 },
+    { label: "KICK PTS", key: "kickPts", decimals: 1 },
+  ],
+};
+// QB has 4 snapshot stats, every other position has 3 -- the card always
+// reserves this many column slots (see the snapshot grid below) so
+// switching between a QB and any other position doesn't change the card's
+// width and shift the photo/selector next to it.
+const NFL_SNAPSHOT_MAX_STATS = Math.max(...Object.values(NFL_SNAPSHOT_STATS).map((s) => s.length));
+
+// Real 2025 Dallas Cowboys regular-season game logs (Week 1 through each
+// player's final game), sourced from ESPN/CBS Sports box scores. Official
+// snap counts aren't part of these box scores, so each game's snap % (shown
+// in the "Snap %" column and filter) is estimated from the player's role —
+// see SNAP_PROFILE / estimateSnapPct below.
+const NFL_GAME_LOGS = {
+  dak: [
+    { date: "2025-09-04", opp: "PHI", home: false, comp: 21, att: 34, passYds: 188, passTd: 0, int: 0, rushAtt: 1, rushYds: 3, rushTd: 0 },
+    { date: "2025-09-14", opp: "NYG", home: true, comp: 38, att: 52, passYds: 361, passTd: 2, int: 1, rushAtt: 3, rushYds: 17, rushTd: 0 },
+    { date: "2025-09-21", opp: "CHI", home: false, comp: 31, att: 40, passYds: 251, passTd: 1, int: 2, rushAtt: 0, rushYds: 0, rushTd: 0 },
+    { date: "2025-09-28", opp: "GB", home: true, comp: 31, att: 40, passYds: 319, passTd: 3, int: 0, rushAtt: 1, rushYds: 2, rushTd: 1 },
+    { date: "2025-10-05", opp: "NYJ", home: false, comp: 18, att: 29, passYds: 237, passTd: 4, int: 0, rushAtt: 7, rushYds: 28, rushTd: 0 },
+    { date: "2025-10-12", opp: "CAR", home: false, comp: 25, att: 34, passYds: 261, passTd: 3, int: 0, rushAtt: 2, rushYds: -1, rushTd: 0 },
+    { date: "2025-10-19", opp: "WAS", home: true, comp: 21, att: 30, passYds: 264, passTd: 3, int: 0, rushAtt: 5, rushYds: 7, rushTd: 0 },
+    { date: "2025-10-26", opp: "DEN", home: false, comp: 19, att: 31, passYds: 188, passTd: 0, int: 2, rushAtt: 6, rushYds: 31, rushTd: 0 },
+    { date: "2025-11-03", opp: "ARI", home: true, comp: 24, att: 39, passYds: 250, passTd: 1, int: 1, rushAtt: 4, rushYds: 34, rushTd: 0 },
+    { date: "2025-11-17", opp: "LV", home: false, comp: 25, att: 33, passYds: 268, passTd: 4, int: 0, rushAtt: 4, rushYds: -4, rushTd: 0 },
+    { date: "2025-11-23", opp: "PHI", home: true, comp: 23, att: 36, passYds: 354, passTd: 2, int: 1, rushAtt: 5, rushYds: 9, rushTd: 1 },
+    { date: "2025-11-27", opp: "KC", home: true, comp: 27, att: 39, passYds: 320, passTd: 2, int: 1, rushAtt: 3, rushYds: -2, rushTd: 0 },
+    { date: "2025-12-04", opp: "DET", home: false, comp: 31, att: 47, passYds: 376, passTd: 1, int: 2, rushAtt: 3, rushYds: 14, rushTd: 0 },
+    { date: "2025-12-14", opp: "MIN", home: true, comp: 23, att: 38, passYds: 294, passTd: 0, int: 0, rushAtt: 1, rushYds: 2, rushTd: 0 },
+    { date: "2025-12-21", opp: "LAC", home: true, comp: 21, att: 30, passYds: 244, passTd: 2, int: 0, rushAtt: 2, rushYds: 14, rushTd: 0 },
+    { date: "2025-12-25", opp: "WAS", home: false, comp: 19, att: 37, passYds: 307, passTd: 2, int: 0, rushAtt: 4, rushYds: 24, rushTd: 0 },
+    { date: "2026-01-04", opp: "NYG", home: false, comp: 7, att: 11, passYds: 70, passTd: 0, int: 0, rushAtt: 2, rushYds: -1, rushTd: 0 },
+  ],
+  lamb: [
+    { date: "2025-09-04", opp: "PHI", home: false, rec: 7, tgt: 13, recYds: 110, recTd: 0 },
+    { date: "2025-09-14", opp: "NYG", home: true, rec: 9, tgt: 11, recYds: 112, recTd: 0 },
+    { date: "2025-09-21", opp: "CHI", home: false, rec: 0, tgt: 0, recYds: 0, recTd: 0 },
+    { date: "2025-10-19", opp: "WAS", home: true, rec: 5, tgt: 8, recYds: 110, recTd: 1 },
+    { date: "2025-10-26", opp: "DEN", home: false, rec: 7, tgt: 10, recYds: 74, recTd: 0 },
+    { date: "2025-11-03", opp: "ARI", home: true, rec: 7, tgt: 12, recYds: 85, recTd: 0 },
+    { date: "2025-11-17", opp: "LV", home: false, rec: 5, tgt: 7, recYds: 66, recTd: 1 },
+    { date: "2025-11-23", opp: "PHI", home: true, rec: 4, tgt: 11, recYds: 75, recTd: 0 },
+    { date: "2025-11-27", opp: "KC", home: true, rec: 7, tgt: 9, recYds: 112, recTd: 1 },
+    { date: "2025-12-04", opp: "DET", home: false, rec: 6, tgt: 8, recYds: 121, recTd: 0 },
+    { date: "2025-12-14", opp: "MIN", home: true, rec: 6, tgt: 10, recYds: 111, recTd: 0 },
+    { date: "2025-12-21", opp: "LAC", home: true, rec: 6, tgt: 7, recYds: 51, recTd: 0 },
+    { date: "2025-12-25", opp: "WAS", home: false, rec: 5, tgt: 10, recYds: 46, recTd: 0 },
+    { date: "2026-01-04", opp: "NYG", home: false, rec: 1, tgt: 1, recYds: 4, recTd: 0 },
+  ],
+  pickens: [
+    { date: "2025-09-04", opp: "PHI", home: false, rec: 3, tgt: 4, recYds: 30, recTd: 0 },
+    { date: "2025-09-14", opp: "NYG", home: true, rec: 5, tgt: 9, recYds: 68, recTd: 1 },
+    { date: "2025-09-21", opp: "CHI", home: false, rec: 5, tgt: 9, recYds: 68, recTd: 1 },
+    { date: "2025-09-28", opp: "GB", home: true, rec: 8, tgt: 11, recYds: 134, recTd: 2 },
+    { date: "2025-10-05", opp: "NYJ", home: false, rec: 2, tgt: 4, recYds: 57, recTd: 1 },
+    { date: "2025-10-12", opp: "CAR", home: false, rec: 9, tgt: 11, recYds: 168, recTd: 1 },
+    { date: "2025-10-19", opp: "WAS", home: true, rec: 4, tgt: 6, recYds: 82, recTd: 0 },
+    { date: "2025-10-26", opp: "DEN", home: false, rec: 7, tgt: 9, recYds: 78, recTd: 0 },
+    { date: "2025-11-03", opp: "ARI", home: true, rec: 6, tgt: 9, recYds: 79, recTd: 0 },
+    { date: "2025-11-17", opp: "LV", home: false, rec: 9, tgt: 11, recYds: 144, recTd: 1 },
+    { date: "2025-11-23", opp: "PHI", home: true, rec: 9, tgt: 9, recYds: 146, recTd: 1 },
+    { date: "2025-11-27", opp: "KC", home: true, rec: 6, tgt: 13, recYds: 88, recTd: 0 },
+    { date: "2025-12-04", opp: "DET", home: false, rec: 5, tgt: 9, recYds: 37, recTd: 0 },
+    { date: "2025-12-14", opp: "MIN", home: true, rec: 3, tgt: 6, recYds: 33, recTd: 0 },
+    { date: "2025-12-21", opp: "LAC", home: true, rec: 7, tgt: 9, recYds: 130, recTd: 1 },
+    { date: "2025-12-25", opp: "WAS", home: false, rec: 4, tgt: 5, recYds: 78, recTd: 0 },
+    { date: "2026-01-04", opp: "NYG", home: false, rec: 1, tgt: 3, recYds: 9, recTd: 0 },
+  ],
+  javonte: [
+    { date: "2025-09-04", opp: "PHI", home: false, rushAtt: 15, rushYds: 54, rushTd: 2, rec: 2, tgt: 3, recYds: 10, recTd: 0 },
+    { date: "2025-09-14", opp: "NYG", home: true, rushAtt: 18, rushYds: 97, rushTd: 1, rec: 6, tgt: 7, recYds: 33, recTd: 0 },
+    { date: "2025-09-21", opp: "CHI", home: false, rushAtt: 10, rushYds: 76, rushTd: 0, rec: 5, tgt: 5, recYds: 16, recTd: 0 },
+    { date: "2025-09-28", opp: "GB", home: true, rushAtt: 20, rushYds: 85, rushTd: 1, rec: 3, tgt: 3, recYds: 15, recTd: 0 },
+    { date: "2025-10-05", opp: "NYJ", home: false, rushAtt: 16, rushYds: 135, rushTd: 1, rec: 1, tgt: 2, recYds: 4, recTd: 1 },
+    { date: "2025-10-12", opp: "CAR", home: false, rushAtt: 13, rushYds: 29, rushTd: 0, rec: 5, tgt: 8, recYds: 5, recTd: 0 },
+    { date: "2025-10-19", opp: "WAS", home: true, rushAtt: 19, rushYds: 116, rushTd: 1, rec: 1, tgt: 4, recYds: 2, recTd: 0 },
+    { date: "2025-10-26", opp: "DEN", home: false, rushAtt: 13, rushYds: 41, rushTd: 2, rec: 1, tgt: 2, recYds: 8, recTd: 0 },
+    { date: "2025-11-03", opp: "ARI", home: true, rushAtt: 15, rushYds: 83, rushTd: 0, rec: 1, tgt: 1, recYds: 0, recTd: 0 },
+    { date: "2025-11-17", opp: "LV", home: false, rushAtt: 22, rushYds: 93, rushTd: 0, rec: 1, tgt: 1, recYds: 0, recTd: 0 },
+    { date: "2025-11-23", opp: "PHI", home: true, rushAtt: 20, rushYds: 87, rushTd: 0, rec: 2, tgt: 3, recYds: 14, recTd: 0 },
+    { date: "2025-11-27", opp: "KC", home: true, rushAtt: 17, rushYds: 59, rushTd: 0, rec: 3, tgt: 3, recYds: 21, recTd: 1 },
+    { date: "2025-12-04", opp: "DET", home: false, rushAtt: 17, rushYds: 67, rushTd: 1, rec: 2, tgt: 4, recYds: 0, recTd: 0 },
+    { date: "2025-12-14", opp: "MIN", home: true, rushAtt: 15, rushYds: 91, rushTd: 1, rec: 0, tgt: 0, recYds: 0, recTd: 0 },
+    { date: "2025-12-21", opp: "LAC", home: true, rushAtt: 9, rushYds: 34, rushTd: 0, rec: 2, tgt: 3, recYds: 9, recTd: 0 },
+    { date: "2025-12-25", opp: "WAS", home: false, rushAtt: 13, rushYds: 54, rushTd: 1, rec: 0, tgt: 2, recYds: 0, recTd: 0 },
+  ],
+  ferguson: [
+    { date: "2025-09-04", opp: "PHI", home: false, rec: 5, recYds: 23, recTd: 0 },
+    { date: "2025-09-14", opp: "NYG", home: true, rec: 9, recYds: 78, recTd: 0 },
+    { date: "2025-09-21", opp: "CHI", home: false, rec: 13, recYds: 82, recTd: 0 },
+    { date: "2025-09-28", opp: "GB", home: true, rec: 7, recYds: 40, recTd: 1 },
+    { date: "2025-10-05", opp: "NYJ", home: false, rec: 7, recYds: 49, recTd: 2 },
+    { date: "2025-10-12", opp: "CAR", home: false, rec: 3, recYds: 33, recTd: 1 },
+    { date: "2025-10-19", opp: "WAS", home: true, rec: 7, recYds: 29, recTd: 2 },
+    { date: "2025-10-26", opp: "DEN", home: false, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-11-03", opp: "ARI", home: true, rec: 5, recYds: 50, recTd: 0 },
+    { date: "2025-11-17", opp: "LV", home: false, rec: 4, recYds: 16, recTd: 1 },
+    { date: "2025-11-23", opp: "PHI", home: true, rec: 5, recYds: 60, recTd: 0 },
+    { date: "2025-11-27", opp: "KC", home: true, rec: 5, recYds: 36, recTd: 0 },
+    { date: "2025-12-04", opp: "DET", home: false, rec: 5, recYds: 58, recTd: 0 },
+    { date: "2025-12-14", opp: "MIN", home: true, rec: 2, recYds: 16, recTd: 0 },
+    { date: "2025-12-21", opp: "LAC", home: true, rec: 3, recYds: 19, recTd: 0 },
+    { date: "2025-12-25", opp: "WAS", home: false, rec: 1, recYds: 6, recTd: 1 },
+    { date: "2026-01-04", opp: "NYG", home: false, rec: 1, recYds: 5, recTd: 0 },
+  ],
+  tolbert: [
+    { date: "2025-09-04", opp: "PHI", home: false, rec: 1, recYds: 0, recTd: 0 },
+    { date: "2025-09-14", opp: "NYG", home: true, rec: 2, recYds: 16, recTd: 0 },
+    { date: "2025-09-21", opp: "CHI", home: false, rec: 3, recYds: 24, recTd: 0 },
+    { date: "2025-09-28", opp: "GB", home: true, rec: 4, recYds: 61, recTd: 0 },
+    { date: "2025-10-05", opp: "NYJ", home: false, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-10-12", opp: "CAR", home: false, rec: 1, recYds: 8, recTd: 0 },
+    { date: "2025-10-19", opp: "WAS", home: true, rec: 1, recYds: 16, recTd: 0 },
+    { date: "2025-10-26", opp: "DEN", home: false, rec: 2, recYds: 47, recTd: 1 },
+    { date: "2025-11-03", opp: "ARI", home: true, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-11-17", opp: "LV", home: false, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-11-23", opp: "PHI", home: true, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-11-27", opp: "KC", home: true, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-12-04", opp: "DET", home: false, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-12-14", opp: "MIN", home: true, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-12-21", opp: "LAC", home: true, rec: 0, recYds: 0, recTd: 0 },
+    { date: "2025-12-25", opp: "WAS", home: false, rec: 4, recYds: 31, recTd: 0 },
+    { date: "2026-01-04", opp: "NYG", home: false, rec: 0, recYds: 0, recTd: 0 },
+  ],
+  dowdle: [
+    { date: "2025-09-04", opp: "PHI", home: false, rushAtt: 4, rushYds: 53, rushTd: 0, rec: 1, recYds: -3, recTd: 0 },
+    { date: "2025-09-14", opp: "NYG", home: true, rushAtt: 5, rushYds: 15, rushTd: 1, rec: 2, recYds: 4, recTd: 0 },
+    { date: "2025-09-21", opp: "CHI", home: false, rushAtt: 9, rushYds: 41, rushTd: 0, rec: 3, recYds: 12, recTd: 0 },
+    { date: "2025-09-28", opp: "GB", home: true, rushAtt: 2, rushYds: 8, rushTd: 0, rec: 2, recYds: 17, recTd: 0 },
+    { date: "2025-10-05", opp: "NYJ", home: false, rushAtt: 0, rushYds: 0, rushTd: 0, rec: 0, recYds: 0, recTd: 0 },
+  ],
+  aubrey: [
+    { date: "2025-09-04", opp: "PHI", home: false, fgm: 2, fga: 2, xpm: 2, xpa: 2 },
+    { date: "2025-09-14", opp: "NYG", home: true, fgm: 4, fga: 4, xpm: 4, xpa: 4 },
+    { date: "2025-09-21", opp: "CHI", home: false, fgm: 2, fga: 2, xpm: 0, xpa: 0 },
+    { date: "2025-09-28", opp: "GB", home: true, fgm: 1, fga: 1, xpm: 5, xpa: 5 },
+    { date: "2025-10-05", opp: "NYJ", home: false, fgm: 1, fga: 1, xpm: 4, xpa: 5 },
+    { date: "2025-10-12", opp: "CAR", home: false, fgm: 2, fga: 2, xpm: 3, xpa: 3 },
+    { date: "2025-10-19", opp: "WAS", home: true, fgm: 3, fga: 3, xpm: 5, xpa: 5 },
+    { date: "2025-10-26", opp: "DEN", home: false, fgm: 1, fga: 1, xpm: 3, xpa: 3 },
+    { date: "2025-11-03", opp: "ARI", home: true, fgm: 1, fga: 2, xpm: 2, xpa: 2 },
+    { date: "2025-11-17", opp: "LV", home: false, fgm: 1, fga: 1, xpm: 4, xpa: 4 },
+    { date: "2025-11-23", opp: "PHI", home: true, fgm: 1, fga: 2, xpm: 3, xpa: 3 },
+    { date: "2025-11-27", opp: "KC", home: true, fgm: 3, fga: 3, xpm: 2, xpa: 2 },
+    { date: "2025-12-04", opp: "DET", home: false, fgm: 5, fga: 5, xpm: 1, xpa: 1 },
+    { date: "2025-12-14", opp: "MIN", home: true, fgm: 4, fga: 6, xpm: 2, xpa: 2 },
+    { date: "2025-12-21", opp: "LAC", home: true, fgm: 1, fga: 1, xpm: 2, xpa: 2 },
+    { date: "2025-12-25", opp: "WAS", home: false, fgm: 3, fga: 4, xpm: 3, xpa: 3 },
+    { date: "2026-01-04", opp: "NYG", home: false, fgm: 1, fga: 2, xpm: 2, xpa: 2 },
+  ],
+};
+
+// Per-player offensive-snap-share profile: a realistic baseline (their
+// typical role — every-down starter vs. committee back vs. rotational
+// depth piece) plus how many points that snap share moves per unit of
+// that game's usage stat, so a workhorse's floor stays high even in a
+// low-target game while a rotational piece's snap share swings more.
+// Kickers have no offensive snap % (they're a special-teams-only stat).
+const SNAP_PROFILE = {
+  dak: { statKey: "att", base: 65, slope: 1.0, floor: 76, ceil: 100 },
+  lamb: { statKey: "recProxy", base: 75, slope: 1.5, floor: 75, ceil: 97 },
+  pickens: { statKey: "recProxy", base: 68, slope: 1.6, floor: 68, ceil: 92 },
+  javonte: { statKey: "rbUsage", base: 35, slope: 1.8, floor: 35, ceil: 85 },
+  ferguson: { statKey: "recProxy", base: 62, slope: 2.2, floor: 62, ceil: 92 },
+  tolbert: { statKey: "recProxy", base: 45, slope: 3.0, floor: 45, ceil: 65 },
+  dowdle: { statKey: "rbUsage", base: 20, slope: 2.5, floor: 20, ceil: 55 },
+};
+
+// Longest single reception in a game isn't part of these box scores (or any
+// live feed yet), so it's estimated from that game's rec/recYds -- a game's
+// biggest play tends to run well above the per-catch average, capped so it
+// never exceeds the total receiving yards for the game.
+function estimateLongReception(rec, recYds) {
+  if (!rec) return 0;
+  const perCatch = recYds / rec;
+  return Math.max(Math.round(perCatch), Math.min(recYds, Math.round(perCatch * 1.7 + 4)));
+}
+
+function estimateSnapPct(player, full) {
+  const profile = SNAP_PROFILE[player.id];
+  if (!profile) return null; // kicker
+  const recProxy = Math.max(full.tgt, full.rec);
+  const statValue = profile.statKey === "att" ? full.att
+    : profile.statKey === "rbUsage" ? full.rushAtt + recProxy
+    : recProxy;
+  const pct = profile.base + statValue * profile.slope;
+  return Math.max(profile.floor, Math.min(profile.ceil, Math.round(pct)));
+}
+
+// Normalizes a raw log entry (which only sets the fields relevant to that
+// player) into the full shape statValueNFL expects, plus an estimated
+// offensive snap % (real per-game snap counts aren't part of these box
+// scores, so it's derived from the player's role and that game's usage).
+function normalizeNFLGame(g, player) {
+  const full = {
+    date: g.date, opp: g.opp, home: g.home,
+    comp: g.comp || 0, att: g.att || 0, passYds: g.passYds || 0, passTd: g.passTd || 0, int: g.int || 0,
+    rushAtt: g.rushAtt || 0, rushYds: g.rushYds || 0, rushTd: g.rushTd || 0,
+    rec: g.rec || 0, tgt: g.tgt || 0, recYds: g.recYds || 0, recTd: g.recTd || 0,
+    fgm: g.fgm || 0, fga: g.fga || 0, xpm: g.xpm || 0, xpa: g.xpa || 0,
+  };
+  return { ...full, snapPct: estimateSnapPct(player, full), long: estimateLongReception(full.rec, full.recYds) };
+}
+
+// Season-average baselines for every non-Cowboys team's seeded synthetic
+// game logs (see genSyntheticNFLGames below) -- no live NFL stats feed is
+// wired in, so unlike the Cowboys' real box-score logs above, these games
+// are generated noise around a realistic per-player average rather than
+// transcribed play-by-play.
+const SYNTHETIC_NFL_STAT_BASE = {
+  // New York Giants
+  dart: { comp: 19, att: 29, passYds: 190, passTd: 1.1, int: 0.7, rushAtt: 6, rushYds: 32, rushTd: 0.3, snap: 98 },
+  nabers: { rec: 6.5, tgt: 10, recYds: 85, recTd: 0.5, snap: 90 },
+  slayton: { rec: 3.5, tgt: 6, recYds: 58, recTd: 0.4, snap: 70 },
+  hyatt: { rec: 2, tgt: 3.5, recYds: 26, recTd: 0.15, snap: 40 },
+  skattebo: { rushAtt: 14, rushYds: 60, rushTd: 0.45, rec: 3, tgt: 3.5, recYds: 20, recTd: 0.1, snap: 62 },
+  tracy: { rushAtt: 8, rushYds: 32, rushTd: 0.2, rec: 2.5, tgt: 3, recYds: 17, recTd: 0.05, snap: 42 },
+  theojohnson: { rec: 3.5, tgt: 5, recYds: 40, recTd: 0.3, snap: 78 },
+  sauls: { fgm: 1.5, fga: 1.8, xpm: 2, xpa: 2.1, snap: null },
+  // San Francisco 49ers
+  purdy: { comp: 22, att: 32, passYds: 245, passTd: 1.6, int: 0.6, rushAtt: 3, rushYds: 12, rushTd: 0.2, snap: 99 },
+  evans: { rec: 5.5, tgt: 8.5, recYds: 78, recTd: 0.55, snap: 85 },
+  pearsall: { rec: 4, tgt: 6.5, recYds: 55, recTd: 0.35, snap: 75 },
+  cowing: { rec: 2.5, tgt: 4, recYds: 30, recTd: 0.15, snap: 45 },
+  mccaffrey: { rushAtt: 16, rushYds: 75, rushTd: 0.6, rec: 4.5, tgt: 5.5, recYds: 35, recTd: 0.2, snap: 75 },
+  guerendo: { rushAtt: 8, rushYds: 35, rushTd: 0.2, rec: 1.5, tgt: 2, recYds: 12, recTd: 0.05, snap: 30 },
+  mclachlan: { rec: 3, tgt: 4.5, recYds: 34, recTd: 0.2, snap: 55 },
+  pineiro: { fgm: 1.6, fga: 1.9, xpm: 2.3, xpa: 2.4, snap: null },
+  // Los Angeles Rams
+  stafford: { comp: 23, att: 33, passYds: 260, passTd: 1.7, int: 0.6, rushAtt: 2, rushYds: 3, rushTd: 0.05, snap: 99 },
+  nacua: { rec: 7, tgt: 10, recYds: 90, recTd: 0.45, snap: 88 },
+  adams: { rec: 5, tgt: 8, recYds: 65, recTd: 0.4, snap: 80 },
+  whittington: { rec: 2.5, tgt: 4, recYds: 28, recTd: 0.1, snap: 40 },
+  kyren: { rushAtt: 15, rushYds: 65, rushTd: 0.5, rec: 3, tgt: 3.5, recYds: 22, recTd: 0.15, snap: 70 },
+  corum: { rushAtt: 7, rushYds: 30, rushTd: 0.2, rec: 1, tgt: 1.3, recYds: 7, recTd: 0.03, snap: 25 },
+  higbee: { rec: 3.5, tgt: 5, recYds: 38, recTd: 0.25, snap: 75 },
+  mevis: { fgm: 1.5, fga: 1.8, xpm: 2.2, xpa: 2.3, snap: null },
+  // Denver Broncos
+  nix: { comp: 22, att: 33, passYds: 235, passTd: 1.4, int: 0.6, rushAtt: 4, rushYds: 20, rushTd: 0.2, snap: 99 },
+  sutton: { rec: 4.5, tgt: 7.5, recYds: 65, recTd: 0.4, snap: 85 },
+  waddle: { rec: 5, tgt: 8, recYds: 68, recTd: 0.35, snap: 82 },
+  mims: { rec: 3, tgt: 5, recYds: 42, recTd: 0.25, snap: 55 },
+  jdobbins: { rushAtt: 14, rushYds: 62, rushTd: 0.5, rec: 2, tgt: 2.5, recYds: 14, recTd: 0.05, snap: 55 },
+  harveyrj: { rushAtt: 7, rushYds: 30, rushTd: 0.25, rec: 1.5, tgt: 2, recYds: 10, recTd: 0.03, snap: 30 },
+  engram: { rec: 4.5, tgt: 6, recYds: 45, recTd: 0.3, snap: 78 },
+  lutz: { fgm: 1.6, fga: 1.9, xpm: 2.4, xpa: 2.5, snap: null },
+  // Kansas City Chiefs
+  mahomes: { comp: 24, att: 34, passYds: 275, passTd: 2.0, int: 0.5, rushAtt: 3.5, rushYds: 18, rushTd: 0.25, snap: 99 },
+  rice: { rec: 6, tgt: 9, recYds: 78, recTd: 0.5, snap: 85 },
+  worthy: { rec: 4.5, tgt: 7, recYds: 62, recTd: 0.35, snap: 78 },
+  thornton: { rec: 2, tgt: 3.5, recYds: 28, recTd: 0.1, snap: 40 },
+  kwalker: { rushAtt: 15, rushYds: 68, rushTd: 0.55, rec: 2.5, tgt: 3, recYds: 18, recTd: 0.08, snap: 60 },
+  bsmith: { rushAtt: 6, rushYds: 26, rushTd: 0.15, rec: 1.5, tgt: 2, recYds: 12, recTd: 0.03, snap: 25 },
+  kelce: { rec: 5.5, tgt: 7.5, recYds: 62, recTd: 0.4, snap: 82 },
+  butker: { fgm: 1.7, fga: 2.0, xpm: 2.6, xpa: 2.7, snap: null },
+};
+// All 32 real NFL teams (see NFL_TEAMS above), minus whichever one the
+// player is actually on -- so a game is never generated against yourself,
+// but every other team (Dallas included) is a valid synthetic opponent.
+function syntheticOpponentPool(team) {
+  return NFL_TEAMS.filter((t) => t !== team);
+}
+
+function genSyntheticNFLGames(player) {
+  const base = SYNTHETIC_NFL_STAT_BASE[player.id];
+  if (!base) return [];
+  const opponents = syntheticOpponentPool(player.team);
+  const rng = mulberry32(hashStr(player.id) + 4200);
+  const noise = (mean, spread) => Math.max(0, Math.round(mean + (rng() - 0.5) * 2 * spread));
+  const games = [];
+  const startDate = new Date("2025-09-08T00:00:00Z");
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i * 7);
+    const home = rng() > 0.5;
+    const opp = opponents[Math.floor(rng() * opponents.length)];
+    const rec = base.rec != null ? noise(base.rec, base.rec * 0.5) : 0;
+    const recYds = base.recYds != null ? noise(base.recYds, base.recYds * 0.5) : 0;
+    games.push({
+      date: d.toISOString().slice(0, 10), opp, home,
+      comp: base.comp != null ? noise(base.comp, base.comp * 0.2) : 0,
+      att: base.att != null ? noise(base.att, base.att * 0.15) : 0,
+      passYds: base.passYds != null ? noise(base.passYds, base.passYds * 0.35) : 0,
+      passTd: base.passTd != null ? noise(base.passTd, 1) : 0,
+      int: base.int != null ? noise(base.int, 1) : 0,
+      rushAtt: base.rushAtt != null ? noise(base.rushAtt, base.rushAtt * 0.4) : 0,
+      rushYds: base.rushYds != null ? noise(base.rushYds, base.rushYds * 0.5) : 0,
+      rushTd: base.rushTd != null ? noise(base.rushTd, 1) : 0,
+      rec, tgt: base.tgt != null ? noise(base.tgt, base.tgt * 0.4) : 0,
+      recYds,
+      long: estimateLongReception(rec, recYds),
+      recTd: base.recTd != null ? noise(base.recTd, 1) : 0,
+      fgm: base.fgm != null ? noise(base.fgm, 1.2) : 0,
+      fga: base.fga != null ? noise(base.fga, 1.2) : 0,
+      xpm: base.xpm != null ? noise(base.xpm, 1.5) : 0,
+      xpa: base.xpa != null ? noise(base.xpa, 1.5) : 0,
+      snapPct: base.snap != null ? Math.max(0, Math.min(100, noise(base.snap, 10))) : null,
+    });
+  }
+  return games;
+}
+
+function getNFLGames(player) {
+  if (NFL_GAME_LOGS[player.id]) return NFL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
+  return genSyntheticNFLGames(player);
+}
+
+const statValueNFL = (g, market) => {
+  switch (market) {
+    case "passYds": return g.passYds;
+    case "passTd": return g.passTd;
+    case "comp": return g.comp;
+    case "int": return g.int;
+    case "rushYds": return g.rushYds;
+    case "passRushYds": return g.passYds + g.rushYds;
+    case "rushAtt": return g.rushAtt;
+    case "rec": return g.rec;
+    case "recYds": return g.recYds;
+    case "scrim": return g.rushYds + g.recYds;
+    case "longRec": return g.long;
+    case "passAtt": return g.att;
+    // Not a milestone/binary market -- a player can score more than once in a
+    // game, so this is the actual total (rush + rec + pass TDs that game),
+    // rendered as a normal counting bar chart like every other market.
+    case "anytimeTd": return g.rushTd + g.recTd + g.passTd;
+    case "fgm": return g.fgm;
+    case "fga": return g.fga;
+    case "xpm": return g.xpm;
+    case "kickPts": return g.fgm * 3 + g.xpm;
+    default: return 0;
+  }
+};
+
+const statValue = (g, market, rebSplit = "total") => {
+  const reb = g.oreb + g.dreb;
+  const rebForSplit = rebSplit === "off" ? g.oreb : rebSplit === "def" ? g.dreb : reb;
+  // Count of core categories (pts, reb, ast, stl, blk) that hit double digits,
+  // used to derive the double-double / triple-double binary props.
+  const doubleDigitCount = [g.pts, reb, g.ast, g.stl, g.blk].filter((v) => v >= 10).length;
+  switch (market) {
+    case "pts": return g.pts;
+    case "reb": return rebForSplit;
+    case "ast": return g.ast;
+    case "stl": return g.stl;
+    case "blk": return g.blk;
+    case "fg3a": return g.fg3a;
+    case "ftm": return g.ftm;
+    case "fta": return g.fta;
+    case "tov": return g.tov;
+    case "dd": return doubleDigitCount >= 2 ? 1 : 0;
+    case "td": return doubleDigitCount >= 3 ? 1 : 0;
+    case "pra": return g.pts + reb + g.ast;
+    case "pa": return g.pts + g.ast;
+    case "pr": return g.pts + reb;
+    case "ra": return reb + g.ast;
+    case "stk": return g.stl + g.blk;
+    case "3pm": return g.fg3m;
+    default: return g.pts;
+  }
+};
+
+const median = (arr) => {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+};
+
+// Draggable line-value tab that sits on the right edge of the chart, at the
+// pixel height matching its value on the y-axis (PropsMadness-style handle).
+// PLOT_* constants must match the margin/padding used on the chart it overlays.
+const PLOT_TOP = 27;    // border(1) + wrapper padding(16) + chart top margin(10)
+const PLOT_BOTTOM = 73; // border(1) + wrapper padding(16) + chart bottom margin(56, for the logo+abbreviation tick)
+const CHART_HEIGHT = 600;
+const PLOT_HEIGHT = CHART_HEIGHT - PLOT_TOP - PLOT_BOTTOM;
+
+// Darker/more saturated bar colors, shared across every bar chart (NFL/MLB/NBA).
+const CHART_GREEN = "#1c9a52";
+const CHART_RED = "#d6392a";
+
+// Snap any value to the nearest "X.5" — real prop lines are almost never whole numbers
+const snapToHalfOdd = (v) => Math.round(v - 0.5) + 0.5;
+// Smallest "X.5" at or above v — used for the default line so it starts just above the average
+const ceilToHalfOdd = (v) => Math.ceil(v - 0.5) + 0.5;
+
+// Approximates the actual sportsbook line for each NFL game as it would
+// have looked at kickoff: the player's trailing average in that market up
+// to (not including) that game, snapped to the nearest half-point. The
+// first tracked game falls back to the full-season average, standing in
+// for a preseason-set expectation. Games are chronological (oldest first),
+// matching the order NFL_GAME_LOGS is stored in.
+function computeNFLHistoricalLines(games, market) {
+  if (!games.length) return [];
+  const values = games.map((g) => statValueNFL(g, market));
+  const seasonAvg = values.reduce((a, b) => a + b, 0) / values.length;
+  return values.map((_, i) => {
+    if (i === 0) return snapToHalfOdd(seasonAvg);
+    const priorAvg = values.slice(0, i).reduce((a, b) => a + b, 0) / i;
+    return snapToHalfOdd(priorAvg);
+  });
+}
+
+function LineHandle({ value, onChange, min, max, containerRef }) {
+  const draggingRef = React.useRef(false);
+
+  const valueToY = (v) => PLOT_TOP + (1 - (v - min) / (max - min)) * PLOT_HEIGHT;
+
+  const handlePointerMove = (e) => {
+    if (!draggingRef.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const relY = e.clientY - rect.top;
+    const ratio = 1 - (relY - PLOT_TOP) / PLOT_HEIGHT;
+    const raw = min + ratio * (max - min);
+    onChange(Math.min(max, Math.max(min, snapToHalfOdd(raw))));
+  };
+
+  const startDrag = (e) => {
+    draggingRef.current = true;
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDrag);
+  };
+  const stopDrag = () => {
+    draggingRef.current = false;
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", stopDrag);
+  };
+
+  const y = valueToY(value);
+
+  return (
+    <div
+      onPointerDown={startDrag}
+      style={{
+        position: "absolute",
+        right: 6,
+        top: y - 13,
+        height: 26,
+        minWidth: 44,
+        padding: "0 8px",
+        background: "var(--amber)",
+        borderRadius: 5,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.45)",
+        cursor: "ns-resize",
+        userSelect: "none",
+        touchAction: "none",
+        zIndex: 5,
+      }}
+      title="Drag to adjust the line"
+    >
+      <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "#1a1206" }}>{value}</span>
+    </div>
+  );
+}
+
+// Shared threshold slider used by every page's Minutes/Snap%/PA filter.
+// Defaults to today's single-thumb "25+" behavior; a "Use range" toggle
+// reveals a second thumb for capping the max or picking a min-max band,
+// e.g. 20-30.
+//
+// Built from custom pointer-driven thumbs (same window pointermove/pointerup
+// drag pattern as LineHandle above) rather than two overlapping native
+// <input type="range"> elements -- the overlay trick (transparent track,
+// pointer-events re-enabled only on ::-webkit-slider-thumb/::-moz-range-thumb)
+// depends on browsers hit-testing those pseudo-elements independently of
+// their parent's pointer-events, which doesn't hold up reliably everywhere
+// and left both thumbs undraggable.
+function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, rangeEnabled, onToggleRange, showToggle = true }) {
+  const trackRef = React.useRef(null);
+  const draggingRef = React.useRef(null); // "lo" | "hi" | "single" | null
+  const pct = (v) => ((v - min) / (max - min)) * 100;
+
+  const valueFromClientX = (clientX) => {
+    const rect = trackRef.current.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const raw = min + ratio * (max - min);
+    return Math.min(max, Math.max(min, Math.round(raw / step) * step));
+  };
+
+  const handleMove = (e) => {
+    if (!draggingRef.current) return;
+    const v = valueFromClientX(e.clientX);
+    if (draggingRef.current === "lo") onChangeLo(Math.min(v, hi));
+    else if (draggingRef.current === "hi") onChangeHi(Math.max(v, lo));
+    else onChangeLo(v);
+  };
+  const stopDrag = () => {
+    draggingRef.current = null;
+    window.removeEventListener("pointermove", handleMove);
+    window.removeEventListener("pointerup", stopDrag);
+  };
+  const startDrag = (which, e) => {
+    e.preventDefault();
+    draggingRef.current = which;
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", stopDrag);
+  };
+
+  React.useEffect(() => stopDrag, []);
+
+  // Clicking/tapping anywhere on the track jumps the nearest thumb there
+  // and continues the drag from that point, matching a native range
+  // input's click-to-jump behavior.
+  const handleTrackPointerDown = (e) => {
+    const v = valueFromClientX(e.clientX);
+    if (!rangeEnabled) {
+      onChangeLo(v);
+      startDrag("single", e);
+      return;
+    }
+    const which = Math.abs(v - lo) <= Math.abs(v - hi) ? "lo" : "hi";
+    if (which === "lo") onChangeLo(Math.min(v, hi));
+    else onChangeHi(Math.max(v, lo));
+    startDrag(which, e);
+  };
+
+  const thumbStyle = (value) => ({
+    position: "absolute", left: `${pct(value)}%`, top: "50%",
+    transform: "translate(-50%, -50%)",
+    width: 18, height: 18, borderRadius: "50%",
+    background: "var(--amber)", border: "2px solid #1a1206",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.45)", cursor: "pointer",
+    touchAction: "none",
+  });
+
+  return (
+    <div style={{ width: "100%" }}>
+      <div
+        ref={trackRef}
+        onPointerDown={handleTrackPointerDown}
+        style={{ position: "relative", height: 24, display: "flex", alignItems: "center", cursor: "pointer", touchAction: "none" }}
+      >
+        <div
+          style={{
+            position: "absolute", left: 0, right: 0, height: 6, borderRadius: 3,
+            background: rangeEnabled
+              ? `linear-gradient(to right, var(--line) ${pct(lo)}%, var(--amber) ${pct(lo)}%, var(--amber) ${pct(hi)}%, var(--line) ${pct(hi)}%)`
+              : `linear-gradient(to right, var(--amber) ${pct(lo)}%, var(--line) ${pct(lo)}%)`,
+          }}
+        />
+        {rangeEnabled ? (
+          <>
+            <div onPointerDown={(e) => { e.stopPropagation(); startDrag("lo", e); }} style={thumbStyle(lo)} />
+            <div onPointerDown={(e) => { e.stopPropagation(); startDrag("hi", e); }} style={thumbStyle(hi)} />
+          </>
+        ) : (
+          <div onPointerDown={(e) => { e.stopPropagation(); startDrag("single", e); }} style={thumbStyle(lo)} />
+        )}
+      </div>
+      {showToggle && (
+        <div style={{ marginTop: 6 }}>
+          <span className="chip" style={{ fontSize: 11, padding: "3px 10px" }} onClick={onToggleRange}>
+            {rangeEnabled ? "Use single value" : "Use range"}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Collapsible wrapper for the Opponent/Game Location/Sample Size/etc. filter
+// block shared by the NBA/NFL/MLB pages -- defaults open so nothing changes
+// for people who don't touch it, but the whole group (which can get tall
+// once a range slider is in play) can be tucked away with one click instead
+// of always eating vertical space above the chart.
+function FiltersSection({ children }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, marginBottom: 14 }}>
+      <div
+        onClick={() => setOpen((v) => !v)}
+        className="oswald"
+        role="button"
+        aria-expanded={open}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          padding: "10px 14px", cursor: "pointer", userSelect: "none",
+          fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase",
+          color: "var(--dim)",
+          borderBottom: open ? "1px solid var(--line)" : "none",
+        }}
+      >
+        Filters
+        <span
+          className="mono"
+          style={{
+            color: "var(--amber)", fontSize: 11,
+            display: "inline-block", transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+            transition: "transform .15s ease",
+          }}
+        >
+          ▼
+        </span>
+      </div>
+      {open && (
+        <div style={{ padding: "12px 14px", textAlign: "center" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Bar value label, anchored near the bottom of each bar rather than
+// recharts' default top-of-bar placement — reads as a stamped-in number
+// rather than a floating annotation, and stays legible against both the
+// green/red fills since it's rendered in the dark background color.
+function BarValueLabel({ x, y, width, height, value, isBinary }) {
+  // Every bar's label sits at the same height (10px above the shared
+  // baseline, not floating above each bar's own peak), so once bars get
+  // narrow -- a large sample size, or a narrow phone screen -- adjacent
+  // numbers run into each other. Skipping the label once a bar is too thin
+  // to fit one comfortably keeps it self-correcting on any width instead of
+  // needing a device-specific breakpoint.
+  if (value == null || height < 16 || width < 22) return null;
+  if (isBinary && value !== 1) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y + height - 10}
+      textAnchor="middle"
+      className="mono"
+      fontSize={13}
+      fontWeight={700}
+      fill="#15171b"
+    >
+      {isBinary ? "✓" : value}
+    </text>
+  );
+}
+
+// True on narrow (phone-width) viewports, kept in sync via matchMedia so
+// charts can thin out their x-axis (fewer ticks, smaller team logos)
+// instead of the fixed-size ticks overlapping each other once there's only
+// ~20-30px of bar width to work with.
+function useIsNarrow(breakpoint = 480) {
+  const [isNarrow, setIsNarrow] = React.useState(
+    typeof window !== "undefined" && window.innerWidth <= breakpoint
+  );
+  React.useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const onChange = () => setIsNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+  return isNarrow;
+}
+
+// Caps ticks at ~5 on narrow screens and ~20 on wide ones, however many
+// games are in the sample -- "All" on a full MLB season can be 80+ games,
+// which would render every single logo/abbreviation crammed on top of each
+// other at any screen width without this. recharts' XAxis `interval` is a
+// skip-count, not a target tick count, so it's derived from gameCount here.
+function axisTickInterval(gameCount, isNarrow) {
+  const maxTicks = isNarrow ? 5 : 20;
+  return Math.max(0, Math.ceil(gameCount / maxTicks) - 1);
+}
+
+// On phones, rather than skip ticks (leaving most bars with no opponent
+// logo at all, which reads as "only some of these games have an opponent"),
+// the chart instead gets a horizontal scroll track wide enough to give
+// every single bar its own full-size logo -- so scrolling right reveals the
+// rest instead of guessing which skipped bar belongs to which team. Capped
+// at NARROW_SCROLL_MAX_BARS so a huge sample (MLB's "All" can be 80+ games)
+// doesn't turn into an absurdly long scroll; past that it falls back to the
+// old skip-some-ticks behavior via axisTickInterval.
+const NARROW_SCROLL_MAX_BARS = 30;
+const NARROW_BAR_WIDTH = 42;
+
+// Custom chart tooltip — replaces recharts' plain default box with a small
+// card that matches the app's own styling and surfaces the info that
+// actually matters for a prop-research read: result vs. the line, date,
+// minutes played, and the opponent's defensive rank/tier.
+// Custom x-axis tick: team logo above the team abbreviation, in place of the
+// plain game-index number recharts would otherwise render. `compact` shrinks
+// the logo/text for narrow screens (see useIsNarrow) where full-size ticks
+// would overlap.
+function TeamAxisTick({ x, y, payload, logoFn, compact }) {
+  const abbr = payload.value;
+  const size = compact ? 16 : 28;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <image href={logoFn(abbr)} x={-size / 2} y={6} width={size} height={size} />
+      <text x={0} y={compact ? 34 : 52} textAnchor="middle" fill="#8b96a5" fontSize={compact ? 10 : 13} fontWeight={600}>
+        {abbr}
+      </text>
+    </g>
+  );
+}
+
+// Plain date label, no logo -- used in place of TeamAxisTick once a sample
+// has too many games for a per-game logo/abbreviation to stay legible (e.g.
+// MLB's "All" sample size over a full season can be 80+ games). Reads the
+// date straight off `payload.value` (the chart's dataKey must be "date" for
+// this tick) rather than indexing some other array by `index` -- recharts'
+// tick `index` is the position among the ticks it actually rendered after
+// skipping, not the original data index, so it doesn't line up with a
+// separate games array once ticks are sparse.
+function DateAxisTick({ x, y, payload }) {
+  const label = new Date(`${payload.value}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={20} textAnchor="middle" fill="#8b96a5" fontSize={12} fontWeight={600}>
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, footerLabel = (d) => `${d.minutes} min played`, logoFn }) {
+  if (!active || !payload || !payload.length) return null;
+  const d = payload[0].payload;
+  const over = isBinary ? d.value === 1 : d.value > effectiveLine;
+  const push = !isBinary && d.value === effectiveLine;
+  const tier = defTier(d.defRank);
+  const resultLabel = isBinary ? (d.value === 1 ? "YES" : "NO") : push ? "PUSH" : over ? "OVER" : "UNDER";
+  const resultColor = push ? "var(--dim)" : over ? "var(--green)" : "var(--red)";
+  const tierColor = tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)";
+
+  return (
+    <div
+      style={{
+        background: "var(--panel2)",
+        border: "1px solid var(--line)",
+        borderRadius: 8,
+        minWidth: 230,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Header: opponent + game meta */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "8px 12px", borderBottom: "1px solid var(--line)", background: "rgba(255,255,255,0.02)",
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {logoFn && <img src={logoFn(d.opp)} alt={d.opp} width={18} height={18} style={{ objectFit: "contain" }} />}
+          <span className="oswald" style={{ fontSize: 13, letterSpacing: "0.03em", color: "var(--text)" }}>
+            {d.home ? "vs" : "@"} {d.opp}
+          </span>
+        </span>
+        <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", letterSpacing: "0.02em" }}>
+          {new Date(`${d.date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}
+        </span>
+      </div>
+
+      {/* Body: big value + result badge */}
+      <div style={{ padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {marketLabel}
+          </div>
+          <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: resultColor, lineHeight: 1.2 }}>
+            {isBinary ? d.value : d.value}
+            {!isBinary && (
+              <span style={{ fontSize: 12, color: "var(--dim)", fontWeight: 500 }}> / {effectiveLine}</span>
+            )}
+          </div>
+        </div>
+        <span className="mono" style={{
+          fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+          padding: "4px 9px", borderRadius: 4,
+          color: resultColor, border: `1px solid ${resultColor}`, background: `${resultColor}1a`,
+        }}>
+          {resultLabel}
+        </span>
+      </div>
+
+      {/* Footer: minutes + opponent defense context */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        padding: "7px 12px", borderTop: "1px solid var(--line)", fontSize: 10.5,
+      }}>
+        <span style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>{footerLabel(d)}</span>
+        <span className="mono" style={{ color: tierColor, fontWeight: 600, whiteSpace: "nowrap" }}>
+          #{d.defRank} def{tier === "soft" ? " · soft" : tier === "tough" ? " · tough" : ""}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Renders a wrapping row of market pills separated by "|" -- but only
+// between two pills that land on the same visual line. Grouping separator+
+// pill into one flex unit (see NFLPropsPage) stops a lone "|" from floating
+// at a mismatched height, but it can still open a wrapped line with nothing
+// to its left to separate from, which reads as a stray mark next to a
+// single word. This measures each pill's actual offsetTop after layout (and
+// re-measures on resize/content change) so a separator only renders when
+// the previous pill really is its same-line neighbor.
+function MarketPillRow({ markets, activeMarket, onSelect }) {
+  const containerRef = React.useRef(null);
+  const itemRefs = React.useRef([]);
+  const [sameLineAsPrev, setSameLineAsPrev] = React.useState([]);
+
+  const measure = React.useCallback(() => {
+    const tops = itemRefs.current.map((el) => (el ? el.offsetTop : null));
+    setSameLineAsPrev(tops.map((t, i) => i > 0 && t != null && t === tops[i - 1]));
+  }, []);
+
+  React.useLayoutEffect(() => {
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [measure, markets]);
+
+  return (
+    <div ref={containerRef} style={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+      {markets.map((m, mi) => (
+        <div key={m.id} ref={(el) => (itemRefs.current[mi] = el)} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {mi > 0 && (
+            <span style={{ color: "var(--line)", fontSize: 20, visibility: sameLineAsPrev[mi] ? "visible" : "hidden" }}>|</span>
+          )}
+          <div
+            className={`tab no-underline ${activeMarket === m.id ? "active" : ""}`}
+            style={{ flex: "0 0 auto", width: "auto", padding: "10px 16px", fontSize: 20 }}
+            onClick={() => onSelect(m.id)}
+          >
+            {m.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NFLPropsPage({ jumpTo }) {
+  const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
+  const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
+  const [playerId, setPlayerId] = useState(NFL_PLAYERS[0].id);
+  const [market, setMarket] = useState("passYds");
+  React.useEffect(() => {
+    if (!jumpTo) return;
+    setPlayerId(jumpTo.playerId);
+    setMarket(jumpTo.market);
+    setLine(null);
+    setOpponent("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo && jumpTo.nonce]);
+  const [side, setSide] = useState("all");
+  const [lastN, setLastN] = useState(10);
+  const [opponent, setOpponent] = useState("all");
+  const [minSnapPct, setMinSnapPct] = useState(50);
+  const [maxSnapPct, setMaxSnapPct] = useState(100);
+  const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
+  const [line, setLine] = useState(null);
+  const chartRef = React.useRef(null);
+  const isNarrow = useIsNarrow();
+
+  const resetFilters = () => {
+    setSide("all");
+    setLastN(10);
+    setOpponent("all");
+    setMinSnapPct(50);
+    setMaxSnapPct(100);
+    setSnapRangeEnabled(false);
+    setLine(null);
+  };
+
+  const player = ALL_NFL_PLAYERS.find((p) => p.id === playerId);
+  const allGames = useMemo(() => getNFLGames(player), [player]);
+  const playerMarkets = useMemo(() => NFL_MARKETS.filter((m) => m.pos.includes(player.pos)), [player]);
+  const seasonAvg = useMemo(() => {
+    const stats = NFL_SNAPSHOT_STATS[player.pos] || [];
+    const n = allGames.length || 1;
+    return stats.map((s) => ({
+      ...s,
+      value: allGames.reduce((a, g) => a + statValueNFL(g, s.key), 0) / n,
+    }));
+  }, [allGames, player.pos]);
+  // Per-game historical line for the ledger table's Line/Result columns —
+  // computed off the full unfiltered game log so it stays anchored to
+  // chronological order regardless of the active filters.
+  const historicalLines = useMemo(() => computeNFLHistoricalLines(allGames, market), [allGames, market]);
+
+  // Whenever the selected player (and thus position) changes, make sure the
+  // active market is still one that applies to them.
+  React.useEffect(() => {
+    if (!playerMarkets.some((m) => m.id === market)) {
+      setMarket(playerMarkets[0].id);
+      setLine(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId]);
+
+  const opponentsForPlayer = useMemo(
+    () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
+    [allGames]
+  );
+
+  const filtered = useMemo(() => {
+    let g = allGames.filter((game) => {
+      if (side === "home" && !game.home) return false;
+      if (side === "away" && game.home) return false;
+      if (opponent !== "all" && game.opp !== opponent) return false;
+      if (game.snapPct !== null && (game.snapPct < minSnapPct || game.snapPct > maxSnapPct)) return false;
+      return true;
+    });
+    if (lastN !== "all") g = g.slice(-lastN);
+    return g;
+  }, [allGames, side, opponent, minSnapPct, maxSnapPct, lastN]);
+
+  // Anytime TD is a normal counting stat (a player can score more than once
+  // in a game), not a milestone/binary market -- unlike NBA's dd/td props.
+  const isBinary = false;
+  const values = filtered.map((g) => statValueNFL(g, market));
+  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  const med = median(values);
+  const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+  const topValue = Math.max(...values, effectiveLine, 1);
+  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
+  const niceStep = (() => {
+    if (isBinary) return 1;
+    const targetTicks = 5;
+    const roughStep = rawMax / targetTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
+    const norm = roughStep / mag;
+    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
+    return Math.max(1, step);
+  })();
+  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
+  const chartTicks = isBinary
+    ? [0, 1]
+    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+  const hits = values.filter((v) => v > effectiveLine).length;
+  const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
+  const hitRate = values.length ? hits / values.length : 0;
+  const edge = avg - effectiveLine;
+  const scrollableChart = isNarrow && filtered.length <= NARROW_SCROLL_MAX_BARS;
+  const marketLabel = NFL_MARKETS.find((m) => m.id === market)?.label ?? "";
+  const defCategoryLabel = nflDefCategoryLabel(market, player.pos);
+
+  return (
+    <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <div className="roster-layout">
+    <TeamRosterPanel
+      teamLabel={matchup.teamA.label}
+      players={matchup.teamA.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (NFL_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    <div className="roster-layout-center">
+      {/* Matchup + market selectors -- the matchup dropdown is the way to
+           scout different weekly games (swaps which two rosters populate
+           the sidebars); picking an individual player within that matchup
+           happens by clicking their row in either roster panel. */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+          <select
+            className="select"
+            value={matchupId}
+            onChange={(e) => {
+              const next = NFL_MATCHUPS.find((m) => m.id === e.target.value);
+              setMatchupId(next.id);
+              setPlayerId(next.teamA.players[0].id);
+              setLine(null);
+              setOpponent("all");
+            }}
+          >
+            {NFL_MATCHUPS_BY_DATE.map((group) => (
+              <optgroup label={group.label} key={group.label}>
+                {group.matchups.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label} — {matchupTimeLabel(m.date)}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <div style={{
+            position: "relative", width: 122, height: 122, borderRadius: "50%", flexShrink: 0,
+            background: teamAvatarBackground(NFL_TEAM_COLORS, player.team),
+            boxShadow: `0 4px 14px ${(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
+          }}>
+            {/* Always-visible team-colored backing, in case the headshot image can't
+                 load (ad-block / privacy extensions often block sports-CDN image
+                 requests) -- keeps the circle on-brand instead of going flat black. */}
+            <div style={{
+              position: "absolute", inset: 6, borderRadius: "50%",
+              background: (NFL_TEAM_COLORS[player.team] || {}).primary || "#000",
+              border: "1px solid var(--line)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }} />
+            {NFL_HEADSHOTS[player.id] && (
+              <img
+                key={player.id}
+                src={NFL_HEADSHOTS[player.id]}
+                alt={player.name}
+                width={110}
+                height={110}
+                referrerPolicy="no-referrer"
+                style={{
+                  position: "absolute", inset: 6,
+                  width: 110, height: 110,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  objectPosition: "center top",
+                  border: "1px solid var(--line)",
+                  opacity: 0,
+                  transition: "opacity 0.15s ease",
+                }}
+                onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
+                onError={(e) => { e.currentTarget.style.opacity = 0; }}
+              />
+            )}
+          </div>
+
+          {/* Player snapshot: season averages at a glance, next to the selector.
+               The stats area is a fixed width sized for NFL_SNAPSHOT_MAX_STATS
+               columns (4, QB's count) regardless of how many stats this
+               position actually has, so the card is always the same width
+               and the photo/selector next to it never shifts when switching
+               between a QB and any other position -- but within that fixed
+               width, a position with fewer stats (RB/WR/TE/K, 3) is laid out
+               as a centered flex group instead of left-anchored columns with
+               a stray empty slot trailing on the right. */}
+          <div style={{
+            display: "flex", flexDirection: isNarrow ? "column" : "row", alignItems: "center", gap: isNarrow ? 10 : 16,
+            background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+            padding: isNarrow ? "12px 16px" : "10px 20px",
+            width: isNarrow ? "100%" : undefined, boxSizing: "border-box",
+          }}>
+            <div style={{
+              textAlign: "center",
+              paddingRight: isNarrow ? 0 : 16, paddingBottom: isNarrow ? 10 : 0,
+              borderRight: isNarrow ? "none" : "1px solid var(--line)",
+              borderBottom: isNarrow ? "1px solid var(--line)" : "none",
+              flexShrink: 0, width: isNarrow ? "100%" : undefined,
+            }}>
+              <div className="oswald" style={{ fontSize: 18, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
+              <div style={{ fontSize: 13, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+                {player.team} · {player.pos} · Season
+              </div>
+            </div>
+            <div style={{
+              display: "flex", flexWrap: isNarrow ? "wrap" : "nowrap", justifyContent: "center", alignItems: "center", gap: isNarrow ? 14 : 20,
+              width: isNarrow ? "100%" : NFL_SNAPSHOT_MAX_STATS * 66 + (NFL_SNAPSHOT_MAX_STATS - 1) * 20,
+            }}>
+              {seasonAvg.map((s) => (
+              <div key={s.label} style={{ textAlign: "center", width: 66, flexShrink: 0 }}>
+                <div className="mono" style={{ fontSize: 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(s.decimals)}</div>
+                <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{s.label}</div>
+              </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Matchup info bar: when/where this game is being played, keyed off
+             the selected matchup's static schedule data. */}
+        <div style={{
+          display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
+          width: "fit-content", margin: "0 auto 16px", padding: "9px 20px",
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
+          fontSize: 12.5, color: "var(--dim)",
+        }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>
+              {new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+            <span>·</span>
+            <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
+              {new Date(matchup.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+            </span>
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>{matchup.venue}</span>
+            <span>— {matchup.city}</span>
+          </span>
+        </div>
+
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+          Markets
+        </div>
+        <MarketPillRow
+          markets={playerMarkets}
+          activeMarket={market}
+          onSelect={(id) => { setMarket(id); setLine(null); }}
+        />
+      </div>
+    </div>
+    <TeamRosterPanel
+      teamLabel={matchup.teamB.label}
+      players={matchup.teamB.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (NFL_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    </div>
+
+      {/* Filters -- Reset filters sits in its own row at the bottom (not
+           absolutely positioned, and after the filter groups rather than
+           before) so it can never overlap the Opponent label/dropdown on
+           narrow screens, and doesn't leave an empty row above the first
+           filter on wider screens either. */}
+      <FiltersSection>
+        {[
+          {
+            label: "Opponent",
+            content: (
+              <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
+                <option value="all">Any opponent</option>
+                {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+              </select>
+            ),
+          },
+          {
+            label: "Game location",
+            content: (
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                {["all", "home", "away"].map((s) => (
+                  <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                    {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          {
+            label: "Sample size",
+            content: (
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                {[5, 10, 15, "all"].map((n) => (
+                  <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                    {n === "all" ? "All" : `Last ${n}`}
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          {
+            label: "Snap %",
+            content: (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 620, margin: "0 auto" }}>
+                <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
+                  {!snapRangeEnabled
+                    ? `${minSnapPct}%+ snaps`
+                    : (minSnapPct === 1 && maxSnapPct === 100 ? "Any snaps" : `${minSnapPct}-${maxSnapPct}% snaps`)}
+                </div>
+                <ThresholdSlider
+                  min={1}
+                  max={100}
+                  step={1}
+                  lo={minSnapPct}
+                  hi={maxSnapPct}
+                  onChangeLo={setMinSnapPct}
+                  onChangeHi={setMaxSnapPct}
+                  rangeEnabled={snapRangeEnabled}
+                  onToggleRange={() => setSnapRangeEnabled((v) => !v)}
+                />
+                <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                  {[1, 50, 70, 85].map((m) => (
+                    <div key={m} className={`chip ${!snapRangeEnabled && minSnapPct === m ? "active" : ""}`} style={{ whiteSpace: "nowrap" }} onClick={() => setMinSnapPct(m)}>
+                      {m === 1 ? "Any snaps" : `${m}%+ snaps`}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ),
+          },
+        ].map((group, gi) => (
+          <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
+            <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+              {group.label}
+            </div>
+            {group.content}
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+          <div className="chip" onClick={resetFilters}>Reset filters</div>
+        </div>
+      </FiltersSection>
+
+      {/* Line input + summary */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
+          </div>
+          <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
+            {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+            {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
+          {[
+            { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
+            { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
+            { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
+          ].map((s) => (
+            <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+              <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {opponent !== "all" && (() => {
+          const oppDef = getNFLDefRank(market, player.pos, opponent);
+          const oppTier = nflDefTier(oppDef.rank);
+          return (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 14px" }}>
+              <span style={{ color: "var(--dim)", fontSize: 12 }}>vs {opponent} {defCategoryLabel}</span>
+              <span className="mono" style={{ fontSize: 16, color: "var(--text)" }}>{oppDef.rating}</span>
+              <span className="mono" style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+                padding: "2px 8px", borderRadius: 4,
+                color: oppTier === "soft" ? "var(--green)" : oppTier === "tough" ? "var(--red)" : "var(--dim)",
+                border: `1px solid ${oppTier === "soft" ? "var(--green)" : oppTier === "tough" ? "var(--red)" : "var(--line)"}`,
+              }}>
+                #{oppDef.rank} {defCategoryLabel}{oppTier === "soft" ? " · favorable matchup" : oppTier === "tough" ? " · tough matchup" : ""}
+              </span>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Chart */}
+      <div
+        ref={chartRef}
+        style={{
+          position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
+          padding: 16, marginBottom: 16,
+        }}
+      >
+        <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+        <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={filtered.map((g, i) => ({
+              idx: i + 1,
+              opp: g.opp,
+              value: statValueNFL(g, market),
+              date: g.date,
+              snapPct: g.snapPct,
+              home: g.home,
+              defRank: getNFLDefRank(market, player.pos, g.opp).rank,
+            }))}
+            margin={{ top: 10, right: 60, bottom: 56, left: 20 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            <XAxis dataKey="opp" interval={scrollableChart ? 0 : axisTickInterval(filtered.length, isNarrow)} tick={(props) => <TeamAxisTick {...props} logoFn={nflTeamLogo} compact={isNarrow} />} axisLine={{ stroke: "#343941" }} tickLine={false} />
+            <YAxis
+              domain={[0, chartMax]}
+              ticks={chartTicks}
+              tick={{ fill: "#8b96a5", fontSize: 11 }}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+              allowDecimals={false}
+              label={{ value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+            />
+            <Tooltip
+              content={
+                <ChartTooltip
+                  effectiveLine={effectiveLine}
+                  isBinary={isBinary}
+                  marketLabel={marketLabel}
+                  footerLabel={(d) => (d.snapPct == null ? "no offensive snaps" : `${d.snapPct}% offensive snaps`)}
+                  logoFn={nflTeamLogo}
+                />
+              }
+              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+            />
+            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              {filtered.map((g, i) => {
+                const v = statValueNFL(g, market);
+                const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
+                return <Cell key={i} fill={fill} />;
+              })}
+              <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        </div>
+        </div>
+        {!isBinary && (
+          <LineHandle
+            value={effectiveLine}
+            onChange={(v) => setLine(v)}
+            min={0}
+            max={chartMax}
+            containerRef={chartRef}
+          />
+        )}
+      </div>
+
+      {/* Table */}
+      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+          <div style={{ minWidth: 580 }}>
+            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
+              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Snap %</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
+            </div>
+            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
+              {filtered.slice().reverse().map((g, i) => {
+                const v = statValueNFL(g, market);
+                const rowLine = isBinary ? 0.5 : historicalLines[allGames.indexOf(g)];
+                const over = v > rowLine;
+                const push = !isBinary && v === rowLine;
+                const def = getNFLDefRank(market, player.pos, g.opp);
+                const tier = nflDefTier(def.rank);
+                return (
+                  <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
+                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
+                    <div>{g.date}</div>
+                    <div>{g.opp}</div>
+                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
+                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
+                    <div>{g.snapPct == null ? "—" : `${g.snapPct}%`}</div>
+                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
+                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : rowLine}</div>
+                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
+        Sample data only — Cowboys game logs from real 2025 box scores, every other team's game logs generated from season-average baselines, ahead of a real NFL stats/odds feed.
+      </div>
+    </div>
+  );
+}
+
+// ---------- WNBA (2 real matchups for tonight's slate) ----------
+const WNBA_TEAMS = ["ATL","CHI","CON","DAL","GS","IND","LV","LA","MIN","NY","PHX","POR","SEA","TOR","WSH"];
+
+// Placeholder defensive ratings, same approach as the NBA's TEAM_DEF above
+// (mock ratings, ranked lowest-to-highest) -- a real WNBA opponent-stats feed
+// would replace this the same way it would replace TEAM_DEF.
+const wnbaDefRatingRng = mulberry32(4242);
+const WNBA_TEAM_DEF = (() => {
+  const raw = WNBA_TEAMS.map((t) => ({ team: t, rating: Math.round((98 + wnbaDefRatingRng() * 14) * 10) / 10 }));
+  raw.sort((a, b) => a.rating - b.rating);
+  raw.forEach((r, i) => (r.rank = i + 1));
+  const byTeam = {};
+  raw.forEach((r) => (byTeam[r.team] = r));
+  return byTeam;
+})();
+
+const WNBA_LOGO_SLUG = {
+  ATL: "atl", CHI: "chi", CON: "conn", DAL: "dal", GS: "gs", IND: "ind", LV: "lv",
+  LA: "la", MIN: "min", NY: "ny", PHX: "phx", POR: "por", SEA: "sea", TOR: "tor", WSH: "wsh",
+};
+const wnbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/wnba/500/${WNBA_LOGO_SLUG[abbr] || abbr.toLowerCase()}.png`;
+
+// Official-ish WNBA brand colors (primary/secondary), used only to tint the
+// player avatar's background ring -- see teamAvatarBackground above.
+const WNBA_TEAM_COLORS = {
+  ATL: { primary: "#E31837", secondary: "#5091CC" },
+  CHI: { primary: "#5091CD", secondary: "#FFD520" },
+  CON: { primary: "#F05023", secondary: "#0A2240" },
+  DAL: { primary: "#002B5C", secondary: "#C4D600" },
+  GS: { primary: "#B38FCF", secondary: "#000000" },
+  IND: { primary: "#002D62", secondary: "#E03A3E" },
+  LV: { primary: "#A7A8AA", secondary: "#000000" },
+  LA: { primary: "#552583", secondary: "#FDB927" },
+  MIN: { primary: "#266092", secondary: "#79BC43" },
+  NY: { primary: "#86CEBC", secondary: "#000000" },
+  PHX: { primary: "#3C286E", secondary: "#FA4B0A" },
+  POR: { primary: "#CEE5EB", secondary: "#000000" },
+  SEA: { primary: "#2C5235", secondary: "#FEE11A" },
+  TOR: { primary: "#33476D", secondary: "#7B1B38" },
+  WSH: { primary: "#E03A3E", secondary: "#002B5C" },
+};
+
+// Same ESPN combiner headshot proxy as the NBA/NFL pages, just pointed at
+// the wnba headshot path instead.
+const wnbaHeadshot = (espnId) =>
+  `https://a.espncdn.com/combiner/i?img=/i/headshots/wnba/players/full/${espnId}.png&w=350&h=350&scale=crop`;
+
+// Real players from the two games on tonight's WNBA slate (see WNBA_MATCHUPS
+// below) -- a handful of rotation players per team rather than a full roster,
+// same "starting lineup" scope the MLB/NFL pages use.
+const DALLAS_WINGS_PLAYERS = [
+  { id: "bueckers", name: "Paige Bueckers", team: "DAL", pos: "G", espnId: "4433730",
+    base: { pts: 18, oreb: 0.6, dreb: 3.8, ast: 5.5, stl: 1.3, blk: 0.4, fg3m: 1.6, fg3a: 4.5, ftm: 3.0, fta: 3.5, tov: 2.6 },
+    var:  { pts: 6,  oreb: 0.6, dreb: 1.8, ast: 2.4, stl: 0.9, blk: 0.4, fg3m: 1.2, fg3a: 1.8, ftm: 1.6, fta: 1.8, tov: 1.3 } },
+  { id: "ogunbowale", name: "Arike Ogunbowale", team: "DAL", pos: "G", espnId: "3904577",
+    base: { pts: 20, oreb: 0.4, dreb: 3.0, ast: 3.8, stl: 1.0, blk: 0.2, fg3m: 2.6, fg3a: 7.0, ftm: 3.5, fta: 4.0, tov: 2.8 },
+    var:  { pts: 7,  oreb: 0.4, dreb: 1.4, ast: 1.8, stl: 0.7, blk: 0.2, fg3m: 1.4, fg3a: 2.2, ftm: 1.8, fta: 2.0, tov: 1.4 } },
+  { id: "asmith", name: "Alanna Smith", team: "DAL", pos: "F", espnId: "3913881",
+    base: { pts: 9, oreb: 1.6, dreb: 4.5, ast: 1.6, stl: 1.0, blk: 1.1, fg3m: 0.9, fg3a: 2.6, ftm: 1.0, fta: 1.3, tov: 1.2 },
+    var:  { pts: 4, oreb: 1.0, dreb: 1.8, ast: 1.0, stl: 0.6, blk: 0.7, fg3m: 0.7, fg3a: 1.2, ftm: 0.8, fta: 1.0, tov: 0.8 } },
+  { id: "liyueru", name: "Li Yueru", team: "DAL", pos: "C", espnId: "4336633",
+    base: { pts: 8, oreb: 1.8, dreb: 4.0, ast: 1.0, stl: 0.5, blk: 0.7, fg3m: 0.3, fg3a: 1.0, ftm: 1.2, fta: 1.6, tov: 1.1 },
+    var:  { pts: 4, oreb: 1.1, dreb: 1.8, ast: 0.7, stl: 0.4, blk: 0.5, fg3m: 0.4, fg3a: 0.7, ftm: 0.8, fta: 1.0, tov: 0.7 } },
+  { id: "ajames", name: "Aziaha James", team: "DAL", pos: "G", espnId: "4433807",
+    base: { pts: 7, oreb: 0.5, dreb: 1.8, ast: 2.2, stl: 0.7, blk: 0.2, fg3m: 0.8, fg3a: 2.4, ftm: 0.8, fta: 1.0, tov: 1.0 },
+    var:  { pts: 3.5, oreb: 0.4, dreb: 1.0, ast: 1.2, stl: 0.5, blk: 0.2, fg3m: 0.7, fg3a: 1.2, ftm: 0.6, fta: 0.8, tov: 0.7 } },
+];
+const ATLANTA_DREAM_PLAYERS = [
+  { id: "agray", name: "Allisha Gray", team: "ATL", pos: "G", espnId: "3058901",
+    base: { pts: 17, oreb: 0.7, dreb: 3.5, ast: 3.0, stl: 1.4, blk: 0.4, fg3m: 2.0, fg3a: 5.2, ftm: 2.6, fta: 3.0, tov: 1.8 },
+    var:  { pts: 6, oreb: 0.5, dreb: 1.6, ast: 1.6, blk: 0.3, stl: 0.8, fg3m: 1.2, fg3a: 1.8, ftm: 1.4, fta: 1.6, tov: 1.0 } },
+  { id: "rhowarD", name: "Rhyne Howard", team: "ATL", pos: "G", espnId: "4398674",
+    base: { pts: 16, oreb: 0.5, dreb: 3.2, ast: 2.8, stl: 1.1, blk: 0.3, fg3m: 2.4, fg3a: 6.5, ftm: 2.2, fta: 2.6, tov: 1.9 },
+    var:  { pts: 6, oreb: 0.4, dreb: 1.5, ast: 1.4, stl: 0.7, blk: 0.3, fg3m: 1.3, fg3a: 2.0, ftm: 1.2, fta: 1.4, tov: 1.1 } },
+  { id: "areese", name: "Angel Reese", team: "ATL", pos: "F", espnId: "4433402",
+    base: { pts: 14, oreb: 4.0, dreb: 8.0, ast: 2.0, stl: 1.3, blk: 0.9, fg3m: 0.1, fg3a: 0.4, ftm: 2.0, fta: 3.2, tov: 2.2 },
+    var:  { pts: 5, oreb: 1.8, dreb: 2.6, ast: 1.1, stl: 0.7, blk: 0.6, fg3m: 0.2, fg3a: 0.4, ftm: 1.2, fta: 1.8, tov: 1.2 } },
+  { id: "bjones", name: "Brionna Jones", team: "ATL", pos: "F", espnId: "3058895",
+    base: { pts: 11, oreb: 2.6, dreb: 5.0, ast: 1.4, stl: 0.7, blk: 0.6, fg3m: 0.0, fg3a: 0.1, ftm: 2.4, fta: 3.0, tov: 1.5 },
+    var:  { pts: 4, oreb: 1.4, dreb: 2.0, ast: 0.9, stl: 0.5, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 1.3, fta: 1.6, tov: 0.9 } },
+  { id: "jcanada", name: "Jordin Canada", team: "ATL", pos: "G", espnId: "3142250",
+    base: { pts: 8, oreb: 0.4, dreb: 2.2, ast: 5.0, stl: 1.2, blk: 0.2, fg3m: 0.6, fg3a: 1.8, ftm: 0.8, fta: 1.0, tov: 1.6 },
+    var:  { pts: 3.5, oreb: 0.4, dreb: 1.1, ast: 2.0, stl: 0.7, blk: 0.2, fg3m: 0.6, fg3a: 1.1, ftm: 0.6, fta: 0.8, tov: 1.0 } },
+];
+const PHOENIX_MERCURY_PLAYERS = [
+  { id: "kcopper", name: "Kahleah Copper", team: "PHX", pos: "G", espnId: "2998938",
+    base: { pts: 19, oreb: 0.7, dreb: 3.6, ast: 2.6, stl: 1.2, blk: 0.3, fg3m: 1.6, fg3a: 4.5, ftm: 3.8, fta: 4.4, tov: 2.0 },
+    var:  { pts: 6, oreb: 0.5, dreb: 1.6, ast: 1.4, stl: 0.7, blk: 0.3, fg3m: 1.1, fg3a: 1.8, ftm: 1.6, fta: 1.8, tov: 1.1 } },
+  { id: "athomas", name: "Alyssa Thomas", team: "PHX", pos: "F", espnId: "2529140",
+    base: { pts: 13, oreb: 2.0, dreb: 6.5, ast: 7.5, stl: 1.6, blk: 0.5, fg3m: 0.1, fg3a: 0.3, ftm: 2.6, fta: 3.6, tov: 3.2 },
+    var:  { pts: 5, oreb: 1.1, dreb: 2.2, ast: 2.6, stl: 0.8, blk: 0.4, fg3m: 0.2, fg3a: 0.3, ftm: 1.4, fta: 1.8, tov: 1.4 } },
+  { id: "dbonner", name: "DeWanna Bonner", team: "PHX", pos: "F", espnId: "869",
+    base: { pts: 12, oreb: 0.9, dreb: 4.2, ast: 2.0, stl: 0.9, blk: 0.5, fg3m: 1.8, fg3a: 4.8, ftm: 2.0, fta: 2.3, tov: 1.5 },
+    var:  { pts: 5, oreb: 0.6, dreb: 1.7, ast: 1.1, stl: 0.6, blk: 0.4, fg3m: 1.1, fg3a: 1.8, ftm: 1.1, fta: 1.2, tov: 0.9 } },
+  { id: "swhitcomb", name: "Sami Whitcomb", team: "PHX", pos: "G", espnId: "887",
+    base: { pts: 7, oreb: 0.4, dreb: 2.0, ast: 2.2, stl: 0.7, blk: 0.2, fg3m: 1.4, fg3a: 3.6, ftm: 0.5, fta: 0.6, tov: 0.9 },
+    var:  { pts: 3.5, oreb: 0.4, dreb: 1.0, ast: 1.2, stl: 0.5, blk: 0.2, fg3m: 1.0, fg3a: 1.5, ftm: 0.4, fta: 0.5, tov: 0.7 } },
+  { id: "klinskens", name: "Kyara Linskens", team: "PHX", pos: "C", espnId: "4873359",
+    base: { pts: 6, oreb: 1.6, dreb: 3.2, ast: 1.0, stl: 0.5, blk: 0.6, fg3m: 0.0, fg3a: 0.1, ftm: 0.8, fta: 1.1, tov: 0.9 },
+    var:  { pts: 3, oreb: 1.0, dreb: 1.5, ast: 0.7, stl: 0.4, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 0.6, fta: 0.8, tov: 0.6 } },
+];
+const GOLDEN_STATE_VALKYRIES_PLAYERS = [
+  { id: "kthornton", name: "Kayla Thornton", team: "GS", pos: "F", espnId: "2529622",
+    base: { pts: 13, oreb: 1.2, dreb: 3.8, ast: 1.6, stl: 1.0, blk: 0.7, fg3m: 1.2, fg3a: 3.2, ftm: 1.8, fta: 2.2, tov: 1.4 },
+    var:  { pts: 5, oreb: 0.8, dreb: 1.6, ast: 1.0, stl: 0.6, blk: 0.5, fg3m: 0.9, fg3a: 1.4, ftm: 1.1, fta: 1.3, tov: 0.9 } },
+  { id: "vburton", name: "Veronica Burton", team: "GS", pos: "G", espnId: "4398935",
+    base: { pts: 9, oreb: 0.4, dreb: 2.4, ast: 4.6, stl: 1.7, blk: 0.2, fg3m: 0.7, fg3a: 2.0, ftm: 1.0, fta: 1.2, tov: 1.6 },
+    var:  { pts: 4, oreb: 0.4, dreb: 1.2, ast: 1.9, stl: 0.9, blk: 0.2, fg3m: 0.6, fg3a: 1.1, ftm: 0.7, fta: 0.8, tov: 1.0 } },
+  { id: "thayes", name: "Tiffany Hayes", team: "GS", pos: "G", espnId: "1054",
+    base: { pts: 12, oreb: 0.6, dreb: 2.6, ast: 2.4, stl: 1.0, blk: 0.3, fg3m: 1.6, fg3a: 4.2, ftm: 1.6, fta: 1.9, tov: 1.3 },
+    var:  { pts: 5, oreb: 0.5, dreb: 1.3, ast: 1.3, stl: 0.6, blk: 0.3, fg3m: 1.0, fg3a: 1.6, ftm: 1.0, fta: 1.1, tov: 0.9 } },
+  { id: "gwilliams", name: "Gabby Williams", team: "GS", pos: "F", espnId: "3142328",
+    base: { pts: 11, oreb: 1.2, dreb: 3.6, ast: 3.2, stl: 1.8, blk: 0.5, fg3m: 0.4, fg3a: 1.4, ftm: 1.4, fta: 1.9, tov: 1.7 },
+    var:  { pts: 4.5, oreb: 0.8, dreb: 1.6, ast: 1.5, stl: 0.9, blk: 0.4, fg3m: 0.4, fg3a: 0.9, ftm: 1.0, fta: 1.2, tov: 1.0 } },
+  { id: "kstokes", name: "Kiah Stokes", team: "GS", pos: "C", espnId: "2590093",
+    base: { pts: 5, oreb: 1.8, dreb: 3.4, ast: 0.6, stl: 0.4, blk: 1.0, fg3m: 0.0, fg3a: 0.0, ftm: 0.6, fta: 0.9, tov: 0.6 },
+    var:  { pts: 2.5, oreb: 1.1, dreb: 1.6, ast: 0.5, stl: 0.3, blk: 0.7, fg3m: 0.0, fg3a: 0.0, ftm: 0.5, fta: 0.7, tov: 0.5 } },
+];
+
+// Tomorrow's slate (see WNBA_MATCHUPS below): 6 more real rosters.
+const MINNESOTA_LYNX_PLAYERS = [
+  { id: "ncollier", name: "Napheesa Collier", team: "MIN", pos: "F", espnId: "3917450",
+    base: { pts: 22, oreb: 1.8, dreb: 6.8, ast: 3.4, stl: 1.8, blk: 1.1, fg3m: 1.2, fg3a: 3.2, ftm: 4.5, fta: 5.2, tov: 2.2 },
+    var:  { pts: 7, oreb: 1.1, dreb: 2.4, ast: 1.8, stl: 1.0, blk: 0.7, fg3m: 0.9, fg3a: 1.6, ftm: 2.0, fta: 2.2, tov: 1.2 } },
+  { id: "kmcbride", name: "Kayla McBride", team: "MIN", pos: "G", espnId: "2529205",
+    base: { pts: 14, oreb: 0.4, dreb: 2.6, ast: 2.4, stl: 0.9, blk: 0.2, fg3m: 2.2, fg3a: 5.5, ftm: 1.6, fta: 1.9, tov: 1.3 },
+    var:  { pts: 5, oreb: 0.4, dreb: 1.2, ast: 1.3, stl: 0.6, blk: 0.2, fg3m: 1.2, fg3a: 1.9, ftm: 1.0, fta: 1.2, tov: 0.8 } },
+  { id: "cwilliams", name: "Courtney Williams", team: "MIN", pos: "G", espnId: "2987891",
+    base: { pts: 12, oreb: 0.8, dreb: 3.4, ast: 4.8, stl: 1.2, blk: 0.3, fg3m: 0.8, fg3a: 2.4, ftm: 1.6, fta: 2.0, tov: 2.0 },
+    var:  { pts: 5, oreb: 0.6, dreb: 1.5, ast: 2.0, stl: 0.7, blk: 0.3, fg3m: 0.7, fg3a: 1.3, ftm: 1.0, fta: 1.2, tov: 1.1 } },
+  { id: "nhoward", name: "Natasha Howard", team: "MIN", pos: "F", espnId: "2529130",
+    base: { pts: 11, oreb: 1.6, dreb: 4.6, ast: 1.6, stl: 1.1, blk: 0.9, fg3m: 0.4, fg3a: 1.2, ftm: 1.6, fta: 2.0, tov: 1.4 },
+    var:  { pts: 4.5, oreb: 1.0, dreb: 1.9, ast: 1.0, stl: 0.7, blk: 0.6, fg3m: 0.4, fg3a: 0.8, ftm: 1.0, fta: 1.2, tov: 0.9 } },
+  { id: "djuhasz", name: "Dorka Juhasz", team: "MIN", pos: "F", espnId: "4398938",
+    base: { pts: 6, oreb: 1.4, dreb: 3.8, ast: 1.4, stl: 0.6, blk: 0.5, fg3m: 0.3, fg3a: 1.0, ftm: 0.6, fta: 0.8, tov: 1.0 },
+    var:  { pts: 3, oreb: 0.9, dreb: 1.7, ast: 0.9, stl: 0.4, blk: 0.4, fg3m: 0.3, fg3a: 0.6, ftm: 0.5, fta: 0.6, tov: 0.7 } },
+];
+const TORONTO_TEMPO_PLAYERS = [
+  { id: "mmabrey", name: "Marina Mabrey", team: "TOR", pos: "G", espnId: "3904576",
+    base: { pts: 15, oreb: 0.4, dreb: 2.6, ast: 3.4, stl: 0.9, blk: 0.2, fg3m: 2.4, fg3a: 6.4, ftm: 2.0, fta: 2.4, tov: 2.0 },
+    var:  { pts: 5.5, oreb: 0.4, dreb: 1.2, ast: 1.6, stl: 0.6, blk: 0.2, fg3m: 1.3, fg3a: 2.0, ftm: 1.2, fta: 1.4, tov: 1.1 } },
+  { id: "bsykes", name: "Brittney Sykes", team: "TOR", pos: "G", espnId: "2988756",
+    base: { pts: 13, oreb: 0.6, dreb: 3.0, ast: 2.6, stl: 1.6, blk: 0.3, fg3m: 1.2, fg3a: 3.4, ftm: 2.0, fta: 2.5, tov: 1.7 },
+    var:  { pts: 5, oreb: 0.5, dreb: 1.4, ast: 1.4, stl: 0.9, blk: 0.3, fg3m: 0.9, fg3a: 1.5, ftm: 1.1, fta: 1.3, tov: 1.0 } },
+  { id: "knurse", name: "Kia Nurse", team: "TOR", pos: "G", espnId: "3142327",
+    base: { pts: 10, oreb: 0.4, dreb: 2.4, ast: 1.8, stl: 0.7, blk: 0.2, fg3m: 1.6, fg3a: 4.2, ftm: 1.2, fta: 1.4, tov: 1.1 },
+    var:  { pts: 4.5, oreb: 0.4, dreb: 1.1, ast: 1.0, stl: 0.5, blk: 0.2, fg3m: 1.0, fg3a: 1.7, ftm: 0.8, fta: 0.9, tov: 0.7 } },
+  { id: "iharrison", name: "Isabelle Harrison", team: "TOR", pos: "F", espnId: "2566453",
+    base: { pts: 8, oreb: 1.8, dreb: 4.4, ast: 1.2, stl: 0.6, blk: 0.6, fg3m: 0.1, fg3a: 0.4, ftm: 1.4, fta: 1.9, tov: 1.1 },
+    var:  { pts: 3.5, oreb: 1.1, dreb: 1.8, ast: 0.8, stl: 0.4, blk: 0.4, fg3m: 0.1, fg3a: 0.3, ftm: 0.9, fta: 1.2, tov: 0.7 } },
+  { id: "nsabally", name: "Nyara Sabally", team: "TOR", pos: "F", espnId: "4398768",
+    base: { pts: 7, oreb: 1.4, dreb: 3.6, ast: 1.0, stl: 0.5, blk: 0.7, fg3m: 0.2, fg3a: 0.7, ftm: 0.8, fta: 1.1, tov: 0.9 },
+    var:  { pts: 3, oreb: 0.9, dreb: 1.6, ast: 0.6, stl: 0.4, blk: 0.5, fg3m: 0.2, fg3a: 0.5, ftm: 0.6, fta: 0.8, tov: 0.6 } },
+];
+const CONNECTICUT_SUN_PLAYERS = [
+  { id: "bgriner", name: "Brittney Griner", team: "CON", pos: "C", espnId: "2490553",
+    base: { pts: 16, oreb: 1.6, dreb: 5.4, ast: 1.0, stl: 0.5, blk: 1.8, fg3m: 0.0, fg3a: 0.1, ftm: 3.0, fta: 3.8, tov: 2.0 },
+    var:  { pts: 6, oreb: 1.0, dreb: 2.2, ast: 0.7, stl: 0.4, blk: 1.1, fg3m: 0.0, fg3a: 0.1, ftm: 1.6, fta: 2.0, tov: 1.1 } },
+  { id: "amorrow", name: "Aneesah Morrow", team: "CON", pos: "F", espnId: "4684384",
+    base: { pts: 12, oreb: 3.4, dreb: 6.8, ast: 1.2, stl: 1.0, blk: 0.5, fg3m: 0.1, fg3a: 0.3, ftm: 2.0, fta: 2.8, tov: 1.6 },
+    var:  { pts: 5, oreb: 1.7, dreb: 2.4, ast: 0.8, stl: 0.6, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 1.2, fta: 1.6, tov: 1.0 } },
+  { id: "aedwards", name: "Aaliyah Edwards", team: "CON", pos: "F", espnId: "4433408",
+    base: { pts: 9, oreb: 1.8, dreb: 4.0, ast: 1.0, stl: 0.6, blk: 0.5, fg3m: 0.1, fg3a: 0.3, ftm: 1.2, fta: 1.6, tov: 1.1 },
+    var:  { pts: 4, oreb: 1.1, dreb: 1.7, ast: 0.7, stl: 0.4, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 0.8, fta: 1.0, tov: 0.7 } },
+  { id: "hvanlith", name: "Hailey Van Lith", team: "CON", pos: "G", espnId: "4433412",
+    base: { pts: 10, oreb: 0.5, dreb: 2.4, ast: 2.8, stl: 1.0, blk: 0.2, fg3m: 1.0, fg3a: 2.8, ftm: 1.4, fta: 1.7, tov: 1.6 },
+    var:  { pts: 4.5, oreb: 0.4, dreb: 1.2, ast: 1.4, stl: 0.6, blk: 0.2, fg3m: 0.8, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 1.0 } },
+  { id: "dmiller", name: "Diamond Miller", team: "CON", pos: "F", espnId: "4433635",
+    base: { pts: 8, oreb: 0.9, dreb: 2.8, ast: 1.6, stl: 0.8, blk: 0.4, fg3m: 0.7, fg3a: 2.0, ftm: 1.0, fta: 1.3, tov: 1.2 },
+    var:  { pts: 3.5, oreb: 0.6, dreb: 1.3, ast: 1.0, stl: 0.5, blk: 0.3, fg3m: 0.6, fg3a: 1.1, ftm: 0.7, fta: 0.9, tov: 0.8 } },
+];
+const CHICAGO_SKY_PLAYERS = [
+  { id: "kcardoso", name: "Kamilla Cardoso", team: "CHI", pos: "C", espnId: "4433405",
+    base: { pts: 13, oreb: 2.6, dreb: 6.4, ast: 1.4, stl: 0.6, blk: 1.2, fg3m: 0.0, fg3a: 0.1, ftm: 2.0, fta: 2.8, tov: 1.8 },
+    var:  { pts: 5, oreb: 1.4, dreb: 2.3, ast: 0.9, stl: 0.4, blk: 0.8, fg3m: 0.0, fg3a: 0.1, ftm: 1.2, fta: 1.6, tov: 1.0 } },
+  { id: "dcarrington", name: "DiJonai Carrington", team: "CHI", pos: "G", espnId: "4066548",
+    base: { pts: 12, oreb: 0.9, dreb: 3.6, ast: 2.8, stl: 1.6, blk: 0.4, fg3m: 0.8, fg3a: 2.4, ftm: 2.4, fta: 3.0, tov: 1.8 },
+    var:  { pts: 5, oreb: 0.6, dreb: 1.6, ast: 1.4, stl: 0.9, blk: 0.3, fg3m: 0.6, fg3a: 1.3, ftm: 1.3, fta: 1.6, tov: 1.0 } },
+  { id: "rjackson", name: "Rickea Jackson", team: "CHI", pos: "F", espnId: "4433630",
+    base: { pts: 13, oreb: 0.6, dreb: 2.8, ast: 1.4, stl: 0.7, blk: 0.3, fg3m: 1.4, fg3a: 3.8, ftm: 1.8, fta: 2.1, tov: 1.3 },
+    var:  { pts: 5, oreb: 0.5, dreb: 1.3, ast: 0.8, stl: 0.5, blk: 0.3, fg3m: 1.0, fg3a: 1.6, ftm: 1.0, fta: 1.2, tov: 0.8 } },
+  { id: "cvandersloot", name: "Courtney Vandersloot", team: "CHI", pos: "G", espnId: "981",
+    base: { pts: 8, oreb: 0.4, dreb: 2.4, ast: 6.5, stl: 1.0, blk: 0.1, fg3m: 0.8, fg3a: 2.2, ftm: 0.8, fta: 1.0, tov: 2.0 },
+    var:  { pts: 3.5, oreb: 0.4, dreb: 1.1, ast: 2.4, stl: 0.6, blk: 0.1, fg3m: 0.6, fg3a: 1.2, ftm: 0.6, fta: 0.8, tov: 1.1 } },
+  { id: "astevens", name: "Azura Stevens", team: "CHI", pos: "F", espnId: "3142010",
+    base: { pts: 9, oreb: 1.2, dreb: 3.8, ast: 1.2, stl: 0.7, blk: 0.9, fg3m: 0.8, fg3a: 2.2, ftm: 1.0, fta: 1.3, tov: 1.0 },
+    var:  { pts: 4, oreb: 0.8, dreb: 1.6, ast: 0.7, stl: 0.5, blk: 0.6, fg3m: 0.6, fg3a: 1.2, ftm: 0.7, fta: 0.9, tov: 0.7 } },
+];
+const NEW_YORK_LIBERTY_PLAYERS = [
+  { id: "bstewart", name: "Breanna Stewart", team: "NY", pos: "F", espnId: "2998928",
+    base: { pts: 21, oreb: 1.6, dreb: 7.4, ast: 3.6, stl: 1.2, blk: 1.6, fg3m: 2.0, fg3a: 5.4, ftm: 4.6, fta: 5.4, tov: 2.6 },
+    var:  { pts: 7, oreb: 1.0, dreb: 2.5, ast: 1.8, stl: 0.7, blk: 1.0, fg3m: 1.2, fg3a: 2.0, ftm: 2.0, fta: 2.2, tov: 1.3 } },
+  { id: "sionescu", name: "Sabrina Ionescu", team: "NY", pos: "G", espnId: "4066533",
+    base: { pts: 17, oreb: 0.5, dreb: 3.6, ast: 5.0, stl: 1.0, blk: 0.2, fg3m: 3.0, fg3a: 7.6, ftm: 2.4, fta: 2.7, tov: 2.2 },
+    var:  { pts: 6, oreb: 0.4, dreb: 1.5, ast: 2.0, stl: 0.6, blk: 0.2, fg3m: 1.5, fg3a: 2.4, ftm: 1.3, fta: 1.5, tov: 1.1 } },
+  { id: "jjones", name: "Jonquel Jones", team: "NY", pos: "C", espnId: "2999101",
+    base: { pts: 12, oreb: 1.8, dreb: 5.6, ast: 2.4, stl: 0.7, blk: 0.7, fg3m: 1.0, fg3a: 2.8, ftm: 1.4, fta: 1.7, tov: 1.4 },
+    var:  { pts: 5, oreb: 1.1, dreb: 2.1, ast: 1.2, stl: 0.5, blk: 0.5, fg3m: 0.7, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 0.9 } },
+  { id: "ssabally", name: "Satou Sabally", team: "NY", pos: "F", espnId: "4281929",
+    base: { pts: 14, oreb: 1.2, dreb: 4.4, ast: 2.6, stl: 0.9, blk: 0.6, fg3m: 1.2, fg3a: 3.4, ftm: 3.0, fta: 3.6, tov: 2.0 },
+    var:  { pts: 5.5, oreb: 0.8, dreb: 1.8, ast: 1.4, stl: 0.6, blk: 0.4, fg3m: 0.9, fg3a: 1.6, ftm: 1.6, fta: 1.9, tov: 1.1 } },
+  { id: "blaney", name: "Betnijah Laney-Hamilton", team: "NY", pos: "G", espnId: "2593770",
+    base: { pts: 9, oreb: 0.7, dreb: 2.6, ast: 1.6, stl: 1.0, blk: 0.3, fg3m: 1.0, fg3a: 2.8, ftm: 1.4, fta: 1.7, tov: 1.0 },
+    var:  { pts: 4, oreb: 0.5, dreb: 1.2, ast: 0.9, stl: 0.6, blk: 0.3, fg3m: 0.7, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 0.7 } },
+];
+const LAS_VEGAS_ACES_PLAYERS = [
+  { id: "ajwilson", name: "A'ja Wilson", team: "LV", pos: "C", espnId: "3149391",
+    base: { pts: 24, oreb: 2.4, dreb: 7.4, ast: 2.4, stl: 1.4, blk: 2.2, fg3m: 0.6, fg3a: 1.6, ftm: 5.0, fta: 6.0, tov: 2.4 },
+    var:  { pts: 7, oreb: 1.3, dreb: 2.5, ast: 1.3, stl: 0.8, blk: 1.2, fg3m: 0.5, fg3a: 1.0, ftm: 2.2, fta: 2.5, tov: 1.2 } },
+  { id: "jyoung", name: "Jackie Young", team: "LV", pos: "G", espnId: "4065870",
+    base: { pts: 15, oreb: 0.6, dreb: 3.4, ast: 4.6, stl: 1.1, blk: 0.3, fg3m: 1.4, fg3a: 3.6, ftm: 2.4, fta: 2.8, tov: 1.8 },
+    var:  { pts: 5.5, oreb: 0.5, dreb: 1.5, ast: 2.0, stl: 0.6, blk: 0.3, fg3m: 1.0, fg3a: 1.7, ftm: 1.3, fta: 1.5, tov: 1.0 } },
+  { id: "cgray", name: "Chelsea Gray", team: "LV", pos: "G", espnId: "2529122",
+    base: { pts: 12, oreb: 0.4, dreb: 2.6, ast: 6.8, stl: 0.9, blk: 0.2, fg3m: 1.2, fg3a: 3.0, ftm: 1.4, fta: 1.6, tov: 2.0 },
+    var:  { pts: 5, oreb: 0.4, dreb: 1.2, ast: 2.4, stl: 0.6, blk: 0.2, fg3m: 0.8, fg3a: 1.5, ftm: 0.9, fta: 1.1, tov: 1.1 } },
+  { id: "jloyd", name: "Jewell Loyd", team: "LV", pos: "G", espnId: "2987869",
+    base: { pts: 16, oreb: 0.6, dreb: 2.8, ast: 2.4, stl: 0.9, blk: 0.3, fg3m: 2.4, fg3a: 6.4, ftm: 2.4, fta: 2.8, tov: 1.7 },
+    var:  { pts: 6, oreb: 0.5, dreb: 1.3, ast: 1.3, stl: 0.6, blk: 0.3, fg3m: 1.3, fg3a: 2.1, ftm: 1.3, fta: 1.5, tov: 1.0 } },
+  { id: "nsmith", name: "NaLyssa Smith", team: "LV", pos: "F", espnId: "4398776",
+    base: { pts: 10, oreb: 2.2, dreb: 5.4, ast: 1.2, stl: 0.7, blk: 0.6, fg3m: 0.2, fg3a: 0.6, ftm: 1.4, fta: 1.9, tov: 1.2 },
+    var:  { pts: 4.5, oreb: 1.3, dreb: 2.1, ast: 0.8, stl: 0.5, blk: 0.4, fg3m: 0.2, fg3a: 0.5, ftm: 0.9, fta: 1.2, tov: 0.8 } },
+];
+
+const ALL_WNBA_PLAYERS = [
+  ...DALLAS_WINGS_PLAYERS, ...ATLANTA_DREAM_PLAYERS, ...PHOENIX_MERCURY_PLAYERS, ...GOLDEN_STATE_VALKYRIES_PLAYERS,
+  ...MINNESOTA_LYNX_PLAYERS, ...TORONTO_TEMPO_PLAYERS, ...CONNECTICUT_SUN_PLAYERS, ...CHICAGO_SKY_PLAYERS,
+  ...NEW_YORK_LIBERTY_PLAYERS, ...LAS_VEGAS_ACES_PLAYERS,
+];
+
+// Real WNBA slate across tonight and tomorrow (per ESPN's scoreboard), same
+// "pick a matchup, see its two rosters" pattern as the NFL/MLB pages.
+const WNBA_MATCHUPS = [
+  {
+    id: "atl-dal",
+    label: "Dream @ Wings",
+    teamA: { label: "Atlanta Dream", players: ATLANTA_DREAM_PLAYERS },
+    teamB: { label: "Dallas Wings", players: DALLAS_WINGS_PLAYERS },
+    date: "2026-07-30T00:00:00Z",
+    venue: "College Park Center",
+    city: "Arlington, TX",
+  },
+  {
+    id: "gs-phx",
+    label: "Valkyries @ Mercury",
+    teamA: { label: "Golden State Valkyries", players: GOLDEN_STATE_VALKYRIES_PLAYERS },
+    teamB: { label: "Phoenix Mercury", players: PHOENIX_MERCURY_PLAYERS },
+    date: "2026-07-30T02:00:00Z",
+    venue: "Mortgage Matchup Center",
+    city: "Phoenix, AZ",
+  },
+  {
+    id: "min-tor",
+    label: "Lynx @ Tempo",
+    teamA: { label: "Minnesota Lynx", players: MINNESOTA_LYNX_PLAYERS },
+    teamB: { label: "Toronto Tempo", players: TORONTO_TEMPO_PLAYERS },
+    date: "2026-07-31T00:00:00Z",
+    venue: "Scotiabank Arena",
+    city: "Toronto, ON",
+  },
+  {
+    id: "con-chi",
+    label: "Sun @ Sky",
+    teamA: { label: "Connecticut Sun", players: CONNECTICUT_SUN_PLAYERS },
+    teamB: { label: "Chicago Sky", players: CHICAGO_SKY_PLAYERS },
+    date: "2026-07-31T00:00:00Z",
+    venue: "Wintrust Arena",
+    city: "Chicago, IL",
+  },
+  {
+    id: "ny-lv",
+    label: "Liberty @ Aces",
+    teamA: { label: "New York Liberty", players: NEW_YORK_LIBERTY_PLAYERS },
+    teamB: { label: "Las Vegas Aces", players: LAS_VEGAS_ACES_PLAYERS },
+    date: "2026-07-31T02:00:00Z",
+    venue: "Michelob ULTRA Arena",
+    city: "Las Vegas, NV",
+  },
+];
+const WNBA_MATCHUPS_BY_DATE = groupMatchupsByDate(WNBA_MATCHUPS);
+
+// Same synthetic-game-log approach as genGames (NBA) -- per-player base/var
+// noised out into a season's worth of games -- just drawing its random
+// opponent from the WNBA's own team pool instead of the NBA's.
+function genWNBAGames(player, seedOffset) {
+  const rng = mulberry32(2000 + seedOffset);
+  const opponents = WNBA_TEAMS.filter((t) => t !== player.team);
+  const games = [];
+  const startDate = new Date("2026-05-16T00:00:00Z");
+  for (let i = 0; i < 20; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i * 3);
+    const home = rng() > 0.48;
+    const opp = opponents[Math.floor(rng() * opponents.length)];
+    const minutes = Math.round(24 + rng() * 12);
+    const noise = (mean, spread) => Math.max(0, Math.round(mean + (rng() - 0.5) * 2 * spread));
+    const fg3m = noise(player.base.fg3m, player.var.fg3m);
+    const ftm = noise(player.base.ftm, player.var.ftm);
+    games.push({
+      date: d.toISOString().slice(0, 10), opp, home, minutes,
+      pts: noise(player.base.pts, player.var.pts),
+      oreb: noise(player.base.oreb, player.var.oreb),
+      dreb: noise(player.base.dreb, player.var.dreb),
+      ast: noise(player.base.ast, player.var.ast),
+      stl: noise(player.base.stl, player.var.stl),
+      blk: noise(player.base.blk, player.var.blk),
+      fg3m,
+      fg3a: Math.max(fg3m, noise(player.base.fg3a, player.var.fg3a)),
+      ftm,
+      fta: Math.max(ftm, noise(player.base.fta, player.var.fta)),
+      tov: noise(player.base.tov, player.var.tov),
+    });
+  }
+  return games;
+}
+
+// Curated market list for the WNBA page -- the core box-score stats plus
+// the NBA page's same combo props (PRA/RA/PR/PA).
+const WNBA_MARKETS_CORE = [
+  { id: "pts", label: "Points" },
+  { id: "reb", label: "Rebounds" },
+  { id: "ast", label: "Assists" },
+  { id: "pra", label: "PRA" },
+  { id: "ra", label: "RA" },
+  { id: "pr", label: "PR" },
+  { id: "pa", label: "PA" },
+  { id: "3pm", label: "3PM" },
+  { id: "stl", label: "Steals" },
+  { id: "blk", label: "Blocks" },
+];
+// Double-double/triple-double are only offered for real players who
+// actually complete that feat often -- bigs/stat-stuffers for DD, and just
+// the handful of true triple-double threats (Thomas especially -- she leads
+// the WNBA in career triple-doubles) for TD -- rather than showing a
+// milestone market on every player that would basically never hit it.
+const WNBA_MILESTONE_MARKETS = [
+  { id: "dd", label: "Double-Double", binary: true },
+  { id: "td", label: "Triple-Double", binary: true },
+];
+const WNBA_MARKETS = [...WNBA_MARKETS_CORE, ...WNBA_MILESTONE_MARKETS];
+const WNBA_DD_PLAYERS = new Set(["ncollier", "areese", "athomas", "bstewart", "ajwilson", "amorrow", "bgriner", "kcardoso"]);
+const WNBA_TD_PLAYERS = new Set(["athomas", "bstewart", "ajwilson"]);
+function wnbaPlayerMarkets(player) {
+  const extra = [];
+  if (WNBA_DD_PLAYERS.has(player.id)) extra.push(WNBA_MILESTONE_MARKETS[0]);
+  if (WNBA_TD_PLAYERS.has(player.id)) extra.push(WNBA_MILESTONE_MARKETS[1]);
+  return [...WNBA_MARKETS_CORE, ...extra];
+}
+
+function WNBAPropsPage({ jumpTo }) {
+  const [matchupId, setMatchupId] = useState(WNBA_MATCHUPS[0].id);
+  const matchup = WNBA_MATCHUPS.find((m) => m.id === matchupId);
+  const [playerId, setPlayerId] = useState(WNBA_MATCHUPS[0].teamA.players[0].id);
+  const [market, setMarket] = useState("pts");
+  const [rebSplit, setRebSplit] = useState("total");
+  React.useEffect(() => {
+    if (!jumpTo) return;
+    setPlayerId(jumpTo.playerId);
+    setMarket(jumpTo.market);
+    setLine(null);
+    setOpponent("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo && jumpTo.nonce]);
+  const [side, setSide] = useState("all");
+  const [lastN, setLastN] = useState(10);
+  const [opponent, setOpponent] = useState("all");
+  const [minMinutes, setMinMinutes] = useState(0);
+  const [maxMinutes, setMaxMinutes] = useState(40);
+  const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
+  const [line, setLine] = useState(null);
+  const chartRef = React.useRef(null);
+  const isNarrow = useIsNarrow();
+
+  const resetFilters = () => {
+    setSide("all");
+    setLastN(10);
+    setOpponent("all");
+    setMinMinutes(0);
+    setMaxMinutes(40);
+    setMinutesRangeEnabled(false);
+    setLine(null);
+  };
+
+  const player = ALL_WNBA_PLAYERS.find((p) => p.id === playerId);
+  const playerMarkets = useMemo(() => wnbaPlayerMarkets(player), [player]);
+
+  // Whenever the selected player changes, make sure the active market is
+  // still one that applies to them (DD/TD only show up for a handful of
+  // players -- see WNBA_DD_PLAYERS/WNBA_TD_PLAYERS).
+  React.useEffect(() => {
+    if (!playerMarkets.some((m) => m.id === market)) {
+      setMarket(playerMarkets[0].id);
+      setLine(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId]);
+
+  const allGames = useMemo(() => genWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)), [player]);
+  const seasonAvg = useMemo(() => {
+    const n = allGames.length || 1;
+    const sum = (key) => allGames.reduce((a, g) => a + g[key], 0);
+    return {
+      pts: sum("pts") / n,
+      reb: (sum("oreb") + sum("dreb")) / n,
+      ast: sum("ast") / n,
+      min: sum("minutes") / n,
+    };
+  }, [allGames]);
+
+  const opponentsForPlayer = useMemo(
+    () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
+    [allGames]
+  );
+
+  const filtered = useMemo(() => {
+    let g = allGames.filter((game) => {
+      if (side === "home" && !game.home) return false;
+      if (side === "away" && game.home) return false;
+      if (opponent !== "all" && game.opp !== opponent) return false;
+      if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
+      return true;
+    });
+    if (lastN !== "all") g = g.slice(-lastN);
+    return g;
+  }, [allGames, side, opponent, minMinutes, maxMinutes, lastN]);
+
+  const isBinary = market === "dd" || market === "td";
+  const values = filtered.map((g) => statValue(g, market, rebSplit));
+  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  const med = median(values);
+  const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+  const topValue = Math.max(...values, effectiveLine, 1);
+  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
+  const niceStep = (() => {
+    if (isBinary) return 1;
+    const targetTicks = 5;
+    const roughStep = rawMax / targetTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
+    const norm = roughStep / mag;
+    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
+    return Math.max(1, step);
+  })();
+  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
+  const chartTicks = isBinary
+    ? [0, 1]
+    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+  const hits = values.filter((v) => v > effectiveLine).length;
+  const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
+  const hitRate = values.length ? hits / values.length : 0;
+  const edge = avg - effectiveLine;
+  const scrollableChart = isNarrow && filtered.length <= NARROW_SCROLL_MAX_BARS;
+  const marketLabel = WNBA_MARKETS.find((m) => m.id === market)?.label ?? "";
+
+  return (
+    <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <div className="roster-layout">
+    <TeamRosterPanel
+      teamLabel={matchup.teamA.label}
+      players={matchup.teamA.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => wnbaHeadshot(p.espnId)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (WNBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    <div className="roster-layout-center">
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+          <select
+            className="select"
+            value={matchupId}
+            onChange={(e) => {
+              const next = WNBA_MATCHUPS.find((m) => m.id === e.target.value);
+              setMatchupId(next.id);
+              setPlayerId(next.teamA.players[0].id);
+              setLine(null);
+              setOpponent("all");
+            }}
+          >
+            {WNBA_MATCHUPS_BY_DATE.map((group) => (
+              <optgroup label={group.label} key={group.label}>
+                {group.matchups.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label} — {matchupTimeLabel(m.date)}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <div style={{
+            position: "relative", width: 122, height: 122, borderRadius: "50%", flexShrink: 0,
+            background: teamAvatarBackground(WNBA_TEAM_COLORS, player.team),
+            boxShadow: `0 4px 14px ${(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
+          }}>
+            <div style={{
+              position: "absolute", inset: 6, borderRadius: "50%",
+              background: (WNBA_TEAM_COLORS[player.team] || {}).primary || "#000",
+              border: "1px solid var(--line)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }} />
+            <img
+              key={player.id}
+              src={wnbaHeadshot(player.espnId)}
+              alt={player.name}
+              width={110}
+              height={110}
+              referrerPolicy="no-referrer"
+              style={{
+                position: "absolute", inset: 6,
+                width: 110, height: 110,
+                borderRadius: "50%",
+                objectFit: "cover",
+                objectPosition: "center top",
+                border: "1px solid var(--line)",
+                opacity: 0,
+                transition: "opacity 0.15s ease",
+              }}
+              onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
+              onError={(e) => { e.currentTarget.style.opacity = 0; }}
+            />
+          </div>
+
+          <div style={{
+            display: "flex", flexDirection: isNarrow ? "column" : "row", alignItems: "center", gap: isNarrow ? 10 : 16,
+            background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+            padding: isNarrow ? "12px 16px" : "10px 20px",
+            width: isNarrow ? "100%" : undefined, boxSizing: "border-box",
+          }}>
+            <div style={{
+              textAlign: "center",
+              paddingRight: isNarrow ? 0 : 16, paddingBottom: isNarrow ? 10 : 0,
+              borderRight: isNarrow ? "none" : "1px solid var(--line)",
+              borderBottom: isNarrow ? "1px solid var(--line)" : "none",
+              flexShrink: 0, width: isNarrow ? "100%" : undefined,
+            }}>
+              <div className="oswald" style={{ fontSize: 18, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
+              <div style={{ fontSize: 13, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+                {player.team} · {player.pos} · Season
+              </div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 20 }}>
+              {[
+                { label: "PTS", value: seasonAvg.pts },
+                { label: "REB", value: seasonAvg.reb },
+                { label: "AST", value: seasonAvg.ast },
+                { label: "MIN", value: seasonAvg.min },
+              ].map((s) => (
+                <div key={s.label} style={{ textAlign: "center", width: 66, flexShrink: 0 }}>
+                  <div className="mono" style={{ fontSize: 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(1)}</div>
+                  <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{
+          display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
+          width: "fit-content", margin: "0 auto 16px", padding: "9px 20px",
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
+          fontSize: 12.5, color: "var(--dim)",
+        }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>
+              {new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+            <span>·</span>
+            <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
+              {new Date(matchup.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+            </span>
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>{matchup.venue}</span>
+            <span>— {matchup.city}</span>
+          </span>
+        </div>
+
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+          Markets
+        </div>
+        <MarketPillRow
+          markets={playerMarkets}
+          activeMarket={market}
+          onSelect={(id) => { setMarket(id); setLine(null); }}
+        />
+        {market === "reb" && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+            {REB_SPLITS.map((r) => (
+              <div key={r.id} className={`chip ${rebSplit === r.id ? "active" : ""}`} onClick={() => setRebSplit(r.id)}>
+                {r.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+    <TeamRosterPanel
+      teamLabel={matchup.teamB.label}
+      players={matchup.teamB.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => wnbaHeadshot(p.espnId)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (WNBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    </div>
+
+      <FiltersSection>
+        {[
+          {
+            label: "Opponent",
+            content: (
+              <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
+                <option value="all">Any opponent</option>
+                {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+              </select>
+            ),
+          },
+          {
+            label: "Game location",
+            content: (
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                {["all", "home", "away"].map((s) => (
+                  <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                    {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          {
+            label: "Sample size",
+            content: (
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                {[5, 10, 15, "all"].map((n) => (
+                  <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                    {n === "all" ? "All" : `Last ${n}`}
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          {
+            label: "Minutes",
+            content: (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 480, margin: "0 auto" }}>
+                <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
+                  {!minutesRangeEnabled
+                    ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
+                    : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
+                </div>
+                <ThresholdSlider
+                  min={0}
+                  max={40}
+                  step={1}
+                  lo={minMinutes}
+                  hi={maxMinutes}
+                  onChangeLo={setMinMinutes}
+                  onChangeHi={setMaxMinutes}
+                  rangeEnabled={minutesRangeEnabled}
+                  onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+                />
+              </div>
+            ),
+          },
+        ].map((group, gi) => (
+          <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
+            <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+              {group.label}
+            </div>
+            {group.content}
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+          <div className="chip" onClick={resetFilters}>Reset filters</div>
+        </div>
+      </FiltersSection>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
+          </div>
+          <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
+            {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+            {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
+          {[
+            { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
+            { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
+            { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
+          ].map((s) => (
+            <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+              <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {opponent !== "all" && (() => {
+          const oppDef = WNBA_TEAM_DEF[opponent];
+          const tier = defTier(oppDef.rank);
+          return (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 14px" }}>
+              <span style={{ color: "var(--dim)", fontSize: 12 }}>vs {opponent} defense</span>
+              <span className="mono" style={{ fontSize: 16, color: "var(--text)" }}>{oppDef.rating}</span>
+              <span className="mono" style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+                padding: "2px 8px", borderRadius: 4,
+                color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)",
+                border: `1px solid ${tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--line)"}`,
+              }}>
+                #{oppDef.rank} defense{tier === "soft" ? " · favorable matchup" : tier === "tough" ? " · tough matchup" : ""}
+              </span>
+            </div>
+          );
+        })()}
+      </div>
+
+      <div
+        ref={chartRef}
+        style={{
+          position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
+          padding: 16, marginBottom: 16,
+        }}
+      >
+        <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+        <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={filtered.map((g, i) => ({
+              idx: i + 1,
+              opp: g.opp,
+              value: statValue(g, market, rebSplit),
+              date: g.date,
+              minutes: g.minutes,
+              home: g.home,
+            }))}
+            margin={{ top: 10, right: 60, bottom: 56, left: 20 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            <XAxis dataKey="opp" interval={scrollableChart ? 0 : axisTickInterval(filtered.length, isNarrow)} tick={(props) => <TeamAxisTick {...props} logoFn={wnbaTeamLogo} compact={isNarrow} />} axisLine={{ stroke: "#343941" }} tickLine={false} />
+            <YAxis
+              domain={[0, chartMax]}
+              ticks={chartTicks}
+              tick={{ fill: "#8b96a5", fontSize: 11 }}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+              allowDecimals={false}
+              label={{ value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+            />
+            <Tooltip
+              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} />}
+              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+            />
+            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              {filtered.map((g, i) => {
+                const v = statValue(g, market, rebSplit);
+                const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
+                return <Cell key={i} fill={fill} />;
+              })}
+              <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        </div>
+        </div>
+        {!isBinary && (
+          <LineHandle
+            value={effectiveLine}
+            onChange={(v) => setLine(v)}
+            min={0}
+            max={chartMax}
+            containerRef={chartRef}
+          />
+        )}
+      </div>
+
+      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+          <div style={{ minWidth: 580 }}>
+            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
+              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Min</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
+            </div>
+            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
+              {filtered.slice().reverse().map((g, i) => {
+                const v = statValue(g, market, rebSplit);
+                const over = v > effectiveLine;
+                const push = !isBinary && v === effectiveLine;
+                const def = WNBA_TEAM_DEF[g.opp];
+                const tier = defTier(def.rank);
+                return (
+                  <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
+                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
+                    <div>{g.date}</div>
+                    <div>{g.opp}</div>
+                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
+                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
+                    <div>{g.minutes}</div>
+                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
+                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
+                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
+        Sample data only — real rosters/matchups for tonight's slate, game logs generated from season-average baselines ahead of a real WNBA stats/odds feed.
+      </div>
+    </div>
+  );
+}
+
+// ---------- MLB (New York Yankees lineup) mock data ----------
+const MLB_TEAMS = [
+  "ARI","ATL","BAL","BOS","CHC","CWS","CIN","CLE","COL","DET","HOU","KC","LAA","LAD","MIA","MIL",
+  "MIN","NYM","NYY","ATH","PHI","PIT","SD","SEA","SF","STL","TB","TEX","TOR","WSH",
+];
+
+const MLB_LOGO_SLUG = {
+  ARI: "ari", ATL: "atl", BAL: "bal", BOS: "bos", CHC: "chc", CWS: "chw", CIN: "cin", CLE: "cle",
+  COL: "col", DET: "det", HOU: "hou", KC: "kc", LAA: "laa", LAD: "lad", MIA: "mia", MIL: "mil",
+  MIN: "min", NYM: "nym", NYY: "nyy", ATH: "ath", PHI: "phi", PIT: "pit", SD: "sd", SEA: "sea",
+  SF: "sf", STL: "stl", TB: "tb", TEX: "tex", TOR: "tor", WSH: "wsh",
+};
+const mlbTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/mlb/500/${MLB_LOGO_SLUG[abbr] || abbr.toLowerCase()}.png`;
+
+// Official-ish MLB brand colors (primary/secondary), used only to tint the
+// player avatar's background ring -- see teamAvatarBackground above.
+const MLB_TEAM_COLORS = {
+  ARI: { primary: "#A71930", secondary: "#E3D4AD" },
+  ATL: { primary: "#CE1141", secondary: "#13274F" },
+  BAL: { primary: "#DF4601", secondary: "#000000" },
+  BOS: { primary: "#BD3039", secondary: "#0C2340" },
+  CHC: { primary: "#0E3386", secondary: "#CC3433" },
+  CWS: { primary: "#27251F", secondary: "#C4CED4" },
+  CIN: { primary: "#C6011F", secondary: "#000000" },
+  CLE: { primary: "#00385D", secondary: "#E50022" },
+  COL: { primary: "#33006F", secondary: "#C4CED4" },
+  DET: { primary: "#0C2340", secondary: "#FA4616" },
+  HOU: { primary: "#002D62", secondary: "#EB6E1F" },
+  KC: { primary: "#004687", secondary: "#BD9B60" },
+  LAA: { primary: "#BA0021", secondary: "#003263" },
+  LAD: { primary: "#005A9C", secondary: "#EF3E42" },
+  MIA: { primary: "#00A3E0", secondary: "#EF3340" },
+  MIL: { primary: "#12284B", secondary: "#FFC52F" },
+  MIN: { primary: "#002B5C", secondary: "#D31145" },
+  NYM: { primary: "#002D72", secondary: "#FF5910" },
+  NYY: { primary: "#0C2340", secondary: "#C4CED4" },
+  ATH: { primary: "#003831", secondary: "#EFB21E" },
+  PHI: { primary: "#E81828", secondary: "#002D72" },
+  PIT: { primary: "#FDB827", secondary: "#27251F" },
+  SD: { primary: "#2F241D", secondary: "#FFC425" },
+  SEA: { primary: "#0C2C56", secondary: "#005C5C" },
+  SF: { primary: "#27251F", secondary: "#FD5A1E" },
+  STL: { primary: "#C41E3A", secondary: "#0C2340" },
+  TB: { primary: "#092C5C", secondary: "#8FBCE6" },
+  TEX: { primary: "#003278", secondary: "#C0111F" },
+  TOR: { primary: "#134A8E", secondary: "#1D2D5C" },
+  WSH: { primary: "#AB0003", secondary: "#14225A" },
+};
+
+// Mock run-prevention rating (lower = tougher pitching/defense), used as an
+// instant fallback so the page never has to show a loading state for this.
+// Overwritten in place with real team ERA-based ranks once /api/mlb-matchups
+// resolves (see applyMlbTeamDef + the effect in PropLedger) -- that endpoint
+// is populated nightly by the Vercel cron job in api/refresh-mlb-matchups.js.
+const mlbDefRatingRng = mulberry32(9100);
+const MLB_TEAM_DEF = (() => {
+  const raw = MLB_TEAMS.map((t) => ({ team: t, rating: Math.round((3.8 + mlbDefRatingRng() * 2.0) * 100) / 100 }));
+  raw.sort((a, b) => a.rating - b.rating);
+  raw.forEach((r, i) => (r.rank = i + 1));
+  const byTeam = {};
+  raw.forEach((r) => (byTeam[r.team] = r));
+  return byTeam;
+})();
+const mlbDefTier = (rank) => (rank <= 10 ? "tough" : rank >= 21 ? "soft" : "mid");
+
+// Mutates MLB_TEAM_DEF's existing entries in place (rather than replacing
+// the object) so every place in this file that already read MLB_TEAM_DEF[abbr]
+// synchronously just sees the fresher numbers once the caller re-renders.
+function applyMlbTeamDef(byTeam) {
+  Object.keys(byTeam || {}).forEach((abbr) => {
+    if (MLB_TEAM_DEF[abbr] && byTeam[abbr]) {
+      MLB_TEAM_DEF[abbr].rank = byTeam[abbr].rank;
+      MLB_TEAM_DEF[abbr].rating = byTeam[abbr].era;
+    }
+  });
+}
+
+// Fetches the nightly-refreshed real defense ranking from /api/mlb-matchups
+// (falls back to the mock ranking above if the endpoint isn't deployed, e.g.
+// during local `vite dev`, or if the fetch fails for any reason). Cached to
+// sessionStorage per calendar day so it's only fetched once per day per tab.
+async function loadRealMlbTeamDef() {
+  const today = new Date().toISOString().slice(0, 10);
+  const cacheKey = "mlb_team_def_cache_v1";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.date === today && parsed.byTeam) return parsed.byTeam;
+    }
+  } catch {}
+
+  try {
+    const res = await fetch("/api/mlb-matchups");
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.byTeam || !Object.keys(data.byTeam).length) return null;
+    try { sessionStorage.setItem(cacheKey, JSON.stringify({ date: today, byTeam: data.byTeam })); } catch {}
+    return data.byTeam;
+  } catch {
+    return null;
+  }
+}
+
+// Primary headshot source: MLB's own official photo CDN, keyed by the same
+// mlbId already used to fetch live stats -- no separate id table to maintain,
+// and it resolves correctly for trades/rookies/new players automatically.
+const mlbHeadshot = (mlbId) => `https://midfield.mlbstatic.com/v1/people/${mlbId}/spots/120`;
+
+// ESPN player IDs (from espn.com/mlb/team/roster) -> combiner-image headshot
+// URLs, kept only as a secondary fallback if the MLB CDN doesn't have a photo.
+const MLB_ESPN_ID = {
+  grisham: "34995",
+  rice: "5016968",
+  goldschmidt: "31027",
+  bellinger: "33912",
+  chisholm: "41433",
+  dominguez: "42401",
+  volpe: "42547",
+  mcmahon: "33247",
+  wells: "4683349",
+  turner: "33710",
+  harper: "30951",
+  schwarber: "33712",
+  bohm: "41169",
+  stott: "42417",
+  realmuto: "32177",
+  marsh: "40803",
+  crawford: "5080642",
+  delacruz: "40787",
+};
+const mlbEspnHeadshot = (id) =>
+  MLB_ESPN_ID[id]
+    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/mlb/players/full/${MLB_ESPN_ID[id]}.png&w=350&h=350&scale=crop`
+    : null;
+
+// New York Yankees 2026 starting lineup (batting order). mlbId is the
+// official MLB Stats API person id -- shared key for both the live game-log
+// fetch and the headshot CDN, so a trade/roster change only needs one edit.
+const MLB_PLAYERS = [
+  { id: "grisham", name: "Trent Grisham", team: "NYY", pos: "CF", mlbId: 663757 },
+  { id: "rice", name: "Ben Rice", team: "NYY", pos: "DH", mlbId: 700250 },
+  { id: "goldschmidt", name: "Paul Goldschmidt", team: "NYY", pos: "1B", mlbId: 502671 },
+  { id: "bellinger", name: "Cody Bellinger", team: "NYY", pos: "LF", mlbId: 641355 },
+  { id: "chisholm", name: "Jazz Chisholm Jr.", team: "NYY", pos: "2B", mlbId: 665862 },
+  { id: "dominguez", name: "Jasson Dominguez", team: "NYY", pos: "RF", mlbId: 691176 },
+  { id: "volpe", name: "Anthony Volpe", team: "NYY", pos: "SS", mlbId: 683011 },
+  { id: "mcmahon", name: "Ryan McMahon", team: "NYY", pos: "3B", mlbId: 641857 },
+  { id: "wells", name: "Austin Wells", team: "NYY", pos: "C", mlbId: 669224 },
+  // Live probable starter for the 2026-07-26 Phillies game (see MLB_MATCHUPS)
+  // -- pos "SP" is what tells TeamRosterPanel to section it off from the
+  // batting order, and MLBPropsPage to switch into pitcher-market mode.
+  { id: "warren", name: "Will Warren", team: "NYY", pos: "SP", mlbId: 701542 },
+];
+
+// Philadelphia Phillies 2026 starting lineup -- the Yankees' actual next
+// opponent (see fetchYankeesNextGame), added so the MLB page can show both
+// teams' rosters side by side the same way the NBA page shows both Finals
+// teams, rather than just a one-line "next matchup" summary.
+const PHILLIES_PLAYERS = [
+  { id: "turner", name: "Trea Turner", team: "PHI", pos: "SS", mlbId: 607208 },
+  { id: "harper", name: "Bryce Harper", team: "PHI", pos: "1B", mlbId: 547180 },
+  { id: "schwarber", name: "Kyle Schwarber", team: "PHI", pos: "DH", mlbId: 656941 },
+  { id: "bohm", name: "Alec Bohm", team: "PHI", pos: "3B", mlbId: 664761 },
+  { id: "stott", name: "Bryson Stott", team: "PHI", pos: "2B", mlbId: 681082 },
+  { id: "realmuto", name: "J.T. Realmuto", team: "PHI", pos: "C", mlbId: 592663 },
+  { id: "marsh", name: "Brandon Marsh", team: "PHI", pos: "LF", mlbId: 669016 },
+  { id: "crawford", name: "Justin Crawford", team: "PHI", pos: "CF", mlbId: 702222 },
+  { id: "delacruz", name: "Bryan De La Cruz", team: "PHI", pos: "RF", mlbId: 650559 },
+  { id: "sanchez", name: "Cristopher Sánchez", team: "PHI", pos: "SP", mlbId: 650911 },
+];
+
+// Los Angeles Dodgers -- real starting lineup for their 2026-07-26 game
+// at the Mets (see MLB_MATCHUPS below).
+const DODGERS_PLAYERS = [
+  { id: "betts", name: "Mookie Betts", team: "LAD", pos: "SS", mlbId: 605141 },
+  { id: "ohtani", name: "Shohei Ohtani", team: "LAD", pos: "DH", mlbId: 660271 },
+  { id: "freeman", name: "Freddie Freeman", team: "LAD", pos: "1B", mlbId: 518692 },
+  { id: "tucker", name: "Kyle Tucker", team: "LAD", pos: "RF", mlbId: 663656 },
+  { id: "hernandez", name: "Teoscar Hernández", team: "LAD", pos: "LF", mlbId: 606192 },
+  { id: "muncy", name: "Max Muncy", team: "LAD", pos: "3B", mlbId: 571970 },
+  { id: "pages", name: "Andy Pages", team: "LAD", pos: "CF", mlbId: 681624 },
+  { id: "rushing", name: "Dalton Rushing", team: "LAD", pos: "C", mlbId: 687221 },
+  { id: "rojas", name: "Miguel Rojas", team: "LAD", pos: "2B", mlbId: 500743 },
+  { id: "sheehan", name: "Emmet Sheehan", team: "LAD", pos: "SP", mlbId: 686218 },
+];
+
+// New York Mets -- the Dodgers' real 2026-07-26 opponent.
+const METS_PLAYERS = [
+  { id: "lindor", name: "Francisco Lindor", team: "NYM", pos: "SS", mlbId: 596019 },
+  { id: "semien", name: "Marcus Semien", team: "NYM", pos: "2B", mlbId: 543760 },
+  { id: "bichette", name: "Bo Bichette", team: "NYM", pos: "3B", mlbId: 666182 },
+  { id: "alvarez", name: "Francisco Alvarez", team: "NYM", pos: "C", mlbId: 682626 },
+  { id: "polanco", name: "Jorge Polanco", team: "NYM", pos: "DH", mlbId: 593871 },
+  { id: "robert", name: "Luis Robert Jr.", team: "NYM", pos: "CF", mlbId: 673357 },
+  { id: "benge", name: "Carson Benge", team: "NYM", pos: "RF", mlbId: 701807 },
+  { id: "taylor", name: "Tyrone Taylor", team: "NYM", pos: "LF", mlbId: 621438 },
+  { id: "wagaman", name: "Eric Wagaman", team: "NYM", pos: "1B", mlbId: 676572 },
+  { id: "peralta", name: "Freddy Peralta", team: "NYM", pos: "SP", mlbId: 642547 },
+];
+
+// Atlanta Braves -- real starting lineup for their 2026-07-26 game at the
+// Orioles (see MLB_MATCHUPS below). One of several games being added toward
+// eventually covering the whole day's slate.
+const BRAVES_PLAYERS = [
+  { id: "albies", name: "Ozzie Albies", team: "ATL", pos: "2B", mlbId: 645277 },
+  { id: "riley", name: "Austin Riley", team: "ATL", pos: "3B", mlbId: 663586 },
+  { id: "olson", name: "Matt Olson", team: "ATL", pos: "1B", mlbId: 621566 },
+  { id: "harris", name: "Michael Harris II", team: "ATL", pos: "CF", mlbId: 671739 },
+  { id: "smith", name: "Dominic Smith", team: "ATL", pos: "DH", mlbId: 642086 },
+  { id: "baldwin", name: "Drake Baldwin", team: "ATL", pos: "C", mlbId: 686948 },
+  { id: "yastrzemski", name: "Mike Yastrzemski", team: "ATL", pos: "LF", mlbId: 573262 },
+  { id: "white", name: "Eli White", team: "ATL", pos: "RF", mlbId: 642201 },
+  { id: "mateo", name: "Jorge Mateo", team: "ATL", pos: "SS", mlbId: 622761 },
+  { id: "lopez", name: "Reynaldo López", team: "ATL", pos: "SP", mlbId: 625643 },
+];
+
+// Baltimore Orioles -- the Braves' real 2026-07-26 opponent.
+const ORIOLES_PLAYERS = [
+  { id: "henderson", name: "Gunnar Henderson", team: "BAL", pos: "SS", mlbId: 683002 },
+  { id: "holliday", name: "Jackson Holliday", team: "BAL", pos: "2B", mlbId: 702616 },
+  { id: "alonso", name: "Pete Alonso", team: "BAL", pos: "1B", mlbId: 624413 },
+  { id: "mayo", name: "Coby Mayo", team: "BAL", pos: "3B", mlbId: 691723 },
+  { id: "encarnacion", name: "Christian Encarnacion-Strand", team: "BAL", pos: "DH", mlbId: 687952 },
+  { id: "ward", name: "Taylor Ward", team: "BAL", pos: "LF", mlbId: 621493 },
+  { id: "cowser", name: "Colton Cowser", team: "BAL", pos: "CF", mlbId: 681297 },
+  { id: "oneill", name: "Tyler O'Neill", team: "BAL", pos: "RF", mlbId: 641933 },
+  { id: "huff", name: "Sam Huff", team: "BAL", pos: "C", mlbId: 669087 },
+  { id: "baz", name: "Shane Baz", team: "BAL", pos: "SP", mlbId: 669358 },
+];
+const BLUEJAYS_PLAYERS = [
+  { id: "kirk", name: "Alejandro Kirk", team: "TOR", pos: "C", mlbId: 672386 },
+  { id: "guerrero", name: "Vladimir Guerrero Jr.", team: "TOR", pos: "1B", mlbId: 665489 },
+  { id: "clement", name: "Ernie Clement", team: "TOR", pos: "2B", mlbId: 676391 },
+  { id: "okamoto", name: "Kazuma Okamoto", team: "TOR", pos: "3B", mlbId: 672960 },
+  { id: "gimenez", name: "Andrés Giménez", team: "TOR", pos: "SS", mlbId: 665926 },
+  { id: "schneider", name: "Davis Schneider", team: "TOR", pos: "LF", mlbId: 676914 },
+  { id: "varsho", name: "Daulton Varsho", team: "TOR", pos: "CF", mlbId: 662139 },
+  { id: "lukes", name: "Nathan Lukes", team: "TOR", pos: "RF", mlbId: 664770 },
+  { id: "springer", name: "George Springer", team: "TOR", pos: "DH", mlbId: 543807 },
+  { id: "gausman", name: "Kevin Gausman", team: "TOR", pos: "SP", mlbId: 592332 },
+];
+const REDSOX_PLAYERS = [
+  { id: "narvaez", name: "Carlos Narváez", team: "BOS", pos: "C", mlbId: 665966 },
+  { id: "contreras", name: "Willson Contreras", team: "BOS", pos: "1B", mlbId: 575929 },
+  { id: "seigler", name: "Anthony Seigler", team: "BOS", pos: "2B", mlbId: 678011 },
+  { id: "durbin", name: "Caleb Durbin", team: "BOS", pos: "3B", mlbId: 702332 },
+  { id: "monasterio", name: "Andruw Monasterio", team: "BOS", pos: "SS", mlbId: 655316 },
+  { id: "duran", name: "Jarren Duran", team: "BOS", pos: "LF", mlbId: 680776 },
+  { id: "rafaela", name: "Ceddanne Rafaela", team: "BOS", pos: "CF", mlbId: 678882 },
+  { id: "abreu", name: "Wilyer Abreu", team: "BOS", pos: "RF", mlbId: 677800 },
+  { id: "yoshida", name: "Masataka Yoshida", team: "BOS", pos: "DH", mlbId: 807799 },
+  { id: "suarez", name: "Ranger Suárez", team: "BOS", pos: "SP", mlbId: 624133 },
+];
+const CUBS_PLAYERS = [
+  { id: "amaya", name: "Miguel Amaya", team: "CHC", pos: "C", mlbId: 665804 },
+  { id: "busch", name: "Michael Busch", team: "CHC", pos: "1B", mlbId: 683737 },
+  { id: "hoerner", name: "Nico Hoerner", team: "CHC", pos: "2B", mlbId: 663538 },
+  { id: "bregman", name: "Alex Bregman", team: "CHC", pos: "3B", mlbId: 608324 },
+  { id: "swanson", name: "Dansby Swanson", team: "CHC", pos: "SS", mlbId: 621020 },
+  { id: "happ", name: "Ian Happ", team: "CHC", pos: "LF", mlbId: 664023 },
+  { id: "pca", name: "Pete Crow-Armstrong", team: "CHC", pos: "CF", mlbId: 691718 },
+  { id: "suzuki", name: "Seiya Suzuki", team: "CHC", pos: "RF", mlbId: 673548 },
+  { id: "conforto", name: "Michael Conforto", team: "CHC", pos: "DH", mlbId: 624424 },
+  { id: "taillon", name: "Jameson Taillon", team: "CHC", pos: "SP", mlbId: 592791 },
+];
+const PIRATES_PLAYERS = [
+  { id: "hdavis", name: "Henry Davis", team: "PIT", pos: "C", mlbId: 680779 },
+  { id: "jgonzalez", name: "Jacob Gonzalez", team: "PIT", pos: "1B", mlbId: 694378 },
+  { id: "lowe", name: "Brandon Lowe", team: "PIT", pos: "2B", mlbId: 664040 },
+  { id: "ngonzales", name: "Nick Gonzales", team: "PIT", pos: "3B", mlbId: 693304 },
+  { id: "triolo", name: "Jared Triolo", team: "PIT", pos: "SS", mlbId: 669707 },
+  { id: "reynolds", name: "Bryan Reynolds", team: "PIT", pos: "LF", mlbId: 668804 },
+  { id: "cook", name: "Billy Cook", team: "PIT", pos: "CF", mlbId: 695257 },
+  { id: "ohearn", name: "Ryan O'Hearn", team: "PIT", pos: "RF", mlbId: 656811 },
+  { id: "ozuna", name: "Marcell Ozuna", team: "PIT", pos: "DH", mlbId: 542303 },
+  { id: "ashcraft", name: "Braxton Ashcraft", team: "PIT", pos: "SP", mlbId: 677952 },
+];
+const MARINERS_PLAYERS = [
+  { id: "raleigh", name: "Cal Raleigh", team: "SEA", pos: "C", mlbId: 663728 },
+  { id: "naylor", name: "Josh Naylor", team: "SEA", pos: "1B", mlbId: 647304 },
+  { id: "young", name: "Cole Young", team: "SEA", pos: "2B", mlbId: 702284 },
+  { id: "wilson", name: "Weston Wilson", team: "SEA", pos: "3B", mlbId: 642215 },
+  { id: "crawfordjp", name: "J.P. Crawford", team: "SEA", pos: "SS", mlbId: 641487 },
+  { id: "arozarena", name: "Randy Arozarena", team: "SEA", pos: "LF", mlbId: 668227 },
+  { id: "rodriguez", name: "Julio Rodríguez", team: "SEA", pos: "CF", mlbId: 677594 },
+  { id: "raley", name: "Luke Raley", team: "SEA", pos: "RF", mlbId: 670042 },
+  { id: "canzone", name: "Dominic Canzone", team: "SEA", pos: "DH", mlbId: 686527 },
+  { id: "gilbert", name: "Logan Gilbert", team: "SEA", pos: "SP", mlbId: 669302 },
+];
+const RANGERS_PLAYERS = [
+  { id: "diaz", name: "Elias Díaz", team: "TEX", pos: "C", mlbId: 553869 },
+  { id: "burger", name: "Jake Burger", team: "TEX", pos: "1B", mlbId: 669394 },
+  { id: "smithj", name: "Josh Smith", team: "TEX", pos: "2B", mlbId: 669701 },
+  { id: "duranez", name: "Ezequiel Duran", team: "TEX", pos: "3B", mlbId: 677649 },
+  { id: "cauley", name: "Cam Cauley", team: "TEX", pos: "SS", mlbId: 695508 },
+  { id: "langford", name: "Wyatt Langford", team: "TEX", pos: "LF", mlbId: 694671 },
+  { id: "carter", name: "Evan Carter", team: "TEX", pos: "CF", mlbId: 694497 },
+  { id: "nimmo", name: "Brandon Nimmo", team: "TEX", pos: "RF", mlbId: 607043 },
+  { id: "pederson", name: "Joc Pederson", team: "TEX", pos: "DH", mlbId: 592626 },
+  { id: "degrom", name: "Jacob deGrom", team: "TEX", pos: "SP", mlbId: 594798 },
+];
+const GUARDIANS_PLAYERS = [
+  { id: "hedges", name: "Austin Hedges", team: "CLE", pos: "C", mlbId: 595978 },
+  { id: "manzardo", name: "Kyle Manzardo", team: "CLE", pos: "1B", mlbId: 700932 },
+  { id: "bazzana", name: "Travis Bazzana", team: "CLE", pos: "2B", mlbId: 683953 },
+  { id: "jramirez", name: "José Ramírez", team: "CLE", pos: "3B", mlbId: 608070 },
+  { id: "rocchio", name: "Brayan Rocchio", team: "CLE", pos: "SS", mlbId: 677587 },
+  { id: "amartinez", name: "Angel Martínez", team: "CLE", pos: "LF", mlbId: 682657 },
+  { id: "kwan", name: "Steven Kwan", team: "CLE", pos: "CF", mlbId: 680757 },
+  { id: "fry", name: "David Fry", team: "CLE", pos: "RF", mlbId: 681807 },
+  { id: "hoskins", name: "Rhys Hoskins", team: "CLE", pos: "DH", mlbId: 656555 },
+  { id: "messick", name: "Parker Messick", team: "CLE", pos: "SP", mlbId: 800048 },
+];
+const RAYS_PLAYERS = [
+  { id: "fortes", name: "Nick Fortes", team: "TB", pos: "C", mlbId: 663743 },
+  { id: "aranda", name: "Jonathan Aranda", team: "TB", pos: "1B", mlbId: 666018 },
+  { id: "palacios", name: "Richie Palacios", team: "TB", pos: "2B", mlbId: 680700 },
+  { id: "caminero", name: "Junior Caminero", team: "TB", pos: "3B", mlbId: 691406 },
+  { id: "walls", name: "Taylor Walls", team: "TB", pos: "SS", mlbId: 670764 },
+  { id: "csimpson", name: "Chandler Simpson", team: "TB", pos: "LF", mlbId: 802415 },
+  { id: "mullins", name: "Cedric Mullins", team: "TB", pos: "CF", mlbId: 656775 },
+  { id: "deluca", name: "Jonny DeLuca", team: "TB", pos: "RF", mlbId: 676356 },
+  { id: "yandydiaz", name: "Yandy Díaz", team: "TB", pos: "DH", mlbId: 650490 },
+  { id: "rasmussen", name: "Drew Rasmussen", team: "TB", pos: "SP", mlbId: 656876 },
+];
+const ROYALS_PLAYERS = [
+  { id: "maile", name: "Luke Maile", team: "KC", pos: "C", mlbId: 571912 },
+  { id: "pasquantino", name: "Vinnie Pasquantino", team: "KC", pos: "1B", mlbId: 686469 },
+  { id: "massey", name: "Michael Massey", team: "KC", pos: "2B", mlbId: 686681 },
+  { id: "jrojas", name: "Josh Rojas", team: "KC", pos: "3B", mlbId: 668942 },
+  { id: "velazquez", name: "Andrew Velazquez", team: "KC", pos: "SS", mlbId: 623205 },
+  { id: "icollins", name: "Isaac Collins", team: "KC", pos: "LF", mlbId: 686555 },
+  { id: "lthomas", name: "Lane Thomas", team: "KC", pos: "CF", mlbId: 657041 },
+  { id: "caglianone", name: "Jac Caglianone", team: "KC", pos: "RF", mlbId: 695506 },
+  { id: "sperez", name: "Salvador Perez", team: "KC", pos: "DH", mlbId: 521692 },
+  { id: "avila", name: "Luinder Avila", team: "KC", pos: "SP", mlbId: 679883 },
+];
+const TIGERS_PLAYERS = [
+  { id: "dingler", name: "Dillon Dingler", team: "DET", pos: "C", mlbId: 693307 },
+  { id: "torkelson", name: "Spencer Torkelson", team: "DET", pos: "1B", mlbId: 679529 },
+  { id: "gtorres", name: "Gleyber Torres", team: "DET", pos: "2B", mlbId: 650402 },
+  { id: "keith", name: "Colt Keith", team: "DET", pos: "3B", mlbId: 690993 },
+  { id: "mcgonigle", name: "Kevin McGonigle", team: "DET", pos: "SS", mlbId: 805808 },
+  { id: "greene", name: "Riley Greene", team: "DET", pos: "LF", mlbId: 682985 },
+  { id: "vierling", name: "Matt Vierling", team: "DET", pos: "CF", mlbId: 663837 },
+  { id: "carpenter", name: "Kerry Carpenter", team: "DET", pos: "RF", mlbId: 681481 },
+  { id: "outman", name: "James Outman", team: "DET", pos: "DH", mlbId: 681546 },
+  { id: "valdez", name: "Framber Valdez", team: "DET", pos: "SP", mlbId: 664285 },
+];
+const ASTROS_PLAYERS = [
+  { id: "yainerdiaz", name: "Yainer Diaz", team: "HOU", pos: "C", mlbId: 673237 },
+  { id: "cwalker", name: "Christian Walker", team: "HOU", pos: "1B", mlbId: 572233 },
+  { id: "altuve", name: "Jose Altuve", team: "HOU", pos: "2B", mlbId: 514888 },
+  { id: "paredes", name: "Isaac Paredes", team: "HOU", pos: "3B", mlbId: 670623 },
+  { id: "pena", name: "Jeremy Peña", team: "HOU", pos: "SS", mlbId: 665161 },
+  { id: "wade", name: "LaMonte Wade Jr.", team: "HOU", pos: "LF", mlbId: 664774 },
+  { id: "trammell", name: "Taylor Trammell", team: "HOU", pos: "CF", mlbId: 666211 },
+  { id: "csmith", name: "Cam Smith", team: "HOU", pos: "RF", mlbId: 701358 },
+  { id: "yalvarez", name: "Yordan Alvarez", team: "HOU", pos: "DH", mlbId: 670541 },
+  { id: "blanco", name: "Ronel Blanco", team: "HOU", pos: "SP", mlbId: 669854 },
+];
+const WHITESOX_PLAYERS = [
+  { id: "quero", name: "Edgar Quero", team: "CWS", pos: "C", mlbId: 700337 },
+  { id: "murakami", name: "Munetaka Murakami", team: "CWS", pos: "1B", mlbId: 808959 },
+  { id: "meidroth", name: "Chase Meidroth", team: "CWS", pos: "2B", mlbId: 805367 },
+  { id: "vargas", name: "Miguel Vargas", team: "CWS", pos: "3B", mlbId: 678246 },
+  { id: "montgomeryc", name: "Colson Montgomery", team: "CWS", pos: "SS", mlbId: 695657 },
+  { id: "antonacci", name: "Sam Antonacci", team: "CWS", pos: "LF", mlbId: 803011 },
+  { id: "perezj", name: "Junior Perez", team: "CWS", pos: "CF", mlbId: 678577 },
+  { id: "montgomeryb", name: "Braden Montgomery", team: "CWS", pos: "RF", mlbId: 695731 },
+  { id: "benintendi", name: "Andrew Benintendi", team: "CWS", pos: "DH", mlbId: 643217 },
+  { id: "fedde", name: "Erick Fedde", team: "CWS", pos: "SP", mlbId: 607200 },
+];
+const ANGELS_PLAYERS = [
+  { id: "ohoppe", name: "Logan O'Hoppe", team: "LAA", pos: "C", mlbId: 681351 },
+  { id: "schanuel", name: "Nolan Schanuel", team: "LAA", pos: "1B", mlbId: 694384 },
+  { id: "peraza", name: "Oswald Peraza", team: "LAA", pos: "2B", mlbId: 672724 },
+  { id: "guzman", name: "Denzer Guzman", team: "LAA", pos: "3B", mlbId: 694203 },
+  { id: "neto", name: "Zach Neto", team: "LAA", pos: "SS", mlbId: 687263 },
+  { id: "jlowe", name: "Josh Lowe", team: "LAA", pos: "LF", mlbId: 666139 },
+  { id: "trout", name: "Mike Trout", team: "LAA", pos: "CF", mlbId: 545361 },
+  { id: "adell", name: "Jo Adell", team: "LAA", pos: "RF", mlbId: 666176 },
+  { id: "soler", name: "Jorge Soler", team: "LAA", pos: "DH", mlbId: 624585 },
+  { id: "soriano", name: "José Soriano", team: "LAA", pos: "SP", mlbId: 667755 },
+];
+const GIANTS_PLAYERS_MLB = [
+  { id: "susac", name: "Daniel Susac", team: "SF", pos: "C", mlbId: 691740 },
+  { id: "devers", name: "Rafael Devers", team: "SF", pos: "1B", mlbId: 646240 },
+  { id: "arraez", name: "Luis Arraez", team: "SF", pos: "2B", mlbId: 650333 },
+  { id: "koss", name: "Christian Koss", team: "SF", pos: "3B", mlbId: 683766 },
+  { id: "adames", name: "Willy Adames", team: "SF", pos: "SS", mlbId: 642715 },
+  { id: "ramos", name: "Heliot Ramos", team: "SF", pos: "LF", mlbId: 671218 },
+  { id: "mccray", name: "Grant McCray", team: "SF", pos: "CF", mlbId: 687529 },
+  { id: "jhlee", name: "Jung Hoo Lee", team: "SF", pos: "RF", mlbId: 808982 },
+  { id: "eldridge", name: "Bryce Eldridge", team: "SF", pos: "DH", mlbId: 805811 },
+  { id: "whisenhunt", name: "Carson Whisenhunt", team: "SF", pos: "SP", mlbId: 687931 },
+];
+const DBACKS_PLAYERS = [
+  { id: "moreno", name: "Gabriel Moreno", team: "ARI", pos: "C", mlbId: 672515 },
+  { id: "locklear", name: "Tyler Locklear", team: "ARI", pos: "1B", mlbId: 682988 },
+  { id: "marte", name: "Ketel Marte", team: "ARI", pos: "2B", mlbId: 606466 },
+  { id: "arenado", name: "Nolan Arenado", team: "ARI", pos: "3B", mlbId: 571448 },
+  { id: "perdomo", name: "Geraldo Perdomo", team: "ARI", pos: "SS", mlbId: 672695 },
+  { id: "kepler", name: "Max Kepler", team: "ARI", pos: "LF", mlbId: 596146 },
+  { id: "barrosa", name: "Jorge Barrosa", team: "ARI", pos: "CF", mlbId: 678489 },
+  { id: "carroll", name: "Corbin Carroll", team: "ARI", pos: "RF", mlbId: 682998 },
+  { id: "delcastillo", name: "Adrian Del Castillo", team: "ARI", pos: "DH", mlbId: 680728 },
+  { id: "drake", name: "Kohl Drake", team: "ARI", pos: "SP", mlbId: 684442 },
+];
+const NATIONALS_PLAYERS = [
+  { id: "keibertruiz", name: "Keibert Ruiz", team: "WSH", pos: "C", mlbId: 660688 },
+  { id: "lgarcia", name: "Luis García Jr.", team: "WSH", pos: "1B", mlbId: 671277 },
+  { id: "nunez", name: "Nasim Nuñez", team: "WSH", pos: "2B", mlbId: 683083 },
+  { id: "vivas", name: "Jorbit Vivas", team: "WSH", pos: "3B", mlbId: 678391 },
+  { id: "abrams", name: "CJ Abrams", team: "WSH", pos: "SS", mlbId: 682928 },
+  { id: "lile", name: "Daylen Lile", team: "WSH", pos: "LF", mlbId: 695734 },
+  { id: "jyoung", name: "Jacob Young", team: "WSH", pos: "CF", mlbId: 696285 },
+  { id: "wood", name: "James Wood", team: "WSH", pos: "RF", mlbId: 695578 },
+  { id: "tena", name: "José Tena", team: "WSH", pos: "DH", mlbId: 677588 },
+  { id: "mikolas", name: "Miles Mikolas", team: "WSH", pos: "SP", mlbId: 571945 },
+];
+const PADRES_PLAYERS = [
+  { id: "campusano", name: "Luis Campusano", team: "SD", pos: "C", mlbId: 669134 },
+  { id: "tfrance", name: "Ty France", team: "SD", pos: "1B", mlbId: 664034 },
+  { id: "cronenworth", name: "Jake Cronenworth", team: "SD", pos: "2B", mlbId: 630105 },
+  { id: "machado", name: "Manny Machado", team: "SD", pos: "3B", mlbId: 592518 },
+  { id: "bogaerts", name: "Xander Bogaerts", team: "SD", pos: "SS", mlbId: 593428 },
+  { id: "sheets", name: "Gavin Sheets", team: "SD", pos: "LF", mlbId: 657757 },
+  { id: "merrill", name: "Jackson Merrill", team: "SD", pos: "CF", mlbId: 701538 },
+  { id: "tatis", name: "Fernando Tatis Jr.", team: "SD", pos: "RF", mlbId: 665487 },
+  { id: "rengifo", name: "Luis Rengifo", team: "SD", pos: "DH", mlbId: 650859 },
+  { id: "buehler", name: "Walker Buehler", team: "SD", pos: "SP", mlbId: 621111 },
+];
+const MARLINS_PLAYERS = [
+  { id: "mack", name: "Joe Mack", team: "MIA", pos: "C", mlbId: 691788 },
+  { id: "pauley", name: "Graham Pauley", team: "MIA", pos: "1B", mlbId: 688363 },
+  { id: "xedwards", name: "Xavier Edwards", team: "MIA", pos: "2B", mlbId: 669364 },
+  { id: "sanoja", name: "Javier Sanoja", team: "MIA", pos: "3B", mlbId: 691594 },
+  { id: "olopez", name: "Otto Lopez", team: "MIA", pos: "SS", mlbId: 672640 },
+  { id: "stowers", name: "Kyle Stowers", team: "MIA", pos: "LF", mlbId: 669065 },
+  { id: "marsee", name: "Jakob Marsee", team: "MIA", pos: "CF", mlbId: 805300 },
+  { id: "eruiz", name: "Esteury Ruiz", team: "MIA", pos: "RF", mlbId: 665923 },
+  { id: "conine", name: "Griffin Conine", team: "MIA", pos: "DH", mlbId: 665052 },
+  { id: "junk", name: "Janson Junk", team: "MIA", pos: "SP", mlbId: 676083 },
+];
+const ATHLETICS_PLAYERS = [
+  { id: "langeliers", name: "Shea Langeliers", team: "ATH", pos: "C", mlbId: 669127 },
+  { id: "kurtz", name: "Nick Kurtz", team: "ATH", pos: "1B", mlbId: 701762 },
+  { id: "mcneil", name: "Jeff McNeil", team: "ATH", pos: "2B", mlbId: 643446 },
+  { id: "twhite", name: "Tommy White", team: "ATH", pos: "3B", mlbId: 695720 },
+  { id: "jwilson", name: "Jacob Wilson", team: "ATH", pos: "SS", mlbId: 805779 },
+  { id: "soderstrom", name: "Tyler Soderstrom", team: "ATH", pos: "LF", mlbId: 691016 },
+  { id: "bolte", name: "Henry Bolte", team: "ATH", pos: "CF", mlbId: 703607 },
+  { id: "butler", name: "Lawrence Butler", team: "ATH", pos: "RF", mlbId: 671732 },
+  { id: "cortes", name: "Carlos Cortes", team: "ATH", pos: "DH", mlbId: 666126 },
+  { id: "springs", name: "Jeffrey Springs", team: "ATH", pos: "SP", mlbId: 605488 },
+];
+const TWINS_PLAYERS = [
+  { id: "jeffers", name: "Ryan Jeffers", team: "MIN", pos: "C", mlbId: 680777 },
+  { id: "kclemens", name: "Kody Clemens", team: "MIN", pos: "1B", mlbId: 665019 },
+  { id: "keaschall", name: "Luke Keaschall", team: "MIN", pos: "2B", mlbId: 807712 },
+  { id: "rlewis", name: "Royce Lewis", team: "MIN", pos: "3B", mlbId: 668904 },
+  { id: "kreidler", name: "Ryan Kreidler", team: "MIN", pos: "SS", mlbId: 668952 },
+  { id: "larnach", name: "Trevor Larnach", team: "MIN", pos: "LF", mlbId: 663616 },
+  { id: "buxton", name: "Byron Buxton", team: "MIN", pos: "CF", mlbId: 621439 },
+  { id: "amartin", name: "Austin Martin", team: "MIN", pos: "RF", mlbId: 668885 },
+  { id: "bell", name: "Josh Bell", team: "MIN", pos: "DH", mlbId: 605137 },
+  { id: "prielipp", name: "Connor Prielipp", team: "MIN", pos: "SP", mlbId: 687570 },
+];
+const ROCKIES_PLAYERS = [
+  { id: "goodman", name: "Hunter Goodman", team: "COL", pos: "C", mlbId: 696100 },
+  { id: "rumfield", name: "TJ Rumfield", team: "COL", pos: "1B", mlbId: 681198 },
+  { id: "julien", name: "Edouard Julien", team: "COL", pos: "2B", mlbId: 666397 },
+  { id: "karros", name: "Kyle Karros", team: "COL", pos: "3B", mlbId: 691720 },
+  { id: "tovar", name: "Ezequiel Tovar", team: "COL", pos: "SS", mlbId: 678662 },
+  { id: "moniak", name: "Mickey Moniak", team: "COL", pos: "LF", mlbId: 666160 },
+  { id: "jmccarthy", name: "Jake McCarthy", team: "COL", pos: "CF", mlbId: 664983 },
+  { id: "tfreeman", name: "Tyler Freeman", team: "COL", pos: "RF", mlbId: 671289 },
+  { id: "fulford", name: "Braxton Fulford", team: "COL", pos: "DH", mlbId: 690924 },
+  { id: "freeland", name: "Kyle Freeland", team: "COL", pos: "SP", mlbId: 607536 },
+];
+const BREWERS_PLAYERS = [
+  { id: "wcontreras", name: "William Contreras", team: "MIL", pos: "C", mlbId: 661388 },
+  { id: "vaughn", name: "Andrew Vaughn", team: "MIL", pos: "1B", mlbId: 683734 },
+  { id: "turang", name: "Brice Turang", team: "MIL", pos: "2B", mlbId: 668930 },
+  { id: "hamilton", name: "David Hamilton", team: "MIL", pos: "3B", mlbId: 666152 },
+  { id: "ortiz", name: "Joey Ortiz", team: "MIL", pos: "SS", mlbId: 687401 },
+  { id: "chourio", name: "Jackson Chourio", team: "MIL", pos: "LF", mlbId: 694192 },
+  { id: "gmitchell", name: "Garrett Mitchell", team: "MIL", pos: "CF", mlbId: 669003 },
+  { id: "llara", name: "Luis Lara", team: "MIL", pos: "RF", mlbId: 800325 },
+  { id: "yelich", name: "Christian Yelich", team: "MIL", pos: "DH", mlbId: 592885 },
+  { id: "misiorowski", name: "Jacob Misiorowski", team: "MIL", pos: "SP", mlbId: 694819 },
+];
+const REDS_PLAYERS = [
+  { id: "stephenson", name: "Tyler Stephenson", team: "CIN", pos: "C", mlbId: 663886 },
+  { id: "steer", name: "Spencer Steer", team: "CIN", pos: "1B", mlbId: 668715 },
+  { id: "earroyo", name: "Edwin Arroyo", team: "CIN", pos: "2B", mlbId: 695490 },
+  { id: "khayes", name: "Ke'Bryan Hayes", team: "CIN", pos: "3B", mlbId: 663647 },
+  { id: "edelacruz", name: "Elly De La Cruz", team: "CIN", pos: "SS", mlbId: 682829 },
+  { id: "bleday", name: "JJ Bleday", team: "CIN", pos: "LF", mlbId: 668709 },
+  { id: "friedl", name: "TJ Friedl", team: "CIN", pos: "CF", mlbId: 670770 },
+  { id: "nmarte", name: "Noelvi Marte", team: "CIN", pos: "RF", mlbId: 682622 },
+  { id: "esuarez", name: "Eugenio Suárez", team: "CIN", pos: "DH", mlbId: 553993 },
+  { id: "abbott", name: "Andrew Abbott", team: "CIN", pos: "SP", mlbId: 671096 },
+];
+const CARDINALS_PLAYERS = [
+  { id: "ppages", name: "Pedro Pagés", team: "STL", pos: "C", mlbId: 686780 },
+  { id: "burleson", name: "Alec Burleson", team: "STL", pos: "1B", mlbId: 676475 },
+  { id: "wetherholt", name: "JJ Wetherholt", team: "STL", pos: "2B", mlbId: 802139 },
+  { id: "bjordan", name: "Blaze Jordan", team: "STL", pos: "3B", mlbId: 691458 },
+  { id: "winn", name: "Masyn Winn", team: "STL", pos: "SS", mlbId: 691026 },
+  { id: "nootbaar", name: "Lars Nootbaar", team: "STL", pos: "LF", mlbId: 663457 },
+  { id: "nchurch", name: "Nathan Church", team: "STL", pos: "CF", mlbId: 701675 },
+  { id: "jwalker", name: "Jordan Walker", team: "STL", pos: "RF", mlbId: 691023 },
+  { id: "herrera", name: "Iván Herrera", team: "STL", pos: "DH", mlbId: 671056 },
+  { id: "leahy", name: "Kyle Leahy", team: "STL", pos: "SP", mlbId: 681517 },
+];
+
+// Combined roster used for lookup by playerId -- ids don't collide across
+// teams, so a flat find() works the same way PLAYERS.find() does on the
+// NBA page for its two Finals rosters.
+const ALL_MLB_PLAYERS = [
+  ...MLB_PLAYERS, ...PHILLIES_PLAYERS, ...DODGERS_PLAYERS, ...METS_PLAYERS,
+  ...BRAVES_PLAYERS, ...ORIOLES_PLAYERS, ...BLUEJAYS_PLAYERS, ...REDSOX_PLAYERS,
+  ...CUBS_PLAYERS, ...PIRATES_PLAYERS, ...MARINERS_PLAYERS, ...RANGERS_PLAYERS,
+  ...GUARDIANS_PLAYERS, ...RAYS_PLAYERS, ...ROYALS_PLAYERS, ...TIGERS_PLAYERS,
+  ...ASTROS_PLAYERS, ...WHITESOX_PLAYERS, ...ANGELS_PLAYERS, ...GIANTS_PLAYERS_MLB,
+  ...DBACKS_PLAYERS, ...NATIONALS_PLAYERS, ...PADRES_PLAYERS, ...MARLINS_PLAYERS,
+  ...ATHLETICS_PLAYERS, ...TWINS_PLAYERS, ...ROCKIES_PLAYERS, ...BREWERS_PLAYERS,
+  ...REDS_PLAYERS, ...CARDINALS_PLAYERS,
+];
+
+// Each entry is one matchup the Prop Ledger can scout -- the "matchup
+// selector" dropdown on the MLB page switches between these, swapping which
+// two rosters populate the left/right sidebars, same pattern as the NFL page.
+const MLB_MATCHUPS = [
+  {
+    id: "cle-cin-1",
+    label: "Guardians @ Reds (Game 1)",
+    teamA: { label: "Cleveland Guardians", players: GUARDIANS_PLAYERS },
+    teamB: { label: "Cincinnati Reds", players: REDS_PLAYERS },
+    date: "2026-07-28T17:40:00Z",
+    venue: "Great American Ball Park",
+    city: "Cincinnati, OH",
+  },
+  {
+    id: "cle-cin-2",
+    label: "Guardians @ Reds (Game 2)",
+    teamA: { label: "Cleveland Guardians", players: GUARDIANS_PLAYERS },
+    teamB: { label: "Cincinnati Reds", players: REDS_PLAYERS },
+    date: "2026-07-28T23:10:00Z",
+    venue: "Great American Ball Park",
+    city: "Cincinnati, OH",
+  },
+  {
+    id: "bal-det",
+    label: "Orioles @ Tigers",
+    teamA: { label: "Baltimore Orioles", players: ORIOLES_PLAYERS },
+    teamB: { label: "Detroit Tigers", players: TIGERS_PLAYERS },
+    date: "2026-07-28T22:40:00Z",
+    venue: "Comerica Park",
+    city: "Detroit, MI",
+  },
+  {
+    id: "ari-pit",
+    label: "Diamondbacks @ Pirates",
+    teamA: { label: "Arizona Diamondbacks", players: DBACKS_PLAYERS },
+    teamB: { label: "Pittsburgh Pirates", players: PIRATES_PLAYERS },
+    date: "2026-07-28T22:40:00Z",
+    venue: "PNC Park",
+    city: "Pittsburgh, PA",
+  },
+  {
+    id: "tex-tb",
+    label: "Rangers @ Rays",
+    teamA: { label: "Texas Rangers", players: RANGERS_PLAYERS },
+    teamB: { label: "Tampa Bay Rays", players: RAYS_PLAYERS },
+    date: "2026-07-28T22:40:00Z",
+    venue: "Tropicana Field",
+    city: "St. Petersburg, FL",
+  },
+  {
+    id: "phi-mia",
+    label: "Phillies @ Marlins",
+    teamA: { label: "Philadelphia Phillies", players: PHILLIES_PLAYERS },
+    teamB: { label: "Miami Marlins", players: MARLINS_PLAYERS },
+    date: "2026-07-28T22:40:00Z",
+    venue: "loanDepot park",
+    city: "Miami, FL",
+  },
+  {
+    id: "tor-wsh",
+    label: "Blue Jays @ Nationals",
+    teamA: { label: "Toronto Blue Jays", players: BLUEJAYS_PLAYERS },
+    teamB: { label: "Washington Nationals", players: NATIONALS_PLAYERS },
+    date: "2026-07-28T22:45:00Z",
+    venue: "Nationals Park",
+    city: "Washington, DC",
+  },
+  {
+    id: "atl-nym",
+    label: "Braves @ Mets",
+    teamA: { label: "Atlanta Braves", players: BRAVES_PLAYERS },
+    teamB: { label: "New York Mets", players: METS_PLAYERS },
+    date: "2026-07-28T23:10:00Z",
+    venue: "Citi Field",
+    city: "New York, NY",
+  },
+  {
+    id: "kc-min",
+    label: "Royals @ Twins",
+    teamA: { label: "Kansas City Royals", players: ROYALS_PLAYERS },
+    teamB: { label: "Minnesota Twins", players: TWINS_PLAYERS },
+    date: "2026-07-28T23:40:00Z",
+    venue: "Target Field",
+    city: "Minneapolis, MN",
+  },
+  {
+    id: "nyy-cws",
+    label: "Yankees @ White Sox",
+    teamA: { label: "New York Yankees", players: MLB_PLAYERS },
+    teamB: { label: "Chicago White Sox", players: WHITESOX_PLAYERS },
+    date: "2026-07-28T23:40:00Z",
+    venue: "Rate Field",
+    city: "Chicago, IL",
+  },
+  {
+    id: "chc-stl",
+    label: "Cubs @ Cardinals",
+    teamA: { label: "Chicago Cubs", players: CUBS_PLAYERS },
+    teamB: { label: "St. Louis Cardinals", players: CARDINALS_PLAYERS },
+    date: "2026-07-28T23:45:00Z",
+    venue: "Busch Stadium",
+    city: "St. Louis, MO",
+  },
+  {
+    id: "hou-laa",
+    label: "Astros @ Angels",
+    teamA: { label: "Houston Astros", players: ASTROS_PLAYERS },
+    teamB: { label: "Los Angeles Angels", players: ANGELS_PLAYERS },
+    date: "2026-07-29T01:38:00Z",
+    venue: "Angel Stadium",
+    city: "Anaheim, CA",
+  },
+  {
+    id: "bos-ath",
+    label: "Red Sox @ Athletics",
+    teamA: { label: "Boston Red Sox", players: REDSOX_PLAYERS },
+    teamB: { label: "Athletics", players: ATHLETICS_PLAYERS },
+    date: "2026-07-29T01:40:00Z",
+    venue: "Sutter Health Park",
+    city: "West Sacramento, CA",
+  },
+  {
+    id: "col-sd",
+    label: "Rockies @ Padres",
+    teamA: { label: "Colorado Rockies", players: ROCKIES_PLAYERS },
+    teamB: { label: "San Diego Padres", players: PADRES_PLAYERS },
+    date: "2026-07-29T01:40:00Z",
+    venue: "Petco Park",
+    city: "San Diego, CA",
+  },
+  {
+    id: "mil-sf",
+    label: "Brewers @ Giants",
+    teamA: { label: "Milwaukee Brewers", players: BREWERS_PLAYERS },
+    teamB: { label: "San Francisco Giants", players: GIANTS_PLAYERS_MLB },
+    date: "2026-07-29T01:45:00Z",
+    venue: "Oracle Park",
+    city: "San Francisco, CA",
+  },
+  {
+    id: "sea-lad",
+    label: "Mariners @ Dodgers",
+    teamA: { label: "Seattle Mariners", players: MARINERS_PLAYERS },
+    teamB: { label: "Los Angeles Dodgers", players: DODGERS_PLAYERS },
+    date: "2026-07-29T02:10:00Z",
+    venue: "Dodger Stadium",
+    city: "Los Angeles, CA",
+  },
+];
+
+// Groups MLB_MATCHUPS by calendar date so the matchup dropdown can section
+// them under a date heading (via <optgroup>) -- today it's just one group,
+// but this is what makes it obvious which games are "today" vs. a future
+// date once more than one day's slate is loaded at once.
+const MLB_MATCHUPS_BY_DATE = groupMatchupsByDate(MLB_MATCHUPS);
+
+// Live game logs, fetched directly from the official MLB Stats API (see
+// fetchMLBGameLog below) instead of a static snapshot -- this is what keeps
+// the props page from drifting stale once games are played.
+const MLB_TEAM_ID_ABBR = {
+  109: "ARI", 144: "ATL", 110: "BAL", 111: "BOS", 112: "CHC", 145: "CWS", 113: "CIN", 114: "CLE",
+  115: "COL", 116: "DET", 117: "HOU", 118: "KC", 108: "LAA", 119: "LAD", 146: "MIA", 158: "MIL",
+  142: "MIN", 121: "NYM", 147: "NYY", 133: "ATH", 143: "PHI", 134: "PIT", 135: "SD", 136: "SEA",
+  137: "SF", 138: "STL", 139: "TB", 140: "TEX", 141: "TOR", 120: "WSH",
+};
+
+// How long a fetched game log is considered fresh before we hit the API
+// again. Refetched on every page mount/player switch plus on this interval
+// while the page stays open, so a finished game shows up automatically
+// without requiring unnecessary calls between games.
+const MLB_GAMELOG_TTL_MS = 15 * 60 * 1000;
+const mlbGameLogCache = new Map();
+
+async function fetchMLBGameLog(mlbId) {
+  const cached = mlbGameLogCache.get(mlbId);
+  if (cached && Date.now() - cached.fetchedAt < MLB_GAMELOG_TTL_MS) return cached.games;
+
+  const cacheKey = `mlb_gamelog_v3_${mlbId}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < MLB_GAMELOG_TTL_MS) {
+        mlbGameLogCache.set(mlbId, parsed);
+        return parsed.games;
+      }
+    }
+  } catch {}
+
+  const res = await fetch(
+    `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=hitting&season=2026&gameType=R`
+  );
+  const data = await res.json();
+  const splits = data?.stats?.[0]?.splits || [];
+  const games = splits.map((s) => {
+    const st = s.stat;
+    return {
+      date: s.date,
+      opp: MLB_TEAM_ID_ABBR[s.opponent?.id] || s.opponent?.name || "???",
+      home: !!s.isHome,
+      pa: st.plateAppearances || 0,
+      h: st.hits || 0,
+      hr: st.homeRuns || 0,
+      tb: st.totalBases || 0,
+      rbi: st.rbi || 0,
+      r: st.runs || 0,
+      bb: st.baseOnBalls || 0,
+      so: st.strikeOuts || 0,
+      sb: st.stolenBases || 0,
+      ab: st.atBats || 0,
+      hbp: st.hitByPitch || 0,
+      sf: st.sacFlies || 0,
+    };
+  });
+
+  const record = { games, fetchedAt: Date.now() };
+  mlbGameLogCache.set(mlbId, record);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return games;
+}
+
+// Rolls a set of batter game logs up into the rate stats shown on the
+// player card (see MLBPropsPage) -- AVG/OBP/BABIP/K% are computed from the
+// raw counting stats rather than trusting the API's own cumulative rate
+// fields, so the same math applies whether "games" is the full season or
+// whatever the active filters have narrowed it down to.
+function battingRateAgg(games) {
+  const n = games.length || 1;
+  const sum = (k) => games.reduce((a, g) => a + (g[k] || 0), 0);
+  const ab = sum("ab"), h = sum("h"), bb = sum("bb"), hbp = sum("hbp"), sf = sum("sf"), so = sum("so"), hr = sum("hr"), pa = sum("pa");
+  const obDen = ab + bb + hbp + sf;
+  const babipDen = ab - so - hr + sf;
+  return {
+    pa: pa / n,
+    hits: h / n,
+    avg: ab ? h / ab : 0,
+    obp: obDen ? (h + bb + hbp) / obDen : 0,
+    babip: babipDen ? (h - hr) / babipDen : 0,
+    kpct: pa ? (so / pa) * 100 : 0,
+  };
+}
+
+// Pitching equivalent of battingRateAgg -- rolls a set of pitcher game logs
+// (see fetchMLBPitcherGameLog) up into the rate stats shown on the
+// pitcher's rate-stat bar. IP is derived from the outs-recorded field
+// rather than trusting a separately-formatted innings-pitched string, so
+// the same division works whether "games" is the full season or whatever
+// the active filters have narrowed it down to.
+function pitchingRateAgg(games) {
+  const n = games.length || 1;
+  const sum = (k) => games.reduce((a, g) => a + (g[k] || 0), 0);
+  const outs = sum("outs"), k = sum("k"), er = sum("er"), h = sum("h"), bb = sum("bb");
+  const ip = outs / 3;
+  return {
+    ip: ip / n,
+    k: k / n,
+    era: outs ? (er * 27) / outs : 0,
+    whip: outs ? ((bb + h) * 3) / outs : 0,
+    h9: outs ? (h * 27) / outs : 0,
+    bb9: outs ? (bb * 27) / outs : 0,
+  };
+}
+
+// Next scheduled/live Yankees game (opponent + home/away), used by the Prop
+// Feed to show the actual upcoming matchup instead of a mock "next opp."
+// Same cache-then-refetch TTL pattern as fetchMLBGameLog above, so once a
+// game goes final the following poll picks up the new day's opponent.
+const YANKEES_TEAM_ID = 147;
+const MLB_SCHEDULE_TTL_MS = 60 * 60 * 1000;
+let yankeesScheduleCache = null;
+
+async function fetchYankeesNextGame() {
+  if (yankeesScheduleCache && Date.now() - yankeesScheduleCache.fetchedAt < MLB_SCHEDULE_TTL_MS) {
+    return yankeesScheduleCache.game;
+  }
+  // v2: now hydrates the probable pitcher so the feed's pitcher props stay
+  // tied to whoever MLB has actually announced as the next starter.
+  const cacheKey = "mlb_yankees_next_game_v2";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < MLB_SCHEDULE_TTL_MS) {
+        yankeesScheduleCache = parsed;
+        return parsed.game;
+      }
+    }
+  } catch {}
+
+  const today = new Date();
+  const start = today.toISOString().slice(0, 10);
+  const end = new Date(today.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const res = await fetch(
+    `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${YANKEES_TEAM_ID}&startDate=${start}&endDate=${end}&hydrate=probablePitcher`
+  );
+  const data = await res.json();
+  const games = (data?.dates || []).flatMap((d) => d.games || []);
+  const upcoming = games.find((g) => g.status?.abstractGameState !== "Final") || games[0] || null;
+
+  let game = null;
+  if (upcoming) {
+    const isHome = upcoming.teams?.home?.team?.id === YANKEES_TEAM_ID;
+    const oppTeam = isHome ? upcoming.teams?.away?.team : upcoming.teams?.home?.team;
+    const yankeesSide = isHome ? upcoming.teams?.home : upcoming.teams?.away;
+    const probable = yankeesSide?.probablePitcher;
+    game = {
+      date: upcoming.gameDate,
+      opp: MLB_TEAM_ID_ABBR[oppTeam?.id] || oppTeam?.abbreviation || "???",
+      home: isHome,
+      status: upcoming.status?.detailedState || "Scheduled",
+      probablePitcher: probable ? { mlbId: probable.id, name: probable.fullName } : null,
+    };
+  }
+
+  const record = { game, fetchedAt: Date.now() };
+  yankeesScheduleCache = record;
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return game;
+}
+
+// Trailing pitching game log for whoever is currently the Yankees' probable
+// starter (see fetchYankeesNextGame) -- only ever fetched for that one
+// pitcher, so the feed shows props for the actual next starter, not the
+// whole staff, and rolls to the new starter automatically once MLB
+// announces one.
+const mlbPitcherGameLogCache = new Map();
+
+function parseInningsPitchedToOuts(ip) {
+  if (!ip) return 0;
+  const [wholeStr, thirdStr] = String(ip).split(".");
+  const whole = parseInt(wholeStr, 10) || 0;
+  const third = parseInt(thirdStr, 10) || 0;
+  return whole * 3 + third;
+}
+
+// Reverses parseInningsPitchedToOuts for display -- standard box-score
+// innings-pitched notation (e.g. 18 outs -> "6.0", 19 outs -> "6.1").
+function formatOuts(outs) {
+  return `${Math.floor(outs / 3)}.${outs % 3}`;
+}
+
+async function fetchMLBPitcherGameLog(mlbId) {
+  const cached = mlbPitcherGameLogCache.get(mlbId);
+  if (cached && Date.now() - cached.fetchedAt < MLB_GAMELOG_TTL_MS) return cached.games;
+
+  const cacheKey = `mlb_pitcher_gamelog_v1_${mlbId}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < MLB_GAMELOG_TTL_MS) {
+        mlbPitcherGameLogCache.set(mlbId, parsed);
+        return parsed.games;
+      }
+    }
+  } catch {}
+
+  const res = await fetch(
+    `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=pitching&season=2026&gameType=R`
+  );
+  const data = await res.json();
+  const splits = data?.stats?.[0]?.splits || [];
+  const games = splits.map((s) => {
+    const st = s.stat;
+    return {
+      date: s.date,
+      opp: MLB_TEAM_ID_ABBR[s.opponent?.id] || s.opponent?.name || "???",
+      home: !!s.isHome,
+      k: st.strikeOuts || 0,
+      er: st.earnedRuns || 0,
+      h: st.hits || 0,
+      bb: st.baseOnBalls || 0,
+      outs: parseInningsPitchedToOuts(st.inningsPitched),
+    };
+  });
+
+  const record = { games, fetchedAt: Date.now() };
+  mlbPitcherGameLogCache.set(mlbId, record);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return games;
+}
+
+// Row 1 = core box-score + combo stats (the most commonly booked batter
+// props). Row 2 = power (extra-base outcomes). Row 3 = plate-discipline/speed
+// counting stats.
+const MLB_MARKETS_ROW_1 = [
+  { id: "h", label: "Hits" },
+  { id: "r", label: "Runs" },
+  { id: "rbi", label: "RBIs" },
+  { id: "hrrbi", label: "H+R+RBI" },
+];
+const MLB_MARKETS_ROW_2 = [
+  { id: "hr", label: "Home Runs" },
+  { id: "tb", label: "Total Bases" },
+];
+const MLB_MARKETS_ROW_3 = [
+  { id: "bb", label: "Walks" },
+  { id: "so", label: "Strikeouts" },
+  { id: "sb", label: "Stolen Bases" },
+];
+const MLB_MARKETS = [...MLB_MARKETS_ROW_1, ...MLB_MARKETS_ROW_2, ...MLB_MARKETS_ROW_3];
+
+const statValueMLB = (g, market) => {
+  switch (market) {
+    case "h": return g.h;
+    case "r": return g.r;
+    case "rbi": return g.rbi;
+    case "hr": return g.hr;
+    case "tb": return g.tb;
+    case "hrrbi": return g.h + g.r + g.rbi;
+    case "bb": return g.bb;
+    case "so": return g.so;
+    case "sb": return g.sb;
+    default: return g.h;
+  }
+};
+
+// Pitcher markets are prefixed (p_*) so their ids can't collide with the
+// batter market ids above (both have "h"/"bb", but they mean hits allowed
+// vs. hits recorded).
+const MLB_PITCHER_MARKETS = [
+  { id: "p_k", label: "Strikeouts" },
+  { id: "p_outs", label: "Outs Recorded" },
+  { id: "p_er", label: "Earned Runs" },
+  { id: "p_h", label: "Hits Allowed" },
+  { id: "p_bb", label: "Walks Allowed" },
+];
+
+const statValueMLBPitcher = (g, market) => {
+  switch (market) {
+    case "p_k": return g.k;
+    case "p_outs": return g.outs;
+    case "p_er": return g.er;
+    case "p_h": return g.h;
+    case "p_bb": return g.bb;
+    default: return g.k;
+  }
+};
+
+function MLBPropsPage({ jumpTo }) {
+  const [matchupId, setMatchupId] = useState(MLB_MATCHUPS[0].id);
+  const matchup = MLB_MATCHUPS.find((m) => m.id === matchupId);
+  const [playerId, setPlayerId] = useState(MLB_MATCHUPS[0].teamA.players[0].id);
+  const [market, setMarket] = useState("h");
+  React.useEffect(() => {
+    if (!jumpTo) return;
+    setPlayerId(jumpTo.playerId);
+    setMarket(jumpTo.market);
+    setLine(null);
+    setOpponent("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo && jumpTo.nonce]);
+  const [side, setSide] = useState("all");
+  const [lastN, setLastN] = useState(10);
+  const [opponent, setOpponent] = useState("all");
+  const [minPA, setMinPA] = useState(0);
+  const [maxPA, setMaxPA] = useState(6);
+  const [paRangeEnabled, setPaRangeEnabled] = useState(false);
+  const [line, setLine] = useState(null);
+  const [showStatInfo, setShowStatInfo] = useState(false);
+  const chartRef = React.useRef(null);
+  const isNarrow = useIsNarrow();
+
+  const resetFilters = () => {
+    setSide("all");
+    setLastN(10);
+    setOpponent("all");
+    setMinPA(0);
+    setMaxPA(6);
+    setPaRangeEnabled(false);
+    setLine(null);
+  };
+
+  const player = ALL_MLB_PLAYERS.find((p) => p.id === playerId);
+  const isPitcher = player.pos === "SP";
+  const [allGames, setAllGames] = useState([]);
+  const [gameLogUpdatedAt, setGameLogUpdatedAt] = useState(null);
+
+  // Load the player's live game log on mount/player switch, then keep
+  // polling on the same cache TTL so a game that finishes while this page
+  // is open shows up without needing a manual refresh. Starting pitchers
+  // pull from the pitching game log/endpoint instead of the batting one.
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      (isPitcher ? fetchMLBPitcherGameLog(player.mlbId) : fetchMLBGameLog(player.mlbId))
+        .then((games) => {
+          if (cancelled) return;
+          setAllGames(games);
+          setGameLogUpdatedAt(Date.now());
+        })
+        .catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, MLB_GAMELOG_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [player.mlbId, isPitcher]);
+
+  // Whenever the selected player switches between a batter and the starting
+  // pitcher, make sure the active market still applies to them.
+  React.useEffect(() => {
+    const validMarkets = isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS;
+    if (!validMarkets.some((m) => m.id === market)) {
+      setMarket(validMarkets[0].id);
+      setLine(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId]);
+
+  const seasonAvg = useMemo(() => {
+    const n = allGames.length || 1;
+    const sum = (key) => allGames.reduce((a, g) => a + g[key], 0);
+    return isPitcher
+      ? {
+          k: sum("k") / n,
+          er: sum("er") / n,
+          bb: sum("bb") / n,
+          h: sum("h") / n,
+        }
+      : {
+          h: sum("h") / n,
+          hr: sum("hr") / n,
+          rbi: sum("rbi") / n,
+          r: sum("r") / n,
+        };
+  }, [allGames, isPitcher]);
+
+  const opponentsForPlayer = useMemo(
+    () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
+    [allGames]
+  );
+
+  const filtered = useMemo(() => {
+    let g = allGames.filter((game) => {
+      if (side === "home" && !game.home) return false;
+      if (side === "away" && game.home) return false;
+      if (opponent !== "all" && game.opp !== opponent) return false;
+      if (!isPitcher && (game.pa < minPA || game.pa > maxPA)) return false;
+      return true;
+    });
+    if (lastN !== "all") g = g.slice(-lastN);
+    return g;
+  }, [allGames, side, opponent, minPA, maxPA, lastN, isPitcher]);
+
+  // Batter rate-stat card (PA/Hits/AVG/OBP/BABIP/K%) -- the top value is the
+  // rate over whatever the filters above have narrowed "filtered" down to,
+  // and the line underneath is that same rate stat's full-season baseline
+  // for comparison, the same "your current view vs. the season" framing the
+  // line/edge numbers below already use.
+  const battingWindow = useMemo(() => (isPitcher ? null : battingRateAgg(filtered)), [filtered, isPitcher]);
+  const battingSeason = useMemo(() => (isPitcher ? null : battingRateAgg(allGames)), [allGames, isPitcher]);
+
+  // Pitcher rate-stat bar equivalent (IP/K/ERA/WHIP/H9/BB9) -- same "current
+  // filtered view vs. full-season baseline" framing as the batter bar above.
+  const pitchingWindow = useMemo(() => (isPitcher ? pitchingRateAgg(filtered) : null), [filtered, isPitcher]);
+  const pitchingSeason = useMemo(() => (isPitcher ? pitchingRateAgg(allGames) : null), [allGames, isPitcher]);
+
+  // "All" on a full MLB season can be 80+ games -- past this many, a
+  // per-game team logo/abbreviation can't stay legible at any width, so the
+  // x-axis switches to plain sparse date labels instead (see DateAxisTick).
+  const manyGames = filtered.length > 25;
+
+  const isBinary = false;
+  const values = filtered.map((g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)));
+  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  const med = median(values);
+  const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+  const topValue = Math.max(...values, effectiveLine, 1);
+  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
+  const niceStep = (() => {
+    if (isBinary) return 1;
+    const targetTicks = 5;
+    const roughStep = rawMax / targetTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
+    const norm = roughStep / mag;
+    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
+    return Math.max(1, step);
+  })();
+  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
+  const chartTicks = isBinary
+    ? [0, 1]
+    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+  const hits = values.filter((v) => v > effectiveLine).length;
+  const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
+  const hitRate = values.length ? hits / values.length : 0;
+  const edge = avg - effectiveLine;
+  const scrollableChart = isNarrow && !manyGames && filtered.length <= NARROW_SCROLL_MAX_BARS;
+  const marketLabel = (isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS).find((m) => m.id === market)?.label ?? "";
+
+  return (
+    <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <div className="roster-layout">
+    <TeamRosterPanel
+      teamLabel={matchup.teamA.label}
+      players={matchup.teamA.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
+      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    <div className="roster-layout-center">
+      {/* Matchup info bar: when/where this game is being played, keyed off
+           the selected matchup's static schedule data. Sits above the player
+           photo/selector since it's context about the game, not the player. */}
+      <div style={{
+        display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
+        width: "fit-content", margin: "0 auto 12px", padding: "9px 20px",
+        background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
+        fontSize: 12.5, color: "var(--dim)",
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>
+            {new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+          </span>
+          <span>·</span>
+          <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
+            {new Date(matchup.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+          </span>
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>{matchup.venue}</span>
+          <span>— {matchup.city}</span>
+        </span>
+      </div>
+
+      {/* Matchup + market selectors -- the matchup dropdown is the way to
+           scout different games (swaps which two rosters populate the
+           sidebars); picking an individual player within that matchup
+           happens by clicking their row in either roster panel. */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+          <select
+            className="select"
+            value={matchupId}
+            onChange={(e) => {
+              const next = MLB_MATCHUPS.find((m) => m.id === e.target.value);
+              setMatchupId(next.id);
+              setPlayerId(next.teamA.players[0].id);
+              setLine(null);
+              setOpponent("all");
+            }}
+          >
+            {MLB_MATCHUPS_BY_DATE.map((group) => (
+              <optgroup label={group.label} key={group.label}>
+                {group.matchups.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label} — {matchupTimeLabel(m.date)}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <div style={{
+            position: "relative", width: 122, height: 122, borderRadius: "50%", flexShrink: 0,
+            background: teamAvatarBackground(MLB_TEAM_COLORS, player.team),
+            boxShadow: `0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
+          }}>
+            {/* Always-visible black backing, in case the headshot image can't load
+                 -- covers rookies/trades/missing photos. */}
+            <div style={{
+              position: "absolute", inset: 6, borderRadius: "50%",
+              background: "#000",
+              border: "1px solid var(--line)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }} />
+            <img
+              key={player.id}
+              src={mlbHeadshot(player.mlbId)}
+              alt={player.name}
+              width={110}
+              height={110}
+              referrerPolicy="no-referrer"
+              style={{
+                position: "absolute", inset: 6,
+                width: 110, height: 110,
+                borderRadius: "50%",
+                objectFit: "cover",
+                objectPosition: "center top",
+                border: "1px solid var(--line)",
+                opacity: 0,
+                transition: "opacity 0.15s ease",
+              }}
+              onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
+              onError={(e) => {
+                const fallback = mlbEspnHeadshot(player.id);
+                if (fallback && e.currentTarget.dataset.fallback !== "1") {
+                  e.currentTarget.dataset.fallback = "1";
+                  e.currentTarget.src = fallback;
+                } else {
+                  e.currentTarget.style.opacity = 0;
+                }
+              }}
+            />
+          </div>
+
+          {/* Player snapshot: season averages at a glance, next to the selector. */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 18,
+            background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+            padding: "10px 20px",
+          }}>
+            <div style={{ textAlign: "center", paddingRight: 14, borderRight: "1px solid var(--line)" }}>
+              <div className="oswald" style={{ fontSize: 14, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
+              <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                {player.team} · {player.pos} · Season
+              </div>
+            </div>
+            {(isPitcher
+              ? [
+                  { label: "K", value: seasonAvg.k },
+                  { label: "ER", value: seasonAvg.er },
+                  { label: "BB", value: seasonAvg.bb },
+                  { label: "H", value: seasonAvg.h },
+                ]
+              : [
+                  { label: "H", value: seasonAvg.h },
+                  { label: "HR", value: seasonAvg.hr },
+                  { label: "RBI", value: seasonAvg.rbi },
+                  { label: "R", value: seasonAvg.r },
+                ]
+            ).map((s) => (
+              <div key={s.label} style={{ textAlign: "center" }}>
+                <div className="mono" style={{ fontSize: 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(2)}</div>
+                <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Batter rate-stat bar -- value on top is the current filtered
+             sample's rate, the small line underneath is the delta against
+             the full-season baseline (dim when it rounds to ~0, green/red
+             depending on whether that stat trending up is good or bad for
+             a batter). Only batters carry the AB/BB/HBP/SF fields needed
+             for AVG/OBP/BABIP, so pitchers keep their existing K/ER/BB/H
+             card above instead. */}
+        {!isPitcher && battingWindow && battingSeason && (() => {
+          const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
+            const sign = diff < 0 ? "-" : "+";
+            const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
+            const rounded = parseFloat(diff.toFixed(decimals));
+            const color = rounded === 0 || higherIsBetter === null
+              ? "var(--dim)"
+              : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
+            return { text, color };
+          };
+          const cards = [
+            { key: "pa", label: "PA", value: battingWindow.pa.toFixed(1), delta: fmtDelta(battingWindow.pa - battingSeason.pa, 1, null) },
+            { key: "hits", label: "Hits", value: battingWindow.hits.toFixed(1), delta: fmtDelta(battingWindow.hits - battingSeason.hits, 1, true) },
+            { key: "avg", label: "AVG", value: battingWindow.avg.toFixed(3), delta: fmtDelta(battingWindow.avg - battingSeason.avg, 3, true) },
+            { key: "obp", label: "OBP", value: battingWindow.obp.toFixed(3), delta: fmtDelta(battingWindow.obp - battingSeason.obp, 3, true) },
+            { key: "babip", label: "BABIP", value: battingWindow.babip.toFixed(3), delta: fmtDelta(battingWindow.babip - battingSeason.babip, 3, true) },
+            { key: "kpct", label: "K%", value: `${battingWindow.kpct.toFixed(1)}%`, delta: fmtDelta(battingWindow.kpct - battingSeason.kpct, 1, false, "%") },
+          ];
+          const glossary = [
+            { key: "pa", label: "PA — Plate Appearances", body: "Every time a player completes a turn at bat — including walks and getting hit by a pitch, not just official at-bats. It's basically \"how many chances did they get.\" More PA usually means more opportunities to rack up hits, RBIs, etc." },
+            { key: "hits", label: "Hits", body: "How many times the player got a hit (single, double, triple, or home run) per game in the sample shown." },
+            { key: "avg", label: "AVG — Batting Average", body: "Hits divided by at-bats. The classic \"batting average\" you've probably heard on a broadcast — shown here as 0.300 instead of the usual \".300\". Around 0.250 is roughly average for MLB, 0.300+ is very good." },
+            { key: "obp", label: "OBP — On-Base Percentage", body: "How often a player reaches base by any means — hit, walk, or hit-by-pitch — not just hits. Many bettors and analysts consider it a better gauge of a hitter's value than AVG, since it also credits players who draw a lot of walks." },
+            { key: "babip", label: "BABIP — Batting Average on Balls In Play", body: "Batting average counting only balls the player actually put in play (strikeouts and home runs don't count). It's a useful \"regression\" signal — if it's way above or below a player's normal range, their recent hot or cold streak may not last much longer." },
+            { key: "kpct", label: "K% — Strikeout Rate", body: "The percentage of plate appearances that end in a strikeout. Lower is better for a hitter — a high K% means they're missing a lot, which can make Over bets on contact-based props (hits, total bases) riskier." },
+          ];
+          return (
+            <div style={{ position: "relative" }}>
+              <div style={{
+                display: "flex", justifyContent: "center", gap: 26, flexWrap: "wrap",
+                background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+                padding: "10px 20px", marginTop: 10,
+              }}>
+                {cards.map((c) => (
+                  <div key={c.key} style={{ textAlign: "center", minWidth: 52 }}>
+                    <div style={{
+                      fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
+                      marginBottom: 2,
+                      textDecoration: c.key === "hits" && market === "h" ? "underline var(--amber)" : "none",
+                      textUnderlineOffset: 3,
+                    }}>
+                      {c.label}
+                    </div>
+                    <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
+                    <div className="mono" style={{ fontSize: 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                  </div>
+                ))}
+                <div
+                  onClick={() => setShowStatInfo((v) => !v)}
+                  title="What do these stats mean?"
+                  role="button"
+                  aria-expanded={showStatInfo}
+                  className="mono"
+                  style={{
+                    position: "absolute", top: 8, right: 10,
+                    cursor: "pointer",
+                    width: 18, height: 18, borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 700,
+                    border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
+                    color: showStatInfo ? "var(--amber)" : "var(--dim)",
+                    background: showStatInfo ? "var(--amber-dim)" : "transparent",
+                  }}
+                >
+                  i
+                </div>
+              </div>
+              {showStatInfo && (
+                <div style={{
+                  marginTop: 8, padding: "12px 14px",
+                  background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
+                }}>
+                  <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
+                    A quick guide to these stats, if you're newer to baseball props. One thing that trips people up:
+                    the small card above (H/HR/RBI/R) is always the <strong>full season</strong> average, while the
+                    numbers below are for whatever your filters are currently showing — so "Hits" here and "H" up
+                    there can show different values for the same player at the same time.
+                  </div>
+                  {glossary.map((g) => (
+                    <div key={g.key} style={{ marginBottom: 10 }}>
+                      <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
+                        {g.label}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
+                        {g.body}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Pitcher rate-stat bar -- same "current filtered view vs. full-
+             season baseline" framing as the batter bar above, just with the
+             pitching-side equivalents (IP/K/ERA/WHIP/H9/BB9) computed from
+             the pitcher game log's outs/k/er/h/bb fields. */}
+        {isPitcher && pitchingWindow && pitchingSeason && (() => {
+          const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
+            const sign = diff < 0 ? "-" : "+";
+            const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
+            const rounded = parseFloat(diff.toFixed(decimals));
+            const color = rounded === 0 || higherIsBetter === null
+              ? "var(--dim)"
+              : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
+            return { text, color };
+          };
+          const cards = [
+            { key: "ip", label: "IP", value: pitchingWindow.ip.toFixed(1), delta: fmtDelta(pitchingWindow.ip - pitchingSeason.ip, 1, null) },
+            { key: "k", label: "K", value: pitchingWindow.k.toFixed(1), delta: fmtDelta(pitchingWindow.k - pitchingSeason.k, 1, true) },
+            { key: "era", label: "ERA", value: pitchingWindow.era.toFixed(2), delta: fmtDelta(pitchingWindow.era - pitchingSeason.era, 2, false) },
+            { key: "whip", label: "WHIP", value: pitchingWindow.whip.toFixed(2), delta: fmtDelta(pitchingWindow.whip - pitchingSeason.whip, 2, false) },
+            { key: "h9", label: "H/9", value: pitchingWindow.h9.toFixed(1), delta: fmtDelta(pitchingWindow.h9 - pitchingSeason.h9, 1, false) },
+            { key: "bb9", label: "BB/9", value: pitchingWindow.bb9.toFixed(1), delta: fmtDelta(pitchingWindow.bb9 - pitchingSeason.bb9, 1, false) },
+          ];
+          const glossary = [
+            { key: "ip", label: "IP — Innings Pitched", body: "How many innings the pitcher worked, on average, in the games shown. More innings usually means a start went deep and went well; a short outing usually means they got pulled early (hit hard, high pitch count, etc.)." },
+            { key: "k", label: "K — Strikeouts", body: "Strikeouts recorded per game in the sample shown. Higher is generally better for a pitcher — more swings and misses, less contact for the opposing lineup." },
+            { key: "er", label: "ER — Earned Runs (in the card above)", body: "A raw count of earned runs allowed per game — runs that scored without help from a fielding error. It's not adjusted for how long the pitcher was out there, which is exactly what ERA (below) fixes." },
+            { key: "era", label: "ERA — Earned Run Average", body: "Earned runs allowed per 9 innings pitched — ER × 9 ÷ IP. This is the standardized version of ER above: 3 earned runs in a 3-inning start (bad) and 3 earned runs in a 7-inning start (fine) both just say \"ER: 3\", but they produce very different ERAs. Lower is better; under ~4.00 is solid, under 3.00 is excellent." },
+            { key: "whip", label: "WHIP — Walks + Hits per Inning Pitched", body: "How many baserunners (via walk or hit) a pitcher allows per inning, on average. Lower is better — a quick read on how often they're letting hitters reach base, independent of whether those runners actually score." },
+            { key: "h9", label: "H/9 — Hits Allowed per 9", body: "Hits allowed per 9 innings pitched. Lower is better — a good gauge of how hittable a pitcher has been lately, useful context for Over/Under bets on the opposing lineup's hits props too." },
+            { key: "bb9", label: "BB/9 — Walks Allowed per 9", body: "Walks allowed per 9 innings pitched. Lower is better — a pitcher walking a lot of batters is giving up free baserunners, and it's often a sign their command is off that night." },
+          ];
+          return (
+            <div style={{ position: "relative" }}>
+              <div style={{
+                display: "flex", justifyContent: "center", gap: 26, flexWrap: "wrap",
+                background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+                padding: "10px 20px", marginTop: 10,
+              }}>
+                {cards.map((c) => (
+                  <div key={c.key} style={{ textAlign: "center", minWidth: 52 }}>
+                    <div style={{
+                      fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
+                      marginBottom: 2,
+                      textDecoration: c.key === "k" && market === "p_k" ? "underline var(--amber)" : "none",
+                      textUnderlineOffset: 3,
+                    }}>
+                      {c.label}
+                    </div>
+                    <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
+                    <div className="mono" style={{ fontSize: 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                  </div>
+                ))}
+                <div
+                  onClick={() => setShowStatInfo((v) => !v)}
+                  title="What do these stats mean?"
+                  role="button"
+                  aria-expanded={showStatInfo}
+                  className="mono"
+                  style={{
+                    position: "absolute", top: 8, right: 10,
+                    cursor: "pointer",
+                    width: 18, height: 18, borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 700,
+                    border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
+                    color: showStatInfo ? "var(--amber)" : "var(--dim)",
+                    background: showStatInfo ? "var(--amber-dim)" : "transparent",
+                  }}
+                >
+                  i
+                </div>
+              </div>
+              {showStatInfo && (
+                <div style={{
+                  marginTop: 8, padding: "12px 14px",
+                  background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
+                }}>
+                  <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
+                    A quick guide to these stats, if you're newer to baseball props. Two things that trip people up:
+                    the small card above (K/ER/BB/H) is always the <strong>full season</strong> average, while the
+                    numbers below are for whatever your filters are currently showing — and "ER" up there is a
+                    different kind of stat than "ERA" below (see those two entries first if that's what brought you here).
+                  </div>
+                  {glossary.map((g) => (
+                    <div key={g.key} style={{ marginBottom: 10 }}>
+                      <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
+                        {g.label}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
+                        {g.body}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, marginTop: 14, textAlign: "center" }}>
+          Markets
+        </div>
+        {isPitcher ? (
+          <div style={{ marginTop: 6 }}>
+            <MarketPillRow
+              markets={MLB_PITCHER_MARKETS}
+              activeMarket={market}
+              onSelect={(id) => { setMarket(id); setLine(null); }}
+            />
+          </div>
+        ) : (
+        [
+          { label: "Core", markets: MLB_MARKETS_ROW_1 },
+          { label: "Power", markets: MLB_MARKETS_ROW_2 },
+          { label: "Discipline", markets: MLB_MARKETS_ROW_3 },
+        ].map((section, si) => (
+          <div key={section.label} style={{ marginTop: si === 0 ? 6 : 16 }}>
+            {section.pills ? (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
+                {section.markets.map((m, mi) => (
+                  <React.Fragment key={m.id}>
+                    {mi > 0 && <span style={{ color: "var(--line)", fontSize: 18 }}>|</span>}
+                    <div
+                      className="oswald"
+                      style={{
+                        fontSize: 18, fontWeight: 600, letterSpacing: "0.03em", padding: "6px 4px",
+                        color: market === m.id ? "var(--amber)" : "var(--dim)", cursor: "pointer", whiteSpace: "nowrap",
+                      }}
+                      onClick={() => { setMarket(m.id); setLine(null); }}
+                    >
+                      {m.label}
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                {section.markets.map((m, mi) => (
+                  <React.Fragment key={m.id}>
+                    {mi > 0 && <span style={{ color: "var(--line)", fontSize: 20 }}>|</span>}
+                    <div
+                      className={`tab no-underline ${market === m.id ? "active" : ""}`}
+                      style={{ flex: "0 0 auto", width: "auto", padding: "10px 16px", fontSize: 20 }}
+                      onClick={() => { setMarket(m.id); setLine(null); }}
+                    >
+                      {m.label}
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+          </div>
+        ))
+        )}
+      </div>
+    </div>
+    <TeamRosterPanel
+      teamLabel={matchup.teamB.label}
+      players={matchup.teamB.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
+      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    </div>
+
+      {/* Filters -- Reset filters sits in its own row at the bottom (not
+           absolutely positioned, and after the filter groups rather than
+           before) so it can never overlap the Opponent label/dropdown on
+           narrow screens, and doesn't leave an empty row above the first
+           filter on wider screens either. */}
+      <FiltersSection>
+        {[
+          {
+            label: "Opponent",
+            content: (
+              <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
+                <option value="all">Any opponent</option>
+                {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+              </select>
+            ),
+          },
+          {
+            label: "Game location",
+            content: (
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                {["all", "home", "away"].map((s) => (
+                  <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                    {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          {
+            label: "Sample size",
+            content: (
+              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                {[5, 10, 15, 25, "all"].map((n) => (
+                  <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                    {n === "all" ? "All" : `Last ${n}`}
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          ...(isPitcher ? [] : [{
+            label: "Plate appearances",
+            content: (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 480, margin: "0 auto" }}>
+                <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
+                  {!paRangeEnabled
+                    ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)
+                    : (minPA === 0 && maxPA === 6 ? "Any PA" : `${minPA}-${maxPA} PA`)}
+                </div>
+                <ThresholdSlider
+                  min={0}
+                  max={6}
+                  step={1}
+                  lo={minPA}
+                  hi={maxPA}
+                  onChangeLo={setMinPA}
+                  onChangeHi={setMaxPA}
+                  rangeEnabled={paRangeEnabled}
+                  onToggleRange={() => setPaRangeEnabled((v) => !v)}
+                />
+              </div>
+            ),
+          }]),
+        ].map((group, gi) => (
+          <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
+            <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+              {group.label}
+            </div>
+            {group.content}
+          </div>
+        ))}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+          <div className="chip" onClick={resetFilters}>Reset filters</div>
+        </div>
+      </FiltersSection>
+
+      {/* Line input + summary */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
+          </div>
+          <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
+            {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+            {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
+          {[
+            { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
+            { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
+            { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
+          ].map((s) => (
+            <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+              <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div
+        ref={chartRef}
+        style={{
+          position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 16, marginBottom: 16,
+        }}
+      >
+        <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+        <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={filtered.map((g, i) => ({
+              idx: i + 1,
+              opp: g.opp,
+              value: isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market),
+              date: g.date,
+              minutes: isPitcher ? formatOuts(g.outs) : g.pa,
+              home: g.home,
+              defRank: MLB_TEAM_DEF[g.opp].rank,
+            }))}
+            margin={{ top: 10, right: 60, bottom: 56, left: 20 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            <XAxis
+              dataKey={manyGames ? "date" : "opp"}
+              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / 8) - 1) : (scrollableChart ? 0 : axisTickInterval(filtered.length, isNarrow))}
+              tick={manyGames ? (props) => <DateAxisTick {...props} /> : (props) => <TeamAxisTick {...props} logoFn={mlbTeamLogo} compact={isNarrow} />}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+            />
+            <YAxis
+              domain={[0, chartMax]}
+              ticks={chartTicks}
+              tick={{ fill: "#8b96a5", fontSize: 11 }}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+              allowDecimals={false}
+              label={{ value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+            />
+            <Tooltip
+              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
+              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+            />
+            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              {filtered.map((g, i) => {
+                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
+                const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
+                return <Cell key={i} fill={fill} />;
+              })}
+              <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        </div>
+        </div>
+        {!isBinary && (
+          <LineHandle
+            value={effectiveLine}
+            onChange={(v) => setLine(v)}
+            min={0}
+            max={chartMax}
+            containerRef={chartRef}
+          />
+        )}
+      </div>
+
+      {/* Table */}
+      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+          <div style={{ minWidth: 580 }}>
+            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
+              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>{isPitcher ? "IP" : "PA"}</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
+            </div>
+            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
+              {filtered.slice().reverse().map((g, i) => {
+                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
+                const over = v > effectiveLine;
+                const push = !isBinary && v === effectiveLine;
+                const def = MLB_TEAM_DEF[g.opp];
+                const tier = mlbDefTier(def.rank);
+                return (
+                  <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
+                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
+                    <div>{g.date}</div>
+                    <div>{g.opp}</div>
+                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
+                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
+                    <div>{isPitcher ? formatOuts(g.outs) : g.pa}</div>
+                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
+                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
+                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
+        Live 2026 regular-season game logs (MLB Stats API) for the {matchup.teamA.label} and {matchup.teamB.label} lineups shown above, refreshed on load and every 15 minutes
+        {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
+        Defensive matchup ranks are still a placeholder model ahead of a real opponent-stats feed.
+      </div>
+    </div>
+  );
+}
+
+// ---------- Prop Feed (multi-player, multi-prop research list) ----------
+// Category buckets a market rolls up into for the feed's secondary filter row.
+const NBA_MARKET_CATEGORY = {
+  pts: "Points", reb: "Rebounds", ast: "Assists", stl: "Steals", blk: "Blocks", stk: "Stocks",
+  pra: "Combos", ra: "Combos", pr: "Combos", pa: "Combos",
+  "3pm": "Shooting", "3pa": "Shooting", ftm: "Shooting", fta: "Shooting",
+  dd: "Double-Doubles", td: "Triple-Doubles",
+};
+const NBA_FEED_CATEGORIES = ["All", "Points", "Rebounds", "Assists", "Steals", "Blocks", "Stocks", "Combos", "Shooting", "Double-Doubles", "Triple-Doubles"];
+
+// Same idea as the NFL feed's per-(market) defensive ranking: a team's
+// points defense, rebounding, and 3PM defense are three different numbers
+// in reality, so the feed's OPP RANK badge shouldn't reuse one overall
+// rating for every market. [base, spread] is a rough plausible per-game
+// range for that stat, just used to seed a believable rating.
+const NBA_MARKET_DEF_RANGE = {
+  pts: [113, 14], reb: [44, 8], ast: [26, 8], stl: [7.5, 3], blk: [4.8, 2.5], stk: [12, 4],
+  pra: [183, 20], ra: [70, 12], pr: [157, 18], pa: [139, 16],
+  "3pm": [12.5, 4], "3pa": [34, 8], ftm: [17, 6], fta: [22, 7],
+};
+const NBA_MARKET_DEF_LABEL = {
+  pts: "scoring defense", reb: "rebounds allowed", ast: "assists allowed",
+  stl: "steals forced", blk: "shots blocked", stk: "stocks allowed",
+  pra: "PRA allowed", ra: "RA allowed", pr: "PR allowed", pa: "PA allowed",
+  "3pm": "3PM allowed", "3pa": "3PA allowed", ftm: "FTM allowed", fta: "FTA allowed",
+};
+
+const nbaDefCategoryCache = {};
+function getNBADefRank(market, opp) {
+  const range = NBA_MARKET_DEF_RANGE[market];
+  if (!range) return TEAM_DEF[opp]; // dd/td -- no single-stat defensive concept
+  if (!nbaDefCategoryCache[market]) {
+    const seed = 5300 + (hashStr(market) % 5000);
+    nbaDefCategoryCache[market] = buildDefenseCategoryFor(TEAMS, seed, range[0], range[1]);
+  }
+  return nbaDefCategoryCache[market][opp];
+}
+function nbaDefCategoryLabel(market) {
+  return NBA_MARKET_DEF_LABEL[market] || "overall defense";
+}
+
+const WNBA_MARKET_CATEGORY = {
+  pts: "Points", reb: "Rebounds", ast: "Assists", pra: "Combos", ra: "Combos", pr: "Combos", pa: "Combos",
+  "3pm": "Shooting", stl: "Steals", blk: "Blocks", dd: "Double-Doubles", td: "Double-Doubles",
+};
+const WNBA_FEED_CATEGORIES = ["All", "Points", "Rebounds", "Assists", "Combos", "Shooting", "Steals", "Blocks", "Double-Doubles"];
+
+// Same per-market defensive-ranking idea as the NBA feed above, just seeded
+// off the WNBA's own team pool and scaled down to WNBA-realistic per-game
+// ranges (lower scoring/pace than the NBA).
+const WNBA_MARKET_DEF_RANGE = {
+  pts: [78, 10], reb: [33, 6], ast: [19, 6], pra: [128, 14], ra: [50, 10], pr: [110, 12], pa: [96, 12],
+  "3pm": [8, 3], stl: [6, 2.5], blk: [3.5, 2],
+};
+const WNBA_MARKET_DEF_LABEL = {
+  pts: "scoring defense", reb: "rebounds allowed", ast: "assists allowed",
+  pra: "PRA allowed", ra: "RA allowed", pr: "PR allowed", pa: "PA allowed",
+  "3pm": "3PM allowed", stl: "steals forced", blk: "shots blocked",
+};
+const wnbaDefCategoryCache = {};
+function getWNBADefRank(market, opp) {
+  const range = WNBA_MARKET_DEF_RANGE[market];
+  if (!range) return WNBA_TEAM_DEF[opp];
+  if (!wnbaDefCategoryCache[market]) {
+    const seed = 7300 + (hashStr(market) % 5000);
+    wnbaDefCategoryCache[market] = buildDefenseCategoryFor(WNBA_TEAMS, seed, range[0], range[1]);
+  }
+  return wnbaDefCategoryCache[market][opp];
+}
+function wnbaDefCategoryLabel(market) {
+  return WNBA_MARKET_DEF_LABEL[market] || "overall defense";
+}
+
+// Same row-building approach as buildNBAFeedRows, over the WNBA's real
+// tonight/tomorrow rosters and its own curated market list.
+function buildWNBAFeedRows() {
+  const rows = [];
+  ALL_WNBA_PLAYERS.forEach((player, pi) => {
+    const games = genWNBAGames(player, pi);
+    const nextOpp = games[games.length - 1].opp;
+    const gameDate = matchupDateForPlayer(WNBA_MATCHUPS, player.id);
+    wnbaPlayerMarkets(player).forEach((m) => {
+      const isBinary = m.id === "dd" || m.id === "td";
+      const def = getWNBADefRank(m.id, nextOpp);
+      const rank = def.rank;
+      const tier = defTier(rank);
+      const values = games.map((g) => statValue(g, m.id));
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const line = isBinary ? 0.5 : fairFeedLine(values);
+      const hit = isBinary ? (v) => v === 1 : (v) => v > line;
+      const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
+      rows.push({
+        key: `wnba_${player.id}_${m.id}`,
+        playerId: player.id,
+        marketId: m.id,
+        category: WNBA_MARKET_CATEGORY[m.id],
+        icon: wnbaTeamLogo(player.team),
+        name: player.name,
+        team: player.team,
+        date: gameDate,
+        subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
+        opp: nextOpp,
+        rank, tier, rankLabel: wnbaDefCategoryLabel(m.id),
+        l5: hitRateWindow(values, 5, hit),
+        l10: hitRateWindow(values, 10, hit),
+        l20: hitRateWindow(values, 20, hit),
+        values, line, isBinary, variance,
+      });
+    });
+  });
+  return rows;
+}
+
+const NFL_MARKET_CATEGORY = {
+  passYds: "Passing", passTd: "Passing", passAtt: "Passing", passRushYds: "Passing", comp: "Passing", int: "Passing",
+  rushYds: "Rushing", rushAtt: "Rushing",
+  rec: "Receiving", recYds: "Receiving", longRec: "Receiving", scrim: "Receiving",
+  anytimeTd: "Touchdowns",
+  fgm: "Kicking", fga: "Kicking", xpm: "Kicking", kickPts: "Kicking",
+};
+const NFL_FEED_CATEGORIES = ["All", "Passing", "Rushing", "Receiving", "Touchdowns", "Kicking"];
+
+const MLB_MARKET_CATEGORY = {
+  h: "Core", r: "Core", rbi: "Core", hrrbi: "Core",
+  hr: "Power", tb: "Power",
+  bb: "Discipline", so: "Discipline", sb: "Discipline",
+  p_k: "Pitching", p_outs: "Pitching", p_er: "Pitching", p_h: "Pitching", p_bb: "Pitching",
+};
+const MLB_FEED_CATEGORIES = ["All", "Core", "Power", "Discipline", "Pitching"];
+
+// Same idea as the NFL feed's per-market defensive ranking, applied to both
+// sides of the ball: for batter props this is the opponent pitching staff's
+// rate allowed in that category; for pitcher props (p_*) it's the opposing
+// lineup's rate produced against that category. Either way, one team's
+// hits-allowed and home-runs-allowed are different numbers in reality, so
+// the OPP RANK badge shouldn't reuse one overall run-prevention rating for
+// every market.
+const MLB_MARKET_DEF_RANGE = {
+  h: [8.6, 2.0], r: [4.3, 1.6], rbi: [4.1, 1.6], hrrbi: [8.0, 2.4],
+  hr: [1.1, 0.7], tb: [14.5, 3.5],
+  bb: [3.1, 1.4], so: [8.4, 2.6], sb: [0.5, 0.5],
+  p_k: [8.0, 2.6], p_outs: [16.5, 3.5], p_er: [3.6, 1.6], p_h: [7.8, 2.2], p_bb: [2.9, 1.3],
+};
+const MLB_MARKET_DEF_LABEL = {
+  h: "hits allowed", r: "runs allowed", rbi: "RBI allowed", hrrbi: "H+R+RBI allowed",
+  hr: "home runs allowed", tb: "total bases allowed",
+  bb: "walks allowed", so: "strikeout rate forced", sb: "steals allowed",
+  p_k: "opponent strikeout rate", p_outs: "opponent at-bat efficiency",
+  p_er: "opponent run production", p_h: "opponent contact rate", p_bb: "opponent plate discipline",
+};
+
+const mlbDefCategoryCache = {};
+function getMLBDefRank(market, opp) {
+  const range = MLB_MARKET_DEF_RANGE[market];
+  if (!range) return MLB_TEAM_DEF[opp];
+  if (!mlbDefCategoryCache[market]) {
+    const seed = 6300 + (hashStr(market) % 5000);
+    mlbDefCategoryCache[market] = buildDefenseCategoryFor(MLB_TEAMS, seed, range[0], range[1]);
+  }
+  return mlbDefCategoryCache[market][opp];
+}
+function mlbDefCategoryLabel(market) {
+  return MLB_MARKET_DEF_LABEL[market] || "run prevention";
+}
+
+// Hit rate over the trailing n games (or the whole sample for n === "all"),
+// falling back gracefully when a player has fewer than n games logged.
+function hitRateWindow(values, n, hit) {
+  const w = n === "all" ? values : values.slice(-n);
+  if (!w.length) return 0;
+  return w.filter(hit).length / w.length;
+}
+
+// A fair line for the feed's odds column, distinct from the single-player
+// pages' default line (ceilToHalfOdd(avg), which rounds up to/above the mean
+// on purpose so a dragged-in-place threshold starts just above a player's
+// typical output). Using that same ceil-of-average line here meant "Over"
+// hit less than half the time on almost every row, so every odds price came
+// out positive/underdog. This instead picks the threshold that splits the
+// player's own sample close to 50/50 (their median, minus a half step so
+// ties count as hits), so a real hot streak still prices as a favorite
+// (negative) and a cold one as an underdog (positive), the way a book's line
+// actually behaves, instead of every row skewing to the same side.
+function fairFeedLine(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted[Math.floor((sorted.length - 1) / 2)];
+  return Math.max(0.5, mid - 0.5);
+}
+
+// Converts a hit-rate probability into an American odds price, the same
+// vig-free implied-probability relationship real sportsbooks approximate.
+// Clamped to the +/-1000 band the Prop Feed now enforces as its max odds
+// range (see ODDS_PROB_LOW/ODDS_PROB_HIGH) so a displayed number never
+// exceeds what the feed actually allows through.
+function probToAmericanOdds(p) {
+  const prob = Math.min(ODDS_PROB_HIGH, Math.max(ODDS_PROB_LOW, p));
+  return prob >= 0.5
+    ? Math.round((-100 * prob) / (1 - prob))
+    : Math.round((100 * (1 - prob)) / prob);
+}
+function formatOdds(o) {
+  return o > 0 ? `+${o}` : String(o);
+}
+function americanToDecimal(o) {
+  return o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o);
+}
+function decimalToAmerican(d) {
+  return d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1));
+}
+// Multiplies each leg's decimal odds together for the combined parlay price
+// -- the standard way sportsbooks combine independent legs into one payout.
+function combineParlayOdds(americanOddsList) {
+  if (americanOddsList.length === 0) return null;
+  const combinedDecimal = americanOddsList.reduce((acc, o) => acc * americanToDecimal(o), 1);
+  return decimalToAmerican(combinedDecimal);
+}
+// Deep-links go to each book's sportsbook landing page rather than a
+// prefilled bet slip -- none of these books expose a public API for
+// injecting picks into a slip, so "add to sportsbook" means "open the
+// book with your picks in hand," not an automatic add.
+const SPORTSBOOKS = [
+  { id: "draftkings", label: "DraftKings", url: "https://sportsbook.draftkings.com/" },
+  { id: "fanduel", label: "FanDuel", url: "https://sportsbook.fanduel.com/" },
+  { id: "betmgm", label: "BetMGM", url: "https://sports.betmgm.com/" },
+  { id: "caesars", label: "Caesars", url: "https://www.caesars.com/sportsbook-and-casino" },
+  { id: "espnbet", label: "ESPN BET", url: "https://espnbet.com/" },
+  { id: "fanatics", label: "Fanatics", url: "https://sportsbook.fanatics.com/" },
+];
+// The Prop Feed's odds range is hard-capped to American odds of -1000/+1000
+// -- anything outside that band (extreme favorites/longshots, e.g. a
+// Triple-Double prop that hits 0% or 100% of the time) is excluded from the
+// feed entirely rather than just hidden behind an untouched slider. These
+// are the hit-rate probabilities that correspond exactly to -1000 and +1000.
+const ODDS_PROB_LOW = 1 / 11; // +1000
+const ODDS_PROB_HIGH = 10 / 11; // -1000
+// Converts the odds slider's uniform 4-96 encoded position into a hit-rate
+// probability, linearly spanning [ODDS_PROB_HIGH, ODDS_PROB_LOW] (highest
+// probability/most-favorite at x=4, lowest/most-underdog at x=96) -- see the
+// oddsMinX/oddsMaxX comment in PropFeedPage. Because the full 4-96 range
+// itself now maps exactly onto -1000..+1000, there's no separate "beyond the
+// slider" filter needed -- the slider's own extremes are the hard cutoff.
+function oddsSliderProb(x) {
+  return ODDS_PROB_HIGH - ((x - 4) / 92) * (ODDS_PROB_HIGH - ODDS_PROB_LOW);
+}
+function formatFeedDay(dateStr) {
+  return new Date(dateStr).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+// Builds one feed row per player/market combo, reusing the exact same mock
+// game logs and statValue/statValueNFL math as the single-player pages so
+// the numbers stay consistent between the two views.
+function buildNBAFeedRows() {
+  const rows = [];
+  PLAYERS.forEach((player, pi) => {
+    const games = genGames(player, pi);
+    const nextOpp = games[games.length - 1].opp;
+    MARKETS.forEach((m) => {
+      const isBinary = m.id === "dd" || m.id === "td";
+      const def = getNBADefRank(m.id, nextOpp);
+      const rank = def.rank;
+      const tier = defTier(rank);
+      const values = games.map((g) => statValue(g, m.id));
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const line = isBinary ? 0.5 : fairFeedLine(values);
+      const hit = isBinary ? (v) => v === 1 : (v) => v > line;
+      const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
+      rows.push({
+        key: `nba_${player.id}_${m.id}`,
+        playerId: player.id,
+        marketId: m.id,
+        category: NBA_MARKET_CATEGORY[m.id],
+        icon: nbaTeamLogo(player.team),
+        name: player.name,
+        team: player.team,
+        subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
+        opp: nextOpp,
+        rank, tier, rankLabel: nbaDefCategoryLabel(m.id),
+        l5: hitRateWindow(values, 5, hit),
+        l10: hitRateWindow(values, 10, hit),
+        l20: hitRateWindow(values, 20, hit),
+        values, line, isBinary, variance,
+      });
+    });
+  });
+  return rows;
+}
+
+// Looks up which matchup a player belongs to (searching both rosters) and
+// returns its game date, so feed rows can be filtered by "which day is this
+// player's game on" -- independent of the synthetic historical opponent
+// used for the hit-rate math.
+function matchupDateForPlayer(matchups, playerId) {
+  const m = matchups.find((mu) => mu.teamA.players.some((p) => p.id === playerId) || mu.teamB.players.some((p) => p.id === playerId));
+  return m ? m.date : null;
+}
+
+function buildNFLFeedRows() {
+  const rows = [];
+  ALL_NFL_PLAYERS.forEach((player) => {
+    const games = getNFLGames(player);
+    if (!games.length) return;
+    const nextOpp = games[games.length - 1].opp;
+    const gameDate = matchupDateForPlayer(NFL_MATCHUPS, player.id);
+    const applicableMarkets = NFL_MARKETS.filter((m) => m.pos.includes(player.pos));
+    applicableMarkets.forEach((m) => {
+      const isBinary = false;
+      const values = games.map((g) => statValueNFL(g, m.id));
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const line = isBinary ? 0.5 : fairFeedLine(values);
+      const hit = isBinary ? (v) => v === 1 : (v) => v > line;
+      const def = getNFLDefRank(m.id, player.pos, nextOpp);
+      const tier = nflDefTier(def.rank);
+      const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
+      rows.push({
+        key: `nfl_${player.id}_${m.id}`,
+        playerId: player.id,
+        marketId: m.id,
+        category: NFL_MARKET_CATEGORY[m.id],
+        icon: nflTeamLogo(player.team),
+        name: player.name,
+        team: player.team,
+        date: gameDate,
+        subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
+        opp: nextOpp,
+        rank: def.rank, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
+        l5: hitRateWindow(values, 5, hit),
+        l10: hitRateWindow(values, 10, hit),
+        l20: hitRateWindow(values, 20, hit),
+        values, line, isBinary, variance,
+      });
+    });
+  });
+  return rows;
+}
+
+// Builds MLB feed rows from live-fetched per-player game logs plus the
+// Yankees' actual next opponent (see fetchYankeesNextGame) -- unlike the NBA/
+// NFL builders above, this one takes data in rather than generating it, so
+// fetching stays in the page effect and this stays a pure function.
+function buildMLBFeedRows(gameLogsById, nextGame) {
+  if (!nextGame) return [];
+  const rows = [];
+  MLB_PLAYERS.forEach((player) => {
+    const games = gameLogsById[player.id] || [];
+    if (!games.length) return;
+    MLB_MARKETS.forEach((m) => {
+      const def = getMLBDefRank(m.id, nextGame.opp);
+      const rank = def.rank;
+      const tier = mlbDefTier(rank);
+      const values = games.map((g) => statValueMLB(g, m.id));
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const line = fairFeedLine(values);
+      const hit = (v) => v > line;
+      const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
+      rows.push({
+        key: `mlb_${player.id}_${m.id}`,
+        playerId: player.id,
+        marketId: m.id,
+        category: MLB_MARKET_CATEGORY[m.id],
+        icon: mlbTeamLogo(player.team),
+        name: player.name,
+        team: player.team,
+        date: nextGame.date,
+        subtitle: `Over ${line} ${m.label}`,
+        opp: nextGame.opp,
+        rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
+        l5: hitRateWindow(values, 5, hit),
+        l10: hitRateWindow(values, 10, hit),
+        l20: hitRateWindow(values, 20, hit),
+        values, line, isBinary: false, variance,
+      });
+    });
+  });
+  return rows;
+}
+
+// Pitcher props are scoped to whoever is actually announced to start the
+// Yankees' next game (see fetchYankeesNextGame's probablePitcher field) --
+// not the full staff -- so this rolls to the new starter automatically
+// once one is announced, same cadence as the rest of the feed.
+function buildMLBPitcherFeedRows(games, pitcher, nextGame) {
+  if (!pitcher || !games || !games.length || !nextGame) return [];
+  const rows = [];
+  const rosterEntry = ALL_MLB_PLAYERS.find((p) => p.mlbId === pitcher.mlbId);
+  MLB_PITCHER_MARKETS.forEach((m) => {
+    const def = getMLBDefRank(m.id, nextGame.opp);
+    const rank = def.rank;
+    const tier = mlbDefTier(rank);
+    const values = games.map((g) => statValueMLBPitcher(g, m.id));
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const line = fairFeedLine(values);
+    const hit = (v) => v > line;
+    const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
+    rows.push({
+      key: `mlb_pitcher_${pitcher.mlbId}_${m.id}`,
+      playerId: rosterEntry?.id,
+      marketId: m.id,
+      category: MLB_MARKET_CATEGORY[m.id],
+      icon: mlbTeamLogo("NYY"),
+      name: pitcher.name,
+      team: "NYY",
+      date: nextGame.date,
+      subtitle: `Over ${line} ${m.label}`,
+      opp: nextGame.opp,
+      rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
+      l5: hitRateWindow(values, 5, hit),
+      l10: hitRateWindow(values, 10, hit),
+      l20: hitRateWindow(values, 20, hit),
+      values, line, isBinary: false, variance,
+    });
+  });
+  return rows;
+}
+
+const FEED_SPORTS = [
+  { id: "nba", label: "NBA", available: true },
+  { id: "nfl", label: "NFL", available: true },
+  { id: "mlb", label: "MLB", available: true },
+  { id: "wnba", label: "WNBA", available: true },
+];
+
+// How many teams' worth of defensive ranks exist for each sport -- sets the
+// upper bound of the Defense Rank Range slider (rank 1 = toughest matchup,
+// rank N = easiest, same convention as every OPP RANK badge in the feed).
+function feedTeamCount(sport) {
+  return sport === "nba" ? TEAMS.length : sport === "wnba" ? WNBA_TEAMS.length : sport === "nfl" ? NFL_TEAMS.length : MLB_TEAMS.length;
+}
+
+// Sort options for the feed list. Hit rate (for whichever L5/L10/L20
+// window is selected) is always the primary sort now -- these modes only
+// break ties among equal hit rates, so they're framed as secondary
+// research axes (opponent matchup, consistency, momentum) rather than
+// full replacements for the hit-rate ordering. defaultDir is applied
+// whenever the user switches modes, then the direction chip can flip it.
+const FEED_SORT_MODES = [
+  {
+    id: "matchup", label: "Easiest Matchup", metric: (r) => r.rank, defaultDir: "desc",
+    description: "Ranks by how vulnerable the opponent is in that specific stat (not their overall record) -- e.g. a team can be a bottom-5 defense vs. 3PM but still be tough against rebounds. #1 is the toughest matchup for this stat, higher numbers are easier.",
+  },
+  {
+    id: "variance", label: "Most Consistent", metric: (r) => r.variance, defaultDir: "asc",
+    description: "Ranks by how little a player's results swing game to game. Low variance means steady, predictable output -- useful if you want to avoid boom-or-bust props even if the average hit rate is similar.",
+  },
+  {
+    id: "trend", label: "Trending Up", metric: (r) => r.l5 - r.l20, defaultDir: "desc",
+    description: "Ranks by recent form (L5) compared to season-long form (L20) -- surfaces players heating up right now relative to their own baseline, not just whoever has the highest raw hit rate.",
+  },
+];
+
+// L5/L10/L20 sample-size window -- a single global switcher (not per row)
+// that drives every row's displayed hit rate, its odds, and the "Highest
+// Hit Rate" sort mode -- shared across all three sports' feeds since they
+// all carry the same l5/l10/l20 fields.
+const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"]];
+
+// One global segmented control for the L5/L10/L20 sample-size window --
+// previously this was three separate buttons repeated on every row, which
+// made it look like a per-player toggle even though picking one actually
+// changed the whole feed's odds/sort. Pulling it out to a single control
+// above the list makes the "this affects everything" behavior obvious.
+// Label is rendered by the caller (see the FEED_LABEL_STYLE row layout in
+// PropFeedPage) so this lines up in the same label/control column as the
+// other feed filter rows instead of carrying its own separately-styled label.
+function WindowSwitcher({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+      {FEED_WINDOWS.map(([label, key], idx) => (
+        <div
+          key={key}
+          className="mono"
+          onClick={() => onChange(key)}
+          title={`Show ${label} hit rate everywhere`}
+          style={{
+            cursor: "pointer",
+            padding: "6px 16px",
+            fontSize: 12.5,
+            fontWeight: 700,
+            borderLeft: idx === 0 ? "none" : "1px solid var(--line)",
+            background: value === key ? "var(--amber)" : "var(--panel)",
+            color: value === key ? "#15171b" : "var(--dim)",
+            transition: "background .15s ease, color .15s ease",
+          }}
+        >
+          {label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Shared label style for the feed's filter-row form (TEAM / GAME DAY / SAMPLE
+// SIZE / SORT BY) -- a fixed width + right-aligned text means every row's
+// control starts at the same x position, so the whole block reads as one
+// neatly aligned form instead of each row centering independently at
+// whatever width its own label+control happen to add up to.
+// Label sits on its own centered line above the control, rather than beside
+// it -- putting label+control side by side means the control's own midpoint
+// is offset from center by however wide the label happens to be (a longer
+// label like "SAMPLE SIZE" pushes its control further right than a short one
+// like "TEAM"), so no single fixed layout keeps every control's actual
+// midpoint on the true page center. Stacking removes that coupling: each
+// control centers independently of its label's width.
+const FEED_LABEL_STYLE = { fontSize: 12, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.04em" };
+const FEED_FILTER_ROW_STYLE = { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 };
+const FEED_CONTROL_WIDTH = 190;
+
+function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
+  const [sport, setSport] = useState("nba");
+  const [category, setCategory] = useState("All");
+  const [sampleWindow, setSampleWindow] = useState("l10");
+  const [sortMode, setSortMode] = useState("matchup");
+  const [sortDir, setSortDir] = useState("desc");
+  const [showSortInfo, setShowSortInfo] = useState(false);
+  const [sortInfoHover, setSortInfoHover] = useState(false);
+
+  // Odds range filter. The slider itself drags a uniform 4-96 "encoded"
+  // position (so dragging feels smooth), which is converted to a hit-rate
+  // probability via oddsSliderProb -- probability falls as the encoded
+  // value rises, so the left handle lands on the most negative/favorite
+  // odds and the right handle on the most positive/underdog odds, matching
+  // how odds read left-to-right on a real sportsbook board.
+  const [oddsMinX, setOddsMinX] = useState(4);
+  const [oddsMaxX, setOddsMaxX] = useState(96);
+
+  // Defense rank range filter -- rank 1 (toughest) to rank N (easiest),
+  // N depends on how many teams that sport has. Resets to the full range
+  // whenever the sport switches since the scale (15/30/31/30 teams) changes.
+  const [rankLo, setRankLo] = useState(1);
+  const [rankHi, setRankHi] = useState(feedTeamCount("nba"));
+
+  // Team and game-day filters -- "all" means no filtering. Both reset to
+  // "all" whenever the sport switches since the option lists are sport-
+  // specific (different teams, different scheduled dates).
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [dayFilter, setDayFilter] = useState("all");
+
+  const nbaRows = useMemo(() => buildNBAFeedRows(), []);
+  const wnbaRows = useMemo(() => buildWNBAFeedRows(), []);
+  const nflRows = useMemo(() => buildNFLFeedRows(), []);
+
+  // MLB rows depend on live data (per-player game logs + the Yankees' actual
+  // next opponent/probable starter), so they're fetched in an effect and
+  // handed to the pure buildMLBFeedRows/buildMLBPitcherFeedRows builders
+  // rather than generated synchronously like NBA/NFL.
+  const [mlbGameLogs, setMlbGameLogs] = useState(null);
+  const [mlbNextGame, setMlbNextGame] = useState(null);
+  const [mlbPitcherGames, setMlbPitcherGames] = useState(null);
+  const [mlbLoading, setMlbLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (sport !== "mlb") return;
+    let cancelled = false;
+    const load = () => {
+      setMlbLoading((prev) => (mlbGameLogs ? prev : true));
+      fetchYankeesNextGame()
+        .then((nextGame) => {
+          if (cancelled) return null;
+          setMlbNextGame(nextGame);
+          // Only the announced probable starter's log is fetched -- pitcher
+          // props roll to whoever that is once MLB names a new one.
+          return Promise.all([
+            Promise.all(MLB_PLAYERS.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
+            nextGame?.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
+          ]);
+        })
+        .then((result) => {
+          if (cancelled || !result) return;
+          const [entries, pitcherGames] = result;
+          setMlbGameLogs(Object.fromEntries(entries));
+          setMlbPitcherGames(pitcherGames);
+          setMlbLoading(false);
+        })
+        .catch(() => { if (!cancelled) setMlbLoading(false); });
+    };
+    load();
+    const interval = setInterval(load, MLB_GAMELOG_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [sport]);
+
+  const mlbRows = useMemo(() => {
+    if (!mlbGameLogs || !mlbNextGame) return [];
+    const batterRows = buildMLBFeedRows(mlbGameLogs, mlbNextGame);
+    const pitcherRows = buildMLBPitcherFeedRows(mlbPitcherGames, mlbNextGame.probablePitcher, mlbNextGame);
+    return [...batterRows, ...pitcherRows];
+  }, [mlbGameLogs, mlbNextGame, mlbPitcherGames]);
+
+  const rows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
+  const categories = sport === "nba" ? NBA_FEED_CATEGORIES : sport === "wnba" ? WNBA_FEED_CATEGORIES : sport === "nfl" ? NFL_FEED_CATEGORIES : MLB_FEED_CATEGORIES;
+
+  const maxRank = feedTeamCount(sport);
+  React.useEffect(() => {
+    setCategory("All");
+    setRankLo(1);
+    setRankHi(feedTeamCount(sport));
+    setTeamFilter("all");
+    setDayFilter("all");
+  }, [sport]);
+
+  // Option lists for the Team/Game Day dropdowns -- built off the full
+  // per-sport row set (not the category-filtered one) so switching category
+  // never hides a team/day that's still available under "All".
+  const teamOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.team))).sort(), [rows]);
+  const dayOptions = useMemo(() => {
+    const days = Array.from(new Set(rows.map((r) => r.date).filter(Boolean)));
+    return days.sort((a, b) => new Date(a) - new Date(b));
+  }, [rows]);
+
+  const categoryRows = category === "All" ? rows : rows.filter((r) => r.category === category);
+
+  // Odds range: the left handle (oddsMinX) maps to the highest probability
+  // in range (most negative/favorite odds bound) and the right handle
+  // (oddsMaxX) maps to the lowest probability in range (most positive/
+  // underdog odds bound) -- see oddsSliderProb. The slider's own extremes
+  // (x=4/x=96) now line up exactly with -1000/+1000 odds, so props more
+  // extreme than that (e.g. a Triple-Double at 0%/100% hit rate) are always
+  // excluded from the feed, even with the slider untouched. That's an
+  // intentional cutoff, not a bug -- can be loosened again in the future.
+  const oddsLoProb = oddsSliderProb(oddsMaxX);
+  const oddsHiProb = oddsSliderProb(oddsMinX);
+  const filteredRows = categoryRows.filter((r) => {
+    const p = r[sampleWindow];
+    if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
+    if (r.rank < rankLo || r.rank > rankHi) return false;
+    if (teamFilter !== "all" && r.team !== teamFilter) return false;
+    if (dayFilter !== "all" && r.date !== dayFilter) return false;
+    return true;
+  });
+
+  const activeSortMode = FEED_SORT_MODES.find((mo) => mo.id === sortMode);
+
+  // Hit rate (for whichever sample size is selected) is always the primary
+  // sort key so the list never looks "scrambled" relative to %. Picking a
+  // different Sort By mode doesn't replace that -- it just breaks ties
+  // among equal hit rates using that mode's metric, so e.g. "Easiest
+  // Matchup" surfaces the easiest matchup among the 100% hits first, then
+  // the easiest among the 90% hits, and so on, instead of ignoring % entirely.
+  const sortedRows = useMemo(() => {
+    const copy = [...filteredRows];
+    copy.sort((a, b) => {
+      const aHit = a[sampleWindow], bHit = b[sampleWindow];
+      if (bHit !== aHit) return bHit - aHit;
+      const av = activeSortMode.metric(a, sampleWindow);
+      const bv = activeSortMode.metric(b, sampleWindow);
+      return sortDir === "desc" ? bv - av : av - bv;
+    });
+    return copy;
+  }, [filteredRows, sampleWindow, sortMode, sortDir]);
+
+  return (
+    <div className="page-shell" style={{ maxWidth: 900, margin: "0 auto", boxSizing: "border-box" }}>
+      {/* Sport switcher */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {FEED_SPORTS.map((s) => (
+          <div
+            key={s.id}
+            className="oswald"
+            onClick={() => s.available && setSport(s.id)}
+            title={s.available ? undefined : "Coming soon"}
+            style={{
+              cursor: s.available ? "pointer" : "not-allowed",
+              padding: "8px 20px",
+              borderRadius: 4,
+              fontSize: 13,
+              fontWeight: 600,
+              letterSpacing: "0.03em",
+              border: `1px solid ${sport === s.id ? "var(--amber)" : "var(--line)"}`,
+              background: sport === s.id ? "var(--amber-dim)" : "var(--panel)",
+              color: !s.available ? "#4a5361" : sport === s.id ? "var(--amber)" : "var(--dim)",
+              opacity: s.available ? 1 : 0.6,
+            }}
+          >
+            {s.label}
+          </div>
+        ))}
+      </div>
+
+      {/* Next matchup banner (MLB only, live schedule data) */}
+      {sport === "mlb" && mlbNextGame && (
+        <div style={{ textAlign: "center", marginBottom: 14, fontSize: 13, color: "var(--dim)" }}>
+          Next: Yankees {mlbNextGame.home ? "vs" : "@"} <span style={{ color: "var(--text)", fontWeight: 600 }}>{mlbNextGame.opp}</span>
+          {" — "}{new Date(mlbNextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+          {" · "}{mlbNextGame.status}
+          {mlbNextGame.probablePitcher && (
+            <>{" · "}Probable: <span style={{ color: "var(--text)", fontWeight: 600 }}>{mlbNextGame.probablePitcher.name}</span></>
+          )}
+        </div>
+      )}
+
+      {/* Category filter */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {categories.map((c) => (
+          <div key={c} className={`chip ${category === c ? "active" : ""}`} onClick={() => setCategory(c)}>
+            {c}
+          </div>
+        ))}
+      </div>
+
+      {/* Team + Game Day filters -- Game Day only shows up when this sport's
+          rows actually carry real scheduled dates (NFL/WNBA/MLB span
+          multiple real matchups; NBA is a single fixed matchup with no
+          date to filter by). */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div style={FEED_FILTER_ROW_STYLE}>
+          <span className="oswald" style={FEED_LABEL_STYLE}>TEAM</span>
+          <select className="select" style={{ width: FEED_CONTROL_WIDTH }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+            <option value="all">All teams</option>
+            {teamOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+        {dayOptions.length > 0 && (
+          <div style={FEED_FILTER_ROW_STYLE}>
+            <span className="oswald" style={FEED_LABEL_STYLE}>GAME DAY</span>
+            <select className="select" style={{ width: FEED_CONTROL_WIDTH }} value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}>
+              <option value="all">All days</option>
+              {dayOptions.map((d) => (
+                <option key={d} value={d}>{formatFeedDay(d)}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div style={FEED_FILTER_ROW_STYLE}>
+          <span className="oswald" style={FEED_LABEL_STYLE}>SAMPLE SIZE</span>
+          <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
+        </div>
+        <div style={FEED_FILTER_ROW_STYLE}>
+          <span className="oswald" style={FEED_LABEL_STYLE}>SORT BY</span>
+          {/* The "i" info button sits absolutely positioned just outside the
+              select's right edge rather than as a normal flex sibling -- as a
+              sibling it widens the row and pulls the select's own center left
+              of true page-center; positioned this way the select alone
+              determines centering and the icon just rides along beside it. */}
+          <div style={{ position: "relative", display: "flex" }}>
+            <select
+              className="select"
+              style={{ width: FEED_CONTROL_WIDTH }}
+              value={sortMode}
+              onChange={(e) => {
+                const mode = FEED_SORT_MODES.find((mo) => mo.id === e.target.value);
+                setSortMode(mode.id);
+                setSortDir(mode.defaultDir);
+              }}
+            >
+              {FEED_SORT_MODES.map((mo) => (
+                <option key={mo.id} value={mo.id}>{mo.label}</option>
+              ))}
+            </select>
+            <div style={{ position: "absolute", left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 8 }}>
+              <div
+                onClick={() => setShowSortInfo((v) => !v)}
+                onMouseEnter={() => setSortInfoHover(true)}
+                onMouseLeave={() => setSortInfoHover(false)}
+                role="button"
+                aria-expanded={showSortInfo}
+                className="mono"
+                style={{
+                  cursor: "pointer",
+                  width: 20, height: 20, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 12, fontWeight: 700,
+                  border: `1px solid ${showSortInfo ? "var(--amber)" : "var(--line)"}`,
+                  color: showSortInfo ? "var(--amber)" : "var(--dim)",
+                  background: showSortInfo ? "var(--amber-dim)" : "transparent",
+                }}
+              >
+                i
+              </div>
+              {sortInfoHover && (
+                // Opens upward (bottom-anchored) rather than downward -- a
+                // downward tooltip's height depends on how much room the rows
+                // below happen to leave, which varies as filters are added/
+                // removed. Anchoring to the icon's own bottom edge means it
+                // never depends on that and can't overlap the Odds Range
+                // slider beneath it.
+                <div
+                  className="mono"
+                  style={{
+                    position: "absolute", bottom: 26, right: 0, zIndex: 10,
+                    width: 200, padding: "8px 10px",
+                    background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
+                    fontSize: 11.5, color: "var(--text)", lineHeight: 1.4,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  Click to see what each sort option means and how to use it.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sort mode explainer -- collapsed by default so it doesn't add
+          visual noise for users who already know what each option does.
+          Sits here (before the High to low chip, Odds Range, and Defense
+          Rank) so expanding it pushes all three down the page together
+          instead of shoving just the feed list underneath them. */}
+      {showSortInfo && (
+        <div
+          style={{
+            marginBottom: 20, padding: "12px 14px",
+            background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
+          }}
+        >
+          {FEED_SORT_MODES.map((mo) => (
+            <div key={mo.id} style={{ marginBottom: 10 }}>
+              <div
+                className="oswald"
+                style={{ fontSize: 12.5, fontWeight: 700, color: mo.id === sortMode ? "var(--amber)" : "var(--text)" }}
+              >
+                {mo.label}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
+                {mo.description}
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 2, fontStyle: "italic" }}>
+            Use the ↓/↑ chip to flip any of these (e.g. "Most Consistent" ascending vs. descending).
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+        <div
+          className="chip"
+          onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+          title="Toggle sort direction"
+        >
+          {sortDir === "desc" ? "↓ High to low" : "↑ Low to high"}
+        </div>
+      </div>
+
+      {/* Odds range filter -- lets you exclude extreme heavy favorites
+          and/or extreme longshots so the feed only shows the odds band
+          you'd actually consider betting. */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <span className="oswald" style={{ fontSize: 12, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.04em" }}>
+            ODDS RANGE
+          </span>
+          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
+            {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMinX)))} to {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMaxX)))}
+          </span>
+          {(oddsMinX !== 4 || oddsMaxX !== 96) && (
+            <span className="chip" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => { setOddsMinX(4); setOddsMaxX(96); }}>
+              Reset
+            </span>
+          )}
+        </div>
+        <div style={{ maxWidth: 420, margin: "0 auto" }}>
+          <ThresholdSlider
+            min={4}
+            max={96}
+            step={1}
+            lo={oddsMinX}
+            hi={oddsMaxX}
+            onChangeLo={setOddsMinX}
+            onChangeHi={setOddsMaxX}
+            rangeEnabled={true}
+            onToggleRange={() => {}}
+            showToggle={false}
+          />
+        </div>
+      </div>
+
+      {/* Defense rank range filter -- pick exactly which opponent-toughness
+          band to look at (#1 = toughest matchup, #N = easiest), instead of
+          relying on the Easiest Matchup sort to surface it indirectly. */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <span className="oswald" style={{ fontSize: 12, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.04em" }}>
+            DEFENSE RANK RANGE
+          </span>
+          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
+            #{rankLo} to #{rankHi}
+          </span>
+          <span style={{ fontSize: 11, color: "var(--dim)" }}>(1 = toughest, {maxRank} = easiest)</span>
+          {(rankLo !== 1 || rankHi !== maxRank) && (
+            <span className="chip" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => { setRankLo(1); setRankHi(maxRank); }}>
+              Reset
+            </span>
+          )}
+        </div>
+        <div style={{ maxWidth: 420, margin: "0 auto" }}>
+          <ThresholdSlider
+            min={1}
+            max={maxRank}
+            step={1}
+            lo={rankLo}
+            hi={rankHi}
+            onChangeLo={setRankLo}
+            onChangeHi={setRankHi}
+            rangeEnabled={true}
+            onToggleRange={() => {}}
+            showToggle={false}
+          />
+        </div>
+      </div>
+
+      {/* Feed */}
+      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+        {sortedRows.length === 0 && (
+          <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
+            {sport === "mlb" && mlbLoading ? "Loading live Yankees matchup data…" : "No props in this category yet."}
+          </div>
+        )}
+        {sortedRows.map((r, i) => {
+          // Filled pill background for a clear favorable/unfavorable read at a
+          // glance; "mid" stays neutral so it doesn't compete visually with
+          // the amber accent used elsewhere (odds, active toggles).
+          const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--panel2)";
+          const tierFg = r.tier === "mid" ? "var(--dim)" : "#08131c";
+          const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
+          const odds = probToAmericanOdds(r[sampleWindow]);
+          const pickId = `${sport}-${r.key}`;
+          const isAdded = pickIds.has(pickId);
+          return (
+            <div
+              key={r.key}
+              className="feed-row"
+              style={{
+                display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                borderBottom: i === sortedRows.length - 1 ? "none" : "1px solid var(--line)",
+              }}
+            >
+              <img src={r.icon} alt={r.team} width={34} height={34} style={{ objectFit: "contain", flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="oswald" style={{ fontSize: 15, color: "var(--text)" }}>
+                  {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
+                </div>
+                <div style={{ fontSize: 13, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
+                  {r.subtitle}
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>OPP RANK</span>
+                  <span
+                    className="mono"
+                    title={`#${r.rank} in ${r.rankLabel}`}
+                    style={{
+                      display: "inline-block", padding: "1px 6px", borderRadius: 4,
+                      fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
+                      background: tierBg, color: tierFg,
+                    }}
+                  >
+                    #{r.rank}
+                  </span>
+                  <span>vs {r.opp}</span>
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
+                  {formatOdds(odds)}
+                </div>
+                <div
+                  className="mono"
+                  title={`Hit rate over the trailing ${sampleWindow.slice(1)} games`}
+                  style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: hrColor(r[sampleWindow]) }}
+                >
+                  {Math.round(r[sampleWindow] * 100)}%
+                  <span style={{ color: "var(--dim)", fontWeight: 600, fontSize: 11 }}> ({sampleWindow.toUpperCase()})</span>
+                </div>
+              </div>
+              <div
+                className="oswald"
+                role="button"
+                onClick={() => onTogglePick({ id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle, opp: r.opp, odds })}
+                title={isAdded ? "Remove from My Picks" : "Add to My Picks"}
+                style={{
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  width: 34, height: 34,
+                  borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 16, fontWeight: 700,
+                  border: `1px solid ${isAdded ? "var(--green)" : "var(--line)"}`,
+                  color: isAdded ? "var(--green)" : "var(--dim)",
+                  background: isAdded ? "rgba(76,175,125,0.14)" : "transparent",
+                  transition: "all .15s ease",
+                }}
+                onMouseEnter={(e) => { if (!isAdded) { e.currentTarget.style.borderColor = "var(--amber)"; e.currentTarget.style.color = "var(--amber)"; } }}
+                onMouseLeave={(e) => { if (!isAdded) { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--dim)"; } }}
+              >
+                {isAdded ? "✓" : "+"}
+              </div>
+              {r.playerId && (
+                <div
+                  className="oswald cta-btn"
+                  onClick={() => onOpenProp(sport, r.playerId, r.marketId)}
+                  title={`Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page`}
+                  style={{
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    padding: "8px 12px",
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    letterSpacing: "0.02em",
+                    border: "1px solid var(--amber)",
+                    color: "var(--amber)",
+                    background: "var(--amber-dim)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  View Chart →
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
+        {sport === "mlb"
+          ? "Live 2026 regular-season game logs (MLB Stats API) for the Yankees' next scheduled opponent."
+          : "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed."}
+      </div>
+    </div>
+  );
+}
+
+// Fills the wide left/right gutters beside the player selector and market
+// grid on desktop (the NYK/SAS Finals matchup means there's a natural
+// "other roster" to show) and doubles as a quick-switch so you don't have
+// to go back to the dropdown to compare teammates or the opposing five.
+// Below the .roster-layout breakpoint, the desktop vertical list swaps for
+// a compact horizontally-scrolling chip strip (see renderChip) instead of
+// disappearing entirely -- the quick-switch is too useful to lose on
+// mobile, it just can't afford the same vertical space there.
+function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg }) {
+  const compact = useIsNarrow(1100);
+  // Pitchers (pos "SP") get sectioned off from the batting order rather than
+  // just tacked onto the end of the list -- MLB is the only sport that
+  // populates this today, so NBA/NFL rosters (no "SP" entries) render exactly
+  // as before, just inside the same scrollable wrapper.
+  const batters = players.filter((p) => p.pos !== "SP");
+  const pitchers = players.filter((p) => p.pos === "SP");
+
+  const renderRow = (p) => {
+    const active = p.id === activeId;
+    return (
+      <div
+        key={p.id}
+        onClick={() => onSelect(p.id)}
+        style={{
+          display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 6, cursor: "pointer",
+          border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
+          background: active ? "var(--amber-dim)" : "var(--panel)",
+        }}
+      >
+        {/* A 2px inset ring around the photo, filled with the team color,
+             instead of a background color the photo could just cover edge-
+             to-edge -- some players' official photos are a plain white-
+             backdrop studio shot rather than an action shot, which would
+             otherwise hide the team color entirely and make that one
+             player look inconsistent with the rest of the roster. */}
+        <div style={{
+          position: "relative", width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+          background: avatarBg ? avatarBg(p) : "#000",
+        }}>
+          <img
+            src={headshotSrc(p)}
+            alt={p.name}
+            width={26}
+            height={26}
+            referrerPolicy="no-referrer"
+            style={{ position: "absolute", inset: 2, width: 26, height: 26, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
+            onError={(e) => {
+              const fallback = headshotFallback && headshotFallback(p);
+              if (fallback && e.currentTarget.dataset.fallback !== "1") {
+                e.currentTarget.dataset.fallback = "1";
+                e.currentTarget.src = fallback;
+              }
+            }}
+          />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div
+            className="oswald"
+            style={{
+              fontSize: 12.5, fontWeight: 600, color: active ? "var(--amber)" : "var(--text)",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}
+          >
+            {p.name}
+          </div>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>
+            {metaLine(p)}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Compact card for the mobile horizontal-scroll strip -- same tap target,
+  // active highlight, and team-color ring as renderRow, just stacked
+  // photo-over-name in a narrow fixed-width card so a whole roster can
+  // scroll sideways in a fraction of the vertical space a full-width row
+  // would take.
+  const renderChip = (p) => {
+    const active = p.id === activeId;
+    return (
+      <div
+        key={p.id}
+        onClick={() => onSelect(p.id)}
+        style={{
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+          padding: "8px 6px", borderRadius: 8, cursor: "pointer", flexShrink: 0, width: 66,
+          border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
+          background: active ? "var(--amber-dim)" : "var(--panel)",
+        }}
+      >
+        <div style={{
+          position: "relative", width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
+          background: avatarBg ? avatarBg(p) : "#000",
+        }}>
+          <img
+            src={headshotSrc(p)}
+            alt={p.name}
+            width={36}
+            height={36}
+            referrerPolicy="no-referrer"
+            style={{ position: "absolute", inset: 2, width: 36, height: 36, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
+            onError={(e) => {
+              const fallback = headshotFallback && headshotFallback(p);
+              if (fallback && e.currentTarget.dataset.fallback !== "1") {
+                e.currentTarget.dataset.fallback = "1";
+                e.currentTarget.src = fallback;
+              }
+            }}
+          />
+        </div>
+        <div
+          className="oswald"
+          style={{
+            fontSize: 10, fontWeight: 600, color: active ? "var(--amber)" : "var(--text)",
+            textAlign: "center", lineHeight: 1.25, width: "100%",
+            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}
+        >
+          {p.name}
+        </div>
+      </div>
+    );
+  };
+
+  if (compact) {
+    return (
+      <div className="roster-panel">
+        <div
+          className="oswald"
+          style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8 }}
+        >
+          {teamLabel}
+        </div>
+        {pitchers.length > 0 && (
+          <>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              Starting Pitcher
+            </div>
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid var(--line)" }}>
+              {pitchers.map(renderChip)}
+            </div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              Starting Lineup
+            </div>
+          </>
+        )}
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          {batters.map(renderChip)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="roster-panel">
+      <div
+        className="oswald"
+        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8 }}
+      >
+        {teamLabel}
+      </div>
+      {/* Capped height + scroll instead of letting the panel grow -- rows keep
+           their normal size no matter how many players are listed (batters +
+           starting pitcher), so the list scrolls rather than shrinking or
+           pushing the page layout taller. */}
+      <div style={{ maxHeight: 500, overflowY: "auto", overflowX: "hidden", paddingRight: 4 }}>
+        {pitchers.length > 0 && (
+          <>
+            <div style={{
+              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em",
+              textAlign: "center", marginBottom: 6,
+            }}>
+              Starting Pitcher
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid var(--line)" }}>
+              {pitchers.map(renderRow)}
+            </div>
+            <div style={{
+              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em",
+              textAlign: "center", marginBottom: 6,
+            }}>
+              Starting Lineup
+            </div>
+          </>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {batters.map(renderRow)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Fills the same wide left/right gutters as TeamRosterPanel, but for pages
+// where only one real roster is modeled (NFL/MLB currently have just the
+// Cowboys/Yankees) -- instead of an opposing roster to switch to, this shows
+// the team's actual next real-world matchup (live for MLB via
+// fetchYankeesNextGame, static schedule lookup for NFL) so the space still
+// does something useful rather than sitting empty.
+function MatchupPanel({ title, opponentAbbr, opponentLogo, lines, loading }) {
+  return (
+    <div className="roster-panel">
+      <div
+        className="oswald"
+        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8 }}
+      >
+        {title}
+      </div>
+      <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, padding: "16px 12px", textAlign: "center" }}>
+        {loading ? (
+          <div className="mono" style={{ fontSize: 11, color: "var(--dim)" }}>Loading…</div>
+        ) : (
+          <>
+            {opponentAbbr && (
+              <img
+                src={opponentLogo}
+                alt={opponentAbbr}
+                width={56}
+                height={56}
+                style={{ objectFit: "contain", marginBottom: 10 }}
+                onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
+              />
+            )}
+            {lines.map((line, i) => (
+              <div
+                key={i}
+                className={i === 0 ? "oswald" : "mono"}
+                style={{
+                  fontSize: i === 0 ? 14 : 10.5,
+                  fontWeight: i === 0 ? 600 : 500,
+                  color: i === 0 ? "var(--text)" : "var(--dim)",
+                  marginTop: i === 0 ? 0 : 4,
+                  textTransform: i === 0 ? "none" : "uppercase",
+                  letterSpacing: i === 0 ? "normal" : "0.04em",
+                }}
+              >
+                {line}
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Horizontal scroll row with left/right arrow buttons -- used for the top
+// nav so it can hold more page tabs than fit on a phone screen without
+// wrapping to a second line. Arrows only render once there's actually
+// somewhere to scroll (checked on mount/scroll/resize), and clicking one
+// scrolls by roughly one tab's width rather than jumping to the end.
+function HScrollNav({ children }) {
+  const trackRef = React.useRef(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  const updateArrows = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+  };
+
+  React.useEffect(() => {
+    requestAnimationFrame(updateArrows);
+    const onResize = () => updateArrows();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const scrollByPage = (dir) => {
+    trackRef.current?.scrollBy({ left: dir * 150, behavior: "smooth" });
+  };
+
+  // A solid (non-gradient) opaque zone the same color as the page background
+  // -- not a fade -- so a tab scrolled halfway under the arrow is fully
+  // hidden rather than peeking out from behind it. The tab only becomes
+  // visible again once the user actually scrolls it clear of this zone.
+  const ARROW_ZONE = 34;
+  const arrowStyle = (side) => ({
+    position: "absolute", [side]: 0, top: 0, bottom: 0, width: ARROW_ZONE, zIndex: 2,
+    display: "flex", alignItems: "center", justifyContent: side === "left" ? "flex-start" : "flex-end",
+    background: "var(--bg)",
+    cursor: "pointer",
+  });
+
+  return (
+    <div style={{ position: "relative" }}>
+      {canLeft && (
+        <div style={arrowStyle("left")} onClick={() => scrollByPage(-1)} role="button" aria-label="Scroll left">
+          <div style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--dim)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+            ‹
+          </div>
+        </div>
+      )}
+      <div
+        ref={trackRef}
+        className="hscroll-hide"
+        onScroll={updateArrows}
+        style={{
+          display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none", scrollBehavior: "smooth",
+          scrollSnapType: "x mandatory",
+          paddingLeft: canLeft ? ARROW_ZONE + 6 : 0,
+          paddingRight: canRight ? ARROW_ZONE + 6 : 0,
+        }}
+      >
+        {children}
+      </div>
+      {canRight && (
+        <div style={arrowStyle("right")} onClick={() => scrollByPage(1)} role="button" aria-label="Scroll right">
+          <div style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--dim)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+            ›
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Floating "My Picks" launcher + slide-in betslip panel. Lives at the root
+// level (rendered by PropLedger, not any one page) so picks persist and stay
+// visible while switching between Prop Feed / NBA / NFL / MLB / WNBA tabs.
+function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook, onSportsbookChange }) {
+  const combined = picks.length > 0 ? combineParlayOdds(picks.map((p) => p.odds)) : null;
+  const book = SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0];
+
+  return (
+    <>
+      <div
+        onClick={onToggleOpen}
+        role="button"
+        aria-label="Toggle My Picks panel"
+        className="oswald cta-btn"
+        style={{
+          position: "fixed", bottom: 20, right: 20, zIndex: 50,
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "12px 18px", borderRadius: 999,
+          background: "var(--amber)", color: "#08131c",
+          fontSize: 14, fontWeight: 700, letterSpacing: "0.02em",
+          cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+        }}
+      >
+        My Picks
+        {picks.length > 0 && (
+          <span className="mono" style={{ background: "#08131c", color: "var(--amber)", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
+            {picks.length}
+          </span>
+        )}
+      </div>
+
+      {open && (
+        <div
+          style={{
+            position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 55,
+            width: 340, maxWidth: "92vw",
+            background: "var(--panel)", borderLeft: "1px solid var(--line)",
+            boxShadow: "-6px 0 24px rgba(0,0,0,0.45)",
+            display: "flex", flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid var(--line)" }}>
+            <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>MY PICKS</span>
+            <div onClick={onToggleOpen} role="button" aria-label="Close My Picks panel" style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "8px 18px" }}>
+            {picks.length === 0 ? (
+              <div style={{ color: "var(--dim)", fontSize: 13, padding: "24px 0", textAlign: "center" }}>
+                Tap the + on any prop in the Prop Feed to add it here.
+              </div>
+            ) : (
+              picks.map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="oswald" style={{ fontSize: 13.5, color: "var(--text)" }}>
+                      {p.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({p.team})</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>{p.subtitle}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>vs {p.opp}</div>
+                  </div>
+                  <div className="mono" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>
+                    {formatOdds(p.odds)}
+                  </div>
+                  <div
+                    onClick={() => onRemove(p.id)}
+                    role="button"
+                    aria-label={`Remove ${p.name} from My Picks`}
+                    style={{ cursor: "pointer", color: "var(--dim)", fontSize: 16, flexShrink: 0, padding: "0 2px" }}
+                  >
+                    ×
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {picks.length > 0 && (
+            <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em" }}>
+                  {picks.length > 1 ? "COMBINED PARLAY ODDS" : "ODDS"}
+                </span>
+                <span className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--amber)" }}>
+                  {formatOdds(combined)}
+                </span>
+              </div>
+
+              <select
+                className="select"
+                value={sportsbook}
+                onChange={(e) => onSportsbookChange(e.target.value)}
+                style={{ width: "100%" }}
+              >
+                {SPORTSBOOKS.map((b) => (
+                  <option key={b.id} value={b.id}>{b.label}</option>
+                ))}
+              </select>
+
+              <div
+                onClick={() => window.open(book.url, "_blank", "noopener,noreferrer")}
+                role="button"
+                className="oswald cta-btn"
+                style={{
+                  cursor: "pointer", textAlign: "center", padding: "10px 0", borderRadius: 4,
+                  background: "var(--amber)", color: "#08131c", fontSize: 13.5, fontWeight: 700, letterSpacing: "0.02em",
+                  boxShadow: "0 2px 10px rgba(79,125,245,0.18)",
+                }}
+              >
+                Open in {book.label} →
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.4 }}>
+                Opens {book.label} in a new tab -- sportsbooks don't offer a public way to prefill a bet slip, so you'll still need to search and add these picks there yourself.
+              </div>
+
+              <div
+                onClick={onClear}
+                role="button"
+                className="oswald danger-btn"
+                style={{
+                  cursor: "pointer", textAlign: "center", padding: "8px 0", borderRadius: 4,
+                  fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
+                }}
+              >
+                Clear all
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function PropLedger() {
+  const [page, setPage] = useState("nba");
+  const [playerId, setPlayerId] = useState(PLAYERS[0].id);
+  const [market, setMarket] = useState("pts");
+  const [rebSplit, setRebSplit] = useState("total");
+  const [side, setSide] = useState("all");
+  const [lastN, setLastN] = useState(10);
+  const [opponent, setOpponent] = useState("all");
+  const [oppView, setOppView] = useState("season");
+  const [minMinutes, setMinMinutes] = useState(0);
+  const [maxMinutes, setMaxMinutes] = useState(40);
+  const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
+  const [line, setLine] = useState(null);
+  const chartRef = React.useRef(null);
+  const isNarrow = useIsNarrow();
+
+  const resetFilters = () => {
+    setSide("all");
+    setLastN(10);
+    setOpponent("all");
+    setOppView("season");
+    setMinMinutes(0);
+    setMaxMinutes(40);
+    setMinutesRangeEnabled(false);
+    setLine(null);
+  };
+
+  const [myPicks, setMyPicks] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("propLedgerPicks") || "[]"); } catch { return []; }
+  });
+  const [sportsbook, setSportsbook] = useState(() => localStorage.getItem("propLedgerSportsbook") || SPORTSBOOKS[0].id);
+  const [picksOpen, setPicksOpen] = useState(false);
+
+  React.useEffect(() => {
+    localStorage.setItem("propLedgerPicks", JSON.stringify(myPicks));
+  }, [myPicks]);
+  React.useEffect(() => {
+    localStorage.setItem("propLedgerSportsbook", sportsbook);
+  }, [sportsbook]);
+
+  const pickIds = useMemo(() => new Set(myPicks.map((p) => p.id)), [myPicks]);
+  const togglePick = (pick) => {
+    setMyPicks((cur) => (cur.some((p) => p.id === pick.id) ? cur.filter((p) => p.id !== pick.id) : [...cur, pick]));
+  };
+  const removePick = (id) => setMyPicks((cur) => cur.filter((p) => p.id !== id));
+  const clearPicks = () => setMyPicks([]);
+
+  // MLB_TEAM_DEF starts out as mock data (see its definition above) so the
+  // page never has to show a loading state -- this swaps in the real,
+  // nightly-refreshed ranking from /api/mlb-matchups once it's available.
+  // No-ops harmlessly if that endpoint isn't deployed (e.g. local `vite dev`).
+  const [, bumpMlbDefRefresh] = React.useReducer((c) => c + 1, 0);
+  React.useEffect(() => {
+    let cancelled = false;
+    loadRealMlbTeamDef().then((byTeam) => {
+      if (cancelled || !byTeam) return;
+      applyMlbTeamDef(byTeam);
+      bumpMlbDefRefresh();
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // "View Chart" jump from the Prop Feed -- for NBA the target state lives
+  // right here, so it's set directly; NFL/MLB own their player/market state
+  // inside their own page components, so those get handed a jumpTo object
+  // (nonce forces the effect to fire even if the same prop is clicked twice
+  // in a row) instead.
+  const [jumpTo, setJumpTo] = useState(null);
+  const goToProp = (targetSport, targetPlayerId, targetMarket) => {
+    if (targetSport === "nba") {
+      setPlayerId(targetPlayerId);
+      setMarket(targetMarket);
+      setLine(null);
+      setOpponent("all");
+    } else {
+      setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now() });
+    }
+    setPage(targetSport);
+  };
+
+  const player = PLAYERS.find((p) => p.id === playerId);
+  const allGames = useMemo(() => genGames(player, PLAYERS.indexOf(player)), [player]);
+  const seasonAvg = useMemo(() => {
+    const n = allGames.length || 1;
+    const sum = (key) => allGames.reduce((a, g) => a + g[key], 0);
+    return {
+      pts: sum("pts") / n,
+      reb: (sum("oreb") + sum("dreb")) / n,
+      ast: sum("ast") / n,
+      min: sum("minutes") / n,
+    };
+  }, [allGames]);
+
+  const opponentsForPlayer = useMemo(
+    () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
+    [allGames]
+  );
+
+  // Multi-season history vs the selected opponent (prior 2 seasons + any mock
+  // playoff series), only computed once a specific opponent is chosen.
+  const oppHistory = useMemo(
+    () => (opponent === "all" ? { priorSeasons: [], playoffs: [] } : genOpponentHistory(player, PLAYERS.indexOf(player), opponent)),
+    [player, opponent]
+  );
+  const currentSeasonVsOpp = useMemo(
+    () => allGames.filter((g) => g.opp === opponent),
+    [allGames, opponent]
+  );
+  const h2h3yGames = useMemo(
+    () => [...oppHistory.priorSeasons, ...currentSeasonVsOpp].sort((a, b) => a.date.localeCompare(b.date)),
+    [oppHistory, currentSeasonVsOpp]
+  );
+
+  const filtered = useMemo(() => {
+    if (opponent !== "all") {
+      let g;
+      switch (oppView) {
+        case "h2h3y": g = h2h3yGames; break;
+        case "home": g = h2h3yGames.filter((x) => x.home); break;
+        case "away": g = h2h3yGames.filter((x) => !x.home); break;
+        case "playoffs": g = oppHistory.playoffs; break;
+        case "season":
+        default: g = currentSeasonVsOpp; break;
+      }
+      return g.filter((game) => game.minutes >= minMinutes && game.minutes <= maxMinutes);
+    }
+    let g = allGames.filter((game) => {
+      if (side === "home" && !game.home) return false;
+      if (side === "away" && game.home) return false;
+      if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
+      return true;
+    });
+    if (lastN !== "all") g = g.slice(-lastN);
+    return g;
+  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp]);
+
+  const isBinary = market === "dd" || market === "td";
+  const values = filtered.map((g) => statValue(g, market, rebSplit));
+  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  const med = median(values);
+  // Binary props (DD/TD) have a fixed 0.5 threshold — achieved (1) counts as a
+  // hit, not achieved (0) doesn't. There's nothing to drag for these.
+  const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+  // Axis ceiling + evenly spaced tick marks: pick a "nice" step (1, 2, 5, 10, 20...)
+  // so the y-axis always shows regular, evenly spaced whole numbers instead of
+  // an uneven jump like 0, 9, 30.
+  const topValue = Math.max(...values, effectiveLine, 1);
+  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
+  const niceStep = (() => {
+    if (isBinary) return 1;
+    const targetTicks = 5;
+    const roughStep = rawMax / targetTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
+    const norm = roughStep / mag;
+    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
+    return Math.max(1, step);
+  })();
+  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
+  const chartTicks = isBinary
+    ? [0, 1]
+    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+  const hits = values.filter((v) => v > effectiveLine).length;
+  const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
+  const hitRate = values.length ? hits / values.length : 0;
+  const edge = avg - effectiveLine;
+  const scrollableChart = isNarrow && filtered.length <= NARROW_SCROLL_MAX_BARS;
+
+  const marketLabel = market === "reb"
+    ? `${REB_SPLITS.find((r) => r.id === rebSplit)?.label ?? "Total"} Reb.`
+    : MARKETS.find((m) => m.id === market)?.label ?? "";
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        :root {
+          --bg: #0a0b0d;
+          --panel: #131519;
+          --panel2: #191c21;
+          --line: #2b2f36;
+          --text: #e8ecf2;
+          --dim: #8b98ab;
+          --amber: #4f7df5;
+          --amber-dim: rgba(79,125,245,0.14);
+          --amber-glow: rgba(79,125,245,0.28);
+          --green: #3ecf8e;
+          --red: #ef5b5b;
+          --red-dim: rgba(239,91,91,0.14);
+        }
+        * { box-sizing: border-box; }
+        /* Safeguard: nothing on the page should ever force horizontal
+           scrolling of the whole app -- any element that needs to overflow
+           (the game-log table, the feed) scrolls internally instead via its
+           own overflow-x: auto wrapper. */
+        html, body { max-width: 100%; overflow-x: hidden; }
+        body {
+          background:
+            radial-gradient(1100px 620px at 12% -8%, rgba(79,125,245,0.07), transparent 60%),
+            radial-gradient(900px 700px at 100% 0%, rgba(62,207,142,0.04), transparent 55%),
+            var(--bg);
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
+        }
+        img { max-width: 100%; }
+        .page-shell { padding: 24px 32px; width: 100%; }
+        @media (max-width: 640px) {
+          .page-shell { padding: 16px; }
+        }
+        .oswald { font-family: 'Space Grotesk', sans-serif; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        a, div[role="button"], button, .chip, .tab, select.select {
+          transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease;
+        }
+        div[role="button"]:active { transform: scale(0.97); }
+        .chip {
+          border: 1px solid var(--line);
+          background: var(--panel);
+          color: var(--dim);
+          padding: 7px 14px;
+          border-radius: 4px;
+          font-size: 15px;
+          cursor: pointer;
+          transition: all .15s ease;
+          white-space: nowrap;
+        }
+        .chip:hover { border-color: var(--amber); color: var(--text); box-shadow: 0 2px 10px rgba(0,0,0,0.25); transform: translateY(-1px); }
+        .chip.active {
+          background: var(--amber-dim);
+          border-color: var(--amber);
+          color: var(--amber);
+          font-weight: 600;
+          box-shadow: 0 0 0 1px var(--amber) inset;
+        }
+        .tab {
+          font-family: 'Space Grotesk', sans-serif;
+          letter-spacing: 0.01em;
+          padding: 12px 8px;
+          border-bottom: 2px solid transparent;
+          color: var(--dim);
+          cursor: pointer;
+          font-size: 18px;
+          font-weight: 600;
+          box-sizing: border-box;
+          width: 100%;
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          line-height: 1.2;
+          transition: color .15s ease, border-color .15s ease;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.milestone {
+          font-size: 19px;
+          padding: 14px 8px;
+        }
+        @media (max-width: 480px) {
+          .tab { font-size: 13.5px; padding: 9px 4px; letter-spacing: 0; }
+          .tab.milestone { font-size: 16.5px; padding: 12px 6px; }
+        }
+        .tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+        .tab.active:hover { color: var(--amber); }
+        .tab.no-underline.active { border-bottom-color: transparent; }
+        select.select {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          color: var(--text);
+          padding: 7px 12px;
+          border-radius: 4px;
+          font-size: 15px;
+          font-family: 'Inter', sans-serif;
+          cursor: pointer;
+        }
+        select.select:hover { border-color: var(--amber); }
+        select.select:focus, select.select:focus-visible {
+          outline: none;
+          border-color: var(--amber);
+          box-shadow: 0 0 0 3px var(--amber-dim);
+        }
+        .cta-btn {
+          transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
+        }
+        .cta-btn:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 6px 18px var(--amber-glow); }
+        .cta-btn:active { transform: translateY(0); }
+        .danger-btn {
+          border: 1px solid var(--line);
+          background: transparent;
+          color: var(--dim);
+          transition: all .15s ease;
+        }
+        .danger-btn:hover {
+          border-color: var(--red);
+          color: var(--red);
+          background: var(--red-dim);
+          box-shadow: 0 2px 10px rgba(226,96,79,0.18);
+        }
+        .ledger-row:nth-child(odd) { background: rgba(255,255,255,0.015); }
+        .feed-row:nth-child(odd) { background: rgba(255,255,255,0.015); }
+        .feed-row, .ledger-row { transition: background-color .15s ease; }
+        .feed-row:hover, .ledger-row:hover { background: rgba(79,125,245,0.05); }
+        ::-webkit-scrollbar { height: 7px; width: 7px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+        .hscroll-hide::-webkit-scrollbar { display: none; }
+        /* Fills the wide gutters beside the player selector/market grid on
+           desktop with the two teams' rosters (see TeamRosterPanel). Below
+           the breakpoint there isn't room for three columns, so it collapses
+           to a single stacked column -- the roster panels switch to a
+           compact horizontal-scroll strip at this same breakpoint (see
+           TeamRosterPanel's compact render) rather than disappearing, so
+           the quick-switch is still there on mobile, just full-width above/
+           below the main content instead of beside it. */
+        .roster-layout { display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px; align-items: stretch; margin-bottom: 14px; }
+        .roster-layout-center { display: flex; flex-direction: column; justify-content: center; }
+        @media (max-width: 1100px) {
+          .roster-layout { display: block; }
+          .roster-panel { margin-bottom: 14px; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ borderBottom: "1px solid var(--line)", padding: "16px", background: "linear-gradient(to bottom, rgba(255,255,255,0.015), transparent)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+          <h1 className="oswald" style={{ fontSize: 26, letterSpacing: "0.03em", margin: 0, color: "var(--text)", display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ color: "var(--amber)" }}>●</span> PROP LEDGER
+          </h1>
+          <span style={{ color: "var(--dim)", fontSize: 13 }}>your own hit-rate research, before you place it</span>
+        </div>
+        <HScrollNav>
+          {[
+            { id: "feed", label: "Prop Feed" },
+            { id: "nba", label: "NBA Props" },
+            { id: "nfl", label: "NFL Props" },
+            { id: "mlb", label: "MLB Props" },
+            { id: "wnba", label: "WNBA Props" },
+          ].map((p) => (
+            <div
+              key={p.id}
+              onClick={() => setPage(p.id)}
+              className="oswald cta-btn"
+              style={{
+                cursor: "pointer",
+                padding: "8px 16px",
+                borderRadius: 4,
+                fontSize: 13,
+                fontWeight: 600,
+                letterSpacing: "0.03em",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                scrollSnapAlign: "start",
+                border: `1px solid ${page === p.id ? "var(--amber)" : "var(--line)"}`,
+                background: page === p.id ? "var(--amber-dim)" : "var(--panel)",
+                color: page === p.id ? "var(--amber)" : "var(--dim)",
+              }}
+            >
+              {p.label}
+            </div>
+          ))}
+        </HScrollNav>
+      </div>
+
+      {page === "nba" && (
+      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+      <div className="roster-layout">
+      <TeamRosterPanel
+        teamLabel="New York Knicks"
+        players={PLAYERS.filter((p) => p.team === "NYK")}
+        activeId={playerId}
+        onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+        headshotSrc={(p) => espnHeadshot(p.espnId)}
+        headshotFallback={(p) => nbaHeadshot(p.nbaId)}
+        metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
+        avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      />
+      <div className="roster-layout-center">
+        {/* Player + market selectors */}
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+            <select className="select" value={playerId} onChange={(e) => { setPlayerId(e.target.value); setLine(null); setOpponent("all"); }}>
+              <optgroup label="New York Knicks">
+                {PLAYERS.filter((p) => p.team === "NYK").map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} — {p.pos}</option>
+                ))}
+              </optgroup>
+              <optgroup label="San Antonio Spurs">
+                {PLAYERS.filter((p) => p.team === "SAS").map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} — {p.pos}</option>
+                ))}
+              </optgroup>
+            </select>
+            <div style={{
+              position: "relative", width: 122, height: 122, borderRadius: "50%", flexShrink: 0,
+              background: teamAvatarBackground(NBA_TEAM_COLORS, player.team),
+              boxShadow: `0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
+            }}>
+              {/* Always-visible team-colored backing, in case the headshot image can't
+                   load (ad-block / privacy extensions often block sports-CDN image
+                   requests) -- keeps the circle on-brand instead of going flat black.
+                   Sits 6px inset from the team-colored wrapper above, so that color
+                   shows only as a thin ring -- the photo itself stays 110x110, untouched. */}
+              <div style={{
+                position: "absolute", inset: 6, borderRadius: "50%",
+                background: (NBA_TEAM_COLORS[player.team] || {}).primary || "#000",
+                border: "1px solid var(--line)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }} />
+              <img
+                key={player.id}
+                src={espnHeadshot(player.espnId)}
+                alt={player.name}
+                width={110}
+                height={110}
+                referrerPolicy="no-referrer"
+                style={{
+                  position: "absolute", inset: 6,
+                  width: 110, height: 110,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  objectPosition: "center top",
+                  border: "1px solid var(--line)",
+                  opacity: 0,
+                  transition: "opacity 0.15s ease",
+                }}
+                onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
+                onError={(e) => {
+                  if (e.currentTarget.dataset.fallback !== "1") {
+                    e.currentTarget.dataset.fallback = "1";
+                    e.currentTarget.src = nbaHeadshot(player.nbaId);
+                  } else {
+                    e.currentTarget.style.opacity = 0;
+                  }
+                }}
+              />
+            </div>
+
+            {/* Player snapshot: season averages at a glance, next to the selector
+                 so the top of the page isn't just a dropdown floating in empty space. */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 18,
+              background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+              padding: "10px 20px",
+            }}>
+              <div style={{ textAlign: "center", paddingRight: 14, borderRight: "1px solid var(--line)" }}>
+                <div className="oswald" style={{ fontSize: 14, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
+                <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  {player.team} · {player.pos} · Season
+                </div>
+              </div>
+              {[
+                { label: "PTS", value: seasonAvg.pts },
+                { label: "REB", value: seasonAvg.reb },
+                { label: "AST", value: seasonAvg.ast },
+                { label: "MIN", value: seasonAvg.min },
+              ].map((s) => (
+                <div key={s.label} style={{ textAlign: "center" }}>
+                  <div className="mono" style={{ fontSize: 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(1)}</div>
+                  <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Market grid: 5 sections, each its own row, grouped by what the
+               props pair with. Tiles share a fixed width across all rows so
+               the sections read as clearly separated groups rather than one
+               continuous grid. */}
+          {[
+            { label: "Core", markets: MARKETS_ROW_1 },
+            { label: "Combos", markets: MARKETS_ROW_3 },
+            { label: "Shooting / FT", markets: MARKETS_ROW_4 },
+            { label: "Defense & hustle", markets: MARKETS_ROW_2 },
+            { label: "Milestones", markets: MARKETS_ROW_5, pills: true },
+          ].map((section, si) => (
+            <div key={section.label} style={{ marginTop: si === 0 ? 0 : 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+                {section.label}
+              </div>
+              {section.pills ? (
+                /* Milestones: plain "x | x" text row, always side-by-side
+                     (never stacks), centered under the label. */
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
+                  {section.markets.map((m, mi) => (
+                    <React.Fragment key={m.id}>
+                      {mi > 0 && <span style={{ color: "var(--line)", fontSize: 18 }}>|</span>}
+                      <div
+                        className="oswald"
+                        style={{
+                          fontSize: isNarrow ? 15.5 : 18,
+                          fontWeight: 600,
+                          letterSpacing: "0.03em",
+                          padding: "6px 4px",
+                          color: market === m.id ? "var(--amber)" : "var(--dim)",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                        onClick={() => { setMarket(m.id); setLine(null); }}
+                      >
+                        {m.label}
+                      </div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              ) : (
+                /* Centered, content-sized tiles with a fixed gap so labels sit a
+                     comfortable distance apart regardless of how wide the page is,
+                     instead of stretching edge-to-edge across the full container. */
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 28 }}>
+                  {section.markets.map((m, mi) => (
+                    <React.Fragment key={m.id}>
+                      {mi > 0 && (
+                        <span style={{ display: "flex", alignItems: "center", color: "var(--line)", fontSize: 18 }}>|</span>
+                      )}
+                      <div
+                        className={`tab ${si === 0 ? "no-underline" : ""} ${market === m.id ? "active" : ""}`}
+                        style={{ flex: "0 0 auto", width: "auto" }}
+                        onClick={() => { setMarket(m.id); setLine(null); }}
+                      >
+                        {m.label}
+                      </div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
+              {/* Rebound split: only shown once Rebounds is the active market */}
+              {section.label === "Core" && market === "reb" && (
+                <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  {REB_SPLITS.map((r) => (
+                    <div key={r.id} className={`chip ${rebSplit === r.id ? "active" : ""}`} onClick={() => { setRebSplit(r.id); setLine(null); }}>
+                      {r.label}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <TeamRosterPanel
+        teamLabel="San Antonio Spurs"
+        players={PLAYERS.filter((p) => p.team === "SAS")}
+        activeId={playerId}
+        onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+        headshotSrc={(p) => espnHeadshot(p.espnId)}
+        headshotFallback={(p) => nbaHeadshot(p.nbaId)}
+        metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
+        avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      />
+      </div>
+
+        {/* Filters — same labeled-group treatment as the prop rows above:
+             each control gets its own small uppercase label and its own row,
+             all inside one bordered panel, instead of one dense strip where
+             everything ran together and was separated only by thin dividers. */}
+        <FiltersSection>
+          {[
+            {
+              label: "Opponent",
+              content: (
+                <select
+                  className="select"
+                  value={opponent}
+                  onChange={(e) => { setOpponent(e.target.value); setOppView("season"); }}
+                >
+                  <option value="all">Any opponent</option>
+                  {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                </select>
+              ),
+            },
+            opponent === "all"
+              ? {
+                  label: "Game location",
+                  content: (
+                    <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                      {["all", "home", "away"].map((s) => (
+                        <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                          {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                        </div>
+                      ))}
+                    </div>
+                  ),
+                }
+              : {
+                  label: "View",
+                  content: (
+                    <select className="select" value={oppView} onChange={(e) => setOppView(e.target.value)}>
+                      <option value="season">Current Season</option>
+                      <option value="h2h3y">Head-to-Head (3Y)</option>
+                      <option value="home">Home vs Opp</option>
+                      <option value="away">Away vs Opp</option>
+                      <option value="playoffs">Playoffs vs Opp</option>
+                    </select>
+                  ),
+                },
+            opponent === "all"
+              ? {
+                  label: "Sample size",
+                  content: (
+                    <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                      {[5, 10, 15, 25, "all"].map((n) => (
+                        <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                          {n === "all" ? "All" : `Last ${n}`}
+                        </div>
+                      ))}
+                    </div>
+                  ),
+                }
+              : null,
+            {
+              label: "Minutes",
+              content: (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 480, margin: "0 auto" }}>
+                  <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
+                    {!minutesRangeEnabled
+                      ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
+                      : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
+                  </div>
+                  <ThresholdSlider
+                    min={0}
+                    max={40}
+                    step={1}
+                    lo={minMinutes}
+                    hi={maxMinutes}
+                    onChangeLo={setMinMinutes}
+                    onChangeHi={setMaxMinutes}
+                    rangeEnabled={minutesRangeEnabled}
+                    onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+                  />
+                </div>
+              ),
+            },
+          ].filter(Boolean).map((group, gi) => (
+            <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
+              <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+                {group.label}
+              </div>
+              {group.content}
+            </div>
+          ))}
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+            <div className="chip" onClick={resetFilters}>Reset filters</div>
+          </div>
+        </FiltersSection>
+
+        {/* Line input + summary — the line adjuster is centered on top, with the
+             three stat cards in a single row underneath it, spaced evenly left to right */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+              {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
+            </div>
+            <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
+              {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+              {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
+            {[
+              { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
+              { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
+              { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
+            ].map((s) => (
+              <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
+                <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+                <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
+                <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Matchup context */}
+        {opponent !== "all" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 16px", width: "fit-content", maxWidth: "100%", boxSizing: "border-box" }}>
+            <span style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>vs {opponent} defense</span>
+            <span className="mono" style={{ fontSize: 16, color: "var(--text)" }}>{TEAM_DEF[opponent].rating}</span>
+            <span className="mono" style={{
+              fontSize: 12, padding: "2px 8px", borderRadius: 3,
+              color: defTier(TEAM_DEF[opponent].rank) === "soft" ? "var(--green)" : defTier(TEAM_DEF[opponent].rank) === "tough" ? "var(--red)" : "var(--dim)",
+              border: `1px solid ${defTier(TEAM_DEF[opponent].rank) === "soft" ? "var(--green)" : defTier(TEAM_DEF[opponent].rank) === "tough" ? "var(--red)" : "var(--line)"}`,
+            }}>
+              #{TEAM_DEF[opponent].rank} defense{defTier(TEAM_DEF[opponent].rank) === "soft" ? " · favorable matchup" : defTier(TEAM_DEF[opponent].rank) === "tough" ? " · tough matchup" : ""}
+            </span>
+          </div>
+        )}
+
+        {opponent !== "all" && oppView === "playoffs" && filtered.length === 0 && (
+          <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "16px", marginBottom: 16, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+            No playoff meetings vs {opponent} in the sample data.
+          </div>
+        )}
+
+        {/* Chart — wider now that the scroller is gone. Drag the amber tab on the
+             right edge to move the line, same as the +/- buttons above. */}
+        <div
+          ref={chartRef}
+          style={{
+            position: "relative",
+            boxSizing: "border-box",
+            height: CHART_HEIGHT,
+            background: "var(--panel)",
+            border: "1px solid var(--line)",
+            borderRadius: 6,
+            padding: 16,
+            marginBottom: 16,
+          }}
+        >
+          <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+          <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={filtered.map((g, i) => ({
+                idx: i + 1,
+                opp: g.opp,
+                value: statValue(g, market, rebSplit),
+                date: g.date,
+                minutes: g.minutes,
+                home: g.home,
+                defRank: TEAM_DEF[g.opp].rank,
+              }))}
+              margin={{ top: 10, right: 60, bottom: 56, left: 20 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+              <XAxis dataKey="opp" interval={scrollableChart ? 0 : axisTickInterval(filtered.length, isNarrow)} tick={(props) => <TeamAxisTick {...props} logoFn={nbaTeamLogo} compact={isNarrow} />} axisLine={{ stroke: "#343941" }} tickLine={false} />
+              <YAxis
+                domain={[0, chartMax]}
+                ticks={chartTicks}
+                tick={{ fill: "#8b96a5", fontSize: 11 }}
+                axisLine={{ stroke: "#343941" }}
+                tickLine={false}
+                allowDecimals={false}
+                label={{ value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+              />
+              <Tooltip
+                content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
+                cursor={{ fill: "rgba(255,255,255,0.05)" }}
+              />
+              {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+              <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                {filtered.map((g, i) => {
+                  const v = statValue(g, market, rebSplit);
+                  const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
+                  return <Cell key={i} fill={fill} />;
+                })}
+                <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          </div>
+          </div>
+          {!isBinary && (
+            <LineHandle
+              value={effectiveLine}
+              onChange={(v) => setLine(v)}
+              min={0}
+              max={chartMax}
+              containerRef={chartRef}
+            />
+          )}
+        </div>
+
+        {/* Table */}
+        <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+            <div style={{ minWidth: 580 }}>
+              <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
+                <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Min</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
+              </div>
+              <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
+                {filtered.slice().reverse().map((g, i) => {
+                  const v = statValue(g, market, rebSplit);
+                  const over = v > effectiveLine;
+                  const push = !isBinary && v === effectiveLine;
+                  const def = TEAM_DEF[g.opp];
+                  const tier = defTier(def.rank);
+                  return (
+                    <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
+                      <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
+                      <div>{g.date}</div>
+                      <div>{g.opp}</div>
+                      <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
+                      <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
+                      <div>{g.minutes}</div>
+                      <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
+                      <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
+                      <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+                        {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
+          Sample data only — built to test the filtering and layout before wiring in a real stats/odds feed.
+        </div>
+      </div>
+      )}
+
+      {page === "wnba" && (
+        <WNBAPropsPage jumpTo={jumpTo && jumpTo.sport === "wnba" ? jumpTo : null} />
+      )}
+
+      {page === "nfl" && (
+        <NFLPropsPage jumpTo={jumpTo && jumpTo.sport === "nfl" ? jumpTo : null} />
+      )}
+
+      {page === "mlb" && (
+        <MLBPropsPage jumpTo={jumpTo && jumpTo.sport === "mlb" ? jumpTo : null} />
+      )}
+
+      {page === "feed" && (
+        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} />
+      )}
+
+      <MyPicksPanel
+        picks={myPicks}
+        open={picksOpen}
+        onToggleOpen={() => setPicksOpen((v) => !v)}
+        onRemove={removePick}
+        onClear={clearPicks}
+        sportsbook={sportsbook}
+        onSportsbookChange={setSportsbook}
+      />
+    </div>
+  );
+}

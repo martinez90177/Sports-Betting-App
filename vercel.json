@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/refresh-mlb-matchups", "schedule": "0 4 * * *" }
+  ]
+}
