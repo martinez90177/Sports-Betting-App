@@ -83,7 +83,7 @@ const NBA_TEAM_COLORS = {
 const AVATAR_FALLBACK_COLORS = { primary: "#282c31", secondary: "#15171b" };
 const teamAvatarBackground = (colorMap, teamAbbr) => {
   const c = colorMap[teamAbbr] || AVATAR_FALLBACK_COLORS;
-  return `linear-gradient(135deg, rgba(0,0,0,0.2), rgba(0,0,0,0.45)), linear-gradient(135deg, ${c.primary} 0%, ${c.secondary} 100%)`;
+  return `linear-gradient(135deg, rgba(0,0,0,var(--avatar-ring-shade1, 0.2)), rgba(0,0,0,var(--avatar-ring-shade2, 0.45))), linear-gradient(135deg, ${c.primary} 0%, ${c.secondary} 100%)`;
 };
 
 // Groups a sport's matchup list by calendar date for its matchup dropdown,
@@ -358,18 +358,78 @@ const NFL_MARKET_DEF_BASE_LABEL = {
 };
 const NFL_POS_QUALIFIER = { WR: "vs WR", TE: "vs TE", RB: "vs RB", QB: "" };
 
+// Real per-category "defense vs pass/rush/receptions" splits aren't part of
+// any free public API (that's what makes DVOA-style data proprietary), so
+// there's no honest way to give every market its own real ranking. Instead,
+// once loaded, nflTeamDefReal holds ONE real ranking per team -- points
+// allowed per game, from the actual 2025 standings (see fetchNFLTeamDefense)
+// -- applied across every market as the closest available real signal.
+// Until it loads (or if the fetch ever fails), the old per-category mock
+// ranking below is used as an instant fallback so nothing shows a blank state.
+let nflTeamDefReal = null;
+
 // Lazily-built, memoized per (market, position) so each prop type's ranking
 // is computed once and reused, instead of re-sorting 31 teams every render.
 const nflDefCategoryCache = {};
+const NFL_DEF_RANK_FALLBACK = { rank: 16, rating: 0 };
 function getNFLDefRank(market, pos, opp) {
+  if (nflTeamDefReal && nflTeamDefReal[opp]) return nflTeamDefReal[opp];
   const range = NFL_MARKET_DEF_RANGE[market];
-  if (!range) return NFL_TEAM_DEF[opp]; // kicking markets — no defensive-matchup concept
+  if (!range) return NFL_TEAM_DEF[opp] || NFL_DEF_RANK_FALLBACK; // kicking markets — no defensive-matchup concept
   const key = `${market}_${pos}`;
   if (!nflDefCategoryCache[key]) {
     const seed = 4300 + (hashStr(key) % 5000);
     nflDefCategoryCache[key] = buildNFLDefenseCategory(seed, range[0], range[1]);
   }
-  return nflDefCategoryCache[key][opp];
+  return nflDefCategoryCache[key][opp] || NFL_DEF_RANK_FALLBACK;
+}
+
+// ESPN abbreviates Washington as WSH; every other team's abbreviation in the
+// standings response already matches NFL_TEAMS.
+const NFL_ESPN_ABBR_FIX = { WSH: "WAS" };
+
+// Fetches real 2025 final standings and ranks all 32 teams by points allowed
+// per game (lower = tougher defense = rank 1), mirroring the same "one real
+// number, sorted" approach used for MLB's defense ranking. Cached to
+// sessionStorage since the 2025 season is already final -- this data will
+// never change, so there's no need to refetch it more than once per tab.
+async function fetchNFLTeamDefense() {
+  const cacheKey = "nfl_team_def_v1";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+
+  try {
+    const res = await fetch("https://site.api.espn.com/apis/v2/sports/football/nfl/standings?season=2025");
+    if (!res.ok) return null;
+    const data = await res.json();
+    const rows = [];
+    (data?.children || []).forEach((conf) => {
+      (conf?.standings?.entries || []).forEach((entry) => {
+        const abbr = NFL_ESPN_ABBR_FIX[entry.team?.abbreviation] || entry.team?.abbreviation;
+        const pointsAgainst = entry.stats?.find((s) => s.name === "pointsAgainst")?.value;
+        const wins = entry.stats?.find((s) => s.name === "wins")?.value || 0;
+        const losses = entry.stats?.find((s) => s.name === "losses")?.value || 0;
+        const ties = entry.stats?.find((s) => s.name === "ties")?.value || 0;
+        const games = wins + losses + ties;
+        if (abbr && pointsAgainst != null && games > 0) {
+          rows.push({ abbr, ptsPerGame: pointsAgainst / games });
+        }
+      });
+    });
+    if (!rows.length) return null;
+
+    rows.sort((a, b) => a.ptsPerGame - b.ptsPerGame);
+    rows.forEach((r, i) => { r.rank = i + 1; });
+    const byTeam = {};
+    rows.forEach((r) => { byTeam[r.abbr] = { rank: r.rank, rating: Math.round(r.ptsPerGame * 10) / 10 }; });
+
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(byTeam)); } catch {}
+    return byTeam;
+  } catch {
+    return null;
+  }
 }
 
 function nflDefCategoryLabel(market, pos) {
@@ -479,6 +539,65 @@ const NFL_ESPN_ID = {
   bsmith: "4596602",
   kelce: "15847",
   butker: "3055899",
+
+  // Remaining 13 Week 1 2026 games (26 teams) added below -- same treatment
+  // as the six teams above: real starters/positions/ESPN IDs per team,
+  // cross-checked against multiple depth-chart sources rather than taken
+  // from a single fetch (several teams' skill rosters turned over hard in
+  // 2026 free agency/trades -- e.g. A.J. Brown to NE, Tua to ATL, DK Metcalf
+  // to PIT -- so names that look surprising here are real, not typos).
+  ne_maye: "4431452", ne_brown: "4047646", ne_hollins: "2991662", ne_doubs: "4361432",
+  ne_stevenson: "4569173", ne_henderson: "4432710", ne_henry: "3046439", ne_borregales: "4569923",
+  sea_darnold: "3912547", sea_jsn: "4430878", sea_kupp: "2977187", sea_horton: "4597703",
+  sea_charbonnet: "4426385", sea_price: "4685512", sea_barner: "4576297", sea_myers: "2473037",
+  tb_mayfield: "3052587", tb_egbuka: "4567750", tb_godwin: "3116165", tb_mcmillanj: "4430834",
+  tb_irving: "4596448", tb_gainwell: "4371733", tb_otton: "4243331", tb_mclaughlin: "3150744",
+  cin_burrow: "3915511", cin_chase: "4362628", cin_higgins: "4239993", cin_iosivas: "4368003",
+  cin_cbrown: "4362238", cin_perine: "3116389", cin_gesicki: "3116164", cin_mcpherson: "4360234",
+  no_shough: "4360689", no_olave: "4361370", no_lance: "4879276", no_tipton: "4573697",
+  no_kamara: "3054850", no_miller: "4599739", no_juwan: "3929645", no_smyth: "5208518",
+  det_goff: "3046779", det_stbrown: "4374302", det_jwilliams: "4426388", det_teslaa: "5123663",
+  det_gibbs: "4429795", det_pacheco: "4361529", det_laporta: "4430027", det_bates: "4689936",
+  nyj_geno: "15864", nyj_wilson: "4569618", nyj_mitchell: "4597500", nyj_iwilliams: "4569371",
+  nyj_hall: "4427366", nyj_allen: "4685247", nyj_taylor: "4808766", nyj_york: "4428963",
+  ten_ward: "4688380", ten_tate: "4871023", ten_ridley: "3925357", ten_osborn: "3916566",
+  ten_pollard: "3916148", ten_spears: "4428557", ten_helm: "4686728", ten_slye: "3124084",
+  bal_ljackson: "3916387", bal_flowers: "4429615", bal_bateman: "4360939", bal_moore: "2576581",
+  bal_henry: "3043078", bal_hill: "4038441", bal_andrews: "3116365", bal_loop: "4697745",
+  ind_djones: "3917792", ind_pierce: "4360078", ind_downs: "4688813", ind_dulin: "4061956",
+  ind_taylor: "4242335", ind_giddens: "4874509", ind_warren: "4431459", ind_shrader: "4571557",
+  atl_tua: "4241479", atl_london: "4426502", atl_dotson: "4361409", atl_zaccheaus: "3917914",
+  atl_bijan: "4430807", atl_brobinson: "4241474", atl_pitts: "4360248", atl_romo: "4051167",
+  pit_rodgers: "8439", pit_metcalf: "4047650", pit_pittman: "4035687", pit_bernard: "4685261",
+  pit_warren: "4569987", pit_dowdle: "4038815", pit_freiermuth: "4361411", pit_boswell: "17372",
+  chi_cwilliams: "4431611", chi_odunze: "4431299", chi_burden: "4685278", chi_raymond: "2973405",
+  chi_swift: "4259545", chi_monangai: "4608686", chi_kmet: "4258595", chi_santos: "17427",
+  car_byoung: "4685720", car_mcmillant: "4685472", car_legette: "4430034", car_coker: "4695883",
+  car_hubbard: "4241416", car_brooks: "4678008", car_tremble: "4372780", car_fitzgerald: "4568263",
+  cle_watson: "3122840", cle_jeudy: "4241463", cle_tillman: "4369863", cle_corley: "4613104",
+  cle_judkins: "4685702", cle_sampson: "5081397", cle_fannin: "5083076", cle_szmyt: "4258620",
+  jax_lawrence: "4360310", jax_thomasjr: "4432773", jax_meyers: "3916433", jax_pwashington: "4432620",
+  jax_etienne: "4239996", jax_tuten: "4882093", jax_strange: "4430539", jax_little: "4686361",
+  buf_allen: "3918298", buf_moore: "3915416", buf_coleman: "4635008", buf_shavers: "4241476",
+  buf_cook: "4379399", buf_davis: "4429501", buf_kincaid: "4385690", buf_bass: "3917232",
+  hou_stroud: "4432577", hou_collins: "4258173", hou_dell: "4366031", hou_hutchinson: "4686422",
+  hou_montgomery: "4035538", hou_marks: "4429059", hou_schultz: "3117256", hou_fairbairn: "2971573",
+  mia_willis: "4242512", mia_waddle: "4372016", mia_mwashington: "4569603", mia_marshall: "4362630",
+  mia_achane: "4429160", mia_wright: "4682745", mia_dulcich: "4367209", mia_patterson: "4243371",
+  lv_cousins: "14880", lv_tucker: "4428718", lv_thornton: "4432775", lv_sjackson: "4361332",
+  lv_jeanty: "4890973", lv_mwashington: "4686658", lv_bowers: "4432665", lv_gay: "4249087",
+  gb_love: "4036378", gb_watson: "4248528", gb_reed: "4362249", gb_melton: "4259305",
+  gb_jacobs: "4047365", gb_lloyd: "4429023", gb_kraft: "4572680", gb_smack: "4869461",
+  min_murray: "3917315", min_jefferson: "4262921", min_addison: "4429205", min_jennings: "3886598",
+  min_ajones: "3042519", min_mason: "4360569", min_hockenson: "4036133", min_reichard: "4567104",
+  was_daniels: "4426348", was_mclaurin: "3121422", was_samuel: "3126486", was_nbrown: "3121409",
+  was_croskeymerritt: "4575131", was_white: "4697815", was_okonkwo: "4360635", was_stevens: "5081335",
+  phi_hurts: "4040715", phi_dsmith: "4241478", phi_hbrown: "4241372", phi_cooper: "4715355",
+  phi_barkley: "3929630", phi_bigsby: "4429013", phi_goedert: "3121023", phi_elliott: "3050478",
+  ari_brissett: "2578570", ari_harrisonjr: "4432708", ari_weaver: "4428811", ari_fehoko: "4360739",
+  ari_love: "4870808", ari_allgeier: "4373626", ari_mcbride: "4361307", ari_ryland: "4363538",
+  lac_herbert: "4038941", lac_mcconkey: "4612826", lac_johnston: "4429025", lac_lambertsmith: "4430870",
+  lac_hampton: "4685382", lac_vidal: "4430968", lac_gadsden: "4595342", lac_dicker: "4362081",
 };
 // Direct full-resolution asset (not the low-res 200x200 combiner crop) — the
 // browser's own object-fit: cover crop looks sharper than ESPN's server-side one.
@@ -577,9 +696,279 @@ const CHIEFS_PLAYERS = [
   { id: "butker", name: "Harrison Butker", team: "KC", pos: "K" },
 ];
 
+// Remaining 13 Week 1 2026 games -- same real-roster treatment as the six
+// teams above, rounding the Prop Feed/NFL page out to the full 16-game slate.
+const PATRIOTS_PLAYERS = [
+  { id: "ne_maye", name: "Drake Maye", team: "NE", pos: "QB" },
+  { id: "ne_brown", name: "A.J. Brown", team: "NE", pos: "WR" },
+  { id: "ne_doubs", name: "Romeo Doubs", team: "NE", pos: "WR" },
+  { id: "ne_hollins", name: "Mack Hollins", team: "NE", pos: "WR" },
+  { id: "ne_stevenson", name: "Rhamondre Stevenson", team: "NE", pos: "RB" },
+  { id: "ne_henderson", name: "TreVeyon Henderson", team: "NE", pos: "RB" },
+  { id: "ne_henry", name: "Hunter Henry", team: "NE", pos: "TE" },
+  { id: "ne_borregales", name: "Andy Borregales", team: "NE", pos: "K" },
+];
+const SEAHAWKS_PLAYERS = [
+  { id: "sea_darnold", name: "Sam Darnold", team: "SEA", pos: "QB" },
+  { id: "sea_jsn", name: "Jaxon Smith-Njigba", team: "SEA", pos: "WR" },
+  { id: "sea_kupp", name: "Cooper Kupp", team: "SEA", pos: "WR" },
+  { id: "sea_horton", name: "Tory Horton", team: "SEA", pos: "WR" },
+  { id: "sea_charbonnet", name: "Zach Charbonnet", team: "SEA", pos: "RB" },
+  { id: "sea_price", name: "Jadarian Price", team: "SEA", pos: "RB" },
+  { id: "sea_barner", name: "AJ Barner", team: "SEA", pos: "TE" },
+  { id: "sea_myers", name: "Jason Myers", team: "SEA", pos: "K" },
+];
+const BUCCANEERS_PLAYERS = [
+  { id: "tb_mayfield", name: "Baker Mayfield", team: "TB", pos: "QB" },
+  { id: "tb_egbuka", name: "Emeka Egbuka", team: "TB", pos: "WR" },
+  { id: "tb_godwin", name: "Chris Godwin", team: "TB", pos: "WR" },
+  { id: "tb_mcmillanj", name: "Jalen McMillan", team: "TB", pos: "WR" },
+  { id: "tb_irving", name: "Bucky Irving", team: "TB", pos: "RB" },
+  { id: "tb_gainwell", name: "Kenny Gainwell", team: "TB", pos: "RB" },
+  { id: "tb_otton", name: "Cade Otton", team: "TB", pos: "TE" },
+  { id: "tb_mclaughlin", name: "Chase McLaughlin", team: "TB", pos: "K" },
+];
+const BENGALS_PLAYERS = [
+  { id: "cin_burrow", name: "Joe Burrow", team: "CIN", pos: "QB" },
+  { id: "cin_chase", name: "Ja'Marr Chase", team: "CIN", pos: "WR" },
+  { id: "cin_higgins", name: "Tee Higgins", team: "CIN", pos: "WR" },
+  { id: "cin_iosivas", name: "Andrei Iosivas", team: "CIN", pos: "WR" },
+  { id: "cin_cbrown", name: "Chase Brown", team: "CIN", pos: "RB" },
+  { id: "cin_perine", name: "Samaje Perine", team: "CIN", pos: "RB" },
+  { id: "cin_gesicki", name: "Mike Gesicki", team: "CIN", pos: "TE" },
+  { id: "cin_mcpherson", name: "Evan McPherson", team: "CIN", pos: "K" },
+];
+const SAINTS_PLAYERS = [
+  { id: "no_shough", name: "Tyler Shough", team: "NO", pos: "QB" },
+  { id: "no_olave", name: "Chris Olave", team: "NO", pos: "WR" },
+  { id: "no_lance", name: "Bryce Lance", team: "NO", pos: "WR" },
+  { id: "no_tipton", name: "Mason Tipton", team: "NO", pos: "WR" },
+  { id: "no_kamara", name: "Alvin Kamara", team: "NO", pos: "RB" },
+  { id: "no_miller", name: "Kendre Miller", team: "NO", pos: "RB" },
+  { id: "no_juwan", name: "Juwan Johnson", team: "NO", pos: "TE" },
+  { id: "no_smyth", name: "Charlie Smyth", team: "NO", pos: "K" },
+];
+const LIONS_PLAYERS = [
+  { id: "det_goff", name: "Jared Goff", team: "DET", pos: "QB" },
+  { id: "det_stbrown", name: "Amon-Ra St. Brown", team: "DET", pos: "WR" },
+  { id: "det_jwilliams", name: "Jameson Williams", team: "DET", pos: "WR" },
+  { id: "det_teslaa", name: "Isaac TeSlaa", team: "DET", pos: "WR" },
+  { id: "det_gibbs", name: "Jahmyr Gibbs", team: "DET", pos: "RB" },
+  { id: "det_pacheco", name: "Isiah Pacheco", team: "DET", pos: "RB" },
+  { id: "det_laporta", name: "Sam LaPorta", team: "DET", pos: "TE" },
+  { id: "det_bates", name: "Jake Bates", team: "DET", pos: "K" },
+];
+const JETS_PLAYERS = [
+  { id: "nyj_geno", name: "Geno Smith", team: "NYJ", pos: "QB" },
+  { id: "nyj_wilson", name: "Garrett Wilson", team: "NYJ", pos: "WR" },
+  { id: "nyj_mitchell", name: "Adonai Mitchell", team: "NYJ", pos: "WR" },
+  { id: "nyj_iwilliams", name: "Isaiah Williams", team: "NYJ", pos: "WR" },
+  { id: "nyj_hall", name: "Breece Hall", team: "NYJ", pos: "RB" },
+  { id: "nyj_allen", name: "Braelon Allen", team: "NYJ", pos: "RB" },
+  { id: "nyj_taylor", name: "Mason Taylor", team: "NYJ", pos: "TE" },
+  { id: "nyj_york", name: "Cade York", team: "NYJ", pos: "K" },
+];
+const TITANS_PLAYERS = [
+  { id: "ten_ward", name: "Cam Ward", team: "TEN", pos: "QB" },
+  { id: "ten_tate", name: "Carnell Tate", team: "TEN", pos: "WR" },
+  { id: "ten_ridley", name: "Calvin Ridley", team: "TEN", pos: "WR" },
+  { id: "ten_osborn", name: "K.J. Osborn", team: "TEN", pos: "WR" },
+  { id: "ten_pollard", name: "Tony Pollard", team: "TEN", pos: "RB" },
+  { id: "ten_spears", name: "Tyjae Spears", team: "TEN", pos: "RB" },
+  { id: "ten_helm", name: "Gunnar Helm", team: "TEN", pos: "TE" },
+  { id: "ten_slye", name: "Joey Slye", team: "TEN", pos: "K" },
+];
+const RAVENS_PLAYERS = [
+  { id: "bal_ljackson", name: "Lamar Jackson", team: "BAL", pos: "QB" },
+  { id: "bal_flowers", name: "Zay Flowers", team: "BAL", pos: "WR" },
+  { id: "bal_bateman", name: "Rashod Bateman", team: "BAL", pos: "WR" },
+  { id: "bal_moore", name: "Chris Moore", team: "BAL", pos: "WR" },
+  { id: "bal_henry", name: "Derrick Henry", team: "BAL", pos: "RB" },
+  { id: "bal_hill", name: "Justice Hill", team: "BAL", pos: "RB" },
+  { id: "bal_andrews", name: "Mark Andrews", team: "BAL", pos: "TE" },
+  { id: "bal_loop", name: "Tyler Loop", team: "BAL", pos: "K" },
+];
+const COLTS_PLAYERS = [
+  { id: "ind_djones", name: "Daniel Jones", team: "IND", pos: "QB" },
+  { id: "ind_pierce", name: "Alec Pierce", team: "IND", pos: "WR" },
+  { id: "ind_downs", name: "Josh Downs", team: "IND", pos: "WR" },
+  { id: "ind_dulin", name: "Ashton Dulin", team: "IND", pos: "WR" },
+  { id: "ind_taylor", name: "Jonathan Taylor", team: "IND", pos: "RB" },
+  { id: "ind_giddens", name: "DJ Giddens", team: "IND", pos: "RB" },
+  { id: "ind_warren", name: "Tyler Warren", team: "IND", pos: "TE" },
+  { id: "ind_shrader", name: "Spencer Shrader", team: "IND", pos: "K" },
+];
+const FALCONS_PLAYERS = [
+  { id: "atl_tua", name: "Tua Tagovailoa", team: "ATL", pos: "QB" },
+  { id: "atl_london", name: "Drake London", team: "ATL", pos: "WR" },
+  { id: "atl_dotson", name: "Jahan Dotson", team: "ATL", pos: "WR" },
+  { id: "atl_zaccheaus", name: "Olamide Zaccheaus", team: "ATL", pos: "WR" },
+  { id: "atl_bijan", name: "Bijan Robinson", team: "ATL", pos: "RB" },
+  { id: "atl_brobinson", name: "Brian Robinson Jr.", team: "ATL", pos: "RB" },
+  { id: "atl_pitts", name: "Kyle Pitts Sr.", team: "ATL", pos: "TE" },
+  { id: "atl_romo", name: "Parker Romo", team: "ATL", pos: "K" },
+];
+const STEELERS_PLAYERS = [
+  { id: "pit_rodgers", name: "Aaron Rodgers", team: "PIT", pos: "QB" },
+  { id: "pit_metcalf", name: "DK Metcalf", team: "PIT", pos: "WR" },
+  { id: "pit_pittman", name: "Michael Pittman Jr.", team: "PIT", pos: "WR" },
+  { id: "pit_bernard", name: "Germie Bernard", team: "PIT", pos: "WR" },
+  { id: "pit_warren", name: "Jaylen Warren", team: "PIT", pos: "RB" },
+  { id: "pit_dowdle", name: "Rico Dowdle", team: "PIT", pos: "RB" },
+  { id: "pit_freiermuth", name: "Pat Freiermuth", team: "PIT", pos: "TE" },
+  { id: "pit_boswell", name: "Chris Boswell", team: "PIT", pos: "K" },
+];
+const BEARS_PLAYERS = [
+  { id: "chi_cwilliams", name: "Caleb Williams", team: "CHI", pos: "QB" },
+  { id: "chi_odunze", name: "Rome Odunze", team: "CHI", pos: "WR" },
+  { id: "chi_burden", name: "Luther Burden III", team: "CHI", pos: "WR" },
+  { id: "chi_raymond", name: "Kalif Raymond", team: "CHI", pos: "WR" },
+  { id: "chi_swift", name: "D'Andre Swift", team: "CHI", pos: "RB" },
+  { id: "chi_monangai", name: "Kyle Monangai", team: "CHI", pos: "RB" },
+  { id: "chi_kmet", name: "Cole Kmet", team: "CHI", pos: "TE" },
+  { id: "chi_santos", name: "Cairo Santos", team: "CHI", pos: "K" },
+];
+const PANTHERS_PLAYERS = [
+  { id: "car_byoung", name: "Bryce Young", team: "CAR", pos: "QB" },
+  { id: "car_mcmillant", name: "Tetairoa McMillan", team: "CAR", pos: "WR" },
+  { id: "car_legette", name: "Xavier Legette", team: "CAR", pos: "WR" },
+  { id: "car_coker", name: "Jalen Coker", team: "CAR", pos: "WR" },
+  { id: "car_hubbard", name: "Chuba Hubbard", team: "CAR", pos: "RB" },
+  { id: "car_brooks", name: "Jonathon Brooks", team: "CAR", pos: "RB" },
+  { id: "car_tremble", name: "Tommy Tremble", team: "CAR", pos: "TE" },
+  { id: "car_fitzgerald", name: "Ryan Fitzgerald", team: "CAR", pos: "K" },
+];
+const BROWNS_PLAYERS = [
+  { id: "cle_watson", name: "Deshaun Watson", team: "CLE", pos: "QB" },
+  { id: "cle_jeudy", name: "Jerry Jeudy", team: "CLE", pos: "WR" },
+  { id: "cle_tillman", name: "Cedric Tillman", team: "CLE", pos: "WR" },
+  { id: "cle_corley", name: "Malachi Corley", team: "CLE", pos: "WR" },
+  { id: "cle_judkins", name: "Quinshon Judkins", team: "CLE", pos: "RB" },
+  { id: "cle_sampson", name: "Dylan Sampson", team: "CLE", pos: "RB" },
+  { id: "cle_fannin", name: "Harold Fannin Jr.", team: "CLE", pos: "TE" },
+  { id: "cle_szmyt", name: "Andre Szmyt", team: "CLE", pos: "K" },
+];
+const JAGUARS_PLAYERS = [
+  { id: "jax_lawrence", name: "Trevor Lawrence", team: "JAX", pos: "QB" },
+  { id: "jax_thomasjr", name: "Brian Thomas Jr.", team: "JAX", pos: "WR" },
+  { id: "jax_meyers", name: "Jakobi Meyers", team: "JAX", pos: "WR" },
+  { id: "jax_pwashington", name: "Parker Washington", team: "JAX", pos: "WR" },
+  { id: "jax_etienne", name: "Travis Etienne Jr.", team: "JAX", pos: "RB" },
+  { id: "jax_tuten", name: "Bhayshul Tuten", team: "JAX", pos: "RB" },
+  { id: "jax_strange", name: "Brenton Strange", team: "JAX", pos: "TE" },
+  { id: "jax_little", name: "Cam Little", team: "JAX", pos: "K" },
+];
+const BILLS_PLAYERS = [
+  { id: "buf_allen", name: "Josh Allen", team: "BUF", pos: "QB" },
+  { id: "buf_moore", name: "DJ Moore", team: "BUF", pos: "WR" },
+  { id: "buf_coleman", name: "Keon Coleman", team: "BUF", pos: "WR" },
+  { id: "buf_shavers", name: "Tyrell Shavers", team: "BUF", pos: "WR" },
+  { id: "buf_cook", name: "James Cook III", team: "BUF", pos: "RB" },
+  { id: "buf_davis", name: "Ray Davis", team: "BUF", pos: "RB" },
+  { id: "buf_kincaid", name: "Dalton Kincaid", team: "BUF", pos: "TE" },
+  { id: "buf_bass", name: "Tyler Bass", team: "BUF", pos: "K" },
+];
+const TEXANS_PLAYERS = [
+  { id: "hou_stroud", name: "C.J. Stroud", team: "HOU", pos: "QB" },
+  { id: "hou_collins", name: "Nico Collins", team: "HOU", pos: "WR" },
+  { id: "hou_dell", name: "Tank Dell", team: "HOU", pos: "WR" },
+  { id: "hou_hutchinson", name: "Xavier Hutchinson", team: "HOU", pos: "WR" },
+  { id: "hou_montgomery", name: "David Montgomery", team: "HOU", pos: "RB" },
+  { id: "hou_marks", name: "Woody Marks", team: "HOU", pos: "RB" },
+  { id: "hou_schultz", name: "Dalton Schultz", team: "HOU", pos: "TE" },
+  { id: "hou_fairbairn", name: "Ka'imi Fairbairn", team: "HOU", pos: "K" },
+];
+const DOLPHINS_PLAYERS = [
+  { id: "mia_willis", name: "Malik Willis", team: "MIA", pos: "QB" },
+  { id: "mia_waddle", name: "Jaylen Waddle", team: "MIA", pos: "WR" },
+  { id: "mia_mwashington", name: "Malik Washington", team: "MIA", pos: "WR" },
+  { id: "mia_marshall", name: "Terrace Marshall Jr.", team: "MIA", pos: "WR" },
+  { id: "mia_achane", name: "De'Von Achane", team: "MIA", pos: "RB" },
+  { id: "mia_wright", name: "Jaylen Wright", team: "MIA", pos: "RB" },
+  { id: "mia_dulcich", name: "Greg Dulcich", team: "MIA", pos: "TE" },
+  { id: "mia_patterson", name: "Riley Patterson", team: "MIA", pos: "K" },
+];
+const RAIDERS_PLAYERS = [
+  { id: "lv_cousins", name: "Kirk Cousins", team: "LV", pos: "QB" },
+  { id: "lv_tucker", name: "Tre Tucker", team: "LV", pos: "WR" },
+  { id: "lv_thornton", name: "Dont'e Thornton Jr.", team: "LV", pos: "WR" },
+  { id: "lv_sjackson", name: "Shedrick Jackson", team: "LV", pos: "WR" },
+  { id: "lv_jeanty", name: "Ashton Jeanty", team: "LV", pos: "RB" },
+  { id: "lv_mwashington", name: "Mike Washington Jr.", team: "LV", pos: "RB" },
+  { id: "lv_bowers", name: "Brock Bowers", team: "LV", pos: "TE" },
+  { id: "lv_gay", name: "Matt Gay", team: "LV", pos: "K" },
+];
+const PACKERS_PLAYERS = [
+  { id: "gb_love", name: "Jordan Love", team: "GB", pos: "QB" },
+  { id: "gb_watson", name: "Christian Watson", team: "GB", pos: "WR" },
+  { id: "gb_reed", name: "Jayden Reed", team: "GB", pos: "WR" },
+  { id: "gb_melton", name: "Bo Melton", team: "GB", pos: "WR" },
+  { id: "gb_jacobs", name: "Josh Jacobs", team: "GB", pos: "RB" },
+  { id: "gb_lloyd", name: "MarShawn Lloyd", team: "GB", pos: "RB" },
+  { id: "gb_kraft", name: "Tucker Kraft", team: "GB", pos: "TE" },
+  { id: "gb_smack", name: "Trey Smack", team: "GB", pos: "K" },
+];
+const VIKINGS_PLAYERS = [
+  { id: "min_murray", name: "Kyler Murray", team: "MIN", pos: "QB" },
+  { id: "min_jefferson", name: "Justin Jefferson", team: "MIN", pos: "WR" },
+  { id: "min_addison", name: "Jordan Addison", team: "MIN", pos: "WR" },
+  { id: "min_jennings", name: "Jauan Jennings", team: "MIN", pos: "WR" },
+  { id: "min_ajones", name: "Aaron Jones Sr.", team: "MIN", pos: "RB" },
+  { id: "min_mason", name: "Jordan Mason", team: "MIN", pos: "RB" },
+  { id: "min_hockenson", name: "T.J. Hockenson", team: "MIN", pos: "TE" },
+  { id: "min_reichard", name: "Will Reichard", team: "MIN", pos: "K" },
+];
+const COMMANDERS_PLAYERS = [
+  { id: "was_daniels", name: "Jayden Daniels", team: "WAS", pos: "QB" },
+  { id: "was_mclaurin", name: "Terry McLaurin", team: "WAS", pos: "WR" },
+  { id: "was_samuel", name: "Deebo Samuel", team: "WAS", pos: "WR" },
+  { id: "was_nbrown", name: "Noah Brown", team: "WAS", pos: "WR" },
+  { id: "was_croskeymerritt", name: "Jacory Croskey-Merritt", team: "WAS", pos: "RB" },
+  { id: "was_white", name: "Rachaad White", team: "WAS", pos: "RB" },
+  { id: "was_okonkwo", name: "Chig Okonkwo", team: "WAS", pos: "TE" },
+  { id: "was_stevens", name: "Drew Stevens", team: "WAS", pos: "K" },
+];
+const EAGLES_PLAYERS = [
+  { id: "phi_hurts", name: "Jalen Hurts", team: "PHI", pos: "QB" },
+  { id: "phi_dsmith", name: "DeVonta Smith", team: "PHI", pos: "WR" },
+  { id: "phi_hbrown", name: "Hollywood Brown", team: "PHI", pos: "WR" },
+  { id: "phi_cooper", name: "Darius Cooper", team: "PHI", pos: "WR" },
+  { id: "phi_barkley", name: "Saquon Barkley", team: "PHI", pos: "RB" },
+  { id: "phi_bigsby", name: "Tank Bigsby", team: "PHI", pos: "RB" },
+  { id: "phi_goedert", name: "Dallas Goedert", team: "PHI", pos: "TE" },
+  { id: "phi_elliott", name: "Jake Elliott", team: "PHI", pos: "K" },
+];
+const NFL_CARDINALS_PLAYERS = [
+  { id: "ari_brissett", name: "Jacoby Brissett", team: "ARI", pos: "QB" },
+  { id: "ari_harrisonjr", name: "Marvin Harrison Jr.", team: "ARI", pos: "WR" },
+  { id: "ari_weaver", name: "Xavier Weaver", team: "ARI", pos: "WR" },
+  { id: "ari_fehoko", name: "Simi Fehoko", team: "ARI", pos: "WR" },
+  { id: "ari_love", name: "Jeremiyah Love", team: "ARI", pos: "RB" },
+  { id: "ari_allgeier", name: "Tyler Allgeier", team: "ARI", pos: "RB" },
+  { id: "ari_mcbride", name: "Trey McBride", team: "ARI", pos: "TE" },
+  { id: "ari_ryland", name: "Chad Ryland", team: "ARI", pos: "K" },
+];
+const CHARGERS_PLAYERS = [
+  { id: "lac_herbert", name: "Justin Herbert", team: "LAC", pos: "QB" },
+  { id: "lac_mcconkey", name: "Ladd McConkey", team: "LAC", pos: "WR" },
+  { id: "lac_johnston", name: "Quentin Johnston", team: "LAC", pos: "WR" },
+  { id: "lac_lambertsmith", name: "KeAndre Lambert-Smith", team: "LAC", pos: "WR" },
+  { id: "lac_hampton", name: "Omarion Hampton", team: "LAC", pos: "RB" },
+  { id: "lac_vidal", name: "Kimani Vidal", team: "LAC", pos: "RB" },
+  { id: "lac_gadsden", name: "Oronde Gadsden II", team: "LAC", pos: "TE" },
+  { id: "lac_dicker", name: "Cameron Dicker", team: "LAC", pos: "K" },
+];
+
 const ALL_NFL_PLAYERS = [
   ...NFL_PLAYERS, ...GIANTS_PLAYERS, ...SF_PLAYERS, ...RAMS_PLAYERS,
   ...BRONCOS_PLAYERS, ...CHIEFS_PLAYERS,
+  ...PATRIOTS_PLAYERS, ...SEAHAWKS_PLAYERS, ...BUCCANEERS_PLAYERS, ...BENGALS_PLAYERS,
+  ...SAINTS_PLAYERS, ...LIONS_PLAYERS, ...JETS_PLAYERS, ...TITANS_PLAYERS,
+  ...RAVENS_PLAYERS, ...COLTS_PLAYERS, ...FALCONS_PLAYERS, ...STEELERS_PLAYERS,
+  ...BEARS_PLAYERS, ...PANTHERS_PLAYERS, ...BROWNS_PLAYERS, ...JAGUARS_PLAYERS,
+  ...BILLS_PLAYERS, ...TEXANS_PLAYERS, ...DOLPHINS_PLAYERS, ...RAIDERS_PLAYERS,
+  ...PACKERS_PLAYERS, ...VIKINGS_PLAYERS, ...COMMANDERS_PLAYERS, ...EAGLES_PLAYERS,
+  ...NFL_CARDINALS_PLAYERS, ...CHARGERS_PLAYERS,
 ];
 
 // Each entry is one week's matchup the Prop Ledger can scout -- the "matchup
@@ -619,6 +1008,125 @@ const NFL_MATCHUPS = [
     venue: "GEHA Field at Arrowhead Stadium",
     city: "Kansas City, MO",
   },
+  {
+    id: "ne-sea",
+    label: "Patriots @ Seahawks",
+    teamA: { label: "New England Patriots", players: PATRIOTS_PLAYERS },
+    teamB: { label: "Seattle Seahawks", players: SEAHAWKS_PLAYERS },
+    // Week 1's Wednesday-night opener (NBC), per the NFL's released 2026
+    // schedule -- the league's first-ever Wednesday season opener.
+    date: "2026-09-10T00:20:00Z",
+    venue: "Lumen Field",
+    city: "Seattle, WA",
+  },
+  {
+    id: "tb-cin",
+    label: "Buccaneers @ Bengals",
+    teamA: { label: "Tampa Bay Buccaneers", players: BUCCANEERS_PLAYERS },
+    teamB: { label: "Cincinnati Bengals", players: BENGALS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "Paycor Stadium",
+    city: "Cincinnati, OH",
+  },
+  {
+    id: "no-det",
+    label: "Saints @ Lions",
+    teamA: { label: "New Orleans Saints", players: SAINTS_PLAYERS },
+    teamB: { label: "Detroit Lions", players: LIONS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "Ford Field",
+    city: "Detroit, MI",
+  },
+  {
+    id: "nyj-ten",
+    label: "Jets @ Titans",
+    teamA: { label: "New York Jets", players: JETS_PLAYERS },
+    teamB: { label: "Tennessee Titans", players: TITANS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "Nissan Stadium",
+    city: "Nashville, TN",
+  },
+  {
+    id: "bal-ind",
+    label: "Ravens @ Colts",
+    teamA: { label: "Baltimore Ravens", players: RAVENS_PLAYERS },
+    teamB: { label: "Indianapolis Colts", players: COLTS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "Lucas Oil Stadium",
+    city: "Indianapolis, IN",
+  },
+  {
+    id: "atl-pit",
+    label: "Falcons @ Steelers",
+    teamA: { label: "Atlanta Falcons", players: FALCONS_PLAYERS },
+    teamB: { label: "Pittsburgh Steelers", players: STEELERS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "Acrisure Stadium",
+    city: "Pittsburgh, PA",
+  },
+  {
+    id: "chi-car",
+    label: "Bears @ Panthers",
+    teamA: { label: "Chicago Bears", players: BEARS_PLAYERS },
+    teamB: { label: "Carolina Panthers", players: PANTHERS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "Bank of America Stadium",
+    city: "Charlotte, NC",
+  },
+  {
+    id: "cle-jax",
+    label: "Browns @ Jaguars",
+    teamA: { label: "Cleveland Browns", players: BROWNS_PLAYERS },
+    teamB: { label: "Jacksonville Jaguars", players: JAGUARS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "EverBank Stadium",
+    city: "Jacksonville, FL",
+  },
+  {
+    id: "buf-hou",
+    label: "Bills @ Texans",
+    teamA: { label: "Buffalo Bills", players: BILLS_PLAYERS },
+    teamB: { label: "Houston Texans", players: TEXANS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "NRG Stadium",
+    city: "Houston, TX",
+  },
+  {
+    id: "mia-lv",
+    label: "Dolphins @ Raiders",
+    teamA: { label: "Miami Dolphins", players: DOLPHINS_PLAYERS },
+    teamB: { label: "Las Vegas Raiders", players: RAIDERS_PLAYERS },
+    date: "2026-09-13T20:05:00Z",
+    venue: "Allegiant Stadium",
+    city: "Las Vegas, NV",
+  },
+  {
+    id: "gb-min",
+    label: "Packers @ Vikings",
+    teamA: { label: "Green Bay Packers", players: PACKERS_PLAYERS },
+    teamB: { label: "Minnesota Vikings", players: VIKINGS_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "U.S. Bank Stadium",
+    city: "Minneapolis, MN",
+  },
+  {
+    id: "was-phi",
+    label: "Commanders @ Eagles",
+    teamA: { label: "Washington Commanders", players: COMMANDERS_PLAYERS },
+    teamB: { label: "Philadelphia Eagles", players: EAGLES_PLAYERS },
+    date: "2026-09-13T17:00:00Z",
+    venue: "Lincoln Financial Field",
+    city: "Philadelphia, PA",
+  },
+  {
+    id: "ari-lac",
+    label: "Cardinals @ Chargers",
+    teamA: { label: "Arizona Cardinals", players: NFL_CARDINALS_PLAYERS },
+    teamB: { label: "Los Angeles Chargers", players: CHARGERS_PLAYERS },
+    date: "2026-09-13T20:25:00Z",
+    venue: "SoFi Stadium",
+    city: "Inglewood, CA",
+  },
 ];
 const NFL_MATCHUPS_BY_DATE = groupMatchupsByDate(NFL_MATCHUPS);
 
@@ -641,6 +1149,19 @@ const NFL_MARKETS = [
   { id: "fga", label: "FG Attempts", pos: ["K"] },
   { id: "xpm", label: "XP Made", pos: ["K"] },
   { id: "kickPts", label: "Kicking Points", pos: ["K"] },
+];
+// Groups NFL_MARKETS into the same "section header + tab row" layout the NBA
+// page uses (Core/Combos/etc.) instead of one flat "Markets" list -- each
+// group's `ids` gets filtered down to whatever's applicable to the selected
+// player's position at render time, and empty groups (e.g. Kicking for a QB)
+// are skipped by MarketSectionGrid.
+const NFL_MARKET_SECTIONS = [
+  { label: "Passing", ids: ["passYds", "comp", "passAtt", "passTd", "int"] },
+  { label: "Rushing", ids: ["rushYds", "rushAtt"] },
+  { label: "Receiving", ids: ["rec", "recYds", "longRec"] },
+  { label: "Combos", ids: ["passRushYds", "scrim"] },
+  { label: "Milestones", ids: ["anytimeTd"], pills: true },
+  { label: "Kicking", ids: ["fgm", "fga", "xpm", "kickPts"] },
 ];
 
 // Position-appropriate stat set for the player snapshot card — a QB's
@@ -874,7 +1395,11 @@ function normalizeNFLGame(g, player) {
     rec: g.rec || 0, tgt: g.tgt || 0, recYds: g.recYds || 0, recTd: g.recTd || 0,
     fgm: g.fgm || 0, fga: g.fga || 0, xpm: g.xpm || 0, xpa: g.xpa || 0,
   };
-  return { ...full, snapPct: estimateSnapPct(player, full), long: estimateLongReception(full.rec, full.recYds) };
+  // g.long comes through as a real value on rows parsed from ESPN's gamelog
+  // (see parseNFLGameLogResponse) -- only estimate it when that's absent,
+  // i.e. for the synthetic/hand-transcribed logs that never tracked it.
+  const long = g.long != null ? g.long : estimateLongReception(full.rec, full.recYds);
+  return { ...full, snapPct: estimateSnapPct(player, full), long };
 }
 
 // Season-average baselines for every non-Cowboys team's seeded synthetic
@@ -975,7 +1500,118 @@ function genSyntheticNFLGames(player) {
   return games;
 }
 
+// Populated in place by fetchNFLPlayerGameLog once each player's real 2025
+// game log resolves (see the loading effect in PropLedger). Takes priority
+// over both the hand-transcribed NFL_GAME_LOGS (Cowboys only) and the
+// synthetic generator (everyone else) the moment it's available -- until
+// then, getNFLGames falls back exactly as it did before this existed, so the
+// page never has to show a loading state.
+const NFL_REAL_GAME_LOGS = {};
+
+// Maps the flat "names" keys ESPN's gamelog endpoint returns to the field
+// names statValueNFL/normalizeNFLGame already expect.
+const NFL_STAT_NAME_MAP = {
+  completions: "comp",
+  passingAttempts: "att",
+  passingYards: "passYds",
+  passingTouchdowns: "passTd",
+  interceptions: "int",
+  rushingAttempts: "rushAtt",
+  rushingYards: "rushYds",
+  rushingTouchdowns: "rushTd",
+  receptions: "rec",
+  receivingTargets: "tgt",
+  receivingYards: "recYds",
+  receivingTouchdowns: "recTd",
+  longReception: "long",
+};
+
+// "2-3" (made-attempts, as ESPN formats kicking stats) -> [2, 3]
+function parseMadeAttempts(s) {
+  if (!s || typeof s !== "string") return [0, 0];
+  const [made, att] = s.split("-").map((n) => parseFloat(n));
+  return [Number.isFinite(made) ? made : 0, Number.isFinite(att) ? att : 0];
+}
+
+// Turns ESPN's raw gamelog response (see fetchNFLPlayerGameLog) into the
+// same { date, opp, home, comp, att, passYds, ... } shape genSyntheticNFLGames
+// produces, oldest game first.
+function parseNFLGameLogResponse(data) {
+  const names = data?.names || [];
+  const events = data?.events || {};
+  const byEvent = {};
+
+  (data?.seasonTypes || []).forEach((st) => {
+    (st.categories || []).forEach((cat) => {
+      (cat.events || []).forEach((ev) => {
+        const meta = events[ev.eventId];
+        if (!meta) return;
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {} };
+        (ev.stats || []).forEach((val, i) => {
+          const key = names[i];
+          if (key) byEvent[ev.eventId].stats[key] = val;
+        });
+      });
+    });
+  });
+
+  return Object.values(byEvent)
+    .map(({ meta, stats }) => {
+      const oppAbbr = meta.opponent?.abbreviation;
+      const opp = NFL_ESPN_ABBR_FIX[oppAbbr] || oppAbbr || "???";
+      const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+      const game = {
+        date: (meta.gameDate || "").slice(0, 10),
+        opp,
+        home: meta.atVs !== "@",
+      };
+      Object.entries(NFL_STAT_NAME_MAP).forEach(([espnKey, ourKey]) => {
+        game[ourKey] = num(stats[espnKey]);
+      });
+      const [fgm, fga] = parseMadeAttempts(stats["fieldGoalsMade-fieldGoalAttempts"]);
+      const [xpm, xpa] = parseMadeAttempts(stats["extraPointsMade-extraPointAttempts"]);
+      game.fgm = fgm; game.fga = fga; game.xpm = xpm; game.xpa = xpa;
+      return game;
+    })
+    .filter((g) => g.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// The 2025 season is already final, so once fetched this data never changes
+// -- cached to sessionStorage so it's only fetched once per tab regardless
+// of how many times a player's page gets revisited.
+const nflGameLogCache = new Map();
+async function fetchNFLPlayerGameLog(espnId) {
+  if (nflGameLogCache.has(espnId)) return nflGameLogCache.get(espnId);
+
+  const cacheKey = `nfl_gamelog_v1_${espnId}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const games = JSON.parse(stored);
+      nflGameLogCache.set(espnId, games);
+      return games;
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(
+      `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${espnId}/gamelog?season=2025`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const games = parseNFLGameLogResponse(data);
+    if (!games.length) return null;
+    nflGameLogCache.set(espnId, games);
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(games)); } catch {}
+    return games;
+  } catch {
+    return null;
+  }
+}
+
 function getNFLGames(player) {
+  if (NFL_REAL_GAME_LOGS[player.id]) return NFL_REAL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
   if (NFL_GAME_LOGS[player.id]) return NFL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
   return genSyntheticNFLGames(player);
 }
@@ -1046,7 +1682,7 @@ const median = (arr) => {
 // PLOT_* constants must match the margin/padding used on the chart it overlays.
 const PLOT_TOP = 27;    // border(1) + wrapper padding(16) + chart top margin(10)
 const PLOT_BOTTOM = 73; // border(1) + wrapper padding(16) + chart bottom margin(56, for the logo+abbreviation tick)
-const CHART_HEIGHT = 600;
+const CHART_HEIGHT = 680;
 const PLOT_HEIGHT = CHART_HEIGHT - PLOT_TOP - PLOT_BOTTOM;
 
 // Darker/more saturated bar colors, shared across every bar chart (NFL/MLB/NBA).
@@ -1324,6 +1960,40 @@ function useIsNarrow(breakpoint = 480) {
   return isNarrow;
 }
 
+// Shared by every sport page's chart fullscreen toggle: closes on Escape and
+// locks page scroll behind the fixed-position overlay while it's open.
+function useFullscreenChartEscape(isFullscreen, setIsFullscreen) {
+  React.useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e) => { if (e.key === "Escape") setIsFullscreen(false); };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isFullscreen, setIsFullscreen]);
+}
+
+// Reusable expand/collapse button rendered inside every chart wrapper.
+function ChartFullscreenButton({ isFullscreen, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      title={isFullscreen ? "Exit fullscreen" : "View chart fullscreen"}
+      style={{
+        position: "absolute", top: isFullscreen ? 18 : 8, right: isFullscreen ? 20 : 8, zIndex: 1001,
+        width: 30, height: 30, borderRadius: 6, cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 15,
+      }}
+    >
+      {isFullscreen ? "✕" : "⛶"}
+    </button>
+  );
+}
+
 // Caps ticks at ~5 on narrow screens and ~20 on wide ones, however many
 // games are in the sample -- "All" on a full MLB season can be 80+ games,
 // which would render every single logo/abbreviation crammed on top of each
@@ -1504,7 +2174,63 @@ function MarketPillRow({ markets, activeMarket, onSelect }) {
   );
 }
 
-function NFLPropsPage({ jumpTo }) {
+// Shared "NBA-style" categorized market picker -- a row of section labels
+// (Core / Combos / Shooting / etc.), each with its own group of tabs, instead
+// of one flat "Markets" list. `sections` is [{ label, markets, pills? }];
+// sections with no markets (e.g. a Kicking section for a non-kicker) are
+// skipped entirely rather than rendered empty.
+function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow }) {
+  const visible = sections.filter((s) => s.markets.length > 0);
+  return (
+    <>
+      {visible.map((section, si) => (
+        <div key={section.label} style={{ marginTop: si === 0 ? 0 : 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+            {section.label}
+          </div>
+          {section.pills ? (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
+              {section.markets.map((m, mi) => (
+                <React.Fragment key={m.id}>
+                  {mi > 0 && <span style={{ color: "var(--line)", fontSize: 18 }}>|</span>}
+                  <div
+                    className="oswald"
+                    style={{
+                      fontSize: isNarrow ? 15.5 : 18, fontWeight: 600, letterSpacing: "0.03em", padding: "6px 4px",
+                      color: activeMarket === m.id ? "var(--amber)" : "var(--dim)", cursor: "pointer", whiteSpace: "nowrap",
+                    }}
+                    onClick={() => onSelect(m.id)}
+                  >
+                    {m.label}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 28 }}>
+              {section.markets.map((m, mi) => (
+                <React.Fragment key={m.id}>
+                  {mi > 0 && (
+                    <span style={{ display: "flex", alignItems: "center", color: "var(--line)", fontSize: 18 }}>|</span>
+                  )}
+                  <div
+                    className={`tab ${si === 0 ? "no-underline" : ""} ${activeMarket === m.id ? "active" : ""}`}
+                    style={{ flex: "0 0 auto", width: "auto" }}
+                    onClick={() => onSelect(m.id)}
+                  >
+                    {m.label}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function NFLPropsPage({ jumpTo, dataVersion }) {
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
   const [playerId, setPlayerId] = useState(NFL_PLAYERS[0].id);
@@ -1515,6 +2241,7 @@ function NFLPropsPage({ jumpTo }) {
     setMarket(jumpTo.market);
     setLine(null);
     setOpponent("all");
+    setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
@@ -1525,6 +2252,8 @@ function NFLPropsPage({ jumpTo }) {
   const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const chartRef = React.useRef(null);
+  const [chartFullscreen, setChartFullscreen] = useState(false);
+  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -1538,7 +2267,7 @@ function NFLPropsPage({ jumpTo }) {
   };
 
   const player = ALL_NFL_PLAYERS.find((p) => p.id === playerId);
-  const allGames = useMemo(() => getNFLGames(player), [player]);
+  const allGames = useMemo(() => getNFLGames(player), [player, dataVersion]);
   const playerMarkets = useMemo(() => NFL_MARKETS.filter((m) => m.pos.includes(player.pos)), [player]);
   const seasonAvg = useMemo(() => {
     const stats = NFL_SNAPSHOT_STATS[player.pos] || [];
@@ -1760,13 +2489,11 @@ function NFLPropsPage({ jumpTo }) {
           </span>
         </div>
 
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
-          Markets
-        </div>
-        <MarketPillRow
-          markets={playerMarkets}
+        <MarketSectionGrid
+          sections={NFL_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
           activeMarket={market}
           onSelect={(id) => { setMarket(id); setLine(null); }}
+          isNarrow={isNarrow}
         />
       </div>
     </div>
@@ -1915,13 +2642,17 @@ function NFLPropsPage({ jumpTo }) {
       {/* Chart */}
       <div
         ref={chartRef}
-        style={{
+        style={chartFullscreen ? {
+          position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
+          background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
+        } : {
           position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
           background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
           padding: 16, marginBottom: 16,
         }}
       >
-        <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+        <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
+        <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
         <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -1959,7 +2690,7 @@ function NFLPropsPage({ jumpTo }) {
               }
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = statValueNFL(g, market);
@@ -2020,7 +2751,7 @@ function NFLPropsPage({ jumpTo }) {
       </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Sample data only — Cowboys game logs from real 2025 box scores, every other team's game logs generated from season-average baselines, ahead of a real NFL stats/odds feed.
+        Real 2025 regular-season game logs (ESPN Stats API) for every player shown above — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.
       </div>
     </div>
   );
@@ -2341,6 +3072,109 @@ function genWNBAGames(player, seedOffset) {
   return games;
 }
 
+// Populated in place by fetchWNBAPlayerGameLog once each player's real
+// current-season log resolves -- same instant-fallback-then-upgrade pattern
+// as NFL_REAL_GAME_LOGS above. Takes priority over genWNBAGames the moment
+// it's available.
+const WNBA_REAL_GAME_LOGS = {};
+
+// ESPN's WNBA gamelog only reports combined "totalRebounds", not an
+// offensive/defensive split -- there's no real number to put in oreb, so the
+// full real total goes to dreb (oreb: 0) rather than fabricate a split.
+// This keeps the "Total" rebounds view (the default, and by far the more
+// commonly used one) fully real; only the Off/Def toggle loses precision.
+function parseWNBAGameLogResponse(data) {
+  const names = data?.names || [];
+  const events = data?.events || {};
+  const byEvent = {};
+
+  (data?.seasonTypes || []).forEach((st) => {
+    (st.categories || []).forEach((cat) => {
+      (cat.events || []).forEach((ev) => {
+        const meta = events[ev.eventId];
+        if (!meta) return;
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {} };
+        (ev.stats || []).forEach((val, i) => {
+          const key = names[i];
+          if (key) byEvent[ev.eventId].stats[key] = val;
+        });
+      });
+    });
+  });
+
+  const knownTeams = new Set(WNBA_TEAMS);
+  return Object.values(byEvent)
+    // ESPN's gamelog includes preseason/exhibition games against opponents
+    // outside the 15 real WNBA teams (e.g. "SPO") -- those aren't in
+    // WNBA_TEAM_DEF/the defense-rank tables at all, so they're dropped here
+    // rather than crashing every lookup that expects a real team abbreviation.
+    .filter(({ meta }) => knownTeams.has(meta.opponent?.abbreviation))
+    .map(({ meta, stats }) => {
+      const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+      const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
+      const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
+      return {
+        date: (meta.gameDate || "").slice(0, 10),
+        opp: meta.opponent.abbreviation,
+        home: meta.atVs !== "@",
+        minutes: num(stats.minutes),
+        pts: num(stats.points),
+        oreb: 0,
+        dreb: num(stats.totalRebounds),
+        ast: num(stats.assists),
+        stl: num(stats.steals),
+        blk: num(stats.blocks),
+        fg3m, fg3a, ftm, fta,
+        tov: num(stats.turnovers),
+      };
+    })
+    .filter((g) => g.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// The WNBA season is in progress -- short TTL, refetched periodically
+// (same pattern as fetchMLBGameLog) so a finished game shows up without
+// needing a full page reload.
+const WNBA_GAMELOG_TTL_MS = 15 * 60 * 1000;
+const wnbaGameLogCache = new Map();
+async function fetchWNBAPlayerGameLog(espnId) {
+  const cached = wnbaGameLogCache.get(espnId);
+  if (cached && Date.now() - cached.fetchedAt < WNBA_GAMELOG_TTL_MS) return cached.games;
+
+  const cacheKey = `wnba_gamelog_v2_${espnId}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < WNBA_GAMELOG_TTL_MS) {
+        wnbaGameLogCache.set(espnId, parsed);
+        return parsed.games;
+      }
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(
+      `https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/athletes/${espnId}/gamelog?season=2026`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const games = parseWNBAGameLogResponse(data);
+    if (!games.length) return null;
+    const record = { games, fetchedAt: Date.now() };
+    wnbaGameLogCache.set(espnId, record);
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+    return games;
+  } catch {
+    return null;
+  }
+}
+
+function getWNBAGames(player, seedOffset) {
+  if (WNBA_REAL_GAME_LOGS[player.id]) return WNBA_REAL_GAME_LOGS[player.id];
+  return genWNBAGames(player, seedOffset);
+}
+
 // Curated market list for the WNBA page -- the core box-score stats plus
 // the NBA page's same combo props (PRA/RA/PR/PA).
 const WNBA_MARKETS_CORE = [
@@ -2365,6 +3199,15 @@ const WNBA_MILESTONE_MARKETS = [
   { id: "td", label: "Triple-Double", binary: true },
 ];
 const WNBA_MARKETS = [...WNBA_MARKETS_CORE, ...WNBA_MILESTONE_MARKETS];
+// Same grouping the NBA page uses, since the WNBA page shares its combo
+// props (PRA/RA/PR/PA) -- see MarketSectionGrid.
+const WNBA_MARKET_SECTIONS = [
+  { label: "Core", ids: ["pts", "reb", "ast"] },
+  { label: "Combos", ids: ["pra", "ra", "pr", "pa"] },
+  { label: "Shooting", ids: ["3pm"] },
+  { label: "Defense & hustle", ids: ["stl", "blk"] },
+  { label: "Milestones", ids: ["dd", "td"], pills: true },
+];
 const WNBA_DD_PLAYERS = new Set(["ncollier", "areese", "athomas", "bstewart", "ajwilson", "amorrow", "bgriner", "kcardoso"]);
 const WNBA_TD_PLAYERS = new Set(["athomas", "bstewart", "ajwilson"]);
 function wnbaPlayerMarkets(player) {
@@ -2374,7 +3217,7 @@ function wnbaPlayerMarkets(player) {
   return [...WNBA_MARKETS_CORE, ...extra];
 }
 
-function WNBAPropsPage({ jumpTo }) {
+function WNBAPropsPage({ jumpTo, dataVersion }) {
   const [matchupId, setMatchupId] = useState(WNBA_MATCHUPS[0].id);
   const matchup = WNBA_MATCHUPS.find((m) => m.id === matchupId);
   const [playerId, setPlayerId] = useState(WNBA_MATCHUPS[0].teamA.players[0].id);
@@ -2386,6 +3229,7 @@ function WNBAPropsPage({ jumpTo }) {
     setMarket(jumpTo.market);
     setLine(null);
     setOpponent("all");
+    setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
@@ -2396,6 +3240,8 @@ function WNBAPropsPage({ jumpTo }) {
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const chartRef = React.useRef(null);
+  const [chartFullscreen, setChartFullscreen] = useState(false);
+  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -2422,7 +3268,7 @@ function WNBAPropsPage({ jumpTo }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId]);
 
-  const allGames = useMemo(() => genWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)), [player]);
+  const allGames = useMemo(() => getWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)), [player, dataVersion]);
   const seasonAvg = useMemo(() => {
     const n = allGames.length || 1;
     const sum = (key) => allGames.reduce((a, g) => a + g[key], 0);
@@ -2610,13 +3456,11 @@ function WNBAPropsPage({ jumpTo }) {
           </span>
         </div>
 
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
-          Markets
-        </div>
-        <MarketPillRow
-          markets={playerMarkets}
+        <MarketSectionGrid
+          sections={WNBA_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
           activeMarket={market}
           onSelect={(id) => { setMarket(id); setLine(null); }}
+          isNarrow={isNarrow}
         />
         {market === "reb" && (
           <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
@@ -2739,7 +3583,7 @@ function WNBAPropsPage({ jumpTo }) {
         </div>
 
         {opponent !== "all" && (() => {
-          const oppDef = WNBA_TEAM_DEF[opponent];
+          const oppDef = getWNBADefRank(market, opponent);
           const tier = defTier(oppDef.rank);
           return (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "8px 14px" }}>
@@ -2760,13 +3604,17 @@ function WNBAPropsPage({ jumpTo }) {
 
       <div
         ref={chartRef}
-        style={{
+        style={chartFullscreen ? {
+          position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
+          background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
+        } : {
           position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
           background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
           padding: 16, marginBottom: 16,
         }}
       >
-        <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+        <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
+        <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
         <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -2795,7 +3643,7 @@ function WNBAPropsPage({ jumpTo }) {
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} />}
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = statValue(g, market, rebSplit);
@@ -2830,7 +3678,7 @@ function WNBAPropsPage({ jumpTo }) {
                 const v = statValue(g, market, rebSplit);
                 const over = v > effectiveLine;
                 const push = !isBinary && v === effectiveLine;
-                const def = WNBA_TEAM_DEF[g.opp];
+                const def = getWNBADefRank(market, g.opp);
                 const tier = defTier(def.rank);
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
@@ -2854,7 +3702,7 @@ function WNBAPropsPage({ jumpTo }) {
       </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Sample data only — real rosters/matchups for tonight's slate, game logs generated from season-average baselines ahead of a real WNBA stats/odds feed.
+        Live 2026 regular-season game logs (ESPN Stats API) for the players shown above, refreshed each tab. Defensive matchup ranks are real opponent points allowed per game.
       </div>
     </div>
   );
@@ -3843,6 +4691,7 @@ function MLBPropsPage({ jumpTo }) {
     setMarket(jumpTo.market);
     setLine(null);
     setOpponent("all");
+    setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
@@ -3854,6 +4703,8 @@ function MLBPropsPage({ jumpTo }) {
   const [line, setLine] = useState(null);
   const [showStatInfo, setShowStatInfo] = useState(false);
   const chartRef = React.useRef(null);
+  const [chartFullscreen, setChartFullscreen] = useState(false);
+  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -4332,61 +5183,20 @@ function MLBPropsPage({ jumpTo }) {
           );
         })()}
 
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, marginTop: 14, textAlign: "center" }}>
-          Markets
-        </div>
-        {isPitcher ? (
-          <div style={{ marginTop: 6 }}>
-            <MarketPillRow
-              markets={MLB_PITCHER_MARKETS}
-              activeMarket={market}
-              onSelect={(id) => { setMarket(id); setLine(null); }}
-            />
-          </div>
-        ) : (
-        [
-          { label: "Core", markets: MLB_MARKETS_ROW_1 },
-          { label: "Power", markets: MLB_MARKETS_ROW_2 },
-          { label: "Discipline", markets: MLB_MARKETS_ROW_3 },
-        ].map((section, si) => (
-          <div key={section.label} style={{ marginTop: si === 0 ? 6 : 16 }}>
-            {section.pills ? (
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
-                {section.markets.map((m, mi) => (
-                  <React.Fragment key={m.id}>
-                    {mi > 0 && <span style={{ color: "var(--line)", fontSize: 18 }}>|</span>}
-                    <div
-                      className="oswald"
-                      style={{
-                        fontSize: 18, fontWeight: 600, letterSpacing: "0.03em", padding: "6px 4px",
-                        color: market === m.id ? "var(--amber)" : "var(--dim)", cursor: "pointer", whiteSpace: "nowrap",
-                      }}
-                      onClick={() => { setMarket(m.id); setLine(null); }}
-                    >
-                      {m.label}
-                    </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                {section.markets.map((m, mi) => (
-                  <React.Fragment key={m.id}>
-                    {mi > 0 && <span style={{ color: "var(--line)", fontSize: 20 }}>|</span>}
-                    <div
-                      className={`tab no-underline ${market === m.id ? "active" : ""}`}
-                      style={{ flex: "0 0 auto", width: "auto", padding: "10px 16px", fontSize: 20 }}
-                      onClick={() => { setMarket(m.id); setLine(null); }}
-                    >
-                      {m.label}
-                    </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            )}
-          </div>
-        ))
-        )}
+        <MarketSectionGrid
+          sections={
+            isPitcher
+              ? [{ label: "Pitching", markets: MLB_PITCHER_MARKETS }]
+              : [
+                  { label: "Core", markets: MLB_MARKETS_ROW_1 },
+                  { label: "Power", markets: MLB_MARKETS_ROW_2 },
+                  { label: "Discipline & Speed", markets: MLB_MARKETS_ROW_3 },
+                ]
+          }
+          activeMarket={market}
+          onSelect={(id) => { setMarket(id); setLine(null); }}
+          isNarrow={isNarrow}
+        />
       </div>
     </div>
     <TeamRosterPanel
@@ -4509,12 +5319,16 @@ function MLBPropsPage({ jumpTo }) {
       {/* Chart */}
       <div
         ref={chartRef}
-        style={{
+        style={chartFullscreen ? {
+          position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
+          background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
+        } : {
           position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
           background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 16, marginBottom: 16,
         }}
       >
-        <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+        <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
+        <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
         <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -4550,7 +5364,7 @@ function MLBPropsPage({ jumpTo }) {
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
@@ -4612,7 +5426,7 @@ function MLBPropsPage({ jumpTo }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Live 2026 regular-season game logs (MLB Stats API) for the {matchup.teamA.label} and {matchup.teamB.label} lineups shown above, refreshed on load and every 15 minutes
         {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
-        Defensive matchup ranks are still a placeholder model ahead of a real opponent-stats feed.
+        Defensive matchup ranks are real team ERA, refreshed nightly.
       </div>
     </div>
   );
@@ -4677,18 +5491,65 @@ const WNBA_MARKET_DEF_LABEL = {
   pra: "PRA allowed", ra: "RA allowed", pr: "PR allowed", pa: "PA allowed",
   "3pm": "3PM allowed", stl: "steals forced", blk: "shots blocked",
 };
+// Same "one real number, applied to every market" approach as the NFL fix
+// (see nflTeamDefReal above) -- real per-category WNBA defensive splits
+// aren't available from any free public source, so once loaded this holds
+// real opponent points allowed per game, ranked, used across every market.
+let wnbaTeamDefReal = null;
+
 const wnbaDefCategoryCache = {};
+const WNBA_DEF_RANK_FALLBACK = { rank: 8, rating: 0 };
 function getWNBADefRank(market, opp) {
+  if (wnbaTeamDefReal && wnbaTeamDefReal[opp]) return wnbaTeamDefReal[opp];
   const range = WNBA_MARKET_DEF_RANGE[market];
-  if (!range) return WNBA_TEAM_DEF[opp];
+  if (!range) return WNBA_TEAM_DEF[opp] || WNBA_DEF_RANK_FALLBACK;
   if (!wnbaDefCategoryCache[market]) {
     const seed = 7300 + (hashStr(market) % 5000);
     wnbaDefCategoryCache[market] = buildDefenseCategoryFor(WNBA_TEAMS, seed, range[0], range[1]);
   }
-  return wnbaDefCategoryCache[market][opp];
+  return wnbaDefCategoryCache[market][opp] || WNBA_DEF_RANK_FALLBACK;
 }
 function wnbaDefCategoryLabel(market) {
   return WNBA_MARKET_DEF_LABEL[market] || "overall defense";
+}
+
+// The WNBA season is live (unlike NFL/2025), so this uses a short TTL and
+// refetches periodically -- same reasoning as fetchMLBGameLog's TTL.
+const WNBA_TEAM_DEF_TTL_MS = 30 * 60 * 1000;
+async function fetchWNBATeamDefense() {
+  const cacheKey = "wnba_team_def_v1";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < WNBA_TEAM_DEF_TTL_MS) return parsed.byTeam;
+    }
+  } catch {}
+
+  try {
+    const res = await fetch("https://site.api.espn.com/apis/v2/sports/basketball/wnba/standings?season=2026");
+    if (!res.ok) return null;
+    const data = await res.json();
+    const rows = [];
+    (data?.children || []).forEach((conf) => {
+      (conf?.standings?.entries || []).forEach((entry) => {
+        const abbr = entry.team?.abbreviation;
+        const avgPA = entry.stats?.find((s) => s.name === "avgPointsAgainst")?.value;
+        if (abbr && avgPA != null) rows.push({ abbr, avgPA });
+      });
+    });
+    if (!rows.length) return null;
+
+    rows.sort((a, b) => a.avgPA - b.avgPA);
+    rows.forEach((r, i) => { r.rank = i + 1; });
+    const byTeam = {};
+    rows.forEach((r) => { byTeam[r.abbr] = { rank: r.rank, rating: Math.round(r.avgPA * 10) / 10 }; });
+
+    try { sessionStorage.setItem(cacheKey, JSON.stringify({ byTeam, fetchedAt: Date.now() })); } catch {}
+    return byTeam;
+  } catch {
+    return null;
+  }
 }
 
 // Same row-building approach as buildNBAFeedRows, over the WNBA's real
@@ -4696,7 +5557,7 @@ function wnbaDefCategoryLabel(market) {
 function buildWNBAFeedRows() {
   const rows = [];
   ALL_WNBA_PLAYERS.forEach((player, pi) => {
-    const games = genWNBAGames(player, pi);
+    const games = getWNBAGames(player, pi);
     const nextOpp = games[games.length - 1].opp;
     const gameDate = matchupDateForPlayer(WNBA_MATCHUPS, player.id);
     wnbaPlayerMarkets(player).forEach((m) => {
@@ -4863,7 +5724,16 @@ function oddsSliderProb(x) {
   return ODDS_PROB_HIGH - ((x - 4) / 92) * (ODDS_PROB_HIGH - ODDS_PROB_LOW);
 }
 function formatFeedDay(dateStr) {
-  return new Date(dateStr).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const d = new Date(dateStr);
+  const day = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  // NBA/WNBA/MLB rows use a plain "YYYY-MM-DD" date (10 chars, no kickoff
+  // time to show). NFL rows carry a full ISO timestamp -- several games
+  // share the same calendar day but kick off at different times (e.g. the
+  // Sunday 1pm/4:05pm/4:25pm/SNF slate), so without the time those all
+  // collapse into indistinguishable "Sun, Sep 13" entries in the dropdown.
+  if (dateStr.length <= 10) return day;
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time}`;
 }
 
 // Builds one feed row per player/market combo, reusing the exact same mock
@@ -5096,8 +5966,9 @@ function WindowSwitcher({ value, onChange }) {
             fontSize: 12.5,
             fontWeight: 700,
             borderLeft: idx === 0 ? "none" : "1px solid var(--line)",
-            background: value === key ? "var(--amber)" : "var(--panel)",
-            color: value === key ? "#15171b" : "var(--dim)",
+            background: value === key ? "var(--amber-dim)" : "var(--panel)",
+            color: value === key ? "var(--amber)" : "var(--dim)",
+            boxShadow: value === key ? "0 0 0 1px var(--amber) inset" : "none",
             transition: "background .15s ease, color .15s ease",
           }}
         >
@@ -5124,7 +5995,7 @@ const FEED_LABEL_STYLE = { fontSize: 12, fontWeight: 600, color: "var(--dim)", l
 const FEED_FILTER_ROW_STYLE = { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 };
 const FEED_CONTROL_WIDTH = 190;
 
-function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
+function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion }) {
   const [sport, setSport] = useState("nba");
   const [category, setCategory] = useState("All");
   const [sampleWindow, setSampleWindow] = useState("l10");
@@ -5132,6 +6003,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
   const [sortDir, setSortDir] = useState("desc");
   const [showSortInfo, setShowSortInfo] = useState(false);
   const [sortInfoHover, setSortInfoHover] = useState(false);
+  const [sortDirInfoHover, setSortDirInfoHover] = useState(false);
 
   // Odds range filter. The slider itself drags a uniform 4-96 "encoded"
   // position (so dragging feels smooth), which is converted to a hit-rate
@@ -5155,8 +6027,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
   const [dayFilter, setDayFilter] = useState("all");
 
   const nbaRows = useMemo(() => buildNBAFeedRows(), []);
-  const wnbaRows = useMemo(() => buildWNBAFeedRows(), []);
-  const nflRows = useMemo(() => buildNFLFeedRows(), []);
+  // wnbaDataVersion/nflDataVersion bump when their real per-player game logs
+  // and defense rankings finish loading (see the effects in PropLedger) --
+  // without them in the dependency array, these would compute once on mount
+  // against whatever fallback/mock data existed at that instant and never
+  // recompute once the real data actually arrives.
+  const wnbaRows = useMemo(() => buildWNBAFeedRows(), [wnbaDataVersion]);
+  const nflRows = useMemo(() => buildNFLFeedRows(), [nflDataVersion]);
 
   // MLB rows depend on live data (per-player game logs + the Yankees' actual
   // next opponent/probable starter), so they're fetched in an effect and
@@ -5379,9 +6256,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
                   width: 20, height: 20, borderRadius: "50%",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 12, fontWeight: 700,
-                  border: `1px solid ${showSortInfo ? "var(--amber)" : "var(--line)"}`,
+                  border: `1px solid ${showSortInfo ? "var(--amber)" : "var(--line-strong)"}`,
                   color: showSortInfo ? "var(--amber)" : "var(--dim)",
-                  background: showSortInfo ? "var(--amber-dim)" : "transparent",
+                  background: showSortInfo ? "var(--amber-dim)" : "var(--info-btn-bg)",
                 }}
               >
                 i
@@ -5443,12 +6320,52 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
       )}
 
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        <div
-          className="chip"
-          onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
-          title="Toggle sort direction"
-        >
-          {sortDir === "desc" ? "↓ High to low" : "↑ Low to high"}
+        {/* Same technique as the SORT BY select's "i" button above -- the icon
+            sits absolutely positioned outside the chip's right edge instead
+            of as a normal flex sibling, so the chip alone determines this
+            row's centering and lines up with the controls above/below it
+            instead of being dragged left by the icon's own width+gap. */}
+        <div style={{ position: "relative", display: "flex" }}>
+          <div
+            className="chip"
+            onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+            title="Toggle sort direction"
+          >
+            {sortDir === "desc" ? "↓ High to low" : "↑ Low to high"}
+          </div>
+          <div style={{ position: "absolute", left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 8 }}>
+            <div
+              onMouseEnter={() => setSortDirInfoHover(true)}
+              onMouseLeave={() => setSortDirInfoHover(false)}
+              role="button"
+              className="mono"
+              style={{
+                cursor: "default",
+                width: 20, height: 20, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12, fontWeight: 700,
+                border: "1px solid var(--line-strong)",
+                color: "var(--dim)",
+                background: "var(--info-btn-bg)",
+              }}
+            >
+              i
+            </div>
+            {sortDirInfoHover && (
+              <div
+                className="mono"
+                style={{
+                  position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 8, zIndex: 10,
+                  width: 220, padding: "8px 10px",
+                  background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
+                  fontSize: 11.5, color: "var(--text)", lineHeight: 1.4,
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
+                }}
+              >
+                This chip flips the sort direction for whatever "Sort By" mode is selected above. Click it to switch between "↓ High to low" and "↑ Low to high".
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -5520,7 +6437,39 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
       </div>
 
       {/* Feed */}
-      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10,
+        fontSize: 12, color: "var(--dim)", textAlign: "center",
+      }}>
+        <span style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+          border: "1px solid var(--line)", fontSize: 12, fontWeight: 700, color: "var(--dim)",
+        }}>+</span>
+        <span>adds a prop to your <b style={{ color: "var(--text)" }}>My Picks</b> slip (bottom right) — stack multiple picks to see the combined parlay odds.</span>
+      </div>
+      {/* OPP RANK key -- the badge color is the only thing that distinguishes
+          a favorable matchup from a tough one at a glance, so it needs its
+          own legend rather than relying on the reader to infer it from the
+          numbers alone. */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 16, flexWrap: "wrap",
+        marginBottom: 10, fontSize: 11.5, color: "var(--dim)",
+      }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--green)", color: "#08131c" }}>#</span>
+          Soft matchup
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--panel2)", color: "var(--dim-strong)", border: "1px solid var(--line-strong)" }}>#</span>
+          Average matchup
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--red)", color: "#08131c" }}>#</span>
+          Tough matchup
+        </span>
+      </div>
+      <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
         {sortedRows.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
             {sport === "mlb" && mlbLoading ? "Loading live Yankees matchup data…" : "No props in this category yet."}
@@ -5529,9 +6478,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
         {sortedRows.map((r, i) => {
           // Filled pill background for a clear favorable/unfavorable read at a
           // glance; "mid" stays neutral so it doesn't compete visually with
-          // the amber accent used elsewhere (odds, active toggles).
+          // the amber accent used elsewhere (odds, active toggles) -- but it
+          // still needs its own border, since --panel2 is only a shade off
+          // from the row's --panel background and was nearly invisible
+          // without one.
           const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--panel2)";
-          const tierFg = r.tier === "mid" ? "var(--dim)" : "#08131c";
+          const tierFg = r.tier === "mid" ? "var(--dim-strong)" : "#08131c";
+          const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
           const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
           const odds = probToAmericanOdds(r[sampleWindow]);
           const pickId = `${sport}-${r.key}`;
@@ -5553,7 +6506,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
                 <div style={{ fontSize: 13, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
                   {r.subtitle}
                 </div>
-                <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ fontSize: 10.5, color: "var(--dim-strong)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
                   <span>OPP RANK</span>
                   <span
                     className="mono"
@@ -5561,7 +6514,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
                     style={{
                       display: "inline-block", padding: "1px 6px", borderRadius: 4,
                       fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
-                      background: tierBg, color: tierFg,
+                      background: tierBg, color: tierFg, border: tierBorder,
                     }}
                   >
                     #{r.rank}
@@ -5586,21 +6539,28 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
                 className="oswald"
                 role="button"
                 onClick={() => onTogglePick({ id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle, opp: r.opp, odds })}
-                title={isAdded ? "Remove from My Picks" : "Add to My Picks"}
+                title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
                 style={{
                   cursor: "pointer",
                   flexShrink: 0,
-                  width: 34, height: 34,
+                  width: 36, height: 36,
                   borderRadius: "50%",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 16, fontWeight: 700,
-                  border: `1px solid ${isAdded ? "var(--green)" : "var(--line)"}`,
-                  color: isAdded ? "var(--green)" : "var(--dim)",
-                  background: isAdded ? "rgba(76,175,125,0.14)" : "transparent",
+                  fontSize: 17, fontWeight: 700,
+                  border: `1.5px solid ${isAdded ? "var(--green)" : "var(--amber)"}`,
+                  color: isAdded ? "var(--green)" : "var(--amber)",
+                  background: isAdded ? "rgba(76,175,125,0.16)" : "var(--amber-dim)",
+                  boxShadow: isAdded ? "0 0 0 3px rgba(76,175,125,0.12)" : "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)",
                   transition: "all .15s ease",
                 }}
-                onMouseEnter={(e) => { if (!isAdded) { e.currentTarget.style.borderColor = "var(--amber)"; e.currentTarget.style.color = "var(--amber)"; } }}
-                onMouseLeave={(e) => { if (!isAdded) { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--dim)"; } }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-1px) scale(1.06)";
+                  if (!isAdded) e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3), 0 0 0 4px var(--amber-dim)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0) scale(1)";
+                  if (!isAdded) e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)";
+                }}
               >
                 {isAdded ? "✓" : "+"}
               </div>
@@ -5634,6 +6594,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         {sport === "mlb"
           ? "Live 2026 regular-season game logs (MLB Stats API) for the Yankees' next scheduled opponent."
+          : sport === "nfl"
+          ? "Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed."
+          : sport === "wnba"
+          ? "Live 2026 regular-season game logs (ESPN Stats API), refreshed each session."
           : "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed."}
       </div>
     </div>
@@ -5674,10 +6638,14 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
              to-edge -- some players' official photos are a plain white-
              backdrop studio shot rather than an action shot, which would
              otherwise hide the team color entirely and make that one
-             player look inconsistent with the rest of the roster. */}
+             player look inconsistent with the rest of the roster. The glow
+             box-shadow (a solid-color ring plus a soft blur in the same
+             color) is what gives it the brighter, neon-ish pop instead of
+             just a flat-colored disc peeking out from behind the photo. */}
         <div style={{
           position: "relative", width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
           background: avatarBg ? avatarBg(p) : "#000",
+          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
         }}>
           <img
             src={headshotSrc(p)}
@@ -5734,6 +6702,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
         <div style={{
           position: "relative", width: 40, height: 40, borderRadius: "50%", flexShrink: 0,
           background: avatarBg ? avatarBg(p) : "#000",
+          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
         }}>
           <img
             src={headshotSrc(p)}
@@ -5945,6 +6914,7 @@ function HScrollNav({ children }) {
           scrollSnapType: "x mandatory",
           paddingLeft: canLeft ? ARROW_ZONE + 6 : 0,
           paddingRight: canRight ? ARROW_ZONE + 6 : 0,
+          paddingTop: 4, paddingBottom: 4, marginTop: -4, marginBottom: -4,
         }}
       >
         {children}
@@ -5963,7 +6933,7 @@ function HScrollNav({ children }) {
 // Floating "My Picks" launcher + slide-in betslip panel. Lives at the root
 // level (rendered by PropLedger, not any one page) so picks persist and stay
 // visible while switching between Prop Feed / NBA / NFL / MLB / WNBA tabs.
-function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook, onSportsbookChange }) {
+function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook, onOpenSettings }) {
   const combined = picks.length > 0 ? combineParlayOdds(picks.map((p) => p.odds)) : null;
   const book = SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0];
 
@@ -5975,17 +6945,23 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
         aria-label="Toggle My Picks panel"
         className="oswald cta-btn"
         style={{
-          position: "fixed", bottom: 20, right: 20, zIndex: 50,
+          position: "fixed", bottom: 20, right: 20, zIndex: 2000,
           display: "flex", alignItems: "center", gap: 8,
           padding: "12px 18px", borderRadius: 999,
-          background: "var(--amber)", color: "#08131c",
+          // A solid --panel fill (not the translucent --amber-dim used by
+          // in-flow chips) -- this button floats fixed over whatever's
+          // scrolled beneath it, and a semi-transparent background would let
+          // that content's color bleed through and shift the button's tone
+          // as the page scrolls. --panel is fully opaque so it always reads
+          // the same regardless of what's underneath.
+          background: "var(--panel)", color: "var(--amber)", border: "1.5px solid var(--amber)",
           fontSize: 14, fontWeight: 700, letterSpacing: "0.02em",
-          cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+          cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
         }}
       >
         My Picks
         {picks.length > 0 && (
-          <span className="mono" style={{ background: "#08131c", color: "var(--amber)", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
+          <span className="mono" style={{ background: "var(--amber)", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
             {picks.length}
           </span>
         )}
@@ -5993,8 +6969,17 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
 
       {open && (
         <div
+          onClick={onToggleOpen}
           style={{
-            position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 55,
+            position: "fixed", inset: 0, zIndex: 2090,
+            background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+          }}
+        />
+      )}
+      {open && (
+        <div
+          style={{
+            position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 2100,
             width: 340, maxWidth: "92vw",
             background: "var(--panel)", borderLeft: "1px solid var(--line)",
             boxShadow: "-6px 0 24px rgba(0,0,0,0.45)",
@@ -6048,16 +7033,16 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
                 </span>
               </div>
 
-              <select
-                className="select"
-                value={sportsbook}
-                onChange={(e) => onSportsbookChange(e.target.value)}
-                style={{ width: "100%" }}
-              >
-                {SPORTSBOOKS.map((b) => (
-                  <option key={b.id} value={b.id}>{b.label}</option>
-                ))}
-              </select>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
+                <span style={{ color: "var(--dim)" }}>Sportsbook: <span style={{ color: "var(--text)", fontWeight: 600 }}>{book.label}</span></span>
+                <span
+                  onClick={onOpenSettings}
+                  role="button"
+                  style={{ color: "var(--amber)", cursor: "pointer", fontWeight: 600 }}
+                >
+                  Change in Settings ⚙
+                </span>
+              </div>
 
               <div
                 onClick={() => window.open(book.url, "_blank", "noopener,noreferrer")}
@@ -6066,7 +7051,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
                 style={{
                   cursor: "pointer", textAlign: "center", padding: "10px 0", borderRadius: 4,
                   background: "var(--amber)", color: "#08131c", fontSize: 13.5, fontWeight: 700, letterSpacing: "0.02em",
-                  boxShadow: "0 2px 10px rgba(79,125,245,0.18)",
+                  boxShadow: "0 2px 10px rgba(47,140,245,0.18)",
                 }}
               >
                 Open in {book.label} →
@@ -6094,6 +7079,80 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
   );
 }
 
+function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, theme, onThemeChange }) {
+  const book = SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0];
+
+  return (
+    <>
+      {open && (
+        <div
+          onClick={onToggleOpen}
+          style={{
+            position: "fixed", inset: 0, zIndex: 2090,
+            background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+          }}
+        />
+      )}
+      {open && (
+        <div
+          style={{
+            position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 2100,
+            width: 340, maxWidth: "92vw",
+            background: "var(--panel)", borderLeft: "1px solid var(--line)",
+            boxShadow: "-6px 0 24px rgba(0,0,0,0.45)",
+            display: "flex", flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid var(--line)" }}>
+            <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>SETTINGS</span>
+            <div onClick={onToggleOpen} role="button" aria-label="Close Settings panel" style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
+            <div style={{ marginBottom: 20 }}>
+              <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
+                THEME
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }].map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => onThemeChange(t.id)}
+                    role="button"
+                    className={`chip${theme === t.id ? " active" : ""}`}
+                    style={{ flex: 1, textAlign: "center" }}
+                  >
+                    {t.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
+                DEFAULT SPORTSBOOK
+              </div>
+              <select
+                className="select"
+                value={sportsbook}
+                onChange={(e) => onSportsbookChange(e.target.value)}
+                style={{ width: "100%" }}
+              >
+                {SPORTSBOOKS.map((b) => (
+                  <option key={b.id} value={b.id}>{b.label}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 6, lineHeight: 1.4 }}>
+                Used for the "Open in {book.label} →" button in My Picks.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function PropLedger() {
   const [page, setPage] = useState("nba");
   const [playerId, setPlayerId] = useState(PLAYERS[0].id);
@@ -6108,6 +7167,8 @@ export default function PropLedger() {
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const chartRef = React.useRef(null);
+  const [chartFullscreen, setChartFullscreen] = useState(false);
+  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -6126,6 +7187,18 @@ export default function PropLedger() {
   });
   const [sportsbook, setSportsbook] = useState(() => localStorage.getItem("propLedgerSportsbook") || SPORTSBOOKS[0].id);
   const [picksOpen, setPicksOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem("propLedgerTheme") || "dark";
+    // Set eagerly (not just in the effect below) so the very first paint
+    // already uses the saved theme instead of flashing dark-then-light.
+    document.documentElement.setAttribute("data-theme", saved);
+    return saved;
+  });
+  React.useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("propLedgerTheme", theme);
+  }, [theme]);
 
   React.useEffect(() => {
     localStorage.setItem("propLedgerPicks", JSON.stringify(myPicks));
@@ -6156,6 +7229,68 @@ export default function PropLedger() {
     return () => { cancelled = true; };
   }, []);
 
+  // Same instant-fallback-then-upgrade pattern as the MLB matchup effect
+  // above, but for the NFL page: real per-player 2025 game logs and a real
+  // points-allowed-based defense ranking both fetch from ESPN's public API
+  // once on mount, replacing the synthetic/mock data the page starts with as
+  // each player's log resolves. Nothing here is nightly-refreshed like the
+  // MLB matchup data -- the 2025 NFL season is already final, so this data
+  // is fixed and only needs to be fetched once per browser tab.
+  //
+  // nflDataVersion is threaded down to NFLPropsPage as a prop and added to
+  // its own game-log useMemo's dependency array -- without it, a player
+  // selected before the fetch resolves would keep showing whatever it
+  // started with forever, since the player object's identity never changes
+  // (only switching to a *different* player would otherwise pick up real
+  // data, by accident of that useMemo recomputing for a new key).
+  const [nflDataVersion, bumpNflRefresh] = React.useReducer((c) => c + 1, 0);
+  React.useEffect(() => {
+    let cancelled = false;
+
+    fetchNFLTeamDefense().then((byTeam) => {
+      if (cancelled || !byTeam) return;
+      nflTeamDefReal = byTeam;
+      bumpNflRefresh();
+    });
+
+    ALL_NFL_PLAYERS.forEach((player) => {
+      const espnId = NFL_ESPN_ID[player.id];
+      if (!espnId) return;
+      fetchNFLPlayerGameLog(espnId).then((games) => {
+        if (cancelled || !games) return;
+        NFL_REAL_GAME_LOGS[player.id] = games;
+        bumpNflRefresh();
+      });
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  // Same pattern again for WNBA -- live season, so both the game logs and
+  // the defense ranking use short TTLs and can refresh more than once per
+  // tab (see fetchWNBAPlayerGameLog/fetchWNBATeamDefense).
+  const [wnbaDataVersion, bumpWnbaRefresh] = React.useReducer((c) => c + 1, 0);
+  React.useEffect(() => {
+    let cancelled = false;
+
+    fetchWNBATeamDefense().then((byTeam) => {
+      if (cancelled || !byTeam) return;
+      wnbaTeamDefReal = byTeam;
+      bumpWnbaRefresh();
+    });
+
+    ALL_WNBA_PLAYERS.forEach((player) => {
+      if (!player.espnId) return;
+      fetchWNBAPlayerGameLog(player.espnId).then((games) => {
+        if (cancelled || !games) return;
+        WNBA_REAL_GAME_LOGS[player.id] = games;
+        bumpWnbaRefresh();
+      });
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
   // "View Chart" jump from the Prop Feed -- for NBA the target state lives
   // right here, so it's set directly; NFL/MLB own their player/market state
   // inside their own page components, so those get handed a jumpTo object
@@ -6168,11 +7303,15 @@ export default function PropLedger() {
       setMarket(targetMarket);
       setLine(null);
       setOpponent("all");
-    } else {
-      setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now() });
     }
+    setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now() });
     setPage(targetSport);
   };
+  React.useEffect(() => {
+    if (!jumpTo || jumpTo.sport !== "nba") return;
+    setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo && jumpTo.nonce]);
 
   const player = PLAYERS.find((p) => p.id === playerId);
   const allGames = useMemo(() => genGames(player, PLAYERS.indexOf(player)), [player]);
@@ -6276,12 +7415,73 @@ export default function PropLedger() {
           --line: #2b2f36;
           --text: #e8ecf2;
           --dim: #8b98ab;
-          --amber: #4f7df5;
-          --amber-dim: rgba(79,125,245,0.14);
-          --amber-glow: rgba(79,125,245,0.28);
+          --amber: #2f8cf5;
+          --amber-dim: rgba(47,140,245,0.14);
+          --amber-glow: rgba(47,140,245,0.28);
           --green: #3ecf8e;
           --red: #ef5b5b;
           --red-dim: rgba(239,91,91,0.14);
+          /* --line-strong matches --line here -- dark mode already reads
+             fine at the default border contrast, it only needs to diverge
+             in light mode (see below). --dim-strong instead matches --text
+             (not --dim) so de-emphasized labels like "OPP RANK" read as
+             the same bright white as the player name above them, rather
+             than the dimmer grey used for less important text elsewhere. */
+          --dim-strong: var(--text);
+          --line-strong: #2b2f36;
+          --avatar-ring-shade1: 0.2;
+          --avatar-ring-shade2: 0.45;
+          --info-btn-bg: transparent;
+        }
+        /* Light theme -- overrides the same custom properties, set via
+           data-theme="light" on <html> (see the theme state in PropLedger).
+           Everything else in the app reads colors through these variables,
+           so no other CSS/inline styles need a light-mode branch. */
+        :root[data-theme="light"] {
+          --bg: #e6e9ee;
+          --panel: #ffffff;
+          --panel2: #eef1f5;
+          --line: #d7dce3;
+          --text: #171a20;
+          --dim: #5b6472;
+          --amber: #1a68e0;
+          --amber-dim: rgba(26,104,224,0.10);
+          --amber-glow: rgba(26,104,224,0.22);
+          --green: #1f9d68;
+          --red: #d6453f;
+          --red-dim: rgba(214,69,63,0.12);
+          --panel-shadow: 0 1px 2px rgba(30,41,59,0.06), 0 2px 6px rgba(30,41,59,0.08);
+          /* --dim-strong matches --text here too (same reasoning as the
+             dark-theme block above: "OPP RANK" and the team abbreviation
+             should read as the same solid color as the player's name, not
+             a dimmer grey). --line-strong is darker than --line so thin
+             outlines (e.g. the "i" info buttons) stay readable against
+             light panels -- --line is tuned for dark backgrounds and gets
+             too washed out here. Also darkens the two-color avatar ring
+             (see teamAvatarBackground) further so it doesn't blend into a
+             white/light-grey panel, and gives the "i" buttons a solid
+             --panel fill instead of transparent so their outline doesn't
+             just read as a faint circle floating on the page background. */
+          --dim-strong: var(--text);
+          --line-strong: #aab2bd;
+          --avatar-ring-shade1: 0.35;
+          --avatar-ring-shade2: 0.6;
+          --info-btn-bg: var(--panel);
+        }
+        /* Gives light-mode panels/chips/selects a slight lift instead of
+           reading as flat white slabs on a barely-different grey page --
+           dark mode leaves --panel-shadow unset (falls back to "none")
+           since dark panels already read as elevated via contrast alone.
+           The [style*="var(--panel)"] hook catches every inline-styled div
+           that uses --panel/--panel2 as its background without requiring a
+           shared class name (there isn't one across ~40 call sites); .chip
+           and select.select get panel background from CSS classes instead,
+           so they're matched separately. Elements that already set their
+           own inline boxShadow (e.g. the fixed My Picks/Settings buttons)
+           are left untouched -- inline styles always win the cascade over
+           this stylesheet rule. */
+        [style*="var(--panel)"], .chip, select.select {
+          box-shadow: var(--panel-shadow, none);
         }
         * { box-sizing: border-box; }
         /* Safeguard: nothing on the page should ever force horizontal
@@ -6291,7 +7491,7 @@ export default function PropLedger() {
         html, body { max-width: 100%; overflow-x: hidden; }
         body {
           background:
-            radial-gradient(1100px 620px at 12% -8%, rgba(79,125,245,0.07), transparent 60%),
+            radial-gradient(1100px 620px at 12% -8%, rgba(47,140,245,0.07), transparent 60%),
             radial-gradient(900px 700px at 100% 0%, rgba(62,207,142,0.04), transparent 55%),
             var(--bg);
           -webkit-font-smoothing: antialiased;
@@ -6394,7 +7594,7 @@ export default function PropLedger() {
         .ledger-row:nth-child(odd) { background: rgba(255,255,255,0.015); }
         .feed-row:nth-child(odd) { background: rgba(255,255,255,0.015); }
         .feed-row, .ledger-row { transition: background-color .15s ease; }
-        .feed-row:hover, .ledger-row:hover { background: rgba(79,125,245,0.05); }
+        .feed-row:hover, .ledger-row:hover { background: rgba(47,140,245,0.05); }
         ::-webkit-scrollbar { height: 7px; width: 7px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
@@ -6417,6 +7617,21 @@ export default function PropLedger() {
       `}</style>
 
       {/* Header */}
+      <div
+        onClick={() => setSettingsOpen((v) => !v)}
+        role="button"
+        aria-label="Toggle Settings panel"
+        title="Settings"
+        style={{
+          position: "fixed", top: 16, right: 16, zIndex: 2000,
+          width: 36, height: 36, borderRadius: 8, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 18,
+          boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+        }}
+      >
+        ⚙
+      </div>
       <div style={{ borderBottom: "1px solid var(--line)", padding: "16px", background: "linear-gradient(to bottom, rgba(255,255,255,0.015), transparent)" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
           <h1 className="oswald" style={{ fontSize: 26, letterSpacing: "0.03em", margin: 0, color: "var(--text)", display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -6793,7 +8008,10 @@ export default function PropLedger() {
              right edge to move the line, same as the +/- buttons above. */}
         <div
           ref={chartRef}
-          style={{
+          style={chartFullscreen ? {
+            position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
+            background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
+          } : {
             position: "relative",
             boxSizing: "border-box",
             height: CHART_HEIGHT,
@@ -6804,7 +8022,8 @@ export default function PropLedger() {
             marginBottom: 16,
           }}
         >
-          <div style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden" }}>
+          <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
+          <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
           <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart
@@ -6834,7 +8053,7 @@ export default function PropLedger() {
                 content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
                 cursor={{ fill: "rgba(255,255,255,0.05)" }}
               />
-              {!isBinary && <ReferenceLine y={effectiveLine} stroke="#4f7df5" strokeDasharray="4 4" />}
+              {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
               <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                 {filtered.map((g, i) => {
                   const v = statValue(g, market, rebSplit);
@@ -6900,11 +8119,11 @@ export default function PropLedger() {
       )}
 
       {page === "wnba" && (
-        <WNBAPropsPage jumpTo={jumpTo && jumpTo.sport === "wnba" ? jumpTo : null} />
+        <WNBAPropsPage jumpTo={jumpTo && jumpTo.sport === "wnba" ? jumpTo : null} dataVersion={wnbaDataVersion} />
       )}
 
       {page === "nfl" && (
-        <NFLPropsPage jumpTo={jumpTo && jumpTo.sport === "nfl" ? jumpTo : null} />
+        <NFLPropsPage jumpTo={jumpTo && jumpTo.sport === "nfl" ? jumpTo : null} dataVersion={nflDataVersion} />
       )}
 
       {page === "mlb" && (
@@ -6912,7 +8131,7 @@ export default function PropLedger() {
       )}
 
       {page === "feed" && (
-        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} />
+        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} />
       )}
 
       <MyPicksPanel
@@ -6922,7 +8141,15 @@ export default function PropLedger() {
         onRemove={removePick}
         onClear={clearPicks}
         sportsbook={sportsbook}
+        onOpenSettings={() => { setPicksOpen(false); setSettingsOpen(true); }}
+      />
+      <SettingsPanel
+        open={settingsOpen}
+        onToggleOpen={() => setSettingsOpen((v) => !v)}
+        sportsbook={sportsbook}
         onSportsbookChange={setSportsbook}
+        theme={theme}
+        onThemeChange={setTheme}
       />
     </div>
   );
