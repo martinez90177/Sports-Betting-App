@@ -3951,10 +3951,11 @@ const MLB_PLAYERS = [
   { id: "warren", name: "Will Warren", team: "NYY", pos: "SP", mlbId: 701542 },
 ];
 
-// Philadelphia Phillies 2026 starting lineup -- the Yankees' actual next
-// opponent (see fetchYankeesNextGame), added so the MLB page can show both
-// teams' rosters side by side the same way the NBA page shows both Finals
-// teams, rather than just a one-line "next matchup" summary.
+// Philadelphia Phillies 2026 starting lineup -- one of the 30 real rosters
+// selectable on the MLB page (see MLB_TEAM_ROSTERS/fetchMLBTeamNextGame),
+// so a team's actual next opponent's roster can show side by side the same
+// way the NBA page shows both Finals teams, rather than just a one-line
+// "next matchup" summary.
 const PHILLIES_PLAYERS = [
   { id: "turner", name: "Trea Turner", team: "PHI", pos: "SS", mlbId: 607208 },
   { id: "harper", name: "Bryce Harper", team: "PHI", pos: "1B", mlbId: 547180 },
@@ -4664,12 +4665,8 @@ async function fetchMLBTeamNextGame(teamId) {
   return game;
 }
 
-async function fetchYankeesNextGame() {
-  return fetchMLBTeamNextGame(YANKEES_TEAM_ID);
-}
-
-// Trailing pitching game log for whoever is currently the Yankees' probable
-// starter (see fetchYankeesNextGame) -- only ever fetched for that one
+// Trailing pitching game log for whoever is currently a team's probable
+// starter (see fetchMLBTeamNextGame) -- only ever fetched for that one
 // pitcher, so the feed shows props for the actual next starter, not the
 // whole staff, and rolls to the new starter automatically once MLB
 // announces one.
@@ -5942,33 +5939,78 @@ function buildNFLFeedRows() {
   return rows;
 }
 
-// Builds MLB feed rows from live-fetched per-player game logs plus the
-// Yankees' actual next opponent (see fetchYankeesNextGame) -- unlike the NBA/
+// Builds MLB feed rows from live-fetched per-player game logs plus each
+// team's actual next opponent (see fetchMLBTeamNextGame) -- unlike the NBA/
 // NFL builders above, this one takes data in rather than generating it, so
 // fetching stays in the page effect and this stays a pure function.
-function buildMLBFeedRows(gameLogsById, nextGame) {
-  if (!nextGame) return [];
+// teamsData: one entry per MLB team -- { players, gameLogsById, nextGame }.
+function buildMLBFeedRows(teamsData) {
   const rows = [];
-  MLB_PLAYERS.forEach((player) => {
-    const games = gameLogsById[player.id] || [];
-    if (!games.length) return;
-    MLB_MARKETS.forEach((m) => {
+  teamsData.forEach(({ players, gameLogsById, nextGame }) => {
+    if (!nextGame) return;
+    players.forEach((player) => {
+      const games = gameLogsById[player.id] || [];
+      if (!games.length) return;
+      MLB_MARKETS.forEach((m) => {
+        const def = getMLBDefRank(m.id, nextGame.opp);
+        const rank = def.rank;
+        const tier = mlbDefTier(rank);
+        const values = games.map((g) => statValueMLB(g, m.id));
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+        const line = fairFeedLine(values);
+        const hit = (v) => v > line;
+        const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
+        rows.push({
+          key: `mlb_${player.id}_${m.id}`,
+          playerId: player.id,
+          marketId: m.id,
+          category: MLB_MARKET_CATEGORY[m.id],
+          icon: mlbTeamLogo(player.team),
+          name: player.name,
+          team: player.team,
+          date: nextGame.date,
+          subtitle: `Over ${line} ${m.label}`,
+          opp: nextGame.opp,
+          rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
+          l5: hitRateWindow(values, 5, hit),
+          l10: hitRateWindow(values, 10, hit),
+          l20: hitRateWindow(values, 20, hit),
+          values, line, isBinary: false, variance,
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+// Pitcher props are scoped to whoever is actually announced to start each
+// team's next game (see fetchMLBTeamNextGame's probablePitcher field) --
+// not the full staff -- so this rolls to the new starter automatically once
+// one is announced, same cadence as the rest of the feed.
+// teamsData: one entry per MLB team -- { teamAbbr, pitcherGames, nextGame }.
+function buildMLBPitcherFeedRows(teamsData) {
+  const rows = [];
+  teamsData.forEach(({ teamAbbr, pitcherGames, nextGame }) => {
+    const pitcher = nextGame?.probablePitcher;
+    if (!pitcher || !pitcherGames || !pitcherGames.length) return;
+    const rosterEntry = ALL_MLB_PLAYERS.find((p) => p.mlbId === pitcher.mlbId);
+    MLB_PITCHER_MARKETS.forEach((m) => {
       const def = getMLBDefRank(m.id, nextGame.opp);
       const rank = def.rank;
       const tier = mlbDefTier(rank);
-      const values = games.map((g) => statValueMLB(g, m.id));
+      const values = pitcherGames.map((g) => statValueMLBPitcher(g, m.id));
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = fairFeedLine(values);
       const hit = (v) => v > line;
       const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
       rows.push({
-        key: `mlb_${player.id}_${m.id}`,
-        playerId: player.id,
+        key: `mlb_pitcher_${pitcher.mlbId}_${m.id}`,
+        playerId: rosterEntry?.id,
         marketId: m.id,
         category: MLB_MARKET_CATEGORY[m.id],
-        icon: mlbTeamLogo(player.team),
-        name: player.name,
-        team: player.team,
+        icon: mlbTeamLogo(teamAbbr),
+        name: pitcher.name,
+        team: teamAbbr,
         date: nextGame.date,
         subtitle: `Over ${line} ${m.label}`,
         opp: nextGame.opp,
@@ -5978,44 +6020,6 @@ function buildMLBFeedRows(gameLogsById, nextGame) {
         l20: hitRateWindow(values, 20, hit),
         values, line, isBinary: false, variance,
       });
-    });
-  });
-  return rows;
-}
-
-// Pitcher props are scoped to whoever is actually announced to start the
-// Yankees' next game (see fetchYankeesNextGame's probablePitcher field) --
-// not the full staff -- so this rolls to the new starter automatically
-// once one is announced, same cadence as the rest of the feed.
-function buildMLBPitcherFeedRows(games, pitcher, nextGame) {
-  if (!pitcher || !games || !games.length || !nextGame) return [];
-  const rows = [];
-  const rosterEntry = ALL_MLB_PLAYERS.find((p) => p.mlbId === pitcher.mlbId);
-  MLB_PITCHER_MARKETS.forEach((m) => {
-    const def = getMLBDefRank(m.id, nextGame.opp);
-    const rank = def.rank;
-    const tier = mlbDefTier(rank);
-    const values = games.map((g) => statValueMLBPitcher(g, m.id));
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
-    const line = fairFeedLine(values);
-    const hit = (v) => v > line;
-    const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
-    rows.push({
-      key: `mlb_pitcher_${pitcher.mlbId}_${m.id}`,
-      playerId: rosterEntry?.id,
-      marketId: m.id,
-      category: MLB_MARKET_CATEGORY[m.id],
-      icon: mlbTeamLogo("NYY"),
-      name: pitcher.name,
-      team: "NYY",
-      date: nextGame.date,
-      subtitle: `Over ${line} ${m.label}`,
-      opp: nextGame.opp,
-      rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
-      l5: hitRateWindow(values, 5, hit),
-      l10: hitRateWindow(values, 10, hit),
-      l20: hitRateWindow(values, 20, hit),
-      values, line, isBinary: false, variance,
     });
   });
   return rows;
@@ -6152,36 +6156,41 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const wnbaRows = useMemo(() => buildWNBAFeedRows(), [wnbaDataVersion]);
   const nflRows = useMemo(() => buildNFLFeedRows(), [nflDataVersion]);
 
-  // MLB rows depend on live data (per-player game logs + the Yankees' actual
-  // next opponent/probable starter), so they're fetched in an effect and
-  // handed to the pure buildMLBFeedRows/buildMLBPitcherFeedRows builders
+  // MLB rows depend on live data (per-player game logs + each team's actual
+  // next opponent/probable starter), fetched for every MLB team in parallel
+  // and handed to the pure buildMLBFeedRows/buildMLBPitcherFeedRows builders
   // rather than generated synchronously like NBA/NFL.
-  const [mlbGameLogs, setMlbGameLogs] = useState(null);
-  const [mlbNextGame, setMlbNextGame] = useState(null);
-  const [mlbPitcherGames, setMlbPitcherGames] = useState(null);
+  const [mlbTeamsData, setMlbTeamsData] = useState(null);
   const [mlbLoading, setMlbLoading] = useState(false);
 
   React.useEffect(() => {
     if (sport !== "mlb") return;
     let cancelled = false;
     const load = () => {
-      setMlbLoading((prev) => (mlbGameLogs ? prev : true));
-      fetchYankeesNextGame()
-        .then((nextGame) => {
-          if (cancelled) return null;
-          setMlbNextGame(nextGame);
-          // Only the announced probable starter's log is fetched -- pitcher
-          // props roll to whoever that is once MLB names a new one.
-          return Promise.all([
-            Promise.all(MLB_PLAYERS.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
-            nextGame?.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
-          ]);
+      setMlbLoading((prev) => (mlbTeamsData ? prev : true));
+      Promise.all(
+        MLB_TEAM_OPTIONS.map((abbr) => {
+          const roster = MLB_TEAM_ROSTERS[abbr];
+          const teamId = MLB_ABBR_TEAM_ID[abbr];
+          return fetchMLBTeamNextGame(teamId).then((nextGame) =>
+            // Only the announced probable starter's log is fetched -- pitcher
+            // props roll to whoever that is once MLB names a new one.
+            Promise.all([
+              Promise.all(roster.players.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
+              nextGame?.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
+            ]).then(([entries, pitcherGames]) => ({
+              teamAbbr: abbr,
+              players: roster.players,
+              gameLogsById: Object.fromEntries(entries),
+              pitcherGames,
+              nextGame,
+            }))
+          );
         })
-        .then((result) => {
-          if (cancelled || !result) return;
-          const [entries, pitcherGames] = result;
-          setMlbGameLogs(Object.fromEntries(entries));
-          setMlbPitcherGames(pitcherGames);
+      )
+        .then((results) => {
+          if (cancelled) return;
+          setMlbTeamsData(results);
           setMlbLoading(false);
         })
         .catch(() => { if (!cancelled) setMlbLoading(false); });
@@ -6192,11 +6201,11 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   }, [sport]);
 
   const mlbRows = useMemo(() => {
-    if (!mlbGameLogs || !mlbNextGame) return [];
-    const batterRows = buildMLBFeedRows(mlbGameLogs, mlbNextGame);
-    const pitcherRows = buildMLBPitcherFeedRows(mlbPitcherGames, mlbNextGame.probablePitcher, mlbNextGame);
+    if (!mlbTeamsData) return [];
+    const batterRows = buildMLBFeedRows(mlbTeamsData);
+    const pitcherRows = buildMLBPitcherFeedRows(mlbTeamsData);
     return [...batterRows, ...pitcherRows];
-  }, [mlbGameLogs, mlbNextGame, mlbPitcherGames]);
+  }, [mlbTeamsData]);
 
   const rows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
   const categories = sport === "nba" ? NBA_FEED_CATEGORIES : sport === "wnba" ? WNBA_FEED_CATEGORIES : sport === "nfl" ? NFL_FEED_CATEGORIES : MLB_FEED_CATEGORIES;
@@ -6281,18 +6290,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           </div>
         ))}
       </div>
-
-      {/* Next matchup banner (MLB only, live schedule data) */}
-      {sport === "mlb" && mlbNextGame && (
-        <div style={{ textAlign: "center", marginBottom: 14, fontSize: 13, color: "var(--dim)" }}>
-          Next: Yankees {mlbNextGame.home ? "vs" : "@"} <span style={{ color: "var(--text)", fontWeight: 600 }}>{mlbNextGame.opp}</span>
-          {" — "}{new Date(mlbNextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-          {" · "}{mlbNextGame.status}
-          {mlbNextGame.probablePitcher && (
-            <>{" · "}Probable: <span style={{ color: "var(--text)", fontWeight: 600 }}>{mlbNextGame.probablePitcher.name}</span></>
-          )}
-        </div>
-      )}
 
       {/* Category filter */}
       <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
@@ -6569,7 +6566,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
         {sortedRows.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-            {sport === "mlb" && mlbLoading ? "Loading live Yankees matchup data…" : "No props in this category yet."}
+            {sport === "mlb" && mlbLoading ? "Loading live MLB matchup data…" : "No props in this category yet."}
           </div>
         )}
         {sortedRows.map((r, i) => {
@@ -6840,22 +6837,26 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
         >
           {teamLabel}
         </div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+          Starting Lineup
+        </div>
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: pitchers.length > 0 ? 10 : 4, marginBottom: pitchers.length > 0 ? 10 : 0, borderBottom: pitchers.length > 0 ? "1px solid var(--line)" : "none" }}>
+          {batters.map(renderChip)}
+        </div>
+        {/* Below the lineup strip and centered rather than in its own
+             scrollable row above it -- with typically just one starting
+             pitcher, centering keeps it in a fixed, stable spot regardless
+             of how far the lineup above happens to be scrolled. */}
         {pitchers.length > 0 && (
           <>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
               Starting Pitcher
             </div>
-            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 10, marginBottom: 10, borderBottom: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
               {pitchers.map(renderChip)}
-            </div>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-              Starting Lineup
             </div>
           </>
         )}
-        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-          {batters.map(renderChip)}
-        </div>
       </div>
     );
   }
@@ -6901,11 +6902,9 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
 }
 
 // Fills the same wide left/right gutters as TeamRosterPanel, but for pages
-// where only one real roster is modeled (NFL/MLB currently have just the
-// Cowboys/Yankees) -- instead of an opposing roster to switch to, this shows
-// the team's actual next real-world matchup (live for MLB via
-// fetchYankeesNextGame, static schedule lookup for NFL) so the space still
-// does something useful rather than sitting empty.
+// where only one real roster is modeled -- instead of an opposing roster to
+// switch to, this shows the team's actual next real-world matchup so the
+// space still does something useful rather than sitting empty.
 function MatchupPanel({ title, opponentAbbr, opponentLogo, lines, loading }) {
   return (
     <div className="roster-panel">
