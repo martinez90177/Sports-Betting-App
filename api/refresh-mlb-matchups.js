@@ -17,7 +17,10 @@ const TEAM_ID_ABBR = {
 // the same precomputed ranking instead of each browser recomputing it.
 export default async function handler(req, res) {
   try {
-    const redis = Redis.fromEnv();
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_KV_REST_API_URL,
+      token: process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN,
+    });
     const season = new Date().getFullYear();
     const r = await fetch(
       `https://statsapi.mlb.com/api/v1/teams/stats?stats=season&group=pitching&season=${season}&sportId=1`

@@ -5,7 +5,14 @@ import { Redis } from "@upstash/redis";
 // refresh-mlb-matchups cron job most recently computed.
 export default async function handler(req, res) {
   try {
-    const redis = Redis.fromEnv();
+    // The Vercel/Upstash Marketplace integration combined our custom env
+    // prefix with Vercel's "KV" product naming, so the REST credentials
+    // ended up as UPSTASH_REDIS_REST_KV_REST_API_URL/_TOKEN rather than the
+    // plain UPSTASH_REDIS_REST_URL/_TOKEN that Redis.fromEnv() looks for.
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_KV_REST_API_URL,
+      token: process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN,
+    });
     const data = await redis.get("mlb_team_def");
     res.status(200).json(data || { byTeam: {}, updatedAt: null });
   } catch (err) {
