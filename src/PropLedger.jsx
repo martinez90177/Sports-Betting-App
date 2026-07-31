@@ -81,9 +81,40 @@ const NBA_TEAM_COLORS = {
 // its own team-color map. Falls back to a neutral dark gradient for any
 // team missing from that map.
 const AVATAR_FALLBACK_COLORS = { primary: "#282c31", secondary: "#15171b" };
+
+// Pushes a hex color's own saturation/lightness toward a vivid "neon" range
+// instead of relying on an outer glow -- so the ring itself reads as a
+// brighter, punchier version of the team color rather than the muted brand
+// hex (which is often designed to work on jerseys/logos, not glow on a
+// screen). Grays/near-neutrals (low saturation) are left alone so team
+// colors like the Spurs' silver don't get tinted a random hue.
+function neonizeColor(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+  const d = max - min;
+  if (d < 0.03) return hex; // effectively gray -- don't invent a hue
+  let s = d / (1 - Math.abs(2 * l - 1));
+  let h;
+  if (max === r) h = ((g - b) / d) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  h *= 60; if (h < 0) h += 360;
+  s = Math.min(1, s * 1.35);
+  const lOut = Math.min(0.62, Math.max(0.46, l * 1.08));
+  const c2 = (1 - Math.abs(2 * lOut - 1)) * s;
+  const x = c2 * (1 - Math.abs((h / 60) % 2 - 1));
+  const m2 = lOut - c2 / 2;
+  let [r2, g2, b2] = h < 60 ? [c2, x, 0] : h < 120 ? [x, c2, 0] : h < 180 ? [0, c2, x] : h < 240 ? [0, x, c2] : h < 300 ? [x, 0, c2] : [c2, 0, x];
+  const toHex = (v) => Math.round((v + m2) * 255).toString(16).padStart(2, "0");
+  return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`;
+}
+
 const teamAvatarBackground = (colorMap, teamAbbr) => {
   const c = colorMap[teamAbbr] || AVATAR_FALLBACK_COLORS;
-  return `linear-gradient(135deg, rgba(0,0,0,var(--avatar-ring-shade1, 0.2)), rgba(0,0,0,var(--avatar-ring-shade2, 0.45))), linear-gradient(135deg, ${c.primary} 0%, ${c.secondary} 100%)`;
+  return `linear-gradient(135deg, rgba(0,0,0,var(--avatar-ring-shade1, 0.2)), rgba(0,0,0,var(--avatar-ring-shade2, 0.45))), linear-gradient(135deg, ${neonizeColor(c.primary)} 0%, ${neonizeColor(c.secondary)} 100%)`;
 };
 
 // Groups a sport's matchup list by calendar date for its matchup dropdown,
@@ -1960,40 +1991,6 @@ function useIsNarrow(breakpoint = 480) {
   return isNarrow;
 }
 
-// Shared by every sport page's chart fullscreen toggle: closes on Escape and
-// locks page scroll behind the fixed-position overlay while it's open.
-function useFullscreenChartEscape(isFullscreen, setIsFullscreen) {
-  React.useEffect(() => {
-    if (!isFullscreen) return;
-    const onKey = (e) => { if (e.key === "Escape") setIsFullscreen(false); };
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [isFullscreen, setIsFullscreen]);
-}
-
-// Reusable expand/collapse button rendered inside every chart wrapper.
-function ChartFullscreenButton({ isFullscreen, onToggle }) {
-  return (
-    <button
-      onClick={onToggle}
-      title={isFullscreen ? "Exit fullscreen" : "View chart fullscreen"}
-      style={{
-        position: "absolute", top: isFullscreen ? 18 : 8, right: isFullscreen ? 20 : 8, zIndex: 1001,
-        width: 30, height: 30, borderRadius: 6, cursor: "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 15,
-      }}
-    >
-      {isFullscreen ? "✕" : "⛶"}
-    </button>
-  );
-}
-
 // Caps ticks at ~5 on narrow screens and ~20 on wide ones, however many
 // games are in the sample -- "All" on a full MLB season can be 80+ games,
 // which would render every single logo/abbreviation crammed on top of each
@@ -2252,8 +2249,6 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const chartRef = React.useRef(null);
-  const [chartFullscreen, setChartFullscreen] = useState(false);
-  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -2642,16 +2637,12 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       {/* Chart */}
       <div
         ref={chartRef}
-        style={chartFullscreen ? {
-          position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
-          background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
-        } : {
+        style={{
           position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
           background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
           padding: 16, marginBottom: 16,
         }}
       >
-        <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
         <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
         <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -3240,8 +3231,6 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const chartRef = React.useRef(null);
-  const [chartFullscreen, setChartFullscreen] = useState(false);
-  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -3604,16 +3593,12 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
 
       <div
         ref={chartRef}
-        style={chartFullscreen ? {
-          position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
-          background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
-        } : {
+        style={{
           position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
           background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
           padding: 16, marginBottom: 16,
         }}
       >
-        <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
         <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
         <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -4703,8 +4688,6 @@ function MLBPropsPage({ jumpTo }) {
   const [line, setLine] = useState(null);
   const [showStatInfo, setShowStatInfo] = useState(false);
   const chartRef = React.useRef(null);
-  const [chartFullscreen, setChartFullscreen] = useState(false);
-  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -5319,15 +5302,11 @@ function MLBPropsPage({ jumpTo }) {
       {/* Chart */}
       <div
         ref={chartRef}
-        style={chartFullscreen ? {
-          position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
-          background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
-        } : {
+        style={{
           position: "relative", boxSizing: "border-box", height: CHART_HEIGHT,
           background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 16, marginBottom: 16,
         }}
       >
-        <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
         <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
         <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -5723,18 +5702,6 @@ const ODDS_PROB_HIGH = 10 / 11; // -1000
 function oddsSliderProb(x) {
   return ODDS_PROB_HIGH - ((x - 4) / 92) * (ODDS_PROB_HIGH - ODDS_PROB_LOW);
 }
-function formatFeedDay(dateStr) {
-  const d = new Date(dateStr);
-  const day = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  // NBA/WNBA/MLB rows use a plain "YYYY-MM-DD" date (10 chars, no kickoff
-  // time to show). NFL rows carry a full ISO timestamp -- several games
-  // share the same calendar day but kick off at different times (e.g. the
-  // Sunday 1pm/4:05pm/4:25pm/SNF slate), so without the time those all
-  // collapse into indistinguishable "Sun, Sep 13" entries in the dropdown.
-  if (dateStr.length <= 10) return day;
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${day} · ${time}`;
-}
 
 // Builds one feed row per player/market combo, reusing the exact same mock
 // game logs and statValue/statValueNFL math as the single-player pages so
@@ -5979,8 +5946,8 @@ function WindowSwitcher({ value, onChange }) {
   );
 }
 
-// Shared label style for the feed's filter-row form (TEAM / GAME DAY / SAMPLE
-// SIZE / SORT BY) -- a fixed width + right-aligned text means every row's
+// Shared label style for the feed's filter-row form (TEAM / SAMPLE SIZE /
+// SORT BY) -- a fixed width + right-aligned text means every row's
 // control starts at the same x position, so the whole block reads as one
 // neatly aligned form instead of each row centering independently at
 // whatever width its own label+control happen to add up to.
@@ -6020,11 +5987,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const [rankLo, setRankLo] = useState(1);
   const [rankHi, setRankHi] = useState(feedTeamCount("nba"));
 
-  // Team and game-day filters -- "all" means no filtering. Both reset to
-  // "all" whenever the sport switches since the option lists are sport-
-  // specific (different teams, different scheduled dates).
+  // Team filter -- "all" means no filtering. Resets to "all" whenever the
+  // sport switches since the option list is sport-specific.
   const [teamFilter, setTeamFilter] = useState("all");
-  const [dayFilter, setDayFilter] = useState("all");
 
   const nbaRows = useMemo(() => buildNBAFeedRows(), []);
   // wnbaDataVersion/nflDataVersion bump when their real per-player game logs
@@ -6090,17 +6055,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setRankLo(1);
     setRankHi(feedTeamCount(sport));
     setTeamFilter("all");
-    setDayFilter("all");
   }, [sport]);
 
-  // Option lists for the Team/Game Day dropdowns -- built off the full
-  // per-sport row set (not the category-filtered one) so switching category
-  // never hides a team/day that's still available under "All".
+  // Option list for the Team dropdown -- built off the full per-sport row
+  // set (not the category-filtered one) so switching category never hides
+  // a team that's still available under "All".
   const teamOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.team))).sort(), [rows]);
-  const dayOptions = useMemo(() => {
-    const days = Array.from(new Set(rows.map((r) => r.date).filter(Boolean)));
-    return days.sort((a, b) => new Date(a) - new Date(b));
-  }, [rows]);
 
   const categoryRows = category === "All" ? rows : rows.filter((r) => r.category === category);
 
@@ -6119,7 +6079,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
     if (r.rank < rankLo || r.rank > rankHi) return false;
     if (teamFilter !== "all" && r.team !== teamFilter) return false;
-    if (dayFilter !== "all" && r.date !== dayFilter) return false;
     return true;
   });
 
@@ -6192,10 +6151,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         ))}
       </div>
 
-      {/* Team + Game Day filters -- Game Day only shows up when this sport's
-          rows actually carry real scheduled dates (NFL/WNBA/MLB span
-          multiple real matchups; NBA is a single fixed matchup with no
-          date to filter by). */}
+      {/* Team filter */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={FEED_LABEL_STYLE}>TEAM</span>
@@ -6206,17 +6162,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             ))}
           </select>
         </div>
-        {dayOptions.length > 0 && (
-          <div style={FEED_FILTER_ROW_STYLE}>
-            <span className="oswald" style={FEED_LABEL_STYLE}>GAME DAY</span>
-            <select className="select" style={{ width: FEED_CONTROL_WIDTH }} value={dayFilter} onChange={(e) => setDayFilter(e.target.value)}>
-              <option value="all">All days</option>
-              {dayOptions.map((d) => (
-                <option key={d} value={d}>{formatFeedDay(d)}</option>
-              ))}
-            </select>
-          </div>
-        )}
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={FEED_LABEL_STYLE}>SAMPLE SIZE</span>
           <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
@@ -7154,7 +7099,7 @@ function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, the
 }
 
 export default function PropLedger() {
-  const [page, setPage] = useState("nba");
+  const [page, setPage] = useState("feed");
   const [playerId, setPlayerId] = useState(PLAYERS[0].id);
   const [market, setMarket] = useState("pts");
   const [rebSplit, setRebSplit] = useState("total");
@@ -7167,8 +7112,6 @@ export default function PropLedger() {
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const chartRef = React.useRef(null);
-  const [chartFullscreen, setChartFullscreen] = useState(false);
-  useFullscreenChartEscape(chartFullscreen, setChartFullscreen);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -7642,9 +7585,9 @@ export default function PropLedger() {
         <HScrollNav>
           {[
             { id: "feed", label: "Prop Feed" },
-            { id: "nba", label: "NBA Props" },
             { id: "nfl", label: "NFL Props" },
             { id: "mlb", label: "MLB Props" },
+            { id: "nba", label: "NBA Props" },
             { id: "wnba", label: "WNBA Props" },
           ].map((p) => (
             <div
@@ -8008,10 +7951,7 @@ export default function PropLedger() {
              right edge to move the line, same as the +/- buttons above. */}
         <div
           ref={chartRef}
-          style={chartFullscreen ? {
-            position: "fixed", inset: 0, zIndex: 1000, boxSizing: "border-box", height: "100vh", width: "100vw",
-            background: "var(--bg)", border: "none", borderRadius: 0, padding: "20px 24px", marginBottom: 0,
-          } : {
+          style={{
             position: "relative",
             boxSizing: "border-box",
             height: CHART_HEIGHT,
@@ -8022,7 +7962,6 @@ export default function PropLedger() {
             marginBottom: 16,
           }}
         >
-          <ChartFullscreenButton isFullscreen={chartFullscreen} onToggle={() => setChartFullscreen((v) => !v)} />
           <div className="hscroll-hide" style={{ height: "100%", overflowX: scrollableChart ? "auto" : "hidden", scrollbarWidth: "none" }}>
           <div style={{ height: "100%", minWidth: "100%", width: scrollableChart ? filtered.length * NARROW_BAR_WIDTH : "100%" }}>
           <ResponsiveContainer width="100%" height="100%">
