@@ -1241,6 +1241,60 @@ async function fetchNFLTeamNextGame(abbr) {
   return game;
 }
 
+const NFL_SLATE_TTL_MS = 60 * 60 * 1000;
+let nflSlateCache = null;
+
+// Every real NFL game in the current week, one fetch for the whole league --
+// this is what lets the Prop Feed's MATCHUP dropdown show only that week's
+// games, sorted by kickoff. "Current week" is determined by asking any one
+// team's own schedule which of their games hasn't finished yet (same check
+// fetchNFLTeamNextGame uses), rather than guessing at the Tuesday-to-Tuesday
+// rollover from a hardcoded date -- that delegates the judgment call
+// entirely to ESPN's own completed-game tracking, so it advances correctly
+// once each week's Monday (or international-game) finale finishes.
+async function fetchNFLWeekSlate() {
+  if (nflSlateCache && Date.now() - nflSlateCache.fetchedAt < NFL_SLATE_TTL_MS) {
+    return nflSlateCache.games;
+  }
+  const cacheKey = "nfl_week_slate_v1";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < NFL_SLATE_TTL_MS) {
+        nflSlateCache = parsed;
+        return parsed.games;
+      }
+    }
+  } catch {}
+
+  const anchorGame = await fetchNFLTeamNextGame(NFL_PLAYERS[0].team);
+  const weekNumber = anchorGame?.week || 1;
+
+  const res = await fetch(
+    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?seasontype=2&week=${weekNumber}&dates=2026`
+  );
+  const data = await res.json();
+  const games = (data?.events || [])
+    .map((e) => {
+      const comp = e.competitions?.[0];
+      const away = comp?.competitors?.find((c) => c.homeAway === "away");
+      const home = comp?.competitors?.find((c) => c.homeAway === "home");
+      return {
+        date: e.date,
+        status: comp?.status?.type?.description || "Scheduled",
+        awayAbbr: nflOurAbbr(away?.team?.abbreviation),
+        homeAbbr: nflOurAbbr(home?.team?.abbreviation),
+      };
+    })
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const record = { weekNumber, games, fetchedAt: Date.now() };
+  nflSlateCache = record;
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return games;
+}
+
 // pos: which positions can bet this market. binary markets get a fixed 0.5 threshold.
 const NFL_MARKETS = [
   { id: "passYds", label: "Pass Yds", pos: ["QB"] },
@@ -4619,9 +4673,11 @@ async function fetchMLBTeamNextGame(teamId) {
   if (cached && Date.now() - cached.fetchedAt < MLB_SCHEDULE_TTL_MS) {
     return cached.game;
   }
-  // v2: now hydrates the probable pitcher so the feed's pitcher props stay
-  // tied to whoever MLB has actually announced as the next starter.
-  const cacheKey = `mlb_next_game_${teamId}_v2`;
+  // v3: now also hydrates weather and confirmed lineups (both sides) --
+  // weather is only meaningful once MLB has posted it for the game, and
+  // lineups are usually posted 1-2 hours before first pitch, so both are
+  // simply absent/empty until MLB actually publishes them.
+  const cacheKey = `mlb_next_game_${teamId}_v3`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -4637,7 +4693,7 @@ async function fetchMLBTeamNextGame(teamId) {
   const start = today.toISOString().slice(0, 10);
   const end = new Date(today.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const res = await fetch(
-    `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&startDate=${start}&endDate=${end}&hydrate=probablePitcher,venue`
+    `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&startDate=${start}&endDate=${end}&hydrate=probablePitcher,venue,weather,lineups`
   );
   const data = await res.json();
   const games = (data?.dates || []).flatMap((d) => d.games || []);
@@ -4649,6 +4705,8 @@ async function fetchMLBTeamNextGame(teamId) {
     const oppTeam = isHome ? upcoming.teams?.away?.team : upcoming.teams?.home?.team;
     const ourSide = isHome ? upcoming.teams?.home : upcoming.teams?.away;
     const probable = ourSide?.probablePitcher;
+    const ourLineup = isHome ? upcoming.lineups?.homePlayers : upcoming.lineups?.awayPlayers;
+    const oppLineup = isHome ? upcoming.lineups?.awayPlayers : upcoming.lineups?.homePlayers;
     game = {
       date: upcoming.gameDate,
       opp: MLB_TEAM_ID_ABBR[oppTeam?.id] || oppTeam?.abbreviation || "???",
@@ -4656,6 +4714,11 @@ async function fetchMLBTeamNextGame(teamId) {
       venue: upcoming.venue?.name || "",
       status: upcoming.status?.detailedState || "Scheduled",
       probablePitcher: probable ? { mlbId: probable.id, name: probable.fullName } : null,
+      weather: upcoming.weather?.condition
+        ? { condition: upcoming.weather.condition, temp: upcoming.weather.temp, wind: upcoming.weather.wind }
+        : null,
+      ourLineupIds: (ourLineup || []).map((p) => p.id),
+      oppLineupIds: (oppLineup || []).map((p) => p.id),
     };
   }
 
@@ -5036,6 +5099,7 @@ function MLBPropsPage({ jumpTo }) {
       headshotFallback={(p) => mlbEspnHeadshot(p.id)}
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
     />
     <div className="roster-layout-center">
       {/* Next-game info bar: the selected team's real next scheduled
@@ -5075,6 +5139,16 @@ function MLBPropsPage({ jumpTo }) {
             </span>
             {nextGame.venue && <span>— {nextGame.venue}</span>}
           </span>
+          {/* Only ever shown once MLB has actually posted a forecast for
+               this game -- absent for games far enough out that there's
+               nothing to report yet. */}
+          {nextGame.weather && (
+            <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span>{nextGame.weather.condition}</span>
+              <span className="mono" style={{ color: "var(--text)", fontWeight: 600 }}>{nextGame.weather.temp}°F</span>
+              {nextGame.weather.wind && <span>· {nextGame.weather.wind}</span>}
+            </span>
+          )}
         </div>
       )}
 
@@ -5402,6 +5476,7 @@ function MLBPropsPage({ jumpTo }) {
       headshotFallback={(p) => mlbEspnHeadshot(p.id)}
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      confirmed={(nextGame?.oppLineupIds?.length || 0) > 0}
     />
     </div>
 
@@ -6218,6 +6293,22 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const wnbaRows = useMemo(() => buildWNBAFeedRows(), [wnbaDataVersion]);
   const nflRows = useMemo(() => buildNFLFeedRows(), [nflDataVersion]);
 
+  // This week's real NFL slate (see fetchNFLWeekSlate, one fetch for the
+  // whole league) -- used only to build the MATCHUP dropdown/filter below;
+  // nflRows above already has its own live per-player data independent of
+  // this.
+  const [nflSlate, setNflSlate] = useState(null);
+  React.useEffect(() => {
+    if (sport !== "nfl") return;
+    let cancelled = false;
+    const load = () => {
+      fetchNFLWeekSlate().then((slate) => { if (!cancelled) setNflSlate(slate); });
+    };
+    load();
+    const interval = setInterval(load, NFL_SLATE_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [sport]);
+
   // MLB rows depend on live data -- today's real MLB slate (see
   // fetchMLBDaySlate, one fetch for the whole league) plus each playing
   // team's per-player game logs and probable pitcher, handed to the pure
@@ -6308,6 +6399,22 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     }));
   }, [mlbSlate]);
 
+  // Matchup dropdown options for NFL -- one per game in the current week's
+  // slate (see fetchNFLWeekSlate), sorted by kickoff, labeled "Away @ Home"
+  // so picking one shows just those two teams.
+  const nflMatchupOptions = useMemo(() => {
+    if (!nflSlate) return [];
+    return nflSlate.map((g, i) => ({
+      id: `${g.awayAbbr}-${g.homeAbbr}-${i}`,
+      teams: [g.awayAbbr, g.homeAbbr],
+      label: `${(NFL_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(NFL_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
+      time: matchupTimeLabel(g.date),
+    }));
+  }, [nflSlate]);
+
+  const activeMatchupOptions = sport === "mlb" ? mlbMatchupOptions : sport === "nfl" ? nflMatchupOptions : [];
+  const showMatchupDropdown = sport === "mlb" || sport === "nfl";
+
   const rows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
   const categories = sport === "nba" ? NBA_FEED_CATEGORIES : sport === "wnba" ? WNBA_FEED_CATEGORIES : sport === "nfl" ? NFL_FEED_CATEGORIES : MLB_FEED_CATEGORIES;
 
@@ -6341,9 +6448,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     const p = r[sampleWindow];
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
     if (r.rank < rankLo || r.rank > rankHi) return false;
-    if (sport === "mlb") {
+    if (showMatchupDropdown) {
       if (matchupFilter !== "all") {
-        const mo = mlbMatchupOptions.find((o) => o.id === matchupFilter);
+        const mo = activeMatchupOptions.find((o) => o.id === matchupFilter);
         if (mo && !mo.teams.includes(r.team)) return false;
       }
     } else if (teamFilter !== "all" && r.team !== teamFilter) {
@@ -6409,18 +6516,18 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         ))}
       </div>
 
-      {/* Team/matchup filter -- MLB shows a MATCHUP dropdown (one entry per
-           game on today's real slate, sorted by first pitch) instead of a
-           flat team list, since picking a team only ever matters in
-           relation to who they're actually playing that day. Other sports
+      {/* Team/matchup filter -- MLB and NFL show a MATCHUP dropdown (one
+           entry per game on the current real slate/week, sorted by kickoff)
+           instead of a flat team list, since picking a team only ever
+           matters in relation to who they're actually playing. NBA/WNBA
            keep the plain TEAM dropdown. */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        {sport === "mlb" ? (
+        {showMatchupDropdown ? (
           <div style={FEED_FILTER_ROW_STYLE}>
             <span className="oswald" style={FEED_LABEL_STYLE}>MATCHUP</span>
             <select className="select" style={{ width: 260 }} value={matchupFilter} onChange={(e) => setMatchupFilter(e.target.value)}>
-              <option value="all">All of today's games</option>
-              {mlbMatchupOptions.map((mo) => (
+              <option value="all">{sport === "mlb" ? "All of today's games" : "All of this week's games"}</option>
+              {activeMatchupOptions.map((mo) => (
                 <option key={mo.id} value={mo.id}>{mo.label} — {mo.time}</option>
               ))}
             </select>
@@ -6831,7 +6938,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 // a compact horizontally-scrolling chip strip (see renderChip) instead of
 // disappearing entirely -- the quick-switch is too useful to lose on
 // mobile, it just can't afford the same vertical space there.
-function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg }) {
+function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, confirmed }) {
   const compact = useIsNarrow(1100);
   // Pitchers (pos "SP") get sectioned off from the batting order rather than
   // just tacked onto the end of the list -- MLB is the only sport that
@@ -6958,9 +7065,12 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
       <div className="roster-panel">
         <div
           className="oswald"
-          style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8 }}
+          style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
         >
           {teamLabel}
+          {confirmed && (
+            <span title="Confirmed starting lineup" style={{ color: "var(--green)", fontSize: 13, fontWeight: 900 }}>✓</span>
+          )}
         </div>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
           Starting Lineup
@@ -6990,9 +7100,12 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
     <div className="roster-panel">
       <div
         className="oswald"
-        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8 }}
+        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
       >
         {teamLabel}
+        {confirmed && (
+          <span title="Confirmed starting lineup" style={{ color: "var(--green)", fontSize: 13, fontWeight: 900 }}>✓</span>
+        )}
       </div>
       {/* Capped height + scroll instead of letting the panel grow -- rows keep
            their normal size no matter how many players are listed (batters +
@@ -7086,12 +7199,22 @@ function HScrollNav({ children }) {
   const trackRef = React.useRef(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
+  // Whether the strip can scroll at all -- unlike canLeft/canRight (which
+  // flip continuously as the user scrolls, and only control which arrow
+  // button is visible), this only changes on mount/resize/content changes.
+  // Padding is keyed off this instead of canLeft/canRight so it never
+  // changes mid-scroll -- tying padding to the live scroll position created
+  // a feedback loop (padding shifts the content -> scroll position moves ->
+  // padding recalculates again), which is what caused the strip to jitter
+  // while scrolling on mobile.
+  const [scrollable, setScrollable] = useState(false);
 
   const updateArrows = () => {
     const el = trackRef.current;
     if (!el) return;
     setCanLeft(el.scrollLeft > 4);
     setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+    setScrollable(el.scrollWidth > el.clientWidth + 4);
   };
 
   React.useEffect(() => {
@@ -7133,8 +7256,8 @@ function HScrollNav({ children }) {
         style={{
           display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none", scrollBehavior: "smooth",
           scrollSnapType: "x mandatory",
-          paddingLeft: canLeft ? ARROW_ZONE + 6 : 0,
-          paddingRight: canRight ? ARROW_ZONE + 6 : 0,
+          paddingLeft: scrollable ? ARROW_ZONE + 6 : 0,
+          paddingRight: scrollable ? ARROW_ZONE + 6 : 0,
           paddingTop: 4, paddingBottom: 4, marginTop: -4, marginBottom: -4,
         }}
       >
