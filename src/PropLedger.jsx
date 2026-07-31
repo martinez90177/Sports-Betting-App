@@ -1159,7 +1159,87 @@ const NFL_MATCHUPS = [
     city: "Inglewood, CA",
   },
 ];
-const NFL_MATCHUPS_BY_DATE = groupMatchupsByDate(NFL_MATCHUPS);
+// Flat team -> {label, players} lookup built from NFL_MATCHUPS' two sides,
+// so any of the 32 real rosters can be selected directly by team instead of
+// only ever appearing paired into one fixed Week 1 matchup.
+const NFL_TEAM_ROSTERS = {};
+NFL_MATCHUPS.forEach((m) => {
+  NFL_TEAM_ROSTERS[m.teamA.players[0].team] = m.teamA;
+  NFL_TEAM_ROSTERS[m.teamB.players[0].team] = m.teamB;
+});
+const NFL_TEAM_OPTIONS = Object.keys(NFL_TEAM_ROSTERS).sort(
+  (a, b) => NFL_TEAM_ROSTERS[a].label.localeCompare(NFL_TEAM_ROSTERS[b].label)
+);
+
+// ESPN's schedule endpoint takes each team's slug in the URL -- identical to
+// our own abbreviations lowercased, except Washington (we use "WAS", ESPN's
+// URL slug and response abbreviation are both "WSH").
+function nflEspnSlug(abbr) {
+  return abbr === "WAS" ? "wsh" : abbr.toLowerCase();
+}
+function nflOurAbbr(espnAbbr) {
+  return espnAbbr === "WSH" ? "WAS" : espnAbbr;
+}
+
+const NFL_SCHEDULE_TTL_MS = 60 * 60 * 1000;
+const nflScheduleCache = new Map();
+
+// Each team's actual next/current-week scheduled opponent, pulled live from
+// ESPN's real season schedule -- replaces the old fixed Week 1 mock pairing
+// so the page always reflects whichever week is actually live, rolling
+// forward on its own once that week's games finish (no separate "refresh
+// every Tuesday" job needed -- the schedule itself is the source of truth,
+// refetched live on a TTL same as the MLB schedule lookup).
+async function fetchNFLTeamNextGame(abbr) {
+  const cached = nflScheduleCache.get(abbr);
+  if (cached && Date.now() - cached.fetchedAt < NFL_SCHEDULE_TTL_MS) {
+    return cached.game;
+  }
+  const cacheKey = `nfl_next_game_${abbr}_v1`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < NFL_SCHEDULE_TTL_MS) {
+        nflScheduleCache.set(abbr, parsed);
+        return parsed.game;
+      }
+    }
+  } catch {}
+
+  const res = await fetch(
+    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${nflEspnSlug(abbr)}/schedule?season=2026`
+  );
+  const data = await res.json();
+  const events = data?.events || [];
+  const upcoming =
+    events.find((e) => e.competitions?.[0]?.status?.type?.completed === false) ||
+    events[events.length - 1] ||
+    null;
+
+  let game = null;
+  if (upcoming) {
+    const comp = upcoming.competitions?.[0];
+    const espnAbbr = nflEspnSlug(abbr).toUpperCase() === "WSH" ? "WSH" : abbr;
+    const us = comp?.competitors?.find((c) => c.team?.abbreviation === espnAbbr);
+    const oppComp = comp?.competitors?.find((c) => c !== us);
+    if (us && oppComp) {
+      game = {
+        date: upcoming.date,
+        opp: nflOurAbbr(oppComp.team?.abbreviation),
+        home: us.homeAway === "home",
+        venue: comp.venue?.fullName || "",
+        status: comp.status?.type?.description || "Scheduled",
+        week: upcoming.week?.number,
+      };
+    }
+  }
+
+  const record = { game, fetchedAt: Date.now() };
+  nflScheduleCache.set(abbr, record);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return game;
+}
 
 // pos: which positions can bet this market. binary markets get a fixed 0.5 threshold.
 const NFL_MARKETS = [
@@ -2228,12 +2308,31 @@ function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow }) {
 }
 
 function NFLPropsPage({ jumpTo, dataVersion }) {
-  const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
-  const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
-  const [playerId, setPlayerId] = useState(NFL_PLAYERS[0].id);
+  const [teamAbbr, setTeamAbbr] = useState(NFL_PLAYERS[0].team);
+  const teamRoster = NFL_TEAM_ROSTERS[teamAbbr];
+  const [playerId, setPlayerId] = useState(teamRoster.players[0].id);
   const [market, setMarket] = useState("passYds");
+
+  // The selected team's actual next scheduled opponent -- pulled live from
+  // ESPN's real season schedule (see fetchNFLTeamNextGame) instead of a
+  // fixed mock Week 1 pairing, so switching teams always shows who they're
+  // really playing next, and it rolls forward week to week on its own.
+  const [nextGame, setNextGame] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    setNextGame(null);
+    fetchNFLTeamNextGame(teamAbbr).then((g) => { if (!cancelled) setNextGame(g); });
+    const interval = setInterval(() => {
+      fetchNFLTeamNextGame(teamAbbr).then((g) => { if (!cancelled) setNextGame(g); });
+    }, NFL_SCHEDULE_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [teamAbbr]);
+  const oppRoster = (nextGame && NFL_TEAM_ROSTERS[nextGame.opp]) || null;
+
   React.useEffect(() => {
     if (!jumpTo) return;
+    const jumpPlayer = ALL_NFL_PLAYERS.find((p) => p.id === jumpTo.playerId);
+    if (jumpPlayer) setTeamAbbr(jumpPlayer.team);
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(null);
@@ -2338,8 +2437,8 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
     <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <div className="roster-layout">
     <TeamRosterPanel
-      teamLabel={matchup.teamA.label}
-      players={matchup.teamA.players}
+      teamLabel={teamRoster.label}
+      players={teamRoster.players}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
@@ -2347,29 +2446,26 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       avatarBg={(p) => (NFL_TEAM_COLORS[p.team] || {}).primary || "#000"}
     />
     <div className="roster-layout-center">
-      {/* Matchup + market selectors -- the matchup dropdown is the way to
-           scout different weekly games (swaps which two rosters populate
-           the sidebars); picking an individual player within that matchup
-           happens by clicking their row in either roster panel. */}
+      {/* Team + market selectors -- picking a team here automatically pulls
+           that team's real next scheduled opponent (see fetchNFLTeamNextGame)
+           to populate the other roster panel, instead of manually picking a
+           fixed Week 1 matchup pairing. Picking an individual player happens
+           by clicking their row in either roster panel. */}
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
           <select
             className="select"
-            value={matchupId}
+            value={teamAbbr}
             onChange={(e) => {
-              const next = NFL_MATCHUPS.find((m) => m.id === e.target.value);
-              setMatchupId(next.id);
-              setPlayerId(next.teamA.players[0].id);
+              const nextTeam = e.target.value;
+              setTeamAbbr(nextTeam);
+              setPlayerId(NFL_TEAM_ROSTERS[nextTeam].players[0].id);
               setLine(null);
               setOpponent("all");
             }}
           >
-            {NFL_MATCHUPS_BY_DATE.map((group) => (
-              <optgroup label={group.label} key={group.label}>
-                {group.matchups.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label} — {matchupTimeLabel(m.date)}</option>
-                ))}
-              </optgroup>
+            {NFL_TEAM_OPTIONS.map((abbr) => (
+              <option key={abbr} value={abbr}>{NFL_TEAM_ROSTERS[abbr].label}</option>
             ))}
           </select>
           <div style={{
@@ -2451,38 +2547,45 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
           </div>
         </div>
 
-        {/* Matchup info bar: when/where this game is being played, keyed off
-             the selected matchup's static schedule data. */}
-        <div style={{
-          display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
-          width: "fit-content", margin: "0 auto 16px", padding: "9px 20px",
-          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
-          fontSize: 12.5, color: "var(--dim)",
-        }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            <span style={{ color: "var(--text)", fontWeight: 600 }}>
-              {new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+        {/* Next-game info bar: the selected team's real next scheduled
+             opponent (see fetchNFLTeamNextGame), not a fixed mock Week 1
+             date -- so it always reflects the actual live schedule. Renders
+             nothing until the live fetch resolves. */}
+        {nextGame && (
+          <div style={{
+            display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
+            width: "fit-content", margin: "0 auto 16px", padding: "9px 20px",
+            background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
+            fontSize: 12.5, color: "var(--dim)",
+          }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+              <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                {new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+              </span>
+              <span>·</span>
+              <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
+                {new Date(nextGame.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+              </span>
             </span>
-            <span>·</span>
-            <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
-              {new Date(matchup.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+            <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                {nextGame.home ? "vs" : "@"} {(oppRoster || {}).label || nextGame.opp}
+              </span>
+              {nextGame.venue && <span>— {nextGame.venue}</span>}
+              {nextGame.week && <span>· Week {nextGame.week}</span>}
             </span>
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-              <circle cx="12" cy="10" r="3" />
-            </svg>
-            <span style={{ color: "var(--text)", fontWeight: 600 }}>{matchup.venue}</span>
-            <span>— {matchup.city}</span>
-          </span>
-        </div>
+          </div>
+        )}
 
         <MarketSectionGrid
           sections={NFL_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
@@ -2493,8 +2596,8 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       </div>
     </div>
     <TeamRosterPanel
-      teamLabel={matchup.teamB.label}
-      players={matchup.teamB.players}
+      teamLabel={(oppRoster || {}).label || "Loading…"}
+      players={(oppRoster || {}).players || []}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
@@ -4376,11 +4479,14 @@ const MLB_MATCHUPS = [
   },
 ];
 
-// Groups MLB_MATCHUPS by calendar date so the matchup dropdown can section
-// them under a date heading (via <optgroup>) -- today it's just one group,
-// but this is what makes it obvious which games are "today" vs. a future
-// date once more than one day's slate is loaded at once.
-const MLB_MATCHUPS_BY_DATE = groupMatchupsByDate(MLB_MATCHUPS);
+// Flat team -> {label, players} lookup built from MLB_MATCHUPS' two sides,
+// so any of the 30 real rosters can be selected directly by team instead of
+// only ever appearing paired into one fixed mock matchup.
+const MLB_TEAM_ROSTERS = {};
+MLB_MATCHUPS.forEach((m) => {
+  MLB_TEAM_ROSTERS[m.teamA.players[0].team] = m.teamA;
+  MLB_TEAM_ROSTERS[m.teamB.players[0].team] = m.teamB;
+});
 
 // Live game logs, fetched directly from the official MLB Stats API (see
 // fetchMLBGameLog below) instead of a static snapshot -- this is what keeps
@@ -4489,27 +4595,38 @@ function pitchingRateAgg(games) {
   };
 }
 
-// Next scheduled/live Yankees game (opponent + home/away), used by the Prop
-// Feed to show the actual upcoming matchup instead of a mock "next opp."
-// Same cache-then-refetch TTL pattern as fetchMLBGameLog above, so once a
-// game goes final the following poll picks up the new day's opponent.
+// Reverse of MLB_TEAM_ID_ABBR -- needed to turn a selected roster's team
+// abbreviation back into the MLB Stats API's numeric team id for the
+// schedule fetch below.
+const MLB_ABBR_TEAM_ID = Object.fromEntries(
+  Object.entries(MLB_TEAM_ID_ABBR).map(([id, abbr]) => [abbr, Number(id)])
+);
+
+// Next scheduled/live game for any MLB team (opponent + home/away), used by
+// both the Prop Feed (Yankees) and the MLB Props page (whichever team is
+// selected) to show the actual upcoming matchup instead of a mock "next
+// opp." Same cache-then-refetch TTL pattern as fetchMLBGameLog above, so
+// once a game goes final the following poll picks up the new day's opponent
+// -- this is what keeps a selected team's matchup "renewed" day to day
+// without any separate refresh step.
 const YANKEES_TEAM_ID = 147;
 const MLB_SCHEDULE_TTL_MS = 60 * 60 * 1000;
-let yankeesScheduleCache = null;
+const mlbScheduleCache = new Map();
 
-async function fetchYankeesNextGame() {
-  if (yankeesScheduleCache && Date.now() - yankeesScheduleCache.fetchedAt < MLB_SCHEDULE_TTL_MS) {
-    return yankeesScheduleCache.game;
+async function fetchMLBTeamNextGame(teamId) {
+  const cached = mlbScheduleCache.get(teamId);
+  if (cached && Date.now() - cached.fetchedAt < MLB_SCHEDULE_TTL_MS) {
+    return cached.game;
   }
   // v2: now hydrates the probable pitcher so the feed's pitcher props stay
   // tied to whoever MLB has actually announced as the next starter.
-  const cacheKey = "mlb_yankees_next_game_v2";
+  const cacheKey = `mlb_next_game_${teamId}_v2`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Date.now() - parsed.fetchedAt < MLB_SCHEDULE_TTL_MS) {
-        yankeesScheduleCache = parsed;
+        mlbScheduleCache.set(teamId, parsed);
         return parsed.game;
       }
     }
@@ -4519,7 +4636,7 @@ async function fetchYankeesNextGame() {
   const start = today.toISOString().slice(0, 10);
   const end = new Date(today.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const res = await fetch(
-    `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${YANKEES_TEAM_ID}&startDate=${start}&endDate=${end}&hydrate=probablePitcher`
+    `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&startDate=${start}&endDate=${end}&hydrate=probablePitcher,venue`
   );
   const data = await res.json();
   const games = (data?.dates || []).flatMap((d) => d.games || []);
@@ -4527,23 +4644,28 @@ async function fetchYankeesNextGame() {
 
   let game = null;
   if (upcoming) {
-    const isHome = upcoming.teams?.home?.team?.id === YANKEES_TEAM_ID;
+    const isHome = upcoming.teams?.home?.team?.id === teamId;
     const oppTeam = isHome ? upcoming.teams?.away?.team : upcoming.teams?.home?.team;
-    const yankeesSide = isHome ? upcoming.teams?.home : upcoming.teams?.away;
-    const probable = yankeesSide?.probablePitcher;
+    const ourSide = isHome ? upcoming.teams?.home : upcoming.teams?.away;
+    const probable = ourSide?.probablePitcher;
     game = {
       date: upcoming.gameDate,
       opp: MLB_TEAM_ID_ABBR[oppTeam?.id] || oppTeam?.abbreviation || "???",
       home: isHome,
+      venue: upcoming.venue?.name || "",
       status: upcoming.status?.detailedState || "Scheduled",
       probablePitcher: probable ? { mlbId: probable.id, name: probable.fullName } : null,
     };
   }
 
   const record = { game, fetchedAt: Date.now() };
-  yankeesScheduleCache = record;
+  mlbScheduleCache.set(teamId, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
   return game;
+}
+
+async function fetchYankeesNextGame() {
+  return fetchMLBTeamNextGame(YANKEES_TEAM_ID);
 }
 
 // Trailing pitching game log for whoever is currently the Yankees' probable
@@ -4665,13 +4787,40 @@ const statValueMLBPitcher = (g, market) => {
   }
 };
 
+// Every team available in the "TEAM" dropdown, alphabetical by city/name --
+// built once from the same roster map every page reads from.
+const MLB_TEAM_OPTIONS = Object.keys(MLB_TEAM_ROSTERS).sort(
+  (a, b) => MLB_TEAM_ROSTERS[a].label.localeCompare(MLB_TEAM_ROSTERS[b].label)
+);
+
 function MLBPropsPage({ jumpTo }) {
-  const [matchupId, setMatchupId] = useState(MLB_MATCHUPS[0].id);
-  const matchup = MLB_MATCHUPS.find((m) => m.id === matchupId);
-  const [playerId, setPlayerId] = useState(MLB_MATCHUPS[0].teamA.players[0].id);
+  const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
+  const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
+  const [playerId, setPlayerId] = useState(teamRoster.players[0].id);
   const [market, setMarket] = useState("h");
+
+  // The selected team's actual next scheduled opponent -- pulled live from
+  // the MLB Stats API (see fetchMLBTeamNextGame) instead of a fixed mock
+  // pairing, so switching teams always shows who they're really playing
+  // next, and it rolls forward on its own once that game goes final.
+  const [nextGame, setNextGame] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    const teamId = MLB_ABBR_TEAM_ID[teamAbbr];
+    setNextGame(null);
+    const load = () => {
+      if (!teamId) return;
+      fetchMLBTeamNextGame(teamId).then((g) => { if (!cancelled) setNextGame(g); });
+    };
+    load();
+    const interval = setInterval(load, MLB_SCHEDULE_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [teamAbbr]);
+  const oppRoster = (nextGame && MLB_TEAM_ROSTERS[nextGame.opp]) || null;
   React.useEffect(() => {
     if (!jumpTo) return;
+    const jumpPlayer = ALL_MLB_PLAYERS.find((p) => p.id === jumpTo.playerId);
+    if (jumpPlayer) setTeamAbbr(jumpPlayer.team);
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(null);
@@ -4820,8 +4969,8 @@ function MLBPropsPage({ jumpTo }) {
     <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <div className="roster-layout">
     <TeamRosterPanel
-      teamLabel={matchup.teamA.label}
-      players={matchup.teamA.players}
+      teamLabel={teamRoster.label}
+      players={teamRoster.players}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => mlbHeadshot(p.mlbId)}
@@ -4830,63 +4979,66 @@ function MLBPropsPage({ jumpTo }) {
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
     />
     <div className="roster-layout-center">
-      {/* Matchup info bar: when/where this game is being played, keyed off
-           the selected matchup's static schedule data. Sits above the player
-           photo/selector since it's context about the game, not the player. */}
-      <div style={{
-        display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
-        width: "fit-content", margin: "0 auto 12px", padding: "9px 20px",
-        background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
-        fontSize: 12.5, color: "var(--dim)",
-      }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          <span style={{ color: "var(--text)", fontWeight: 600 }}>
-            {new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+      {/* Next-game info bar: the selected team's real next scheduled
+           opponent (see fetchMLBTeamNextGame), not a fixed mock date -- so
+           it always reflects the actual live schedule. Sits above the
+           player photo/selector since it's context about the game, not the
+           player. Renders nothing until the live fetch resolves. */}
+      {nextGame && (
+        <div style={{
+          display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
+          width: "fit-content", margin: "0 auto 12px", padding: "9px 20px",
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
+          fontSize: 12.5, color: "var(--dim)",
+        }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>
+              {new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+            <span>·</span>
+            <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
+              {new Date(nextGame.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+            </span>
           </span>
-          <span>·</span>
-          <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
-            {new Date(matchup.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>
+              {nextGame.home ? "vs" : "@"} {(oppRoster || {}).label || nextGame.opp}
+            </span>
+            {nextGame.venue && <span>— {nextGame.venue}</span>}
           </span>
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-            <circle cx="12" cy="10" r="3" />
-          </svg>
-          <span style={{ color: "var(--text)", fontWeight: 600 }}>{matchup.venue}</span>
-          <span>— {matchup.city}</span>
-        </span>
-      </div>
+        </div>
+      )}
 
-      {/* Matchup + market selectors -- the matchup dropdown is the way to
-           scout different games (swaps which two rosters populate the
-           sidebars); picking an individual player within that matchup
-           happens by clicking their row in either roster panel. */}
+      {/* Team + market selectors -- picking a team here automatically pulls
+           that team's real next scheduled opponent (see fetchMLBTeamNextGame)
+           to populate the other roster panel, instead of manually picking a
+           fixed matchup pairing. Picking an individual player happens by
+           clicking their row in either roster panel. */}
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
           <select
             className="select"
-            value={matchupId}
+            value={teamAbbr}
             onChange={(e) => {
-              const next = MLB_MATCHUPS.find((m) => m.id === e.target.value);
-              setMatchupId(next.id);
-              setPlayerId(next.teamA.players[0].id);
+              const nextTeam = e.target.value;
+              setTeamAbbr(nextTeam);
+              setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
               setLine(null);
               setOpponent("all");
             }}
           >
-            {MLB_MATCHUPS_BY_DATE.map((group) => (
-              <optgroup label={group.label} key={group.label}>
-                {group.matchups.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label} — {matchupTimeLabel(m.date)}</option>
-                ))}
-              </optgroup>
+            {MLB_TEAM_OPTIONS.map((abbr) => (
+              <option key={abbr} value={abbr}>{MLB_TEAM_ROSTERS[abbr].label}</option>
             ))}
           </select>
           <div style={{
@@ -5183,8 +5335,8 @@ function MLBPropsPage({ jumpTo }) {
       </div>
     </div>
     <TeamRosterPanel
-      teamLabel={matchup.teamB.label}
-      players={matchup.teamB.players}
+      teamLabel={(oppRoster || {}).label || "Loading…"}
+      players={(oppRoster || {}).players || []}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => mlbHeadshot(p.mlbId)}
@@ -5403,7 +5555,7 @@ function MLBPropsPage({ jumpTo }) {
       </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Live 2026 regular-season game logs (MLB Stats API) for the {matchup.teamA.label} and {matchup.teamB.label} lineups shown above, refreshed on load and every 15 minutes
+        Live 2026 regular-season game logs (MLB Stats API) for the {teamRoster.label}{oppRoster ? ` and ${oppRoster.label}` : ""} lineups shown above, refreshed on load and every 15 minutes
         {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
         Defensive matchup ranks are real team ERA, refreshed nightly.
       </div>
