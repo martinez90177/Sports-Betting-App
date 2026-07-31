@@ -7209,12 +7209,20 @@ function HScrollNav({ children }) {
   // while scrolling on mobile.
   const [scrollable, setScrollable] = useState(false);
 
+  // Throttled to one check per animation frame -- onScroll can fire many
+  // times per frame during touch/momentum scrolling, and setting state that
+  // often was adding to the jank on mobile.
+  const rafRef = React.useRef(null);
   const updateArrows = () => {
-    const el = trackRef.current;
-    if (!el) return;
-    setCanLeft(el.scrollLeft > 4);
-    setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
-    setScrollable(el.scrollWidth > el.clientWidth + 4);
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const el = trackRef.current;
+      if (!el) return;
+      setCanLeft(el.scrollLeft > 4);
+      setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
+      setScrollable(el.scrollWidth > el.clientWidth + 4);
+    });
   };
 
   React.useEffect(() => {
@@ -7254,8 +7262,15 @@ function HScrollNav({ children }) {
         className="hscroll-hide"
         onScroll={updateArrows}
         style={{
-          display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none", scrollBehavior: "smooth",
-          scrollSnapType: "x mandatory",
+          // No scroll-snap here -- mandatory snapping with no declared
+          // scroll-snap-align on the tab children forces the browser to
+          // snap to undefined points, which is what made native finger-drag
+          // scrolling feel glitchy/rubber-banded on mobile. scroll-behavior
+          // is likewise left off the container itself (it can fight native
+          // touch scrolling in some mobile browsers) -- the arrow buttons
+          // still animate smoothly via the explicit behavior:"smooth"
+          // option passed to scrollBy below.
+          display: "flex", gap: 8, overflowX: "auto", scrollbarWidth: "none",
           paddingLeft: scrollable ? ARROW_ZONE + 6 : 0,
           paddingRight: scrollable ? ARROW_ZONE + 6 : 0,
           paddingTop: 4, paddingBottom: 4, marginTop: -4, marginBottom: -4,
