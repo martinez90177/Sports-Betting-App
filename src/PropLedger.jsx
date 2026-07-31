@@ -4665,6 +4665,68 @@ async function fetchMLBTeamNextGame(teamId) {
   return game;
 }
 
+// MLB's schedule day rolls over at 3am Eastern (not midnight) -- a game that
+// runs past midnight still belongs to the day it started. Used to key the
+// day-slate cache below so it naturally refetches once a new day's games
+// take over, without needing a separate cron job.
+function currentMLBDayKey() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+  const date = new Date(Date.UTC(Number(get("year")), Number(get("month")) - 1, Number(get("day"))));
+  if (Number(get("hour")) < 3) date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+const MLB_SLATE_TTL_MS = 15 * 60 * 1000;
+let mlbSlateCache = null;
+
+// Every real MLB game scheduled "today" (per currentMLBDayKey), one fetch
+// for the whole league instead of one per team -- this is what lets the
+// Prop Feed's MATCHUP dropdown show only the teams actually playing, sorted
+// by first pitch, and why it only ever needs a single refetch a day.
+async function fetchMLBDaySlate() {
+  const dayKey = currentMLBDayKey();
+  if (mlbSlateCache && mlbSlateCache.dayKey === dayKey && Date.now() - mlbSlateCache.fetchedAt < MLB_SLATE_TTL_MS) {
+    return mlbSlateCache.games;
+  }
+  const cacheKey = "mlb_day_slate_v1";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < MLB_SLATE_TTL_MS) {
+        mlbSlateCache = parsed;
+        return parsed.games;
+      }
+    }
+  } catch {}
+
+  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dayKey}&hydrate=probablePitcher`);
+  const data = await res.json();
+  const rawGames = (data?.dates || []).flatMap((d) => d.games || []);
+  const games = rawGames
+    .map((g) => ({
+      date: g.gameDate,
+      status: g.status?.detailedState || "Scheduled",
+      awayAbbr: MLB_TEAM_ID_ABBR[g.teams?.away?.team?.id] || "???",
+      homeAbbr: MLB_TEAM_ID_ABBR[g.teams?.home?.team?.id] || "???",
+      awayProbablePitcher: g.teams?.away?.probablePitcher
+        ? { mlbId: g.teams.away.probablePitcher.id, name: g.teams.away.probablePitcher.fullName }
+        : null,
+      homeProbablePitcher: g.teams?.home?.probablePitcher
+        ? { mlbId: g.teams.home.probablePitcher.id, name: g.teams.home.probablePitcher.fullName }
+        : null,
+    }))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const record = { dayKey, games, fetchedAt: Date.now() };
+  mlbSlateCache = record;
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return games;
+}
+
 // Trailing pitching game log for whoever is currently a team's probable
 // starter (see fetchMLBTeamNextGame) -- only ever fetched for that one
 // pitcher, so the feed shows props for the actual next starter, not the
@@ -6156,47 +6218,73 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const wnbaRows = useMemo(() => buildWNBAFeedRows(), [wnbaDataVersion]);
   const nflRows = useMemo(() => buildNFLFeedRows(), [nflDataVersion]);
 
-  // MLB rows depend on live data (per-player game logs + each team's actual
-  // next opponent/probable starter), fetched for every MLB team in parallel
-  // and handed to the pure buildMLBFeedRows/buildMLBPitcherFeedRows builders
-  // rather than generated synchronously like NBA/NFL.
+  // MLB rows depend on live data -- today's real MLB slate (see
+  // fetchMLBDaySlate, one fetch for the whole league) plus each playing
+  // team's per-player game logs and probable pitcher, handed to the pure
+  // buildMLBFeedRows/buildMLBPitcherFeedRows builders rather than generated
+  // synchronously like NBA/NFL. Only teams actually on today's slate get
+  // fetched/shown -- a team with an off day just doesn't appear.
+  const [mlbSlate, setMlbSlate] = useState(null);
   const [mlbTeamsData, setMlbTeamsData] = useState(null);
   const [mlbLoading, setMlbLoading] = useState(false);
+  const [matchupFilter, setMatchupFilter] = useState("all");
 
   React.useEffect(() => {
     if (sport !== "mlb") return;
     let cancelled = false;
     const load = () => {
       setMlbLoading((prev) => (mlbTeamsData ? prev : true));
-      Promise.all(
-        MLB_TEAM_OPTIONS.map((abbr) => {
-          const roster = MLB_TEAM_ROSTERS[abbr];
-          const teamId = MLB_ABBR_TEAM_ID[abbr];
-          return fetchMLBTeamNextGame(teamId).then((nextGame) =>
-            // Only the announced probable starter's log is fetched -- pitcher
-            // props roll to whoever that is once MLB names a new one.
-            Promise.all([
-              Promise.all(roster.players.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
-              nextGame?.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
-            ]).then(([entries, pitcherGames]) => ({
-              teamAbbr: abbr,
-              players: roster.players,
-              gameLogsById: Object.fromEntries(entries),
-              pitcherGames,
-              nextGame,
-            }))
+      fetchMLBDaySlate()
+        .then((slate) => {
+          if (cancelled) return null;
+          setMlbSlate(slate);
+          const teamEntries = [];
+          slate.forEach((game) => {
+            [
+              { abbr: game.awayAbbr, isHome: false },
+              { abbr: game.homeAbbr, isHome: true },
+            ].forEach(({ abbr, isHome }) => {
+              const roster = MLB_TEAM_ROSTERS[abbr];
+              if (!roster) return;
+              teamEntries.push({
+                abbr,
+                roster,
+                nextGame: {
+                  date: game.date,
+                  opp: isHome ? game.awayAbbr : game.homeAbbr,
+                  home: isHome,
+                  status: game.status,
+                  probablePitcher: isHome ? game.homeProbablePitcher : game.awayProbablePitcher,
+                },
+              });
+            });
+          });
+          // Only the announced probable starter's log is fetched per team --
+          // pitcher props roll to whoever that is once MLB names a new one.
+          return Promise.all(
+            teamEntries.map(({ abbr, roster, nextGame }) =>
+              Promise.all([
+                Promise.all(roster.players.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
+                nextGame.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
+              ]).then(([entries, pitcherGames]) => ({
+                teamAbbr: abbr,
+                players: roster.players,
+                gameLogsById: Object.fromEntries(entries),
+                pitcherGames,
+                nextGame,
+              }))
+            )
           );
         })
-      )
         .then((results) => {
-          if (cancelled) return;
+          if (cancelled || !results) return;
           setMlbTeamsData(results);
           setMlbLoading(false);
         })
         .catch(() => { if (!cancelled) setMlbLoading(false); });
     };
     load();
-    const interval = setInterval(load, MLB_GAMELOG_TTL_MS);
+    const interval = setInterval(load, MLB_SLATE_TTL_MS);
     return () => { cancelled = true; clearInterval(interval); };
   }, [sport]);
 
@@ -6207,6 +6295,19 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     return [...batterRows, ...pitcherRows];
   }, [mlbTeamsData]);
 
+  // Matchup dropdown options for MLB -- one per game on today's slate,
+  // sorted by first pitch (fetchMLBDaySlate already returns them in that
+  // order), labeled "Away @ Home" so picking one shows just those two teams.
+  const mlbMatchupOptions = useMemo(() => {
+    if (!mlbSlate) return [];
+    return mlbSlate.map((g, i) => ({
+      id: `${g.awayAbbr}-${g.homeAbbr}-${i}`,
+      teams: [g.awayAbbr, g.homeAbbr],
+      label: `${(MLB_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(MLB_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
+      time: matchupTimeLabel(g.date),
+    }));
+  }, [mlbSlate]);
+
   const rows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
   const categories = sport === "nba" ? NBA_FEED_CATEGORIES : sport === "wnba" ? WNBA_FEED_CATEGORIES : sport === "nfl" ? NFL_FEED_CATEGORIES : MLB_FEED_CATEGORIES;
 
@@ -6216,6 +6317,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setRankLo(1);
     setRankHi(feedTeamCount(sport));
     setTeamFilter("all");
+    setMatchupFilter("all");
   }, [sport]);
 
   // Option list for the Team dropdown -- built off the full per-sport row
@@ -6239,7 +6341,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     const p = r[sampleWindow];
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
     if (r.rank < rankLo || r.rank > rankHi) return false;
-    if (teamFilter !== "all" && r.team !== teamFilter) return false;
+    if (sport === "mlb") {
+      if (matchupFilter !== "all") {
+        const mo = mlbMatchupOptions.find((o) => o.id === matchupFilter);
+        if (mo && !mo.teams.includes(r.team)) return false;
+      }
+    } else if (teamFilter !== "all" && r.team !== teamFilter) {
+      return false;
+    }
     return true;
   });
 
@@ -6300,17 +6409,33 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         ))}
       </div>
 
-      {/* Team filter */}
+      {/* Team/matchup filter -- MLB shows a MATCHUP dropdown (one entry per
+           game on today's real slate, sorted by first pitch) instead of a
+           flat team list, since picking a team only ever matters in
+           relation to who they're actually playing that day. Other sports
+           keep the plain TEAM dropdown. */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
-        <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={FEED_LABEL_STYLE}>TEAM</span>
-          <select className="select" style={{ width: FEED_CONTROL_WIDTH }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-            <option value="all">All teams</option>
-            {teamOptions.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
+        {sport === "mlb" ? (
+          <div style={FEED_FILTER_ROW_STYLE}>
+            <span className="oswald" style={FEED_LABEL_STYLE}>MATCHUP</span>
+            <select className="select" style={{ width: 260 }} value={matchupFilter} onChange={(e) => setMatchupFilter(e.target.value)}>
+              <option value="all">All of today's games</option>
+              {mlbMatchupOptions.map((mo) => (
+                <option key={mo.id} value={mo.id}>{mo.label} — {mo.time}</option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div style={FEED_FILTER_ROW_STYLE}>
+            <span className="oswald" style={FEED_LABEL_STYLE}>TEAM</span>
+            <select className="select" style={{ width: FEED_CONTROL_WIDTH }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+              <option value="all">All teams</option>
+              {teamOptions.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={FEED_LABEL_STYLE}>SAMPLE SIZE</span>
           <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
