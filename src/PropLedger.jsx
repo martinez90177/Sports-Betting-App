@@ -1876,8 +1876,16 @@ function computeNFLHistoricalLines(games, market) {
   });
 }
 
-function LineHandle({ value, onChange, min, max, containerRef }) {
+function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
   const draggingRef = React.useRef(false);
+  // Tracks the handle's continuous, unsnapped position while dragging --
+  // rendering position from this (rather than from `value`, which only ever
+  // holds a snapped .5 increment) is what makes the drag itself feel free-
+  // moving. `value` -- and the onChange below that updates it -- still only
+  // change at each half-point threshold, so the actual line still snaps
+  // forward/back at those crossings; it just no longer drags the handle's
+  // visible position in lockstep with that snap.
+  const [dragValue, setDragValue] = useState(null);
 
   const valueToY = (v) => PLOT_TOP + (1 - (v - min) / (max - min)) * PLOT_HEIGHT;
 
@@ -1886,22 +1894,27 @@ function LineHandle({ value, onChange, min, max, containerRef }) {
     const rect = containerRef.current.getBoundingClientRect();
     const relY = e.clientY - rect.top;
     const ratio = 1 - (relY - PLOT_TOP) / PLOT_HEIGHT;
-    const raw = min + ratio * (max - min);
+    const raw = Math.min(max, Math.max(min, min + ratio * (max - min)));
+    setDragValue(raw);
+    onDragValue?.(raw);
     onChange(Math.min(max, Math.max(min, snapToHalfOdd(raw))));
   };
 
   const startDrag = (e) => {
     draggingRef.current = true;
+    setDragValue(value);
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", stopDrag);
   };
   const stopDrag = () => {
     draggingRef.current = false;
+    setDragValue(null);
+    onDragValue?.(null);
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", stopDrag);
   };
 
-  const y = valueToY(value);
+  const y = valueToY(dragValue !== null ? dragValue : value);
 
   return (
     <div
@@ -2401,6 +2414,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   const [maxSnapPct, setMaxSnapPct] = useState(100);
   const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
+  const [dragLine, setDragLine] = useState(null);
   const chartRef = React.useRef(null);
   const isNarrow = useIsNarrow();
 
@@ -2838,7 +2852,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
               }
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = statValueNFL(g, market);
@@ -2855,6 +2869,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
           <LineHandle
             value={effectiveLine}
             onChange={(v) => setLine(v)}
+            onDragValue={setDragLine}
             min={0}
             max={chartMax}
             containerRef={chartRef}
@@ -3387,6 +3402,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const [maxMinutes, setMaxMinutes] = useState(40);
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
+  const [dragLine, setDragLine] = useState(null);
   const chartRef = React.useRef(null);
   const isNarrow = useIsNarrow();
 
@@ -3785,7 +3801,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} />}
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = statValue(g, market, rebSplit);
@@ -3802,6 +3818,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
           <LineHandle
             value={effectiveLine}
             onChange={(v) => setLine(v)}
+            onDragValue={setDragLine}
             min={0}
             max={chartMax}
             containerRef={chartRef}
@@ -4704,7 +4721,9 @@ async function fetchMLBTeamNextGame(teamId) {
     const isHome = upcoming.teams?.home?.team?.id === teamId;
     const oppTeam = isHome ? upcoming.teams?.away?.team : upcoming.teams?.home?.team;
     const ourSide = isHome ? upcoming.teams?.home : upcoming.teams?.away;
+    const oppSide = isHome ? upcoming.teams?.away : upcoming.teams?.home;
     const probable = ourSide?.probablePitcher;
+    const oppProbable = oppSide?.probablePitcher;
     const ourLineup = isHome ? upcoming.lineups?.homePlayers : upcoming.lineups?.awayPlayers;
     const oppLineup = isHome ? upcoming.lineups?.awayPlayers : upcoming.lineups?.homePlayers;
     game = {
@@ -4714,6 +4733,7 @@ async function fetchMLBTeamNextGame(teamId) {
       venue: upcoming.venue?.name || "",
       status: upcoming.status?.detailedState || "Scheduled",
       probablePitcher: probable ? { mlbId: probable.id, name: probable.fullName } : null,
+      oppProbablePitcher: oppProbable ? { mlbId: oppProbable.id, name: oppProbable.fullName } : null,
       weather: upcoming.weather?.condition
         ? { condition: upcoming.weather.condition, temp: upcoming.weather.temp, wind: upcoming.weather.wind }
         : null,
@@ -4939,10 +4959,23 @@ function MLBPropsPage({ jumpTo }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, [teamAbbr]);
   const oppRoster = (nextGame && MLB_TEAM_ROSTERS[nextGame.opp]) || null;
+
+  // Bridges a jump to a live-pitcher id (see mlbLivePitcherId) for the
+  // render or two before nextGame has refetched for the newly-selected
+  // team -- without this, liveTeamRoster below wouldn't yet know about the
+  // pitcher the user just clicked through to from the Prop Feed.
+  const [jumpedPitcher, setJumpedPitcher] = useState(null);
+
   React.useEffect(() => {
     if (!jumpTo) return;
-    const jumpPlayer = ALL_MLB_PLAYERS.find((p) => p.id === jumpTo.playerId);
-    if (jumpPlayer) setTeamAbbr(jumpPlayer.team);
+    const live = parseMlbLivePitcherId(jumpTo.playerId);
+    if (live) {
+      setTeamAbbr(live.team);
+      setJumpedPitcher({ id: jumpTo.playerId, name: jumpTo.meta?.name || "Probable Pitcher", team: live.team, mlbId: live.mlbId });
+    } else {
+      const jumpPlayer = ALL_MLB_PLAYERS.find((p) => p.id === jumpTo.playerId);
+      if (jumpPlayer) setTeamAbbr(jumpPlayer.team);
+    }
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(null);
@@ -4957,6 +4990,7 @@ function MLBPropsPage({ jumpTo }) {
   const [maxPA, setMaxPA] = useState(6);
   const [paRangeEnabled, setPaRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
+  const [dragLine, setDragLine] = useState(null);
   const [showStatInfo, setShowStatInfo] = useState(false);
   const chartRef = React.useRef(null);
   const isNarrow = useIsNarrow();
@@ -4971,7 +5005,34 @@ function MLBPropsPage({ jumpTo }) {
     setLine(null);
   };
 
-  const player = ALL_MLB_PLAYERS.find((p) => p.id === playerId);
+  // Swaps each roster's static "SP" placeholder for the actual live probable
+  // starter (see fetchMLBTeamNextGame) once known, so the page shows and can
+  // link to whoever is really starting instead of a hardcoded stand-in.
+  // teamRoster falls back to a pending jumped-to pitcher (see the jumpTo
+  // effect above) for the render or two before nextGame catches up.
+  const liveTeamRoster = useMemo(() => {
+    const live =
+      (nextGame?.probablePitcher && { name: nextGame.probablePitcher.name, mlbId: nextGame.probablePitcher.mlbId }) ||
+      (jumpedPitcher && jumpedPitcher.team === teamAbbr && { name: jumpedPitcher.name, mlbId: jumpedPitcher.mlbId }) ||
+      null;
+    if (!live) return teamRoster;
+    const livePlayer = { id: mlbLivePitcherId(teamAbbr, live.mlbId), name: live.name, team: teamAbbr, pos: "SP", mlbId: live.mlbId };
+    return { label: teamRoster.label, players: [...teamRoster.players.filter((p) => p.pos !== "SP"), livePlayer] };
+  }, [teamRoster, teamAbbr, nextGame, jumpedPitcher]);
+
+  const liveOppRoster = useMemo(() => {
+    if (!oppRoster) return oppRoster;
+    const live = nextGame?.oppProbablePitcher;
+    if (!live) return oppRoster;
+    const livePlayer = { id: mlbLivePitcherId(nextGame.opp, live.mlbId), name: live.name, team: nextGame.opp, pos: "SP", mlbId: live.mlbId };
+    return { label: oppRoster.label, players: [...oppRoster.players.filter((p) => p.pos !== "SP"), livePlayer] };
+  }, [oppRoster, nextGame]);
+
+  const player =
+    liveTeamRoster.players.find((p) => p.id === playerId) ||
+    (liveOppRoster && liveOppRoster.players.find((p) => p.id === playerId)) ||
+    ALL_MLB_PLAYERS.find((p) => p.id === playerId) ||
+    liveTeamRoster.players[0];
   const isPitcher = player.pos === "SP";
   const [allGames, setAllGames] = useState([]);
   const [gameLogUpdatedAt, setGameLogUpdatedAt] = useState(null);
@@ -5091,8 +5152,8 @@ function MLBPropsPage({ jumpTo }) {
     <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <div className="roster-layout">
     <TeamRosterPanel
-      teamLabel={teamRoster.label}
-      players={teamRoster.players}
+      teamLabel={liveTeamRoster.label}
+      players={liveTeamRoster.players}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => mlbHeadshot(p.mlbId)}
@@ -5451,25 +5512,26 @@ function MLBPropsPage({ jumpTo }) {
           );
         })()}
 
-        <MarketSectionGrid
-          sections={
-            isPitcher
-              ? [{ label: "Pitching", markets: MLB_PITCHER_MARKETS }]
-              : [
-                  { label: "Core", markets: MLB_MARKETS_ROW_1 },
-                  { label: "Power", markets: MLB_MARKETS_ROW_2 },
-                  { label: "Discipline & Speed", markets: MLB_MARKETS_ROW_3 },
-                ]
-          }
-          activeMarket={market}
-          onSelect={(id) => { setMarket(id); setLine(null); }}
-          isNarrow={isNarrow}
-        />
+        <div style={{ marginTop: 18 }}>
+          <MarketSectionGrid
+            sections={
+              isPitcher
+                ? [{ label: "Pitching", markets: MLB_PITCHER_MARKETS }]
+                : [
+                    { label: "Core", markets: [...MLB_MARKETS_ROW_1, ...MLB_MARKETS_ROW_2] },
+                    { label: "Discipline & Speed", markets: MLB_MARKETS_ROW_3 },
+                  ]
+            }
+            activeMarket={market}
+            onSelect={(id) => { setMarket(id); setLine(null); }}
+            isNarrow={isNarrow}
+          />
+        </div>
       </div>
     </div>
     <TeamRosterPanel
-      teamLabel={(oppRoster || {}).label || "Loading…"}
-      players={(oppRoster || {}).players || []}
+      teamLabel={(liveOppRoster || {}).label || "Loading…"}
+      players={(liveOppRoster || {}).players || []}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => mlbHeadshot(p.mlbId)}
@@ -5629,7 +5691,7 @@ function MLBPropsPage({ jumpTo }) {
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
@@ -5646,6 +5708,7 @@ function MLBPropsPage({ jumpTo }) {
           <LineHandle
             value={effectiveLine}
             onChange={(v) => setLine(v)}
+            onDragValue={setDragLine}
             min={0}
             max={chartMax}
             containerRef={chartRef}
@@ -6120,6 +6183,22 @@ function buildMLBFeedRows(teamsData) {
   return rows;
 }
 
+// Encodes/decodes the synthetic id used for a team's live probable pitcher.
+// MLB_TEAM_ROSTERS is a static snapshot with one hardcoded "SP" placeholder
+// per team, but the actual announced starter is frequently a different
+// person -- so feed rows for a pitcher who isn't that placeholder used to
+// have no playerId at all (and no "View Chart" link) since there was
+// nothing in the static roster to link to. Embedding the team abbreviation
+// in the id itself means MLBPropsPage can select the right team on a jump
+// without needing a roster lookup that would fail for exactly this reason.
+function mlbLivePitcherId(teamAbbr, mlbId) {
+  return `mlb_live_${teamAbbr}_${mlbId}`;
+}
+function parseMlbLivePitcherId(id) {
+  const m = /^mlb_live_([A-Z]+)_(\d+)$/.exec(id || "");
+  return m ? { team: m[1], mlbId: Number(m[2]) } : null;
+}
+
 // Pitcher props are scoped to whoever is actually announced to start each
 // team's next game (see fetchMLBTeamNextGame's probablePitcher field) --
 // not the full staff -- so this rolls to the new starter automatically once
@@ -6130,7 +6209,6 @@ function buildMLBPitcherFeedRows(teamsData) {
   teamsData.forEach(({ teamAbbr, pitcherGames, nextGame }) => {
     const pitcher = nextGame?.probablePitcher;
     if (!pitcher || !pitcherGames || !pitcherGames.length) return;
-    const rosterEntry = ALL_MLB_PLAYERS.find((p) => p.mlbId === pitcher.mlbId);
     MLB_PITCHER_MARKETS.forEach((m) => {
       const def = getMLBDefRank(m.id, nextGame.opp);
       const rank = def.rank;
@@ -6142,7 +6220,7 @@ function buildMLBPitcherFeedRows(teamsData) {
       const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
       rows.push({
         key: `mlb_pitcher_${pitcher.mlbId}_${m.id}`,
-        playerId: rosterEntry?.id,
+        playerId: mlbLivePitcherId(teamAbbr, pitcher.mlbId),
         marketId: m.id,
         category: MLB_MARKET_CATEGORY[m.id],
         icon: mlbTeamLogo(teamAbbr),
@@ -6256,6 +6334,7 @@ const FEED_FILTER_ROW_STYLE = { display: "flex", flexDirection: "column", alignI
 const FEED_CONTROL_WIDTH = 190;
 
 function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion }) {
+  const isNarrow = useIsNarrow(560);
   const [sport, setSport] = useState("nba");
   const [category, setCategory] = useState("All");
   const [sampleWindow, setSampleWindow] = useState("l10");
@@ -6787,7 +6866,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           Soft matchup
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--panel2)", color: "var(--dim-strong)", border: "1px solid var(--line-strong)" }}>#</span>
+          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--neutral-badge-bg)", color: "var(--dim-strong)", border: "1px solid var(--line-strong)" }}>#</span>
           Average matchup
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -6808,59 +6887,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           // still needs its own border, since --panel2 is only a shade off
           // from the row's --panel background and was nearly invisible
           // without one.
-          const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--panel2)";
+          const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--neutral-badge-bg)";
           const tierFg = r.tier === "mid" ? "var(--dim-strong)" : "#08131c";
           const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
           const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
           const odds = probToAmericanOdds(r[sampleWindow]);
           const pickId = `${sport}-${r.key}`;
           const isAdded = pickIds.has(pickId);
-          return (
-            <div
-              key={r.key}
-              className="feed-row"
-              style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                borderBottom: i === sortedRows.length - 1 ? "none" : "1px solid var(--line)",
-              }}
-            >
-              <img src={r.icon} alt={r.team} width={34} height={34} style={{ objectFit: "contain", flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="oswald" style={{ fontSize: 15, color: "var(--text)" }}>
-                  {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
-                </div>
-                <div style={{ fontSize: 13, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
-                  {r.subtitle}
-                </div>
-                <div style={{ fontSize: 10.5, color: "var(--dim-strong)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span>OPP RANK</span>
-                  <span
-                    className="mono"
-                    title={`#${r.rank} in ${r.rankLabel}`}
-                    style={{
-                      display: "inline-block", padding: "1px 6px", borderRadius: 4,
-                      fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
-                      background: tierBg, color: tierFg, border: tierBorder,
-                    }}
-                  >
-                    #{r.rank}
-                  </span>
-                  <span>vs {r.opp}</span>
-                </div>
-              </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
-                  {formatOdds(odds)}
-                </div>
-                <div
-                  className="mono"
-                  title={`Hit rate over the trailing ${sampleWindow.slice(1)} games`}
-                  style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: hrColor(r[sampleWindow]) }}
-                >
-                  {Math.round(r[sampleWindow] * 100)}%
-                  <span style={{ color: "var(--dim)", fontWeight: 600, fontSize: 11 }}> ({sampleWindow.toUpperCase()})</span>
-                </div>
-              </div>
+          const addBtn = (
               <div
                 className="oswald"
                 role="button"
@@ -6890,36 +6924,141 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               >
                 {isAdded ? "✓" : "+"}
               </div>
-              {r.playerId && (
+            );
+            const chartBtn = r.playerId && (
+              <div
+                className="oswald cta-btn"
+                onClick={() => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team })}
+                title={`Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page`}
+                style={{
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  padding: "8px 12px",
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: "0.02em",
+                  border: "1px solid var(--amber)",
+                  color: "var(--amber)",
+                  background: "var(--amber-dim)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                View Chart →
+              </div>
+            );
+            const oddsBlock = (
+              <div style={{ textAlign: isNarrow ? "left" : "right", flexShrink: 0 }}>
+                <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
+                  {formatOdds(odds)}
+                </div>
                 <div
-                  className="oswald cta-btn"
-                  onClick={() => onOpenProp(sport, r.playerId, r.marketId)}
-                  title={`Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page`}
+                  className="mono"
+                  title={`Hit rate over the trailing ${sampleWindow.slice(1)} games`}
+                  style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: hrColor(r[sampleWindow]) }}
+                >
+                  {Math.round(r[sampleWindow] * 100)}%
+                  <span style={{ color: "var(--dim)", fontWeight: 600, fontSize: 11 }}> ({sampleWindow.toUpperCase()})</span>
+                </div>
+              </div>
+            );
+
+            // Narrow screens stack into three rows (name/team, odds+actions,
+            // opp rank sits with the name block) instead of squeezing name,
+            // odds, and two action buttons into a single row -- that forced
+            // the player name to wrap onto 2-3 lines and left the action
+            // buttons cramped/overlapping.
+            if (isNarrow) {
+              return (
+                <div
+                  key={r.key}
+                  className="feed-row"
                   style={{
-                    cursor: "pointer",
-                    flexShrink: 0,
-                    padding: "8px 12px",
-                    borderRadius: 4,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    letterSpacing: "0.02em",
-                    border: "1px solid var(--amber)",
-                    color: "var(--amber)",
-                    background: "var(--amber-dim)",
-                    whiteSpace: "nowrap",
+                    display: "flex", flexDirection: "column", gap: 10, padding: "12px 16px",
+                    borderBottom: i === sortedRows.length - 1 ? "none" : "1px solid var(--line)",
                   }}
                 >
-                  View Chart →
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <img src={r.icon} alt={r.team} width={30} height={30} style={{ objectFit: "contain", flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="oswald" style={{ fontSize: 14.5, color: "var(--text)" }}>
+                        {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
+                        {r.subtitle}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--dim-strong)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>OPP RANK</span>
+                    <span
+                      className="mono"
+                      title={`#${r.rank} in ${r.rankLabel}`}
+                      style={{
+                        display: "inline-block", padding: "1px 6px", borderRadius: 4,
+                        fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
+                        background: tierBg, color: tierFg, border: tierBorder,
+                      }}
+                    >
+                      #{r.rank}
+                    </span>
+                    <span>vs {r.opp}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    {oddsBlock}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {addBtn}
+                      {chartBtn}
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            }
+
+            return (
+              <div
+                key={r.key}
+                className="feed-row"
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                  borderBottom: i === sortedRows.length - 1 ? "none" : "1px solid var(--line)",
+                }}
+              >
+                <img src={r.icon} alt={r.team} width={34} height={34} style={{ objectFit: "contain", flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="oswald" style={{ fontSize: 15, color: "var(--text)" }}>
+                    {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
+                    {r.subtitle}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--dim-strong)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>OPP RANK</span>
+                    <span
+                      className="mono"
+                      title={`#${r.rank} in ${r.rankLabel}`}
+                      style={{
+                        display: "inline-block", padding: "1px 6px", borderRadius: 4,
+                        fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
+                        background: tierBg, color: tierFg, border: tierBorder,
+                      }}
+                    >
+                      #{r.rank}
+                    </span>
+                    <span>vs {r.opp}</span>
+                  </div>
+                </div>
+                {oddsBlock}
+                {addBtn}
+                {chartBtn}
+              </div>
+            );
+          })}
       </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         {sport === "mlb"
-          ? "Live 2026 regular-season game logs (MLB Stats API) for the Yankees' next scheduled opponent."
+          ? "Live 2026 regular-season game logs (MLB Stats API) for every team on today's real MLB slate."
           : sport === "nfl"
           ? "Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed."
           : sport === "wnba"
@@ -7525,6 +7664,7 @@ export default function PropLedger() {
   const [maxMinutes, setMaxMinutes] = useState(40);
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
+  const [dragLine, setDragLine] = useState(null);
   const chartRef = React.useRef(null);
   const isNarrow = useIsNarrow();
 
@@ -7654,14 +7794,14 @@ export default function PropLedger() {
   // (nonce forces the effect to fire even if the same prop is clicked twice
   // in a row) instead.
   const [jumpTo, setJumpTo] = useState(null);
-  const goToProp = (targetSport, targetPlayerId, targetMarket) => {
+  const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
     if (targetSport === "nba") {
       setPlayerId(targetPlayerId);
       setMarket(targetMarket);
       setLine(null);
       setOpponent("all");
     }
-    setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now() });
+    setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now(), meta });
     setPage(targetSport);
   };
   React.useEffect(() => {
@@ -7789,6 +7929,11 @@ export default function PropLedger() {
           --avatar-ring-shade1: 0.2;
           --avatar-ring-shade2: 0.45;
           --info-btn-bg: transparent;
+          /* A genuine mid-grey for the "average matchup" OPP RANK badge --
+             --panel2 is nearly black in dark mode and blended into the row
+             background, making a neutral matchup look almost invisible next
+             to the green/red badges either side of it. */
+          --neutral-badge-bg: #565e6b;
         }
         /* Light theme -- overrides the same custom properties, set via
            data-theme="light" on <html> (see the theme state in PropLedger).
@@ -7824,6 +7969,7 @@ export default function PropLedger() {
           --avatar-ring-shade1: 0.35;
           --avatar-ring-shade2: 0.6;
           --info-btn-bg: var(--panel);
+          --neutral-badge-bg: #c3c9d1;
         }
         /* Gives light-mode panels/chips/selects a slight lift instead of
            reading as flat white slabs on a barely-different grey page --
@@ -8406,7 +8552,7 @@ export default function PropLedger() {
                 content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
                 cursor={{ fill: "rgba(255,255,255,0.05)" }}
               />
-              {!isBinary && <ReferenceLine y={effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+              {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
               <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                 {filtered.map((g, i) => {
                   const v = statValue(g, market, rebSplit);
@@ -8423,6 +8569,7 @@ export default function PropLedger() {
             <LineHandle
               value={effectiveLine}
               onChange={(v) => setLine(v)}
+              onDragValue={setDragLine}
               min={0}
               max={chartMax}
               containerRef={chartRef}
