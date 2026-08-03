@@ -284,6 +284,19 @@ select.select:focus, select.select:focus-visible {
 ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
 .hscroll-hide::-webkit-scrollbar { display: none; }
 
+/* ---------- filters ----------
+   Filter groups used to stack vertically, one per row, which made the panel
+   as tall as the number of filters. Laying them on an auto-fitting grid puts
+   as many side by side as the width allows and collapses back to a single
+   column on narrow screens, without a breakpoint. Labels and controls all
+   start on the same left edge. */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--s-4) var(--s-5);
+  align-items: start;
+  text-align: left;
+}
 /* ---------- game log table ----------
    The column template was duplicated inline on the header row and every
    body row of all four sports pages. Defined once here so the header can

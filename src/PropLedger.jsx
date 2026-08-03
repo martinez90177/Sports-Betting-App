@@ -2104,39 +2104,79 @@ function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, r
 // for people who don't touch it, but the whole group (which can get tall
 // once a range slider is in play) can be tucked away with one click instead
 // of always eating vertical space above the chart.
-function FiltersSection({ children }) {
+// `groups` is [{ label, content }] and lays the filters out on a responsive
+// grid, which is the layout every page should be on. An entry can instead be
+// { stack: [{ label, content }, ...] } to put several filters in one column,
+// which is how related controls (the two chip rows) stay together and get a
+// column wide enough not to wrap. `children` is the older free-form body
+// (still used by the pages that haven't been migrated yet) and keeps its
+// original centred single-column rendering, so moving a page over is a
+// call-site change rather than a coordinated one.
+function FiltersSection({ children, groups, onReset }) {
   const [open, setOpen] = useState(true);
   return (
-    <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, marginBottom: 14 }}>
+    <div className="panel" style={{ marginBottom: "var(--s-4)" }}>
       <div
         onClick={() => setOpen((v) => !v)}
         className="oswald"
         role="button"
         aria-expanded={open}
         style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          padding: "10px 14px", cursor: "pointer", userSelect: "none",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--s-2)",
+          padding: "var(--s-2) var(--s-4)", cursor: "pointer", userSelect: "none",
           fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase",
           color: "var(--dim)",
           borderBottom: open ? "1px solid var(--line)" : "none",
         }}
       >
-        Filters
-        <span
-          className="mono"
-          style={{
-            color: "var(--amber)", fontSize: 11,
-            display: "inline-block", transform: open ? "rotate(0deg)" : "rotate(-90deg)",
-            transition: "transform .15s ease",
-          }}
-        >
-          ▼
+        <span style={{ display: "flex", alignItems: "center", gap: "var(--s-2)" }}>
+          Filters
+          <span
+            className="mono"
+            style={{
+              color: "var(--amber)", fontSize: 11,
+              display: "inline-block", transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+              transition: "transform .15s ease",
+            }}
+          >
+            ▼
+          </span>
         </span>
+        {/* Sits in the header rather than its own row at the bottom of the
+             panel, which saves a full row of height. stopPropagation so
+             resetting doesn't also collapse the section. */}
+        {onReset && open && (
+          <span
+            role="button"
+            onClick={(e) => { e.stopPropagation(); onReset(); }}
+            style={{ fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)", textDecoration: "underline", cursor: "pointer" }}
+          >
+            Reset
+          </span>
+        )}
       </div>
       {open && (
-        <div style={{ padding: "12px 14px", textAlign: "center" }}>
-          {children}
-        </div>
+        groups ? (
+          <div className="filter-grid" style={{ padding: "var(--s-3) var(--s-4)" }}>
+            {groups.map((g) => {
+              const cell = g.stack || [g];
+              return (
+                <div key={cell[0].label} style={{ display: "flex", flexDirection: "column", gap: "var(--s-4)" }}>
+                  {cell.map((f) => (
+                    <div key={f.label}>
+                      <div className="micro-label" style={{ marginBottom: "var(--s-2)" }}>{f.label}</div>
+                      {f.content}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: "12px 14px", textAlign: "center" }}>
+            {children}
+          </div>
+        )
       )}
     </div>
   );
@@ -5862,76 +5902,86 @@ function MLBPropsPage({ jumpTo }) {
            before) so it can never overlap the Opponent label/dropdown on
            narrow screens, and doesn't leave an empty row above the first
            filter on wider screens either. */}
-      <FiltersSection>
-        {[
+      {/* Two columns, grouped by what each control actually does: the left
+           column narrows *which* games count (who the opponent was, where it
+           was played), the right column controls *how much* data goes in (how
+           many games back, and -- for batters -- how many plate appearances
+           each has to have). Pitcher pages have no PA filter, so that column
+           is just Sample size. */}
+      <FiltersSection
+        onReset={resetFilters}
+        groups={[
           {
-            label: "Opponent",
-            content: (
-              <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
-                <option value="all">Any opponent</option>
-                {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-              </select>
-            ),
-          },
-          {
-            label: "Game location",
-            content: (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                {["all", "home", "away"].map((s) => (
-                  <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                    {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+            stack: [
+              {
+                label: "Opponent",
+                content: (
+                  <select
+                    className="select"
+                    value={opponent}
+                    onChange={(e) => setOpponent(e.target.value)}
+                    style={{ width: "100%", maxWidth: 320 }}
+                  >
+                    <option value="all">Any opponent</option>
+                    {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                  </select>
+                ),
+              },
+              {
+                label: "Game location",
+                content: (
+                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                    {["all", "home", "away"].map((s) => (
+                      <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                        {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ),
+                ),
+              },
+            ],
           },
           {
-            label: "Sample size",
-            content: (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                {[5, 10, 15, 25, "all"].map((n) => (
-                  <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                    {n === "all" ? "All" : `Last ${n}`}
+            stack: [
+              {
+                label: "Sample size",
+                content: (
+                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                    {[5, 10, 15, 25, "all"].map((n) => (
+                      <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                        {n === "all" ? "All" : `Last ${n}`}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ),
+                ),
+              },
+              ...(isPitcher ? [] : [{
+                label: "Plate appearances",
+                content: (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 420 }}>
+                    <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
+                      {!paRangeEnabled
+                        ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)
+                        : (minPA === 0 && maxPA === 6 ? "Any PA" : `${minPA}-${maxPA} PA`)}
+                    </div>
+                    <ThresholdSlider
+                      min={0}
+                      max={6}
+                      step={1}
+                      lo={minPA}
+                      hi={maxPA}
+                      onChangeLo={setMinPA}
+                      onChangeHi={setMaxPA}
+                      rangeEnabled={paRangeEnabled}
+                      onToggleRange={() => setPaRangeEnabled((v) => !v)}
+                    />
+                  </div>
+                ),
+              }]),
+            ],
           },
-          ...(isPitcher ? [] : [{
-            label: "Plate appearances",
-            content: (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 480, margin: "0 auto" }}>
-                <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
-                  {!paRangeEnabled
-                    ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)
-                    : (minPA === 0 && maxPA === 6 ? "Any PA" : `${minPA}-${maxPA} PA`)}
-                </div>
-                <ThresholdSlider
-                  min={0}
-                  max={6}
-                  step={1}
-                  lo={minPA}
-                  hi={maxPA}
-                  onChangeLo={setMinPA}
-                  onChangeHi={setMaxPA}
-                  rangeEnabled={paRangeEnabled}
-                  onToggleRange={() => setPaRangeEnabled((v) => !v)}
-                />
-              </div>
-            ),
-          }]),
-        ].map((group, gi) => (
-          <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
-            <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
-              {group.label}
-            </div>
-            {group.content}
-          </div>
-        ))}
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-          <div className="chip" onClick={resetFilters}>Reset filters</div>
-        </div>
-      </FiltersSection>
+        ]}
+      />
 
       {/* Line input + summary */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
