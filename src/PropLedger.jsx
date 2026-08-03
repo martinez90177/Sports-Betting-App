@@ -5112,6 +5112,27 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
     setState({ status: "idle", data: null });
   }, [teamAbbr, playerName, market]);
 
+  // Hooks must run unconditionally on every render (the market can change
+  // out from under this component right after mount -- see MLBPropsPage's
+  // jump-to-player effect, which sets player then market in the same tick),
+  // so the "not tracked" bail-out below only affects what JSX renders, never
+  // whether this useMemo itself runs.
+  const rows = useMemo(() => {
+    if (!oddsMarketKey || !state.data?.odds?.bookmakers) return [];
+    const out = [];
+    for (const bm of state.data.odds.bookmakers) {
+      const marketObj = bm.markets?.find((m) => m.key === oddsMarketKey);
+      const playerOutcomes = marketObj?.outcomes?.filter(
+        (o) => o.description?.toLowerCase() === playerName.toLowerCase()
+      );
+      if (!playerOutcomes?.length) continue;
+      const over = playerOutcomes.find((o) => o.name === "Over");
+      const under = playerOutcomes.find((o) => o.name === "Under");
+      out.push({ book: bm.title, point: over?.point ?? under?.point, over: over?.price, under: under?.price });
+    }
+    return out;
+  }, [state.data, oddsMarketKey, playerName]);
+
   if (!oddsMarketKey) {
     return (
       <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--dim)", marginBottom: 16 }}>
@@ -5130,22 +5151,6 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
       setState({ status: "error", data: { error: String(err) } });
     }
   };
-
-  const rows = useMemo(() => {
-    if (!state.data?.odds?.bookmakers) return [];
-    const out = [];
-    for (const bm of state.data.odds.bookmakers) {
-      const marketObj = bm.markets?.find((m) => m.key === oddsMarketKey);
-      const playerOutcomes = marketObj?.outcomes?.filter(
-        (o) => o.description?.toLowerCase() === playerName.toLowerCase()
-      );
-      if (!playerOutcomes?.length) continue;
-      const over = playerOutcomes.find((o) => o.name === "Over");
-      const under = playerOutcomes.find((o) => o.name === "Under");
-      out.push({ book: bm.title, point: over?.point ?? under?.point, over: over?.price, under: under?.price });
-    }
-    return out;
-  }, [state.data, oddsMarketKey, playerName]);
 
   return (
     <div style={{ marginBottom: 16 }}>
