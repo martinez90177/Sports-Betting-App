@@ -5092,6 +5092,134 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
   );
 }
 
+// Maps this app's internal per-stat market ids to The Odds API's market
+// keys -- only markets api/odds.js actually fetches are listed here; any
+// other market shows a "not tracked" note instead of a dead button.
+const MLB_ODDS_MARKET_KEY = { h: "player_hits", hr: "player_home_runs" };
+
+// Sportsbook odds only ever fetch on a button press, never automatically.
+// The Odds API's free tier is a small shared monthly credit budget (see
+// api/odds.js), so switching markets/players shouldn't silently spend
+// credits in the background -- the user has to explicitly ask for a line.
+function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
+  const [state, setState] = useState({ status: "idle", data: null });
+  const oddsMarketKey = isPitcher ? null : MLB_ODDS_MARKET_KEY[market];
+
+  // A stale odds card from a different player/market should never linger
+  // on screen after the user switches -- drop back to idle so the button
+  // reappears and a fresh fetch is required.
+  React.useEffect(() => {
+    setState({ status: "idle", data: null });
+  }, [teamAbbr, playerName, market]);
+
+  if (!oddsMarketKey) {
+    return (
+      <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--dim)", marginBottom: 16 }}>
+        Sportsbook odds aren't tracked for this market yet.
+      </div>
+    );
+  }
+
+  const fetchOdds = async () => {
+    setState({ status: "loading", data: null });
+    try {
+      const res = await fetch(`/api/odds?team=${encodeURIComponent(teamAbbr)}`);
+      const json = await res.json();
+      setState({ status: "loaded", data: json });
+    } catch (err) {
+      setState({ status: "error", data: { error: String(err) } });
+    }
+  };
+
+  const rows = useMemo(() => {
+    if (!state.data?.odds?.bookmakers) return [];
+    const out = [];
+    for (const bm of state.data.odds.bookmakers) {
+      const marketObj = bm.markets?.find((m) => m.key === oddsMarketKey);
+      const playerOutcomes = marketObj?.outcomes?.filter(
+        (o) => o.description?.toLowerCase() === playerName.toLowerCase()
+      );
+      if (!playerOutcomes?.length) continue;
+      const over = playerOutcomes.find((o) => o.name === "Over");
+      const under = playerOutcomes.find((o) => o.name === "Under");
+      out.push({ book: bm.title, point: over?.point ?? under?.point, over: over?.price, under: under?.price });
+    }
+    return out;
+  }, [state.data, oddsMarketKey, playerName]);
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {state.status === "idle" && (
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <button
+            onClick={fetchOdds}
+            className="oswald"
+            style={{
+              padding: "8px 20px", borderRadius: 999, border: "1px solid var(--line)",
+              background: "var(--panel)", color: "var(--text)", fontSize: 12.5, fontWeight: 700,
+              letterSpacing: "0.04em", textTransform: "uppercase", cursor: "pointer",
+            }}
+          >
+            Get Odds
+          </button>
+        </div>
+      )}
+
+      {state.status === "loading" && (
+        <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--dim)" }}>Loading sportsbook odds…</div>
+      )}
+
+      {state.status === "error" && (
+        <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--red)" }}>
+          Couldn't load odds right now.
+          <span style={{ marginLeft: 8, color: "var(--amber)", cursor: "pointer", textDecoration: "underline" }} onClick={fetchOdds}>Retry</span>
+        </div>
+      )}
+
+      {state.status === "loaded" && !state.data?.odds && (
+        <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--dim)" }}>
+          {state.data?.note || state.data?.error || "No sportsbook odds found for this game."}
+          <span style={{ marginLeft: 8, color: "var(--amber)", cursor: "pointer", textDecoration: "underline" }} onClick={fetchOdds}>Retry</span>
+        </div>
+      )}
+
+      {state.status === "loaded" && state.data?.odds && rows.length === 0 && (
+        <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--dim)" }}>
+          No {playerName} lines posted for this market yet.
+        </div>
+      )}
+
+      {state.status === "loaded" && rows.length > 0 && (
+        <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+          <div style={{
+            padding: "8px 16px", borderBottom: "1px solid var(--line)", fontSize: 11, color: "var(--dim)",
+            textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", justifyContent: "space-between",
+          }}>
+            <span>Sportsbook Odds</span>
+            <span>{state.data.stale ? "cached (stale)" : "live"}</span>
+          </div>
+          {rows.map((r, i) => (
+            <div
+              key={r.book}
+              style={{
+                display: "flex", justifyContent: "space-between", padding: "8px 16px",
+                borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--line)", fontSize: 13,
+              }}
+            >
+              <span style={{ color: "var(--text)" }}>{r.book}</span>
+              <span className="mono" style={{ color: "var(--dim)" }}>
+                {r.point != null ? `O/U ${r.point}` : ""}
+                {r.over != null && <span style={{ marginLeft: 10, color: "var(--green)" }}>O {r.over > 0 ? "+" : ""}{r.over}</span>}
+                {r.under != null && <span style={{ marginLeft: 10, color: "var(--red)" }}>U {r.under > 0 ? "+" : ""}{r.under}</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MLBPropsPage({ jumpTo }) {
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -5807,6 +5935,8 @@ function MLBPropsPage({ jumpTo }) {
           ))}
         </div>
       </div>
+
+      <SportsbookOddsPanel teamAbbr={teamAbbr} playerName={player.name} market={market} isPitcher={isPitcher} />
 
       {/* Chart */}
       <div

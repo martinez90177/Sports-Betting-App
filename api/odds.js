@@ -9,6 +9,19 @@ const MARKETS = ["player_hits", "player_home_runs"];
 const ODDS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // per-game odds refresh window
 const EVENTS_CACHE_TTL_MS = 60 * 60 * 1000; // events list is free, but cache anyway to cut round-trips
 
+// The Odds API's event.home_team/away_team are full names ("New York
+// Yankees"), but the frontend only knows team abbreviations -- match on each
+// team's nickname (unique enough across all 30 clubs) rather than requiring
+// the frontend to send full names.
+const MLB_TEAM_NICKNAME = {
+  ARI: "Diamondbacks", ATL: "Braves", BAL: "Orioles", BOS: "Red Sox", CHC: "Cubs",
+  CWS: "White Sox", CIN: "Reds", CLE: "Guardians", COL: "Rockies", DET: "Tigers",
+  HOU: "Astros", KC: "Royals", LAA: "Angels", LAD: "Dodgers", MIA: "Marlins",
+  MIL: "Brewers", MIN: "Twins", NYM: "Mets", NYY: "Yankees", ATH: "Athletics",
+  PHI: "Phillies", PIT: "Pirates", SD: "Padres", SEA: "Mariners", SF: "Giants",
+  STL: "Cardinals", TB: "Rays", TEX: "Rangers", TOR: "Blue Jays", WSH: "Nationals",
+};
+
 function redisClient() {
   return new Redis({
     url: process.env.UPSTASH_REDIS_REST_KV_REST_API_URL,
@@ -62,8 +75,9 @@ export default async function handler(req, res) {
       await redis.set(eventsKey, events);
     }
 
+    const nickname = (MLB_TEAM_NICKNAME[team] || team).toUpperCase();
     const match = (events.list || []).find(
-      (e) => e.home_team?.toUpperCase().includes(team) || e.away_team?.toUpperCase().includes(team)
+      (e) => e.home_team?.toUpperCase().includes(nickname) || e.away_team?.toUpperCase().includes(nickname)
     );
     if (!match) {
       return res.status(200).json({ odds: null, fetchedAt: Date.now(), stale: false, note: "No game found today for that team" });
