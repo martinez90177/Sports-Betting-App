@@ -1844,11 +1844,29 @@ const median = (arr) => {
 
 // Draggable line-value tab that sits on the right edge of the chart, at the
 // pixel height matching its value on the y-axis (PropsMadness-style handle).
-// PLOT_* constants must match the margin/padding used on the chart it overlays.
-const PLOT_TOP = 27;    // border(1) + wrapper padding(16) + chart top margin(10)
-const PLOT_BOTTOM = 73; // border(1) + wrapper padding(16) + chart bottom margin(56, for the logo+abbreviation tick)
 const CHART_HEIGHT = 680;
-const PLOT_HEIGHT = CHART_HEIGHT - PLOT_TOP - PLOT_BOTTOM;
+// Fallback plot bounds, only used for the one frame before the chart's real
+// gridlines can be measured (see getPlotBoundsY) -- the axis's custom tick
+// renderer (logo + abbreviation, or just a date label) takes up more height
+// than the chart's configured margin accounts for, and that extra amount
+// differs per chart, so a fixed constant here would drift out of sync with
+// the actual rendered axis the moment either tick renderer changes.
+const PLOT_TOP_FALLBACK = 27;
+const PLOT_HEIGHT_FALLBACK = 550;
+
+// Reads the real pixel Y (relative to containerEl) of the y-axis's 0 and max
+// gridlines straight off the rendered chart, so the handle/reference-line
+// always line up with the actual bars no matter how much space the axis's
+// tick labels end up taking.
+function getPlotBoundsY(containerEl) {
+  if (!containerEl) return null;
+  const lines = containerEl.querySelectorAll(".recharts-cartesian-grid-horizontal line");
+  if (lines.length < 2) return null;
+  const containerRect = containerEl.getBoundingClientRect();
+  const zeroY = lines[0].getBoundingClientRect().top - containerRect.top;
+  const maxY = lines[lines.length - 1].getBoundingClientRect().top - containerRect.top;
+  return { zeroY, maxY };
+}
 
 // Darker/more saturated bar colors, shared across every bar chart (NFL/MLB/NBA).
 const CHART_GREEN = "#1c9a52";
@@ -1887,13 +1905,21 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
   // visible position in lockstep with that snap.
   const [dragValue, setDragValue] = useState(null);
 
-  const valueToY = (v) => PLOT_TOP + (1 - (v - min) / (max - min)) * PLOT_HEIGHT;
+  const valueToY = (v) => {
+    const bounds = getPlotBoundsY(containerRef.current);
+    const zeroY = bounds ? bounds.zeroY : PLOT_TOP_FALLBACK + PLOT_HEIGHT_FALLBACK;
+    const maxY = bounds ? bounds.maxY : PLOT_TOP_FALLBACK;
+    return zeroY - ((v - min) / (max - min)) * (zeroY - maxY);
+  };
 
   const handlePointerMove = (e) => {
     if (!draggingRef.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const relY = e.clientY - rect.top;
-    const ratio = 1 - (relY - PLOT_TOP) / PLOT_HEIGHT;
+    const bounds = getPlotBoundsY(containerRef.current);
+    const zeroY = bounds ? bounds.zeroY : PLOT_TOP_FALLBACK + PLOT_HEIGHT_FALLBACK;
+    const maxY = bounds ? bounds.maxY : PLOT_TOP_FALLBACK;
+    const ratio = (zeroY - relY) / (zeroY - maxY);
     const raw = Math.min(max, Math.max(min, min + ratio * (max - min)));
     setDragValue(raw);
     onDragValue?.(raw);
