@@ -2413,8 +2413,39 @@ function MarketPillRow({ markets, activeMarket, onSelect }) {
 // of one flat "Markets" list. `sections` is [{ label, markets, pills? }];
 // sections with no markets (e.g. a Kicking section for a non-kicker) are
 // skipped entirely rather than rendered empty.
-function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow }) {
+//
+// `singleBar` collapses every section into one wrapping row separated by
+// hairline rules rather than a heading and its own row per section, which
+// saves the height of each heading. It suits a short market list; pages with
+// many sections (NFL's five, plus a pills row) still want the stacked form,
+// so it is opt-in rather than the default.
+function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleBar }) {
   const visible = sections.filter((s) => s.markets.length > 0);
+
+  if (singleBar && !visible.some((s) => s.pills)) {
+    return (
+      <div className="market-bar">
+        {visible.map((section, si) => (
+          <React.Fragment key={section.label}>
+            {si > 0 && <div className="market-divider" aria-hidden="true" />}
+            {section.markets.map((m) => (
+              <div
+                key={m.id}
+                className={`tab ${activeMarket === m.id ? "active" : ""}`}
+                // The category name is no longer on screen, so keep it as a
+                // tooltip -- the grouping is still discoverable on hover.
+                title={section.label}
+                onClick={() => onSelect(m.id)}
+              >
+                {m.label}
+              </div>
+            ))}
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <>
       {visible.map((section, si) => (
@@ -5867,8 +5898,9 @@ function MLBPropsPage({ jumpTo }) {
           );
         })()}
 
-        <div style={{ marginTop: 18 }}>
+        <div style={{ marginTop: "var(--s-3)" }}>
           <MarketSectionGrid
+            singleBar
             sections={
               isPitcher
                 ? [{ label: "Pitching", markets: MLB_PITCHER_MARKETS }]

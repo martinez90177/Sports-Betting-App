@@ -284,6 +284,36 @@ select.select:focus, select.select:focus-visible {
 ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
 .hscroll-hide::-webkit-scrollbar { display: none; }
 
+/* ---------- market tab bar ----------
+   One row of markets instead of a stacked heading per category. The category
+   names are dropped in favour of a hairline rule where two groups meet, which
+   keeps the grouping legible while recovering the vertical space the headings
+   and their own tab rows were taking. Tabs are smaller and tighter here than
+   the page-level .tab default, since there are many of them in one line. */
+.market-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-1) var(--s-2);
+}
+.market-bar .tab {
+  flex: 0 0 auto;
+  width: auto;
+  font-size: 15px;
+  padding: 10px 12px;
+}
+.market-bar .market-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 6px var(--s-3);
+  background: var(--line);
+}
+@media (max-width: 480px) {
+  .market-bar .tab { font-size: 13px; padding: 8px 8px; }
+  .market-bar .market-divider { margin: 4px var(--s-1); }
+}
+
 /* ---------- filters ----------
    Filter groups used to stack vertically, one per row, which made the panel
    as tall as the number of filters. They now sit side by side and wrap to a
