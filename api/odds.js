@@ -2,10 +2,10 @@ import { Redis } from "@upstash/redis";
 
 // Swap this to "americanfootball_nfl" in September once MLB season wraps up
 // -- re-check the credit budget in the handler comment below when you do,
-// since NFL markets/lines differ and you may want a different MARKETS list.
+// since NFL markets use "player_*" key names, not MLB's "batter_*"/"pitcher_*".
 const SPORT_KEY = "baseball_mlb";
 const REGIONS = "us";
-const MARKETS = ["player_hits", "player_home_runs"];
+const MARKETS = ["batter_hits", "batter_home_runs"];
 const ODDS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // per-game odds refresh window
 const EVENTS_CACHE_TTL_MS = 60 * 60 * 1000; // events list is free, but cache anyway to cut round-trips
 

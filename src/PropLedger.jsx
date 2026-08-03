@@ -5095,7 +5095,7 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
 // Maps this app's internal per-stat market ids to The Odds API's market
 // keys -- only markets api/odds.js actually fetches are listed here; any
 // other market shows a "not tracked" note instead of a dead button.
-const MLB_ODDS_MARKET_KEY = { h: "player_hits", hr: "player_home_runs" };
+const MLB_ODDS_MARKET_KEY = { h: "batter_hits", hr: "batter_home_runs" };
 
 // Sportsbook odds only ever fetch on a button press, never automatically.
 // The Odds API's free tier is a small shared monthly credit budget (see
