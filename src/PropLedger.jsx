@@ -2,6 +2,8 @@ import React, { useState, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
 } from "recharts";
+import NewsPage from "./NewsPage.jsx";
+import PlayerNewsModule from "./PlayerNewsModule.jsx";
 
 // ---------- Seeded RNG so the mock data is stable across renders ----------
 function mulberry32(seed) {
@@ -2942,6 +2944,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Real 2025 regular-season game logs (ESPN Stats API) for every player shown above — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.
       </div>
+      <PlayerNewsModule playerName={player.name} headshotSrc={NFL_HEADSHOTS[player.id]} />
     </div>
   );
 }
@@ -3889,6 +3892,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Live 2026 regular-season game logs (ESPN Stats API) for the players shown above, refreshed each tab. Defensive matchup ranks are real opponent points allowed per game.
       </div>
+      <PlayerNewsModule playerName={player.name} headshotSrc={wnbaHeadshot(player.espnId)} />
     </div>
   );
 }
@@ -5782,6 +5786,7 @@ function MLBPropsPage({ jumpTo }) {
         {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
         Defensive matchup ranks are real team ERA, refreshed nightly.
       </div>
+      <PlayerNewsModule playerName={player.name} headshotSrc={mlbHeadshot(player.mlbId)} />
     </div>
   );
 }
@@ -8175,6 +8180,7 @@ export default function PropLedger() {
             { id: "mlb", label: "MLB Props" },
             { id: "nba", label: "NBA Props" },
             { id: "wnba", label: "WNBA Props" },
+            { id: "news", label: "News" },
           ].map((p) => (
             <div
               key={p.id}
@@ -8641,6 +8647,7 @@ export default function PropLedger() {
         <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
           Sample data only — built to test the filtering and layout before wiring in a real stats/odds feed.
         </div>
+        <PlayerNewsModule playerName={player.name} headshotSrc={espnHeadshot(player.espnId)} />
       </div>
       )}
 
@@ -8659,6 +8666,8 @@ export default function PropLedger() {
       {page === "feed" && (
         <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} />
       )}
+
+      {page === "news" && <NewsPage />}
 
       <MyPicksPanel
         picks={myPicks}
