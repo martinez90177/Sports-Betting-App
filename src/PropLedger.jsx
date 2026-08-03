@@ -115,6 +115,27 @@ function neonizeColor(hex) {
   return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`;
 }
 
+// Foreground colour for text sitting on a solid --amber background. The
+// accent is user-pickable from a full colour wheel (see ColorWheel.jsx), so
+// it can land anywhere from near-black to near-white -- a fixed label colour
+// is unreadable at one end or the other. Picks whichever of near-black or
+// white has the higher WCAG contrast against the given accent.
+const ACCENT_ON_DARK = "#08131c";
+const ACCENT_ON_LIGHT = "#ffffff";
+function accentForeground(hex) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec((hex || "").trim());
+  if (!m) return ACCENT_ON_DARK;
+  const channel = (c) => {
+    const v = parseInt(c, 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const lum = 0.2126 * channel(m[1]) + 0.7152 * channel(m[2]) + 0.0722 * channel(m[3]);
+  // Relative luminance of ACCENT_ON_DARK is ~0.0057; 1.0 for white.
+  const contrastWithDark = (lum + 0.05) / (0.0057 + 0.05);
+  const contrastWithWhite = (1.0 + 0.05) / (lum + 0.05);
+  return contrastWithDark >= contrastWithWhite ? ACCENT_ON_DARK : ACCENT_ON_LIGHT;
+}
+
 const teamAvatarBackground = (colorMap, teamAbbr) => {
   const c = colorMap[teamAbbr] || AVATAR_FALLBACK_COLORS;
   return `linear-gradient(135deg, rgba(0,0,0,var(--avatar-ring-shade1, 0.2)), rgba(0,0,0,var(--avatar-ring-shade2, 0.45))), linear-gradient(135deg, ${neonizeColor(c.primary)} 0%, ${neonizeColor(c.secondary)} 100%)`;
@@ -1968,7 +1989,7 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
       }}
       title="Drag to adjust the line"
     >
-      <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "#1a1206" }}>{value}</span>
+      <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--accent-on)" }}>{value}</span>
     </div>
   );
 }
@@ -7756,7 +7777,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
       >
         My Picks
         {picks.length > 0 && (
-          <span className="mono" style={{ background: "var(--amber)", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
+          <span className="mono" style={{ background: "var(--amber)", color: "var(--accent-on)", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
             {picks.length}
           </span>
         )}
@@ -7845,7 +7866,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
                 className="oswald cta-btn"
                 style={{
                   cursor: "pointer", textAlign: "center", padding: "10px 0", borderRadius: 4,
-                  background: "var(--amber)", color: "#08131c", fontSize: 13.5, fontWeight: 700, letterSpacing: "0.02em",
+                  background: "var(--amber)", color: "var(--accent-on)", fontSize: 13.5, fontWeight: 700, letterSpacing: "0.02em",
                   boxShadow: "0 2px 10px color-mix(in srgb, var(--amber) 18%, transparent)",
                 }}
               >
@@ -8045,6 +8066,18 @@ export default function PropLedger() {
       localStorage.removeItem("propLedgerAccentColor");
     }
   }, [accentColor]);
+
+  // Keeps --accent-on (the label colour for text on a solid accent fill)
+  // matched to whatever --amber actually resolved to. Reads the resolved
+  // value rather than `accentColor` so it also covers the unset case, where
+  // the two themes fall back to different default blues -- hence the theme
+  // dependency. Must stay after the two effects above so it observes the
+  // data-theme attribute and --accent-color they've already written.
+  React.useEffect(() => {
+    const root = document.documentElement;
+    const resolved = getComputedStyle(root).getPropertyValue("--amber");
+    root.style.setProperty("--accent-on", accentForeground(resolved));
+  }, [accentColor, theme]);
 
   React.useEffect(() => {
     localStorage.setItem("propLedgerPicks", JSON.stringify(myPicks));
@@ -8270,6 +8303,10 @@ export default function PropLedger() {
           --amber: var(--accent-color, #2f8cf5);
           --amber-dim: color-mix(in srgb, var(--amber) 14%, transparent);
           --amber-glow: color-mix(in srgb, var(--amber) 28%, transparent);
+          /* Label colour for text on a solid --amber fill. Recomputed in JS
+             from the resolved accent (see accentForeground); this is just the
+             pre-hydration default for the fallback blue. */
+          --accent-on: #08131c;
           --green: #3ecf8e;
           --red: #ef5b5b;
           --red-dim: rgba(239,91,91,0.14);
