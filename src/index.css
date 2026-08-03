@@ -1,0 +1,316 @@
+/* Global stylesheet for Prop Ledger.
+
+   This lived in a <style> block inside the PropLedger component until the
+   layout pass -- moving it here means it is parsed once at load instead of
+   being re-rendered on every state change, and lets the fonts load via a
+   <link> in index.html rather than a render-blocking @import.
+
+   Colours are all custom properties so the light theme (further down) only
+   has to override the variables, never the rules that use them. */
+
+/* ---------- design tokens ----------
+   Deliberately theme-independent: only colours change between light and
+   dark, so spacing/radius/type live in their own :root and are never
+   overridden. Everything laid out in the app should reach for these rather
+   than inventing another one-off pixel value. */
+:root {
+  /* 4px base step. --s-1..--s-8 are the only spacing values that should
+     appear in new layout code. */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  /* One radius per role, so the same kind of thing is never rounded two
+     different amounts on the same screen. */
+  --r-sm: 4px;    /* chips, selects, small controls */
+  --r-md: 6px;    /* cards, panels, tables          */
+  --r-pill: 999px;
+
+  /* Four type levels. Replaces the ad-hoc 10.5/11.5/12.5/13.5/14.5 sizes
+     that accumulated across the inline styles. */
+  --fs-micro: 11px;  /* uppercase micro-labels  */
+  --fs-sm: 12px;     /* table cells, meta lines */
+  --fs-base: 14px;   /* body                    */
+  --fs-lg: 16px;     /* tabs, section headers   */
+  --fs-xl: 20px;     /* card values             */
+  --fs-2xl: 28px;    /* hero line value         */
+}
+
+/* ---------- colour: dark (default) ---------- */
+:root {
+  --bg: #0a0b0d;
+  --panel: #131519;
+  --panel2: #191c21;
+  --line: #2b2f36;
+  --text: #e8ecf2;
+  --dim: #8b98ab;
+  /* The accent. --accent-color is only set once the user picks one in
+     Settings (see the accentColor state in PropLedger), so by default
+     this falls through to the tuned blue below. Everything accent-
+     coloured in the app reads --amber, so overriding --accent-color
+     re-tints the whole UI in one place; --amber-dim/-glow are mixed
+     from it rather than hardcoded rgba() so they follow any hue. */
+  --amber: var(--accent-color, #2f8cf5);
+  --amber-dim: color-mix(in srgb, var(--amber) 14%, transparent);
+  --amber-glow: color-mix(in srgb, var(--amber) 28%, transparent);
+  /* Label colour for text on a solid --amber fill. Recomputed in JS
+     from the resolved accent (see accentForeground); this is just the
+     pre-hydration default for the fallback blue. */
+  --accent-on: #08131c;
+  --green: #3ecf8e;
+  --red: #ef5b5b;
+  --red-dim: rgba(239,91,91,0.14);
+  /* --line-strong matches --line here -- dark mode already reads
+     fine at the default border contrast, it only needs to diverge
+     in light mode (see below). --dim-strong instead matches --text
+     (not --dim) so de-emphasized labels like "OPP RANK" read as
+     the same bright white as the player name above them, rather
+     than the dimmer grey used for less important text elsewhere. */
+  --dim-strong: var(--text);
+  --line-strong: #2b2f36;
+  --avatar-ring-shade1: 0.2;
+  --avatar-ring-shade2: 0.45;
+  --info-btn-bg: transparent;
+  /* Zebra tint for table rows -- a white wash works on the dark panel
+     but is invisible on light mode's white one, so it is a variable. */
+  --row-stripe: rgba(255,255,255,0.015);
+  /* A genuine mid-grey for the "average matchup" OPP RANK badge --
+     --panel2 is nearly black in dark mode and blended into the row
+     background, making a neutral matchup look almost invisible next
+     to the green/red badges either side of it. */
+  --neutral-badge-bg: #565e6b;
+}
+
+/* Light theme -- overrides the same custom properties, set via
+   data-theme="light" on <html> (see the theme state in PropLedger).
+   Everything else in the app reads colors through these variables,
+   so no other CSS/inline styles need a light-mode branch. */
+:root[data-theme="light"] {
+  --bg: #e6e9ee;
+  --panel: #ffffff;
+  --panel2: #eef1f5;
+  --line: #d7dce3;
+  --text: #171a20;
+  --dim: #5b6472;
+  /* Same accent wiring as the dark block, but falling back to a
+     deeper blue -- dark mode's #2f8cf5 washes out against white
+     panels. A user-picked --accent-color overrides both themes. */
+  --amber: var(--accent-color, #1a68e0);
+  --amber-dim: color-mix(in srgb, var(--amber) 10%, transparent);
+  --amber-glow: color-mix(in srgb, var(--amber) 22%, transparent);
+  --green: #1f9d68;
+  --red: #d6453f;
+  --red-dim: rgba(214,69,63,0.12);
+  --panel-shadow: 0 1px 2px rgba(30,41,59,0.06), 0 2px 6px rgba(30,41,59,0.08);
+  /* Dark wash rather than the dark theme's white one -- a white stripe
+     on a white panel is invisible. */
+  --row-stripe: rgba(23,26,32,0.028);
+  /* --dim-strong matches --text here too (same reasoning as the
+     dark-theme block above: "OPP RANK" and the team abbreviation
+     should read as the same solid color as the player's name, not
+     a dimmer grey). --line-strong is darker than --line so thin
+     outlines (e.g. the "i" info buttons) stay readable against
+     light panels -- --line is tuned for dark backgrounds and gets
+     too washed out here. Also darkens the two-color avatar ring
+     (see teamAvatarBackground) further so it doesn't blend into a
+     white/light-grey panel, and gives the "i" buttons a solid
+     --panel fill instead of transparent so their outline doesn't
+     just read as a faint circle floating on the page background. */
+  --dim-strong: var(--text);
+  --line-strong: #aab2bd;
+  --avatar-ring-shade1: 0.35;
+  --avatar-ring-shade2: 0.6;
+  --info-btn-bg: var(--panel);
+  --neutral-badge-bg: #c3c9d1;
+}
+
+/* Gives light-mode panels/chips/selects a slight lift instead of
+   reading as flat white slabs on a barely-different grey page --
+   dark mode leaves --panel-shadow unset (falls back to "none")
+   since dark panels already read as elevated via contrast alone.
+   The [style*="var(--panel)"] hook catches every inline-styled div
+   that uses --panel/--panel2 as its background without requiring a
+   shared class name (there isn't one across ~40 call sites); .chip,
+   select.select and .panel get their panel background from a CSS
+   class instead, so they're matched separately. Elements that already
+   set their own inline boxShadow (e.g. the fixed My Picks/Settings
+   buttons) are left untouched -- inline styles always win the cascade
+   over this stylesheet rule.
+
+   Keep .panel in this list: as inline panel styling migrates to the
+   class, the attribute selector stops matching those elements and the
+   class is the only thing still carrying light-mode elevation. */
+[style*="var(--panel)"], .panel, .chip, select.select {
+  box-shadow: var(--panel-shadow, none);
+}
+* { box-sizing: border-box; }
+/* Safeguard: nothing on the page should ever force horizontal
+   scrolling of the whole app -- any element that needs to overflow
+   (the game-log table, the feed) scrolls internally instead via its
+   own overflow-x: auto wrapper. */
+html, body { max-width: 100%; overflow-x: hidden; }
+body {
+  background:
+    radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--amber) 7%, transparent), transparent 60%),
+    radial-gradient(900px 700px at 100% 0%, rgba(62,207,142,0.04), transparent 55%),
+    var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+img { max-width: 100%; }
+.page-shell { padding: 24px 32px; width: 100%; }
+@media (max-width: 640px) {
+  .page-shell { padding: 16px; }
+}
+.oswald { font-family: 'Space Grotesk', sans-serif; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ---------- shared surfaces ----------
+   .panel is the background/border/radius trio that was inlined at ~40
+   call sites. .micro-label is the small uppercase dim caption used above
+   filter groups, stat cards and table headers. Both exist so those
+   values live in one place; call sites migrate to them incrementally. */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.micro-label {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+a, div[role="button"], button, .chip, .tab, select.select {
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+div[role="button"]:active { transform: scale(0.97); }
+.chip {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--dim);
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  font-size: 15px;
+  cursor: pointer;
+  transition: all .15s ease;
+  white-space: nowrap;
+}
+.chip:hover { border-color: var(--amber); color: var(--text); box-shadow: 0 2px 10px rgba(0,0,0,0.25); transform: translateY(-1px); }
+.chip.active {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: var(--amber);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--amber) inset;
+}
+.tab {
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: 0.01em;
+  padding: 12px 8px;
+  border-bottom: 2px solid transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.2;
+  transition: color .15s ease, border-color .15s ease;
+}
+.tab:hover { color: var(--text); }
+.tab.milestone {
+  font-size: 19px;
+  padding: 14px 8px;
+}
+@media (max-width: 480px) {
+  .tab { font-size: 13.5px; padding: 9px 4px; letter-spacing: 0; }
+  .tab.milestone { font-size: 16.5px; padding: 12px 6px; }
+}
+.tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+.tab.active:hover { color: var(--amber); }
+.tab.no-underline.active { border-bottom-color: transparent; }
+select.select {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 7px 12px;
+  border-radius: var(--r-sm);
+  font-size: 15px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+}
+select.select:hover { border-color: var(--amber); }
+select.select:focus, select.select:focus-visible {
+  outline: none;
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+.cta-btn {
+  transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
+}
+.cta-btn:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 6px 18px var(--amber-glow); }
+.cta-btn:active { transform: translateY(0); }
+.danger-btn {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--dim);
+  transition: all .15s ease;
+}
+.danger-btn:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: var(--red-dim);
+  box-shadow: 0 2px 10px rgba(226,96,79,0.18);
+}
+.ledger-row:nth-child(odd) { background: var(--row-stripe); }
+.feed-row:nth-child(odd) { background: var(--row-stripe); }
+.feed-row, .ledger-row { transition: background-color .15s ease; }
+.feed-row:hover, .ledger-row:hover { background: color-mix(in srgb, var(--amber) 5%, transparent); }
+::-webkit-scrollbar { height: 7px; width: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--r-sm); }
+::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+.hscroll-hide::-webkit-scrollbar { display: none; }
+
+/* ---------- game log table ----------
+   The column template was duplicated inline on the header row and every
+   body row of all four sports pages. Defined once here so the header can
+   never drift out of step with the rows beneath it. Column alignment is
+   set per-column rather than centring everything, so numeric columns
+   share a right edge and read down cleanly. */
+.log-grid {
+  display: grid;
+  grid-template-columns: 5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr;
+  font-variant-numeric: tabular-nums;
+}
+.log-grid > * { text-align: right; }
+.log-grid > *:nth-child(2),
+.log-grid > *:nth-child(3),
+.log-grid > *:nth-child(5) { text-align: left; }
+
+/* Fills the wide gutters beside the player selector/market grid on
+   desktop with the two teams' rosters (see TeamRosterPanel). Below
+   the breakpoint there isn't room for three columns, so it collapses
+   to a single stacked column -- the roster panels switch to a
+   compact horizontal-scroll strip at this same breakpoint (see
+   TeamRosterPanel's compact render) rather than disappearing, so
+   the quick-switch is still there on mobile, just full-width above/
+   below the main content instead of beside it. */
+.roster-layout { display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px; align-items: stretch; margin-bottom: 14px; }
+.roster-layout-center { display: flex; flex-direction: column; justify-content: center; }
+@media (max-width: 1100px) {
+  .roster-layout { display: block; }
+  .roster-panel { margin-bottom: 14px; }
+}
