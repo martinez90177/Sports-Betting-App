@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import NewsPage from "./NewsPage.jsx";
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
-import ColorWheel, { ACCENT_PRESETS } from "./ColorWheel.jsx";
+import ColorWheel from "./ColorWheel.jsx";
 
 // ---------- Seeded RNG so the mock data is stable across renders ----------
 function mulberry32(seed) {
@@ -2881,7 +2881,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
               }
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = statValueNFL(g, market);
@@ -3831,7 +3831,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} />}
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = statValue(g, market, rebSplit);
@@ -5987,7 +5987,7 @@ function MLBPropsPage({ jumpTo }) {
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
               cursor={{ fill: "rgba(255,255,255,0.05)" }}
             />
-            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]}>
               {filtered.map((g, i) => {
                 const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
@@ -7846,7 +7846,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
                 style={{
                   cursor: "pointer", textAlign: "center", padding: "10px 0", borderRadius: 4,
                   background: "var(--amber)", color: "#08131c", fontSize: 13.5, fontWeight: 700, letterSpacing: "0.02em",
-                  boxShadow: "0 2px 10px rgba(47,140,245,0.18)",
+                  boxShadow: "0 2px 10px color-mix(in srgb, var(--amber) 18%, transparent)",
                 }}
               >
                 Open in {book.label} →
@@ -7950,6 +7950,22 @@ function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, the
                 Used for active tabs, buttons, and chart highlights.
               </div>
               <ColorWheel value={accentColor} onChange={onAccentColorChange} />
+              {/* Passing null clears --accent-color entirely rather than
+                   setting it back to the blue hex -- that's what lets each
+                   theme fall back to its own tuned default again (see the
+                   accentColor state in PropLedger). */}
+              {accentColor && (
+                <div
+                  role="button"
+                  onClick={() => onAccentColorChange(null)}
+                  style={{
+                    marginTop: 12, textAlign: "center", fontSize: 11.5,
+                    color: "var(--dim)", cursor: "pointer", textDecoration: "underline",
+                  }}
+                >
+                  Reset to default
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -8004,17 +8020,30 @@ export default function PropLedger() {
     localStorage.setItem("propLedgerTheme", theme);
   }, [theme]);
 
-  // Accent color: a standalone --accent-color custom property, not yet wired
-  // into --amber or the chart/theme code (that's a separate follow-up pass
-  // once the picker itself is confirmed) -- see ColorWheel.jsx.
+  // Accent color: --accent-color drives --amber (and everything derived from
+  // it) through a CSS fallback -- see the :root blocks in the stylesheet.
+  // The property is only set once the user has actually picked a color; until
+  // then it stays unset so `var(--accent-color, <default>)` falls through to
+  // each theme's own tuned blue, which differ deliberately (dark mode's
+  // #2f8cf5 is too light to read on light mode's near-white panels).
   const [accentColor, setAccentColor] = useState(() => {
-    const saved = localStorage.getItem("propLedgerAccentColor") || ACCENT_PRESETS[0].hex;
-    document.documentElement.style.setProperty("--accent-color", saved);
+    const saved = localStorage.getItem("propLedgerAccentColor");
+    // Migration: the previous version wrote the default blue into storage on
+    // first load whether or not the user ever opened the picker, so a stored
+    // value identical to that default means "never chose one" -- treat it as
+    // unset so light mode gets its own deeper blue back. Anyone who actually
+    // wants blue lands on the same colour via the fallback anyway.
+    if (!saved || saved.toLowerCase() === "#2f8cf5") return null;
     return saved;
   });
   React.useEffect(() => {
-    document.documentElement.style.setProperty("--accent-color", accentColor);
-    localStorage.setItem("propLedgerAccentColor", accentColor);
+    if (accentColor) {
+      document.documentElement.style.setProperty("--accent-color", accentColor);
+      localStorage.setItem("propLedgerAccentColor", accentColor);
+    } else {
+      document.documentElement.style.removeProperty("--accent-color");
+      localStorage.removeItem("propLedgerAccentColor");
+    }
   }, [accentColor]);
 
   React.useEffect(() => {
@@ -8232,9 +8261,15 @@ export default function PropLedger() {
           --line: #2b2f36;
           --text: #e8ecf2;
           --dim: #8b98ab;
-          --amber: #2f8cf5;
-          --amber-dim: rgba(47,140,245,0.14);
-          --amber-glow: rgba(47,140,245,0.28);
+          /* The accent. --accent-color is only set once the user picks one in
+             Settings (see the accentColor state in PropLedger), so by default
+             this falls through to the tuned blue below. Everything accent-
+             coloured in the app reads --amber, so overriding --accent-color
+             re-tints the whole UI in one place; --amber-dim/-glow are mixed
+             from it rather than hardcoded rgba() so they follow any hue. */
+          --amber: var(--accent-color, #2f8cf5);
+          --amber-dim: color-mix(in srgb, var(--amber) 14%, transparent);
+          --amber-glow: color-mix(in srgb, var(--amber) 28%, transparent);
           --green: #3ecf8e;
           --red: #ef5b5b;
           --red-dim: rgba(239,91,91,0.14);
@@ -8266,9 +8301,12 @@ export default function PropLedger() {
           --line: #d7dce3;
           --text: #171a20;
           --dim: #5b6472;
-          --amber: #1a68e0;
-          --amber-dim: rgba(26,104,224,0.10);
-          --amber-glow: rgba(26,104,224,0.22);
+          /* Same accent wiring as the dark block, but falling back to a
+             deeper blue -- dark mode's #2f8cf5 washes out against white
+             panels. A user-picked --accent-color overrides both themes. */
+          --amber: var(--accent-color, #1a68e0);
+          --amber-dim: color-mix(in srgb, var(--amber) 10%, transparent);
+          --amber-glow: color-mix(in srgb, var(--amber) 22%, transparent);
           --green: #1f9d68;
           --red: #d6453f;
           --red-dim: rgba(214,69,63,0.12);
@@ -8314,7 +8352,7 @@ export default function PropLedger() {
         html, body { max-width: 100%; overflow-x: hidden; }
         body {
           background:
-            radial-gradient(1100px 620px at 12% -8%, rgba(47,140,245,0.07), transparent 60%),
+            radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--amber) 7%, transparent), transparent 60%),
             radial-gradient(900px 700px at 100% 0%, rgba(62,207,142,0.04), transparent 55%),
             var(--bg);
           -webkit-font-smoothing: antialiased;
@@ -8417,7 +8455,7 @@ export default function PropLedger() {
         .ledger-row:nth-child(odd) { background: rgba(255,255,255,0.015); }
         .feed-row:nth-child(odd) { background: rgba(255,255,255,0.015); }
         .feed-row, .ledger-row { transition: background-color .15s ease; }
-        .feed-row:hover, .ledger-row:hover { background: rgba(47,140,245,0.05); }
+        .feed-row:hover, .ledger-row:hover { background: color-mix(in srgb, var(--amber) 5%, transparent); }
         ::-webkit-scrollbar { height: 7px; width: 7px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
@@ -8873,7 +8911,7 @@ export default function PropLedger() {
                 content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
                 cursor={{ fill: "rgba(255,255,255,0.05)" }}
               />
-              {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="#2f8cf5" strokeDasharray="4 4" />}
+              {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
               <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                 {filtered.map((g, i) => {
                   const v = statValue(g, market, rebSplit);
