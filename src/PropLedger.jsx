@@ -4,6 +4,7 @@ import {
 } from "recharts";
 import NewsPage from "./NewsPage.jsx";
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
+import ColorWheel, { ACCENT_PRESETS } from "./ColorWheel.jsx";
 
 // ---------- Seeded RNG so the mock data is stable across renders ----------
 function mulberry32(seed) {
@@ -4965,6 +4966,132 @@ const MLB_TEAM_OPTIONS = Object.keys(MLB_TEAM_ROSTERS).sort(
   (a, b) => MLB_TEAM_ROSTERS[a].label.localeCompare(MLB_TEAM_ROSTERS[b].label)
 );
 
+// ---------- Game Conditions (park factor + weather) ----------
+// Rough, widely-known park tendencies (100 = league average) for how much
+// each home park inflates/suppresses HR, runs, and singles -- these are
+// general public knowledge about park dimensions/altitude/etc, not live
+// Statcast park factors, so treat the resulting % swings as a directional
+// research signal rather than a precise model.
+const MLB_PARK_FACTORS = {
+  ARI: { hr: 102, runs: 100, single: 100 }, ATL: { hr: 104, runs: 102, single: 99 },
+  BAL: { hr: 88, runs: 95, single: 102 }, BOS: { hr: 95, runs: 104, single: 108 },
+  CHC: { hr: 100, runs: 100, single: 100 }, CWS: { hr: 108, runs: 103, single: 97 },
+  CIN: { hr: 115, runs: 106, single: 96 }, CLE: { hr: 98, runs: 98, single: 101 },
+  COL: { hr: 118, runs: 122, single: 112 }, DET: { hr: 88, runs: 94, single: 103 },
+  HOU: { hr: 105, runs: 102, single: 98 }, KC: { hr: 85, runs: 93, single: 105 },
+  LAA: { hr: 98, runs: 99, single: 100 }, LAD: { hr: 100, runs: 96, single: 97 },
+  MIA: { hr: 86, runs: 92, single: 101 }, MIL: { hr: 104, runs: 101, single: 99 },
+  MIN: { hr: 98, runs: 98, single: 100 }, NYM: { hr: 92, runs: 96, single: 101 },
+  NYY: { hr: 112, runs: 103, single: 96 }, ATH: { hr: 95, runs: 97, single: 100 },
+  PHI: { hr: 110, runs: 104, single: 98 }, PIT: { hr: 90, runs: 95, single: 102 },
+  SD: { hr: 90, runs: 94, single: 101 }, SEA: { hr: 88, runs: 92, single: 102 },
+  SF: { hr: 78, runs: 90, single: 104 }, STL: { hr: 92, runs: 96, single: 101 },
+  TB: { hr: 90, runs: 94, single: 100 }, TEX: { hr: 100, runs: 99, single: 99 },
+  TOR: { hr: 102, runs: 100, single: 99 }, WSH: { hr: 98, runs: 98, single: 100 },
+};
+
+function mlbWeatherEmoji(condition) {
+  const c = (condition || "").toLowerCase();
+  if (c.includes("rain") || c.includes("shower")) return "🌧️";
+  if (c.includes("snow")) return "❄️";
+  if (c.includes("dome") || c.includes("roof")) return "🏟️";
+  if (c.includes("overcast") || c.includes("cloudy")) return "☁️";
+  if (c.includes("partly")) return "⛅";
+  if (c.includes("clear") || c.includes("sunny")) return "☀️";
+  return "🌤️";
+}
+
+// MLB Stats API packs speed+direction into one string e.g. "6 mph, In From
+// CF" or "8 mph, L To R" -- pull the mph out for the magnitude and read the
+// direction keyword for which way it pushes offense.
+function mlbWindEffect(windStr) {
+  const w = (windStr || "").toLowerCase();
+  const mphMatch = /(\d+)\s*mph/.exec(w);
+  const mph = mphMatch ? parseInt(mphMatch[1], 10) : 0;
+  if (!mph) return 0;
+  if (w.includes("out")) return mph;
+  if (w.includes("in")) return -mph;
+  if (w.includes(" l to r") || w.includes(" r to l") || w.includes("cross")) return mph * 0.15;
+  return 0;
+}
+
+// Combines the home park's baseline tendency with today's forecast (warmer
+// air + wind blowing out both carry the ball further) into directional %
+// swings for HR/Runs/1B, plus an overall Hitter/Pitcher Friendly read.
+function computeMLBGameConditions({ weather, homeAbbr }) {
+  const park = MLB_PARK_FACTORS[homeAbbr] || { hr: 100, runs: 100, single: 100 };
+  let hrPct = park.hr - 100;
+  let runsPct = park.runs - 100;
+  let singlePct = park.single - 100;
+
+  const temp = parseInt(weather?.temp, 10);
+  if (!Number.isNaN(temp)) {
+    const tempEffect = (temp - 70) * 0.4;
+    hrPct += tempEffect;
+    runsPct += tempEffect * 0.5;
+  }
+  const windEffect = mlbWindEffect(weather?.wind);
+  hrPct += windEffect;
+  runsPct += windEffect * 0.5;
+  singlePct += windEffect * 0.1;
+
+  hrPct = Math.round(hrPct);
+  runsPct = Math.round(runsPct);
+  singlePct = Math.round(singlePct);
+
+  const composite = hrPct * 0.6 + runsPct * 0.4;
+  const verdict = composite > 4 ? "Hitter Friendly" : composite < -4 ? "Pitcher Friendly" : "Neutral";
+  return { hrPct, runsPct, singlePct, verdict };
+}
+
+// Bottom-of-page conditions bar. Colors read from whichever side of the ball
+// the current props page is on: a Hitter Friendly reading is green on batter
+// props (favors overs) but red on pitcher props (bad for the pitcher's
+// unders), and vice versa for Pitcher Friendly -- same underlying numbers,
+// flipped framing per the `isPitcher` page you're viewing.
+function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
+  if (!nextGame?.venue) return null;
+  const homeAbbr = nextGame.home ? teamAbbr : nextGame.opp;
+  const { hrPct, runsPct, singlePct, verdict } = computeMLBGameConditions({ weather: nextGame.weather, homeAbbr });
+
+  const favors = isPitcher ? verdict === "Pitcher Friendly" : verdict === "Hitter Friendly";
+  const opposes = isPitcher ? verdict === "Hitter Friendly" : verdict === "Pitcher Friendly";
+  const verdictColor = favors ? "var(--green)" : opposes ? "var(--red)" : "var(--dim)";
+  const statColor = (pct) => {
+    if (pct === 0) return "var(--dim)";
+    const good = isPitcher ? pct < 0 : pct > 0;
+    return good ? "var(--green)" : "var(--red)";
+  };
+  const signed = (pct) => `${pct > 0 ? "+" : ""}${pct}%`;
+
+  return (
+    <div style={{
+      display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12,
+      marginBottom: 12, padding: "10px 16px", background: "var(--panel)", border: "1px solid var(--line)",
+      borderRadius: 6, fontSize: 12.5, color: "var(--dim)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span className="oswald" style={{ fontWeight: 700, color: "var(--text)", letterSpacing: "0.04em", fontSize: 11.5, textTransform: "uppercase" }}>
+          Game Conditions
+        </span>
+        <span>· {nextGame.venue}</span>
+        {nextGame.weather && (
+          <>
+            <span>· {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.temp}°F</span>
+            {nextGame.weather.wind && <span>· 💨 {nextGame.weather.wind}</span>}
+          </>
+        )}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, fontWeight: 600 }}>
+        <span className="mono" style={{ color: statColor(hrPct) }}>HR {signed(hrPct)}</span>
+        <span className="mono" style={{ color: statColor(runsPct) }}>Runs {signed(runsPct)}</span>
+        <span className="mono" style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
+        <span className="oswald" style={{ color: verdictColor, fontSize: 12.5 }}>{verdict}</span>
+      </div>
+    </div>
+  );
+}
+
 function MLBPropsPage({ jumpTo }) {
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -5193,6 +5320,10 @@ function MLBPropsPage({ jumpTo }) {
       confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
     />
     <div className="roster-layout-center">
+      {/* Game Conditions: sits above the date/matchup pill so the park +
+           weather read is the first thing visible for every player, not
+           buried at the bottom of the page. */}
+      <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
       {/* Next-game info bar: the selected team's real next scheduled
            opponent (see fetchMLBTeamNextGame), not a fixed mock date -- so
            it always reflects the actual live schedule. Sits above the
@@ -7608,7 +7739,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
   );
 }
 
-function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, theme, onThemeChange }) {
+function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, theme, onThemeChange, accentColor, onAccentColorChange }) {
   const book = SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0];
 
   return (
@@ -7675,6 +7806,16 @@ function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, the
                 Used for the "Open in {book.label} →" button in My Picks.
               </div>
             </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
+                ACCENT COLOR
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 12, lineHeight: 1.4 }}>
+                Used for active tabs, buttons, and chart highlights.
+              </div>
+              <ColorWheel value={accentColor} onChange={onAccentColorChange} />
+            </div>
           </div>
         </div>
       )}
@@ -7727,6 +7868,19 @@ export default function PropLedger() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("propLedgerTheme", theme);
   }, [theme]);
+
+  // Accent color: a standalone --accent-color custom property, not yet wired
+  // into --amber or the chart/theme code (that's a separate follow-up pass
+  // once the picker itself is confirmed) -- see ColorWheel.jsx.
+  const [accentColor, setAccentColor] = useState(() => {
+    const saved = localStorage.getItem("propLedgerAccentColor") || ACCENT_PRESETS[0].hex;
+    document.documentElement.style.setProperty("--accent-color", saved);
+    return saved;
+  });
+  React.useEffect(() => {
+    document.documentElement.style.setProperty("--accent-color", accentColor);
+    localStorage.setItem("propLedgerAccentColor", accentColor);
+  }, [accentColor]);
 
   React.useEffect(() => {
     localStorage.setItem("propLedgerPicks", JSON.stringify(myPicks));
@@ -8685,6 +8839,8 @@ export default function PropLedger() {
         onSportsbookChange={setSportsbook}
         theme={theme}
         onThemeChange={setTheme}
+        accentColor={accentColor}
+        onAccentColorChange={setAccentColor}
       />
     </div>
   );
