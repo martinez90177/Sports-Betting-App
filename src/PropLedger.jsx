@@ -2416,13 +2416,14 @@ function MarketPillRow({ markets, activeMarket, onSelect }) {
 //
 // `singleBar` collapses every section into one wrapping row separated by
 // hairline rules rather than a heading and its own row per section, which
-// saves the height of each heading. It suits a short market list; pages with
-// many sections (NFL's five, plus a pills row) still want the stacked form,
-// so it is opt-in rather than the default.
+// saves the height of each heading. Pills sections (milestone markets like
+// Double-Double/Anytime TD) render as plain tabs in the bar too, same as
+// every other market -- the point of this mode is one consistent row, not
+// a mix of tab styles.
 function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleBar }) {
   const visible = sections.filter((s) => s.markets.length > 0);
 
-  if (singleBar && !visible.some((s) => s.pills)) {
+  if (singleBar) {
     return (
       <div className="market-bar">
         {visible.map((section, si) => (
@@ -2776,12 +2777,15 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
           </div>
         )}
 
-        <MarketSectionGrid
-          sections={NFL_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
-          activeMarket={market}
-          onSelect={(id) => { setMarket(id); setLine(null); }}
-          isNarrow={isNarrow}
-        />
+        <div style={{ marginTop: "var(--s-3)" }}>
+          <MarketSectionGrid
+            singleBar
+            sections={NFL_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
+            activeMarket={market}
+            onSelect={(id) => { setMarket(id); setLine(null); }}
+            isNarrow={isNarrow}
+          />
+        </div>
       </div>
     </div>
     <TeamRosterPanel
@@ -2800,83 +2804,82 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
            before) so it can never overlap the Opponent label/dropdown on
            narrow screens, and doesn't leave an empty row above the first
            filter on wider screens either. */}
-      <FiltersSection>
-        {[
+      <FiltersSection
+        onReset={resetFilters}
+        groups={[
           {
-            label: "Opponent",
-            content: (
-              <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
-                <option value="all">Any opponent</option>
-                {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-              </select>
-            ),
-          },
-          {
-            label: "Game location",
-            content: (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                {["all", "home", "away"].map((s) => (
-                  <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                    {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+            stack: [
+              {
+                label: "Opponent",
+                content: (
+                  <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)} style={{ width: 240 }}>
+                    <option value="all">Any opponent</option>
+                    {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                  </select>
+                ),
+              },
+              {
+                label: "Game location",
+                content: (
+                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                    {["all", "home", "away"].map((s) => (
+                      <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                        {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ),
+                ),
+              },
+            ],
           },
           {
-            label: "Sample size",
-            content: (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                {[5, 10, 15, "all"].map((n) => (
-                  <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                    {n === "all" ? "All" : `Last ${n}`}
+            stack: [
+              {
+                label: "Sample size",
+                content: (
+                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                    {[5, 10, 15, "all"].map((n) => (
+                      <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                        {n === "all" ? "All" : `Last ${n}`}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ),
-          },
-          {
-            label: "Snap %",
-            content: (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 620, margin: "0 auto" }}>
-                <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
-                  {!snapRangeEnabled
-                    ? `${minSnapPct}%+ snaps`
-                    : (minSnapPct === 1 && maxSnapPct === 100 ? "Any snaps" : `${minSnapPct}-${maxSnapPct}% snaps`)}
-                </div>
-                <ThresholdSlider
-                  min={1}
-                  max={100}
-                  step={1}
-                  lo={minSnapPct}
-                  hi={maxSnapPct}
-                  onChangeLo={setMinSnapPct}
-                  onChangeHi={setMaxSnapPct}
-                  rangeEnabled={snapRangeEnabled}
-                  onToggleRange={() => setSnapRangeEnabled((v) => !v)}
-                />
-                <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                  {[1, 50, 70, 85].map((m) => (
-                    <div key={m} className={`chip ${!snapRangeEnabled && minSnapPct === m ? "active" : ""}`} style={{ whiteSpace: "nowrap" }} onClick={() => setMinSnapPct(m)}>
-                      {m === 1 ? "Any snaps" : `${m}%+ snaps`}
+                ),
+              },
+              {
+                label: "Snap %",
+                content: (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                    <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
+                      {!snapRangeEnabled
+                        ? `${minSnapPct}%+ snaps`
+                        : (minSnapPct === 1 && maxSnapPct === 100 ? "Any snaps" : `${minSnapPct}-${maxSnapPct}% snaps`)}
                     </div>
-                  ))}
-                </div>
-              </div>
-            ),
+                    <ThresholdSlider
+                      min={1}
+                      max={100}
+                      step={1}
+                      lo={minSnapPct}
+                      hi={maxSnapPct}
+                      onChangeLo={setMinSnapPct}
+                      onChangeHi={setMaxSnapPct}
+                      rangeEnabled={snapRangeEnabled}
+                      onToggleRange={() => setSnapRangeEnabled((v) => !v)}
+                    />
+                    <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                      {[1, 50, 70, 85].map((m) => (
+                        <div key={m} className={`chip ${!snapRangeEnabled && minSnapPct === m ? "active" : ""}`} style={{ whiteSpace: "nowrap" }} onClick={() => setMinSnapPct(m)}>
+                          {m === 1 ? "Any snaps" : `${m}%+ snaps`}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ),
+              },
+            ],
           },
-        ].map((group, gi) => (
-          <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
-            <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
-              {group.label}
-            </div>
-            {group.content}
-          </div>
-        ))}
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-          <div className="chip" onClick={resetFilters}>Reset filters</div>
-        </div>
-      </FiltersSection>
+        ]}
+      />
 
       {/* Line input + summary */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
@@ -3740,12 +3743,15 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
           </span>
         </div>
 
-        <MarketSectionGrid
-          sections={WNBA_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
-          activeMarket={market}
-          onSelect={(id) => { setMarket(id); setLine(null); }}
-          isNarrow={isNarrow}
-        />
+        <div style={{ marginTop: "var(--s-3)" }}>
+          <MarketSectionGrid
+            singleBar
+            sections={WNBA_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
+            activeMarket={market}
+            onSelect={(id) => { setMarket(id); setLine(null); }}
+            isNarrow={isNarrow}
+          />
+        </div>
         {market === "reb" && (
           <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
             {REB_SPLITS.map((r) => (
@@ -3768,76 +3774,75 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     />
     </div>
 
-      <FiltersSection>
-        {[
+      <FiltersSection
+        onReset={resetFilters}
+        groups={[
           {
-            label: "Opponent",
-            content: (
-              <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
-                <option value="all">Any opponent</option>
-                {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-              </select>
-            ),
-          },
-          {
-            label: "Game location",
-            content: (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                {["all", "home", "away"].map((s) => (
-                  <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                    {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+            stack: [
+              {
+                label: "Opponent",
+                content: (
+                  <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)} style={{ width: 240 }}>
+                    <option value="all">Any opponent</option>
+                    {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                  </select>
+                ),
+              },
+              {
+                label: "Game location",
+                content: (
+                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                    {["all", "home", "away"].map((s) => (
+                      <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                        {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ),
+                ),
+              },
+            ],
           },
           {
-            label: "Sample size",
-            content: (
-              <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                {[5, 10, 15, "all"].map((n) => (
-                  <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                    {n === "all" ? "All" : `Last ${n}`}
+            stack: [
+              {
+                label: "Sample size",
+                content: (
+                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                    {[5, 10, 15, "all"].map((n) => (
+                      <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                        {n === "all" ? "All" : `Last ${n}`}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ),
+                ),
+              },
+              {
+                label: "Minutes",
+                content: (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                    <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
+                      {!minutesRangeEnabled
+                        ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
+                        : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
+                    </div>
+                    <ThresholdSlider
+                      min={0}
+                      max={40}
+                      step={1}
+                      lo={minMinutes}
+                      hi={maxMinutes}
+                      onChangeLo={setMinMinutes}
+                      onChangeHi={setMaxMinutes}
+                      rangeEnabled={minutesRangeEnabled}
+                      onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+                    />
+                  </div>
+                ),
+              },
+            ],
           },
-          {
-            label: "Minutes",
-            content: (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 480, margin: "0 auto" }}>
-                <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
-                  {!minutesRangeEnabled
-                    ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
-                    : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
-                </div>
-                <ThresholdSlider
-                  min={0}
-                  max={40}
-                  step={1}
-                  lo={minMinutes}
-                  hi={maxMinutes}
-                  onChangeLo={setMinMinutes}
-                  onChangeHi={setMaxMinutes}
-                  rangeEnabled={minutesRangeEnabled}
-                  onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
-                />
-              </div>
-            ),
-          },
-        ].map((group, gi) => (
-          <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
-            <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
-              {group.label}
-            </div>
-            {group.content}
-          </div>
-        ))}
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-          <div className="chip" onClick={resetFilters}>Reset filters</div>
-        </div>
-      </FiltersSection>
+        ]}
+      />
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
         <div style={{ textAlign: "center" }}>
@@ -6313,6 +6318,7 @@ function buildWNBAFeedRows() {
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
+        all: hitRateWindow(values, "all", hit),
         values, line, isBinary, variance,
       });
     });
@@ -6484,6 +6490,7 @@ function buildNBAFeedRows() {
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
+        all: hitRateWindow(values, "all", hit),
         values, line, isBinary, variance,
       });
     });
@@ -6532,6 +6539,7 @@ function buildNFLFeedRows() {
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
+        all: hitRateWindow(values, "all", hit),
         values, line, isBinary, variance,
       });
     });
@@ -6575,6 +6583,7 @@ function buildMLBFeedRows(teamsData) {
           l5: hitRateWindow(values, 5, hit),
           l10: hitRateWindow(values, 10, hit),
           l20: hitRateWindow(values, 20, hit),
+          all: hitRateWindow(values, "all", hit),
           values, line, isBinary: false, variance,
         });
       });
@@ -6633,6 +6642,7 @@ function buildMLBPitcherFeedRows(teamsData) {
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
+        all: hitRateWindow(values, "all", hit),
         values, line, isBinary: false, variance,
       });
     });
@@ -6641,9 +6651,9 @@ function buildMLBPitcherFeedRows(teamsData) {
 }
 
 const FEED_SPORTS = [
-  { id: "nba", label: "NBA", available: true },
   { id: "nfl", label: "NFL", available: true },
   { id: "mlb", label: "MLB", available: true },
+  { id: "nba", label: "NBA", available: true },
   { id: "wnba", label: "WNBA", available: true },
 ];
 
@@ -6679,7 +6689,7 @@ const FEED_SORT_MODES = [
 // that drives every row's displayed hit rate, its odds, and the "Highest
 // Hit Rate" sort mode -- shared across all three sports' feeds since they
 // all carry the same l5/l10/l20 fields.
-const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"]];
+const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["ALL", "all"]];
 
 // One global segmented control for the L5/L10/L20 sample-size window --
 // previously this was three separate buttons repeated on every row, which
@@ -8525,79 +8535,31 @@ export default function PropLedger() {
               ))}
             </div>
           </div>
-          {/* Market grid: 5 sections, each its own row, grouped by what the
-               props pair with. Tiles share a fixed width across all rows so
-               the sections read as clearly separated groups rather than one
-               continuous grid. */}
-          {[
-            { label: "Core", markets: MARKETS_ROW_1 },
-            { label: "Combos", markets: MARKETS_ROW_3 },
-            { label: "Shooting / FT", markets: MARKETS_ROW_4 },
-            { label: "Defense & hustle", markets: MARKETS_ROW_2 },
-            { label: "Milestones", markets: MARKETS_ROW_5, pills: true },
-          ].map((section, si) => (
-            <div key={section.label} style={{ marginTop: si === 0 ? 0 : 10 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
-                {section.label}
-              </div>
-              {section.pills ? (
-                /* Milestones: plain "x | x" text row, always side-by-side
-                     (never stacks), centered under the label. */
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
-                  {section.markets.map((m, mi) => (
-                    <React.Fragment key={m.id}>
-                      {mi > 0 && <span style={{ color: "var(--line)", fontSize: 18 }}>|</span>}
-                      <div
-                        className="oswald"
-                        style={{
-                          fontSize: isNarrow ? 15.5 : 18,
-                          fontWeight: 600,
-                          letterSpacing: "0.03em",
-                          padding: "6px 4px",
-                          color: market === m.id ? "var(--amber)" : "var(--dim)",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                        onClick={() => { setMarket(m.id); setLine(null); }}
-                      >
-                        {m.label}
-                      </div>
-                    </React.Fragment>
-                  ))}
+          <div style={{ marginTop: "var(--s-3)" }}>
+            <MarketSectionGrid
+              singleBar
+              sections={[
+                { label: "Core", markets: MARKETS_ROW_1 },
+                { label: "Combos", markets: MARKETS_ROW_3 },
+                { label: "Shooting / FT", markets: MARKETS_ROW_4 },
+                { label: "Defense & hustle", markets: MARKETS_ROW_2 },
+                { label: "Milestones", markets: MARKETS_ROW_5, pills: true },
+              ]}
+              activeMarket={market}
+              onSelect={(id) => { setMarket(id); setLine(null); }}
+              isNarrow={isNarrow}
+            />
+          </div>
+          {/* Rebound split: only shown once Rebounds is the active market */}
+          {market === "reb" && (
+            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              {REB_SPLITS.map((r) => (
+                <div key={r.id} className={`chip ${rebSplit === r.id ? "active" : ""}`} onClick={() => { setRebSplit(r.id); setLine(null); }}>
+                  {r.label}
                 </div>
-              ) : (
-                /* Centered, content-sized tiles with a fixed gap so labels sit a
-                     comfortable distance apart regardless of how wide the page is,
-                     instead of stretching edge-to-edge across the full container. */
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 28 }}>
-                  {section.markets.map((m, mi) => (
-                    <React.Fragment key={m.id}>
-                      {mi > 0 && (
-                        <span style={{ display: "flex", alignItems: "center", color: "var(--line)", fontSize: 18 }}>|</span>
-                      )}
-                      <div
-                        className={`tab ${si === 0 ? "no-underline" : ""} ${market === m.id ? "active" : ""}`}
-                        style={{ flex: "0 0 auto", width: "auto" }}
-                        onClick={() => { setMarket(m.id); setLine(null); }}
-                      >
-                        {m.label}
-                      </div>
-                    </React.Fragment>
-                  ))}
-                </div>
-              )}
-              {/* Rebound split: only shown once Rebounds is the active market */}
-              {section.label === "Core" && market === "reb" && (
-                <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                  {REB_SPLITS.map((r) => (
-                    <div key={r.id} className={`chip ${rebSplit === r.id ? "active" : ""}`} onClick={() => { setRebSplit(r.id); setLine(null); }}>
-                      {r.label}
-                    </div>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </div>
       <TeamRosterPanel
@@ -8616,95 +8578,95 @@ export default function PropLedger() {
              each control gets its own small uppercase label and its own row,
              all inside one bordered panel, instead of one dense strip where
              everything ran together and was separated only by thin dividers. */}
-        <FiltersSection>
-          {[
+        <FiltersSection
+          onReset={resetFilters}
+          groups={[
             {
-              label: "Opponent",
-              content: (
-                <select
-                  className="select"
-                  value={opponent}
-                  onChange={(e) => { setOpponent(e.target.value); setOppView("season"); }}
-                >
-                  <option value="all">Any opponent</option>
-                  {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-                </select>
-              ),
-            },
-            opponent === "all"
-              ? {
-                  label: "Game location",
+              stack: [
+                {
+                  label: "Opponent",
                   content: (
-                    <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                      {["all", "home", "away"].map((s) => (
-                        <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                          {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
-                        </div>
-                      ))}
-                    </div>
-                  ),
-                }
-              : {
-                  label: "View",
-                  content: (
-                    <select className="select" value={oppView} onChange={(e) => setOppView(e.target.value)}>
-                      <option value="season">Current Season</option>
-                      <option value="h2h3y">Head-to-Head (3Y)</option>
-                      <option value="home">Home vs Opp</option>
-                      <option value="away">Away vs Opp</option>
-                      <option value="playoffs">Playoffs vs Opp</option>
+                    <select
+                      className="select"
+                      value={opponent}
+                      onChange={(e) => { setOpponent(e.target.value); setOppView("season"); }}
+                      style={{ width: 240 }}
+                    >
+                      <option value="all">Any opponent</option>
+                      {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
                     </select>
                   ),
                 },
-            opponent === "all"
-              ? {
-                  label: "Sample size",
-                  content: (
-                    <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
-                      {[5, 10, 15, 25, "all"].map((n) => (
-                        <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                          {n === "all" ? "All" : `Last ${n}`}
+                opponent === "all"
+                  ? {
+                      label: "Game location",
+                      content: (
+                        <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                          {["all", "home", "away"].map((s) => (
+                            <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                              {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      ),
+                    }
+                  : {
+                      label: "View",
+                      content: (
+                        <select className="select" value={oppView} onChange={(e) => setOppView(e.target.value)} style={{ width: 240 }}>
+                          <option value="season">Current Season</option>
+                          <option value="h2h3y">Head-to-Head (3Y)</option>
+                          <option value="home">Home vs Opp</option>
+                          <option value="away">Away vs Opp</option>
+                          <option value="playoffs">Playoffs vs Opp</option>
+                        </select>
+                      ),
+                    },
+              ],
+            },
+            {
+              stack: [
+                opponent === "all"
+                  ? {
+                      label: "Sample size",
+                      content: (
+                        <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                          {[5, 10, 15, 25, "all"].map((n) => (
+                            <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                              {n === "all" ? "All" : `Last ${n}`}
+                            </div>
+                          ))}
+                        </div>
+                      ),
+                    }
+                  : null,
+                {
+                  label: "Minutes",
+                  content: (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                      <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
+                        {!minutesRangeEnabled
+                          ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
+                          : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
+                      </div>
+                      <ThresholdSlider
+                        min={0}
+                        max={40}
+                        step={1}
+                        lo={minMinutes}
+                        hi={maxMinutes}
+                        onChangeLo={setMinMinutes}
+                        onChangeHi={setMaxMinutes}
+                        rangeEnabled={minutesRangeEnabled}
+                        onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+                      />
                     </div>
                   ),
-                }
-              : null,
-            {
-              label: "Minutes",
-              content: (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 480, margin: "0 auto" }}>
-                  <div className="mono" style={{ fontSize: 14, color: "var(--amber)", fontWeight: 700 }}>
-                    {!minutesRangeEnabled
-                      ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
-                      : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
-                  </div>
-                  <ThresholdSlider
-                    min={0}
-                    max={40}
-                    step={1}
-                    lo={minMinutes}
-                    hi={maxMinutes}
-                    onChangeLo={setMinMinutes}
-                    onChangeHi={setMaxMinutes}
-                    rangeEnabled={minutesRangeEnabled}
-                    onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
-                  />
-                </div>
-              ),
+                },
+              ].filter(Boolean),
             },
-          ].filter(Boolean).map((group, gi) => (
-            <div key={group.label} style={{ marginTop: gi === 0 ? 0 : 18 }}>
-              <div style={{ fontSize: 14, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
-                {group.label}
-              </div>
-              {group.content}
-            </div>
-          ))}
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-            <div className="chip" onClick={resetFilters}>Reset filters</div>
-          </div>
-        </FiltersSection>
+          ]}
+        />
 
         {/* Line input + summary — the line adjuster is centered on top, with the
              three stat cards in a single row underneath it, spaced evenly left to right */}
