@@ -5920,7 +5920,7 @@ function MLBPropsPage({ jumpTo }) {
                     className="select"
                     value={opponent}
                     onChange={(e) => setOpponent(e.target.value)}
-                    style={{ width: "100%", maxWidth: 320 }}
+                    style={{ width: 240 }}
                   >
                     <option value="all">Any opponent</option>
                     {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
@@ -5958,7 +5958,7 @@ function MLBPropsPage({ jumpTo }) {
               ...(isPitcher ? [] : [{
                 label: "Plate appearances",
                 content: (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 420 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
                     <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
                       {!paRangeEnabled
                         ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)

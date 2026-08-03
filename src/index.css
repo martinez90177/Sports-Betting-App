@@ -286,17 +286,27 @@ select.select:focus, select.select:focus-visible {
 
 /* ---------- filters ----------
    Filter groups used to stack vertically, one per row, which made the panel
-   as tall as the number of filters. Laying them on an auto-fitting grid puts
-   as many side by side as the width allows and collapses back to a single
-   column on narrow screens, without a breakpoint. Labels and controls all
-   start on the same left edge. */
+   as tall as the number of filters. They now sit side by side and wrap to a
+   single column on narrow screens without needing a breakpoint.
+
+   Deliberately flex rather than a 1fr grid: the panel spans the full page
+   width (up to 1920px) but the controls inside are only ~300px wide, so
+   equal-width stretched columns leave a large dead channel between them.
+   Sizing each group to its content and centring the cluster keeps the group
+   spacing even and matches the rest of the page, which is centred. Text
+   inside each group still starts on that group's own left edge. */
 .filter-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: var(--s-4) var(--s-5);
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: var(--s-5) var(--s-8);
   text-align: left;
 }
+/* Groups size to their content but may still shrink, so on a narrow screen
+   they wrap and their chip rows reflow inside the panel rather than pushing
+   past its padding. */
+.filter-grid > * { flex: 0 1 auto; min-width: 0; }
 /* ---------- game log table ----------
    The column template was duplicated inline on the header row and every
    body row of all four sports pages. Defined once here so the header can
