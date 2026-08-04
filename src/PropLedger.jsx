@@ -3108,12 +3108,17 @@ function FiltersSection({ children, groups, onReset, defaultOpen = true }) {
                     // (so it doesn't contribute to intrinsic sizing) and
                     // their fallback size is just the two arrow buttons.
                     // flexBasis: 100% forces this group onto its own row at
-                    // the panel's full content width instead.
-                    ...(g.fullWidth ? { flexBasis: "100%", minWidth: 0 } : null),
+                    // the panel's full content width instead. It's also the
+                    // only group that ever ends up alone on its row, so
+                    // without centering it just sits pinned to the left edge
+                    // with the rest of the row empty -- align-items/text-align
+                    // center keeps the label and content centered like every
+                    // other (content-sized) group on the two-per-row rows.
+                    ...(g.fullWidth ? { flexBasis: "100%", minWidth: 0, alignItems: "center" } : null),
                   }}
                 >
                   {cell.map((f) => (
-                    <div key={f.label}>
+                    <div key={f.label} style={g.fullWidth ? { textAlign: "center" } : undefined}>
                       <div className="micro-label" style={{ marginBottom: "var(--s-2)" }}>{f.label}</div>
                       {f.content}
                     </div>
@@ -8059,7 +8064,6 @@ function MLBPropsPage({ jumpTo }) {
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
       confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
-      bullpen={teamBullpenList}
     />
     <div className="roster-layout-center">
       {!compact && nextGamePill}
@@ -8092,7 +8096,7 @@ function MLBPropsPage({ jumpTo }) {
           >
             {!matchupOptions.length && <option value="">Loading today's games…</option>}
             {matchupOptions.map((mo) => (
-              <option key={mo.id} value={mo.id}>{mo.label} — {mo.time}</option>
+              <option key={mo.id} value={mo.id}>{mo.label}</option>
             ))}
           </select>
           <div style={{
@@ -8487,6 +8491,7 @@ function MLBPropsPage({ jumpTo }) {
           }]),
         ]}
       />
+      {!compact && activeTabContent}
     </div>
     <TeamRosterPanel
       teamLabel={(liveOppRoster || {}).label || "Loading…"}
@@ -8498,11 +8503,9 @@ function MLBPropsPage({ jumpTo }) {
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
       confirmed={(nextGame?.oppLineupIds?.length || 0) > 0}
-      bullpen={oppBullpenList}
     />
     </div>
 
-      {!compact && activeTabContent}
       <PlayerNewsModule playerName={player.name} headshotSrc={mlbHeadshot(player.mlbId)} />
     </div>
   );
@@ -9839,7 +9842,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 // entirely by MobilePlayerNav (persistent bottom chip strip + Lineup side
 // drawer, rendered once per page rather than once per TeamRosterPanel) --
 // see below. TeamRosterPanel itself renders nothing in that range.
-function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, confirmed, bullpen }) {
+function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, confirmed }) {
   const compact = useIsNarrow(1100);
   // Pitchers (pos "SP") get sectioned off from the batting order rather than
   // just tacked onto the end of the list -- MLB is the only sport that
@@ -9908,24 +9911,6 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
     );
   };
 
-  // Compact reliever row for the bullpen list under the batting order --
-  // just name + throws, a quick-glance list rather than the fuller
-  // PC/REST/K%/BB%/ERA/WHIP table teamBullpen()'s data also supports.
-  const renderBullpenRow = (p) => (
-    <div
-      key={p.id}
-      style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-        padding: "6px 10px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--panel)",
-      }}
-    >
-      <span className="oswald" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-        {p.name}
-      </span>
-      <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)", flexShrink: 0 }}>{p.throws}</span>
-    </div>
-  );
-
   // Below the roster-panel breakpoint, MobilePlayerNav (rendered once per
   // page) takes over player-switching entirely -- nothing to render here.
   if (compact) return null;
@@ -9942,9 +9927,9 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
         )}
       </div>
       {/* No capped height/scroll here -- the column grows to fit the whole
-           lineup (and bullpen below it) so nothing is hidden behind an
-           inner scrollbar; .roster-layout already aligns columns to the
-           top (align-items: start), so a taller column just grows past its
+           lineup so nothing is hidden behind an inner scrollbar;
+           .roster-layout already aligns columns to the top
+           (align-items: start), so a taller column just grows past its
            neighbors instead of stretching them. */}
       <div style={{ paddingRight: 4 }}>
         {pitchers.length > 0 && (
@@ -9969,19 +9954,6 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {batters.map(renderRow)}
         </div>
-        {bullpen && bullpen.length > 0 && (
-          <>
-            <div style={{
-              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em",
-              textAlign: "center", margin: "12px 0 6px", paddingTop: 10, borderTop: "1px solid var(--line)",
-            }}>
-              Bullpen
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {bullpen.map(renderBullpenRow)}
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
