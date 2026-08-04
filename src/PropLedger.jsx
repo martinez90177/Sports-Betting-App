@@ -184,9 +184,9 @@ function matchupTimeLabel(dateStr) {
   return new Date(dateStr).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-// New York Knicks and San Antonio Spurs starting fives from the 2026 NBA Finals,
-// so matchups can be researched the way they would have looked during that series.
-const PLAYERS = [
+// New York Knicks starting five from the 2026 NBA Finals, so matchups can be
+// researched the way they would have looked during that series.
+const KNICKS_PLAYERS = [
   { id: "brunson", name: "Jalen Brunson", team: "NYK", pos: "PG", espnId: "3934672", nbaId: "1628973",
     base: { pts: 26, oreb: 0.5, dreb: 2.9, ast: 7.2, stl: 0.9, blk: 0.2, fg3m: 3.0, fg3a: 7.5, ftm: 5.5, fta: 6.3, tov: 2.5 },
     var:  { pts: 7,  oreb: 0.5, dreb: 1.5, ast: 2.6, stl: 0.7, blk: 0.3, fg3m: 1.6, fg3a: 2.2, ftm: 2.0, fta: 2.2, tov: 1.2 } },
@@ -202,6 +202,9 @@ const PLAYERS = [
   { id: "kat", name: "Karl-Anthony Towns", team: "NYK", pos: "C", espnId: "3136195", nbaId: "1626157",
     base: { pts: 22, oreb: 2.6, dreb: 9.2, ast: 3.1, stl: 0.8, blk: 1.1, fg3m: 2.0, fg3a: 5.0, ftm: 4.5, fta: 5.2, tov: 2.6 },
     var:  { pts: 6,  oreb: 1.3, dreb: 2.6, ast: 1.6, stl: 0.6, blk: 0.7, fg3m: 1.2, fg3a: 1.7, ftm: 1.8, fta: 2.0, tov: 1.1 } },
+];
+// San Antonio Spurs starting five from the same 2026 Finals matchup.
+const SPURS_PLAYERS = [
   { id: "fox", name: "De'Aaron Fox", team: "SAS", pos: "PG", espnId: "4066259", nbaId: "1628368",
     base: { pts: 22.5, oreb: 0.4, dreb: 3.1, ast: 5.8, stl: 1.3, blk: 0.3, fg3m: 1.8, fg3a: 4.8, ftm: 4.8, fta: 5.8, tov: 2.8 },
     var:  { pts: 6.5,  oreb: 0.4, dreb: 1.4, ast: 2.2, stl: 0.7, blk: 0.3, fg3m: 1.2, fg3a: 1.7, ftm: 1.8, fta: 2.1, tov: 1.2 } },
@@ -218,6 +221,72 @@ const PLAYERS = [
     base: { pts: 24.3, oreb: 2.2, dreb: 9.6, ast: 3.7, stl: 1.1, blk: 3.5, fg3m: 2.3, fg3a: 6.0, ftm: 5.5, fta: 7.0, tov: 3.0 },
     var:  { pts: 6.5,  oreb: 1.2, dreb: 2.8, ast: 1.6, stl: 0.6, blk: 1.4, fg3m: 1.3, fg3a: 1.9, ftm: 2.0, fta: 2.4, tov: 1.3 } },
 ];
+// Philadelphia 76ers projected 2026-27 starting five -- mock per-game lines
+// (base/var), not live stats, since the season doesn't open until October.
+const SIXERS_PLAYERS = [
+  { id: "maxey", name: "Tyrese Maxey", team: "PHI", pos: "PG", espnId: "4431678", nbaId: "1630178",
+    base: { pts: 26, oreb: 0.4, dreb: 3.2, ast: 6.5, stl: 1.0, blk: 0.3, fg3m: 3.0, fg3a: 7.8, ftm: 4.5, fta: 5.2, tov: 2.4 },
+    var:  { pts: 7,  oreb: 0.4, dreb: 1.5, ast: 2.4, stl: 0.6, blk: 0.3, fg3m: 1.6, fg3a: 2.2, ftm: 1.8, fta: 2.0, tov: 1.2 } },
+  { id: "edgecombe", name: "VJ Edgecombe", team: "PHI", pos: "SG", espnId: "5124612", nbaId: "1642526",
+    base: { pts: 12, oreb: 0.6, dreb: 3.0, ast: 2.4, stl: 1.1, blk: 0.3, fg3m: 1.4, fg3a: 4.0, ftm: 1.8, fta: 2.2, tov: 1.6 },
+    var:  { pts: 4.5, oreb: 0.5, dreb: 1.4, ast: 1.2, stl: 0.6, blk: 0.3, fg3m: 1.0, fg3a: 1.6, ftm: 1.1, fta: 1.3, tov: 0.9 } },
+  { id: "george", name: "Paul George", team: "PHI", pos: "SF", espnId: "4251", nbaId: "202331",
+    base: { pts: 18, oreb: 0.7, dreb: 4.5, ast: 3.2, stl: 1.2, blk: 0.4, fg3m: 2.2, fg3a: 6.0, ftm: 3.0, fta: 3.5, tov: 1.8 },
+    var:  { pts: 6,   oreb: 0.5, dreb: 1.7, ast: 1.5, stl: 0.7, blk: 0.4, fg3m: 1.2, fg3a: 1.9, ftm: 1.5, fta: 1.7, tov: 1.0 } },
+  { id: "yabusele", name: "Guerschon Yabusele", team: "PHI", pos: "PF", espnId: "3064428", nbaId: "1627824",
+    base: { pts: 11, oreb: 1.2, dreb: 4.0, ast: 1.6, stl: 0.7, blk: 0.4, fg3m: 1.6, fg3a: 4.2, ftm: 1.2, fta: 1.5, tov: 1.0 },
+    var:  { pts: 4,   oreb: 0.8, dreb: 1.6, ast: 1.0, stl: 0.5, blk: 0.3, fg3m: 1.0, fg3a: 1.5, ftm: 0.8, fta: 1.0, tov: 0.7 } },
+  { id: "embiid", name: "Joel Embiid", team: "PHI", pos: "C", espnId: "3059318", nbaId: "203954",
+    base: { pts: 23, oreb: 1.0, dreb: 7.0, ast: 4.0, stl: 0.8, blk: 1.3, fg3m: 1.0, fg3a: 3.0, ftm: 6.5, fta: 7.5, tov: 3.2 },
+    var:  { pts: 7,   oreb: 0.7, dreb: 2.4, ast: 1.8, stl: 0.5, blk: 0.7, fg3m: 0.8, fg3a: 1.5, ftm: 2.4, fta: 2.6, tov: 1.4 } },
+];
+// Miami Heat projected 2026-27 starting five -- mock per-game lines, same
+// scope as SIXERS_PLAYERS above.
+const HEAT_PLAYERS = [
+  { id: "herro", name: "Tyler Herro", team: "MIA", pos: "PG", espnId: "4066648", nbaId: "1629639",
+    base: { pts: 22, oreb: 0.5, dreb: 4.0, ast: 5.2, stl: 0.8, blk: 0.2, fg3m: 3.2, fg3a: 8.2, ftm: 4.5, fta: 5.0, tov: 2.8 },
+    var:  { pts: 7,  oreb: 0.4, dreb: 1.6, ast: 2.2, stl: 0.5, blk: 0.2, fg3m: 1.6, fg3a: 2.4, ftm: 1.9, fta: 2.1, tov: 1.3 } },
+  { id: "powell", name: "Norman Powell", team: "MIA", pos: "SG", espnId: "3907498", nbaId: "1626181",
+    base: { pts: 17, oreb: 0.5, dreb: 2.8, ast: 2.2, stl: 0.9, blk: 0.3, fg3m: 2.6, fg3a: 6.4, ftm: 2.0, fta: 2.3, tov: 1.3 },
+    var:  { pts: 5.5, oreb: 0.4, dreb: 1.3, ast: 1.2, stl: 0.5, blk: 0.3, fg3m: 1.3, fg3a: 2.0, ftm: 1.2, fta: 1.4, tov: 0.8 } },
+  { id: "wiggins", name: "Andrew Wiggins", team: "MIA", pos: "SF", espnId: "3064514", nbaId: "203952",
+    base: { pts: 15, oreb: 0.6, dreb: 3.6, ast: 2.0, stl: 0.9, blk: 0.5, fg3m: 1.6, fg3a: 4.2, ftm: 2.0, fta: 2.4, tov: 1.2 },
+    var:  { pts: 5,   oreb: 0.5, dreb: 1.5, ast: 1.1, stl: 0.6, blk: 0.4, fg3m: 1.0, fg3a: 1.6, ftm: 1.2, fta: 1.4, tov: 0.7 } },
+  { id: "ware", name: "Kel'el Ware", team: "MIA", pos: "PF", espnId: "4433137", nbaId: "1642267",
+    base: { pts: 11, oreb: 2.4, dreb: 5.6, ast: 1.4, stl: 0.5, blk: 1.1, fg3m: 0.5, fg3a: 1.4, ftm: 1.6, fta: 2.2, tov: 1.3 },
+    var:  { pts: 4.5, oreb: 1.4, dreb: 2.1, ast: 0.9, stl: 0.4, blk: 0.7, fg3m: 0.4, fg3a: 0.9, ftm: 1.0, fta: 1.3, tov: 0.8 } },
+  { id: "adebayo", name: "Bam Adebayo", team: "MIA", pos: "C", espnId: "4066261", nbaId: "1628389",
+    base: { pts: 19, oreb: 2.2, dreb: 6.8, ast: 4.0, stl: 1.2, blk: 0.9, fg3m: 0.3, fg3a: 1.0, ftm: 3.5, fta: 4.5, tov: 2.6 },
+    var:  { pts: 6,   oreb: 1.3, dreb: 2.4, ast: 1.8, stl: 0.7, blk: 0.6, fg3m: 0.3, fg3a: 0.8, ftm: 1.6, fta: 2.0, tov: 1.3 } },
+];
+
+const ALL_NBA_PLAYERS = [...KNICKS_PLAYERS, ...SPURS_PLAYERS, ...SIXERS_PLAYERS, ...HEAT_PLAYERS];
+
+// NBA matchup switcher (same "pick a matchup, see its two rosters" pattern
+// as the NFL/MLB/WNBA pages) -- starts with the 2026 Finals rematchup, plus
+// a second matchup (76ers/Heat) stubbed in early with mock rosters ahead of
+// the real 2026-27 season tipping off in October.
+const NBA_MATCHUPS = [
+  {
+    id: "nyk-sas",
+    label: "Knicks @ Spurs",
+    teamA: { label: "New York Knicks", players: KNICKS_PLAYERS },
+    teamB: { label: "San Antonio Spurs", players: SPURS_PLAYERS },
+    date: "2026-10-04T23:00:00Z",
+    venue: "Frost Bank Center",
+    city: "San Antonio, TX",
+  },
+  {
+    id: "mia-phi",
+    label: "Heat @ 76ers",
+    teamA: { label: "Miami Heat", players: HEAT_PLAYERS },
+    teamB: { label: "Philadelphia 76ers", players: SIXERS_PLAYERS },
+    date: "2026-10-22T23:00:00Z",
+    venue: "Wells Fargo Center",
+    city: "Philadelphia, PA",
+  },
+];
+const NBA_MATCHUPS_BY_DATE = groupMatchupsByDate(NBA_MATCHUPS);
 
 // Primary: ESPN's combiner image proxy, requested at 350x350 with a server-
 // side crop -- the same source and approach the NFL page uses, and it frames
@@ -358,6 +427,611 @@ function genOpponentHistory(player, seedOffset, opp) {
   }
 
   return { priorSeasons, playoffs };
+}
+
+function NBAPropsPage({ jumpTo }) {
+  const [matchupId, setMatchupId] = useState(NBA_MATCHUPS[0].id);
+  const matchup = NBA_MATCHUPS.find((m) => m.id === matchupId);
+  const [playerId, setPlayerId] = useState(NBA_MATCHUPS[0].teamA.players[0].id);
+  const [market, setMarket] = useState("pts");
+  const [rebSplit, setRebSplit] = useState("total");
+  const [side, setSide] = useState("all");
+  const [lastN, setLastN] = useState(10);
+  const [opponent, setOpponent] = useState("all");
+  const [oppView, setOppView] = useState("season");
+  const [minMinutes, setMinMinutes] = useState(0);
+  const [maxMinutes, setMaxMinutes] = useState(40);
+  const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
+  const [line, setLine] = useState(null);
+  const [dragLine, setDragLine] = useState(null);
+  const chartRef = React.useRef(null);
+  const chartWidth = useElementWidth(chartRef);
+  const isNarrow = useIsNarrow();
+
+  React.useEffect(() => {
+    if (!jumpTo) return;
+    setPlayerId(jumpTo.playerId);
+    setMarket(jumpTo.market);
+    setLine(null);
+    setOpponent("all");
+    setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo && jumpTo.nonce]);
+
+  const resetFilters = () => {
+    setSide("all");
+    setLastN(10);
+    setOpponent("all");
+    setOppView("season");
+    setMinMinutes(0);
+    setMaxMinutes(40);
+    setMinutesRangeEnabled(false);
+    setLine(null);
+  };
+
+  const player = ALL_NBA_PLAYERS.find((p) => p.id === playerId);
+  const allGames = useMemo(() => genGames(player, ALL_NBA_PLAYERS.indexOf(player)), [player]);
+  const seasonAvg = useMemo(() => {
+    const n = allGames.length || 1;
+    const sum = (key) => allGames.reduce((a, g) => a + g[key], 0);
+    return {
+      pts: sum("pts") / n,
+      reb: (sum("oreb") + sum("dreb")) / n,
+      ast: sum("ast") / n,
+      min: sum("minutes") / n,
+    };
+  }, [allGames]);
+
+  const opponentsForPlayer = useMemo(
+    () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
+    [allGames]
+  );
+
+  // Multi-season history vs the selected opponent (prior 2 seasons + any mock
+  // playoff series), only computed once a specific opponent is chosen.
+  const oppHistory = useMemo(
+    () => (opponent === "all" ? { priorSeasons: [], playoffs: [] } : genOpponentHistory(player, ALL_NBA_PLAYERS.indexOf(player), opponent)),
+    [player, opponent]
+  );
+  const currentSeasonVsOpp = useMemo(
+    () => allGames.filter((g) => g.opp === opponent),
+    [allGames, opponent]
+  );
+  const h2h3yGames = useMemo(
+    () => [...oppHistory.priorSeasons, ...currentSeasonVsOpp].sort((a, b) => a.date.localeCompare(b.date)),
+    [oppHistory, currentSeasonVsOpp]
+  );
+
+  const filtered = useMemo(() => {
+    if (opponent !== "all") {
+      let g;
+      switch (oppView) {
+        case "h2h3y": g = h2h3yGames; break;
+        case "home": g = h2h3yGames.filter((x) => x.home); break;
+        case "away": g = h2h3yGames.filter((x) => !x.home); break;
+        case "playoffs": g = oppHistory.playoffs; break;
+        case "season":
+        default: g = currentSeasonVsOpp; break;
+      }
+      return g.filter((game) => game.minutes >= minMinutes && game.minutes <= maxMinutes);
+    }
+    let g = allGames.filter((game) => {
+      if (side === "home" && !game.home) return false;
+      if (side === "away" && game.home) return false;
+      if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
+      return true;
+    });
+    if (lastN !== "all") g = g.slice(-lastN);
+    return g;
+  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp]);
+
+  // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
+  // logos/abbreviations can't stay legible, so the x-axis switches to sparse
+  // date labels instead (see DateAxisTick). Desktop has enough width for
+  // logo+abbr+date per bar at any sample size -- axisTickInterval already
+  // caps the number of ticks actually drawn, so it never needs this fallback.
+  const manyGames = isNarrow && filtered.length > 10;
+
+  const isBinary = market === "dd" || market === "td";
+  const values = filtered.map((g) => statValue(g, market, rebSplit));
+  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+  const med = median(values);
+  // Binary props (DD/TD) have a fixed 0.5 threshold — achieved (1) counts as a
+  // hit, not achieved (0) doesn't. There's nothing to drag for these.
+  const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+  // Axis ceiling + evenly spaced tick marks: pick a "nice" step (1, 2, 5, 10, 20...)
+  // so the y-axis always shows regular, evenly spaced whole numbers instead of
+  // an uneven jump like 0, 9, 30.
+  const topValue = Math.max(...values, effectiveLine, 1);
+  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
+  const niceStep = (() => {
+    if (isBinary) return 1;
+    const targetTicks = 5;
+    const roughStep = rawMax / targetTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
+    const norm = roughStep / mag;
+    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
+    return Math.max(1, step);
+  })();
+  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
+  const chartTicks = isBinary
+    ? [0, 1]
+    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+  const hits = values.filter((v) => v > effectiveLine).length;
+  const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
+  const hitRate = values.length ? hits / values.length : 0;
+  const edge = avg - effectiveLine;
+
+  const marketLabel = market === "reb"
+    ? `${REB_SPLITS.find((r) => r.id === rebSplit)?.label ?? "Total"} Reb.`
+    : MARKETS.find((m) => m.id === market)?.label ?? "";
+
+  return (
+    <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <MobilePlayerNav
+      teamA={matchup.teamA}
+      teamB={matchup.teamB}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => espnHeadshot(p.espnId)}
+      headshotFallback={(p) => nbaHeadshot(p.nbaId)}
+      metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
+      avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    <div className="roster-layout">
+    <TeamRosterPanel
+      teamLabel={matchup.teamA.label}
+      players={matchup.teamA.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => espnHeadshot(p.espnId)}
+      headshotFallback={(p) => nbaHeadshot(p.nbaId)}
+      metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
+      avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    <div className="roster-layout-center">
+      {/* Matchup + player + market selectors */}
+      <div style={{ marginBottom: 8 }}>
+        {/* Date/matchup pill sits above the player photo/selector since it's
+             context about the game, not the player (matches the WNBA/MLB
+             page layout). */}
+        <div style={{
+          display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
+          width: "fit-content", margin: "0 auto 12px", padding: "9px 20px",
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
+          fontSize: 12.5, color: "var(--dim)",
+        }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>
+              {new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+            </span>
+            <span>·</span>
+            <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
+              {new Date(matchup.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+            </span>
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span style={{ color: "var(--text)", fontWeight: 600 }}>{matchup.venue}</span>
+            <span>— {matchup.city}</span>
+          </span>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+          <select
+            className="select"
+            value={matchupId}
+            onChange={(e) => {
+              const next = NBA_MATCHUPS.find((m) => m.id === e.target.value);
+              setMatchupId(next.id);
+              setPlayerId(next.teamA.players[0].id);
+              setLine(null);
+              setOpponent("all");
+            }}
+          >
+            {NBA_MATCHUPS_BY_DATE.map((group) => (
+              <optgroup label={group.label} key={group.label}>
+                {group.matchups.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <select className="select" value={playerId} onChange={(e) => { setPlayerId(e.target.value); setLine(null); setOpponent("all"); }}>
+            <optgroup label={matchup.teamA.label}>
+              {matchup.teamA.players.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} — {p.pos}</option>
+              ))}
+            </optgroup>
+            <optgroup label={matchup.teamB.label}>
+              {matchup.teamB.players.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} — {p.pos}</option>
+              ))}
+            </optgroup>
+          </select>
+          <div style={{
+            position: "relative", width: 122, height: 122, borderRadius: "50%", flexShrink: 0,
+            background: teamAvatarBackground(NBA_TEAM_COLORS, player.team),
+            boxShadow: `0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
+          }}>
+            {/* Always-visible team-colored backing, in case the headshot image can't
+                 load (ad-block / privacy extensions often block sports-CDN image
+                 requests) -- keeps the circle on-brand instead of going flat black.
+                 Sits 6px inset from the team-colored wrapper above, so that color
+                 shows only as a thin ring -- the photo itself stays 110x110, untouched. */}
+            <div style={{
+              position: "absolute", inset: 6, borderRadius: "50%",
+              background: (NBA_TEAM_COLORS[player.team] || {}).primary || "#000",
+              border: "1px solid var(--line)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }} />
+            <img
+              key={player.id}
+              src={espnHeadshot(player.espnId)}
+              alt={player.name}
+              width={110}
+              height={110}
+              referrerPolicy="no-referrer"
+              style={{
+                position: "absolute", inset: 6,
+                width: 110, height: 110,
+                borderRadius: "50%",
+                objectFit: "cover",
+                objectPosition: "center top",
+                border: "1px solid var(--line)",
+                opacity: 0,
+                transition: "opacity 0.15s ease",
+              }}
+              onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
+              onError={(e) => {
+                if (e.currentTarget.dataset.fallback !== "1") {
+                  e.currentTarget.dataset.fallback = "1";
+                  e.currentTarget.src = nbaHeadshot(player.nbaId);
+                } else {
+                  e.currentTarget.style.opacity = 0;
+                }
+              }}
+            />
+          </div>
+
+          {/* Player snapshot: season averages at a glance, next to the selector
+               so the top of the page isn't just a dropdown floating in empty space. */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 18,
+            background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+            padding: "10px 20px",
+          }}>
+            <div style={{ textAlign: "center", paddingRight: 14, borderRight: "1px solid var(--line)" }}>
+              <div className="oswald" style={{ fontSize: 14, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
+              <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                {player.team} · {player.pos} · Season
+              </div>
+            </div>
+            {[
+              { label: "PTS", value: seasonAvg.pts },
+              { label: "REB", value: seasonAvg.reb },
+              { label: "AST", value: seasonAvg.ast },
+              { label: "MIN", value: seasonAvg.min },
+            ].map((s) => (
+              <div key={s.label} style={{ textAlign: "center" }}>
+                <div className="mono" style={{ fontSize: 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(1)}</div>
+                <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginTop: "var(--s-3)" }}>
+          <MarketSectionGrid
+            singleBar
+            sections={[
+              { label: "Core", markets: MARKETS_ROW_1 },
+              { label: "Combos", markets: MARKETS_ROW_3 },
+              { label: "Shooting / FT", markets: MARKETS_ROW_4 },
+              { label: "Defense & hustle", markets: MARKETS_ROW_2 },
+              { label: "Milestones", markets: MARKETS_ROW_5, pills: true },
+            ]}
+            activeMarket={market}
+            onSelect={(id) => { setMarket(id); setLine(null); }}
+            isNarrow={isNarrow}
+          />
+        </div>
+        {/* Rebound split: only shown once Rebounds is the active market */}
+        {market === "reb" && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            {REB_SPLITS.map((r) => (
+              <div key={r.id} className={`chip ${rebSplit === r.id ? "active" : ""}`} onClick={() => { setRebSplit(r.id); setLine(null); }}>
+                {r.label}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+        {/* Filters live inside the center column now, directly under the
+             market bar, instead of as a sibling below the whole 3-column
+             row -- that row's height is set by the taller roster columns
+             regardless of alignment, so anything waiting outside the row
+             always waited for the rosters' full height first. */}
+        <FiltersSection
+          onReset={resetFilters}
+          groups={[
+            {
+              stack: [
+                {
+                  label: "Opponent",
+                  content: (
+                    <select
+                      className="select"
+                      value={opponent}
+                      onChange={(e) => { setOpponent(e.target.value); setOppView("season"); }}
+                      style={{ width: 240 }}
+                    >
+                      <option value="all">Any opponent</option>
+                      {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                    </select>
+                  ),
+                },
+                opponent === "all"
+                  ? {
+                      label: "Game location",
+                      content: (
+                        <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                          {["all", "home", "away"].map((s) => (
+                            <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                              {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                            </div>
+                          ))}
+                        </div>
+                      ),
+                    }
+                  : {
+                      label: "View",
+                      content: (
+                        <select className="select" value={oppView} onChange={(e) => setOppView(e.target.value)} style={{ width: 240 }}>
+                          <option value="season">Current Season</option>
+                          <option value="h2h3y">Head-to-Head (3Y)</option>
+                          <option value="home">Home vs Opp</option>
+                          <option value="away">Away vs Opp</option>
+                          <option value="playoffs">Playoffs vs Opp</option>
+                        </select>
+                      ),
+                    },
+              ],
+            },
+            {
+              stack: [
+                opponent === "all"
+                  ? {
+                      label: "Sample size",
+                      content: (
+                        <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+                          {[5, 10, 15, 25, "all"].map((n) => (
+                            <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                              {n === "all" ? "All" : `Last ${n}`}
+                            </div>
+                          ))}
+                        </div>
+                      ),
+                    }
+                  : null,
+                {
+                  label: "Minutes",
+                  content: (
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                      <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
+                        {!minutesRangeEnabled
+                          ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
+                          : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
+                      </div>
+                      <ThresholdSlider
+                        min={0}
+                        max={40}
+                        step={1}
+                        lo={minMinutes}
+                        hi={maxMinutes}
+                        onChangeLo={setMinMinutes}
+                        onChangeHi={setMaxMinutes}
+                        rangeEnabled={minutesRangeEnabled}
+                        onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+                      />
+                    </div>
+                  ),
+                },
+              ].filter(Boolean),
+            },
+          ]}
+        />
+    </div>
+    <TeamRosterPanel
+      teamLabel={matchup.teamB.label}
+      players={matchup.teamB.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => espnHeadshot(p.espnId)}
+      headshotFallback={(p) => nbaHeadshot(p.nbaId)}
+      metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
+      avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    </div>
+
+      {/* Line input + summary — the line adjuster is centered on top, with the
+           three stat cards in a single row underneath it, spaced evenly left to right */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
+          </div>
+          <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
+            {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+            {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
+          {[
+            { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
+            { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
+            { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
+          ].map((s) => (
+            <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+              <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Matchup context */}
+      {opponent !== "all" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 16px", width: "fit-content", maxWidth: "100%", boxSizing: "border-box" }}>
+          <span style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>vs {opponent} defense</span>
+          <span className="mono" style={{ fontSize: 16, color: "var(--text)" }}>{TEAM_DEF[opponent].rating}</span>
+          <span className="mono" style={{
+            fontSize: 12, padding: "2px 8px", borderRadius: 3,
+            color: defTier(TEAM_DEF[opponent].rank) === "soft" ? "var(--green)" : defTier(TEAM_DEF[opponent].rank) === "tough" ? "var(--red)" : "var(--dim)",
+            border: `1px solid ${defTier(TEAM_DEF[opponent].rank) === "soft" ? "var(--green)" : defTier(TEAM_DEF[opponent].rank) === "tough" ? "var(--red)" : "var(--line)"}`,
+          }}>
+            #{TEAM_DEF[opponent].rank} defense{defTier(TEAM_DEF[opponent].rank) === "soft" ? " · favorable matchup" : defTier(TEAM_DEF[opponent].rank) === "tough" ? " · tough matchup" : ""}
+          </span>
+        </div>
+      )}
+
+      {opponent !== "all" && oppView === "playoffs" && filtered.length === 0 && (
+        <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "16px", marginBottom: 16, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+          No playoff meetings vs {opponent} in the sample data.
+        </div>
+      )}
+
+      {/* Chart — wider now that the scroller is gone. Drag the amber tab on the
+           right edge to move the line, same as the +/- buttons above. */}
+      <div
+        ref={chartRef}
+        style={{
+          position: "relative",
+          boxSizing: "border-box",
+          height: isNarrow ? 380 : CHART_HEIGHT,
+          background: "var(--panel)",
+          border: "1px solid var(--line)",
+          borderRadius: 6,
+          padding: isNarrow ? "16px 6px" : 16,
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={filtered.map((g, i) => ({
+              idx: i + 1,
+              opp: g.opp,
+              axisKey: `${g.opp}__${g.date}`,
+              value: statValue(g, market, rebSplit),
+              date: g.date,
+              minutes: g.minutes,
+              home: g.home,
+              defRank: TEAM_DEF[g.opp].rank,
+            }))}
+            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
+            barCategoryGap={isNarrow ? "4%" : "6%"}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            <XAxis
+              dataKey={manyGames ? "date" : "axisKey"}
+              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
+              tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nbaTeamLogo} compact={isNarrow} />}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+            />
+            <YAxis
+              domain={[0, chartMax]}
+              ticks={chartTicks}
+              tick={{ fill: "#8b96a5", fontSize: 11 }}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+              allowDecimals={false}
+            width={isNarrow ? 24 : 60}
+              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+            />
+            <Tooltip
+              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
+              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+            />
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
+            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              {filtered.map((g, i) => {
+                const v = statValue(g, market, rebSplit);
+                const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
+                return <Cell key={i} fill={fill} />;
+              })}
+              <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        </div>
+        {!isBinary && (
+          <LineHandle
+            value={effectiveLine}
+            onChange={(v) => setLine(v)}
+            onDragValue={setDragLine}
+            min={0}
+            max={chartMax}
+            containerRef={chartRef}
+          />
+        )}
+      </div>
+
+      {/* Table */}
+      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+          <div style={{ minWidth: 580 }}>
+            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
+              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Min</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
+            </div>
+            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
+              {filtered.slice().reverse().map((g, i) => {
+                const v = statValue(g, market, rebSplit);
+                const over = v > effectiveLine;
+                const push = !isBinary && v === effectiveLine;
+                const def = TEAM_DEF[g.opp];
+                const tier = defTier(def.rank);
+                return (
+                  <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
+                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
+                    <div>{g.date}</div>
+                    <div>{g.opp}</div>
+                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
+                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
+                    <div>{g.minutes}</div>
+                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
+                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
+                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
+        Sample data only — built to test the filtering and layout before wiring in a real stats/odds feed.
+      </div>
+      <PlayerNewsModule playerName={player.name} headshotSrc={espnHeadshot(player.espnId)} />
+    </div>
+  );
 }
 
 // ---------- NFL (Dallas Cowboys offense) mock data ----------
@@ -2106,6 +2780,260 @@ function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, r
             {rangeEnabled ? "Use single value" : "Use range"}
           </span>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Compact tappable teammate cards replacing the old "Add teammate..." select.
+// Each card cycles neutral -> with -> without -> neutral on click; an "All"
+// pill clears every chip back to neutral. `chips` is the same
+// {mlbId, name, mode} shape the rest of PropLedger already threads through
+// to the With/Without game-log filter, so this is purely a presentation
+// swap -- it reads/writes the identical state.
+// Cards are square tiles in a single horizontally-scrolling row (chevrons on
+// each end, plus a visible drag-scrollbar underneath) rather than wrapping
+// onto new lines -- a full roster wrapped into a grid left a lot of dead
+// vertical space in the filter panel, and a fixed-height scroller reads
+// closer to a real "selector" than a list that grows.
+const TEAMMATE_CARD_SIZE = 96;
+const TEAMMATE_CARD_GAP = 10;
+const TEAMMATE_VISIBLE_COUNT = 4;
+// Exactly enough width for 3 full tiles -- wide enough to stop wasting the
+// empty space to the right of the old narrower track, but fixed rather than
+// stretched to fill whatever room happens to be left so a tile is never
+// half-cut at the edge.
+const TEAMMATE_SCROLL_WIDTH = TEAMMATE_VISIBLE_COUNT * TEAMMATE_CARD_SIZE + (TEAMMATE_VISIBLE_COUNT - 1) * TEAMMATE_CARD_GAP;
+
+function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
+  const candidates = roster.filter((p) => p.mlbId !== excludeId && p.pos !== "SP");
+  const modeFor = (mlbId) => (chips.find((c) => c.mlbId === mlbId) || {}).mode || "neutral";
+  const scrollRef = React.useRef(null);
+  const trackRef = React.useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  // Thumb geometry as fractions of the track (0-1) -- driven off the real
+  // scroll container's metrics so the custom bar always matches it exactly.
+  const [thumb, setThumb] = useState({ pos: 0, size: 1 });
+
+  const updateScrollState = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft < maxScroll - 2);
+    setThumb({
+      pos: maxScroll > 0 ? el.scrollLeft / maxScroll : 0,
+      size: Math.min(1, el.clientWidth / el.scrollWidth),
+    });
+  };
+
+  React.useEffect(() => {
+    updateScrollState();
+  }, [candidates.length]);
+
+  const scrollBy = (dir) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * (TEAMMATE_CARD_SIZE + 10) * 2, behavior: "smooth" });
+  };
+
+  // The visible track is a plain div (not the real overflow element) so its
+  // height never grows to make room for a native scrollbar -- that reserved
+  // space was what threw the cards' vertical center off from "All" and the
+  // arrows above. Dragging/clicking it just sets scrollLeft on the real
+  // scroller directly, same pattern as ThresholdSlider's track handling.
+  const scrollToRatio = (ratio) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft = ratio * (el.scrollWidth - el.clientWidth);
+  };
+
+  const ratioFromClientX = (clientX) => {
+    const rect = trackRef.current.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  };
+
+  const handleTrackPointerDown = (e) => {
+    e.preventDefault();
+    scrollToRatio(ratioFromClientX(e.clientX));
+    const handleMove = (ev) => scrollToRatio(ratioFromClientX(ev.clientX));
+    const stop = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", stop);
+  };
+
+  const cycle = (p) => {
+    const current = modeFor(p.mlbId);
+    if (current === "neutral") {
+      onChange((prev) => [...prev, { mlbId: p.mlbId, name: p.name, mode: "with" }]);
+    } else if (current === "with") {
+      onChange((prev) => prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: "without" } : c)));
+    } else {
+      onChange((prev) => prev.filter((c) => c.mlbId !== p.mlbId));
+    }
+  };
+
+  const cardStyle = (mode) => {
+    if (mode === "with") {
+      return {
+        background: "color-mix(in srgb, var(--green) 16%, transparent)",
+        borderColor: "var(--green)",
+        color: "var(--green)",
+      };
+    }
+    if (mode === "without") {
+      return {
+        background: "var(--red-dim)",
+        borderColor: "var(--red)",
+        color: "var(--red)",
+      };
+    }
+    return { background: "var(--panel2)", borderColor: "var(--line)", color: "var(--text)" };
+  };
+
+  const arrowStyle = (enabled) => ({
+    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+    width: 26, height: 26, borderRadius: "50%",
+    border: "1px solid var(--line)", background: "var(--panel2)",
+    color: enabled ? "var(--text)" : "var(--line)",
+    cursor: enabled ? "pointer" : "default",
+    fontSize: 13, userSelect: "none",
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
+      {/* align-items: center puts "All" (short) on the same vertical center
+           as the taller card tiles instead of pinned to their top edge. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
+          role="button"
+          onClick={() => onChange([])}
+          className="chip"
+          style={{ fontSize: 12.5, fontWeight: 600, padding: "8px 16px", flexShrink: 0 }}
+        >
+          All
+        </div>
+        <div
+          role="button"
+          aria-label="Scroll teammates left"
+          onClick={() => canScrollLeft && scrollBy(-1)}
+          style={arrowStyle(canScrollLeft)}
+        >
+          ‹
+        </div>
+        {/* This wrapper's own height is fixed to exactly the cards' height
+             -- the track is positioned absolutely below it, so it hangs
+             underneath visually without adding to the height flexbox sees,
+             which is what keeps this row's cross-axis center matching the
+             card center exactly, not the center of cards-plus-track. */}
+        <div style={{ position: "relative", width: TEAMMATE_SCROLL_WIDTH, height: TEAMMATE_CARD_SIZE, flexShrink: 0 }}>
+          <div
+            ref={scrollRef}
+            onScroll={updateScrollState}
+            className="teammate-scroll"
+            style={{
+              display: "flex", gap: TEAMMATE_CARD_GAP, overflowX: "auto", scrollSnapType: "x proximity",
+              position: "absolute", inset: 0,
+            }}
+          >
+            {candidates.map((p) => {
+              const mode = modeFor(p.mlbId);
+              const style = cardStyle(mode);
+              return (
+                <div
+                  key={p.mlbId}
+                  role="button"
+                  title={mode === "neutral" ? `Tap to require ${p.name} on the field` : mode === "with" ? `Tap to require ${p.name} off the field` : `Tap to clear ${p.name}`}
+                  onClick={() => cycle(p)}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                    width: TEAMMATE_CARD_SIZE,
+                    height: TEAMMATE_CARD_SIZE,
+                    padding: "10px 6px",
+                    borderRadius: 18,
+                    border: "1px solid",
+                    cursor: "pointer",
+                    userSelect: "none",
+                    flexShrink: 0,
+                    boxSizing: "border-box",
+                    scrollSnapAlign: "start",
+                    transition: "box-shadow 0.12s ease",
+                    ...style,
+                  }}
+                >
+                  <img
+                    src={mlbHeadshot(p.mlbId)}
+                    onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
+                    alt=""
+                    style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", background: "var(--panel)", flexShrink: 0 }}
+                  />
+                  <span
+                    className="oswald"
+                    style={{
+                      fontSize: 11.5, fontWeight: 600, textAlign: "center",
+                      maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}
+                  >
+                    {p.name}
+                  </span>
+                  {/* Badge is always in the layout (just invisible when
+                       neutral) so a state change never changes the tile's
+                       fixed height/width. */}
+                  <span
+                    style={{
+                      fontSize: 9, fontWeight: 800, letterSpacing: 0.3, lineHeight: 1,
+                      visibility: mode === "neutral" ? "hidden" : "visible",
+                    }}
+                  >
+                    {mode === "without" ? "W/O" : "WITH"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {/* Custom draggable track -- click-to-jump plus drag, same
+               interaction as ThresholdSlider's track handling elsewhere in
+               this file. Positioned absolutely below the cards (not a
+               normal-flow sibling) so it never adds to the wrapper's own
+               height; scrollRef is the real overflow element it's steering. */}
+          <div
+            ref={trackRef}
+            onPointerDown={handleTrackPointerDown}
+            style={{
+              position: "absolute", top: TEAMMATE_CARD_SIZE + 6, left: 0, width: "100%", height: 6,
+              cursor: "pointer", touchAction: "none",
+            }}
+          >
+            <div style={{ position: "absolute", inset: 0, borderRadius: 3, background: "var(--line)" }} />
+            <div
+              style={{
+                position: "absolute", top: 0, height: 6, borderRadius: 3,
+                left: `${thumb.pos * (1 - thumb.size) * 100}%`,
+                width: `${thumb.size * 100}%`,
+                background: "var(--dim)",
+              }}
+            />
+          </div>
+        </div>
+        <div
+          role="button"
+          aria-label="Scroll teammates right"
+          onClick={() => canScrollRight && scrollBy(1)}
+          style={arrowStyle(canScrollRight)}
+        >
+          ›
+        </div>
+      </div>
+      {loading && (
+        <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>Loading boxscores…</div>
       )}
     </div>
   );
@@ -7082,51 +8010,13 @@ function MLBPropsPage({ jumpTo }) {
               {
                 label: "Teammates",
                 content: (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 280 }}>
-                    <select
-                      className="select"
-                      value=""
-                      onChange={(e) => {
-                        const mlbId = Number(e.target.value);
-                        const tp = liveTeamRoster.players.find((p) => p.mlbId === mlbId);
-                        if (!tp) return;
-                        setTeammateChips((prev) => (prev.some((c) => c.mlbId === mlbId) ? prev : [...prev, { mlbId, name: tp.name, mode: "without" }]));
-                      }}
-                      style={{ width: "100%" }}
-                    >
-                      <option value="">Add teammate…</option>
-                      {liveTeamRoster.players.filter((p) => p.mlbId !== player.mlbId && p.pos !== "SP").map((p) => (
-                        <option key={p.mlbId} value={p.mlbId}>{p.name}</option>
-                      ))}
-                    </select>
-                    {teammateChips.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {teammateChips.map((c) => (
-                          <div key={c.mlbId} className="chip active" style={{ display: "flex", alignItems: "center", gap: 7, cursor: "default" }}>
-                            <span
-                              role="button"
-                              title="Click to toggle With / Without"
-                              onClick={() => setTeammateChips((prev) => prev.map((x) => (x.mlbId === c.mlbId ? { ...x, mode: x.mode === "with" ? "without" : "with" } : x)))}
-                              style={{ cursor: "pointer" }}
-                            >
-                              {c.mode === "with" ? "W/" : "W/O"}: {c.name}
-                            </span>
-                            <span
-                              role="button"
-                              aria-label={`Remove ${c.name}`}
-                              onClick={() => setTeammateChips((prev) => prev.filter((x) => x.mlbId !== c.mlbId))}
-                              style={{ cursor: "pointer", color: "var(--dim)", fontWeight: 700 }}
-                            >
-                              ×
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {boxscoresLoading && (
-                      <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>Loading boxscores…</div>
-                    )}
-                  </div>
+                  <TeammateChipGrid
+                    roster={liveTeamRoster.players}
+                    excludeId={player.mlbId}
+                    chips={teammateChips}
+                    onChange={setTeammateChips}
+                    loading={boxscoresLoading}
+                  />
                 ),
               },
             ],
@@ -7602,7 +8492,7 @@ function oddsSliderProb(x) {
 // the numbers stay consistent between the two views.
 function buildNBAFeedRows() {
   const rows = [];
-  PLAYERS.forEach((player, pi) => {
+  ALL_NBA_PLAYERS.forEach((player, pi) => {
     const games = genGames(player, pi);
     const nextOpp = games[games.length - 1].opp;
     MARKETS.forEach((m) => {
@@ -7796,6 +8686,16 @@ const FEED_SPORTS = [
   { id: "wnba", label: "WNBA", available: true },
 ];
 
+// Prop Feed opens on MLB until the real NFL Week 1 opener kicks off (the
+// earliest date in NFL_MATCHUPS), then flips to NFL by default -- there's no
+// NFL slate worth landing on before the season actually starts. Only used
+// for the very first load; once the user picks a sport that choice sticks
+// for the rest of the session (see feedSport/setFeedSport in PropLedger).
+function defaultFeedSport() {
+  const week1Kickoff = Math.min(...NFL_MATCHUPS.map((m) => new Date(m.date).getTime()));
+  return Date.now() >= week1Kickoff ? "nfl" : "mlb";
+}
+
 // How many teams' worth of defensive ranks exist for each sport -- sets the
 // upper bound of the Defense Rank Range slider (rank 1 = toughest matchup,
 // rank N = easiest, same convention as every OPP RANK badge in the feed).
@@ -7882,9 +8782,8 @@ const FEED_LABEL_STYLE = { fontSize: 12, fontWeight: 600, color: "var(--dim)", l
 const FEED_FILTER_ROW_STYLE = { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 };
 const FEED_CONTROL_WIDTH = 190;
 
-function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion }) {
+function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, sport, setSport }) {
   const isNarrow = useIsNarrow(560);
-  const [sport, setSport] = useState("nba");
   const [category, setCategory] = useState("All");
   const [sampleWindow, setSampleWindow] = useState("l10");
   const [sortMode, setSortMode] = useState("matchup");
@@ -9419,32 +10318,11 @@ function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, the
 
 export default function PropLedger() {
   const [page, setPage] = useState("feed");
-  const [playerId, setPlayerId] = useState(PLAYERS[0].id);
-  const [market, setMarket] = useState("pts");
-  const [rebSplit, setRebSplit] = useState("total");
-  const [side, setSide] = useState("all");
-  const [lastN, setLastN] = useState(10);
-  const [opponent, setOpponent] = useState("all");
-  const [oppView, setOppView] = useState("season");
-  const [minMinutes, setMinMinutes] = useState(0);
-  const [maxMinutes, setMaxMinutes] = useState(40);
-  const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
-  const [line, setLine] = useState(null);
-  const [dragLine, setDragLine] = useState(null);
-  const chartRef = React.useRef(null);
-  const chartWidth = useElementWidth(chartRef);
-  const isNarrow = useIsNarrow();
-
-  const resetFilters = () => {
-    setSide("all");
-    setLastN(10);
-    setOpponent("all");
-    setOppView("season");
-    setMinMinutes(0);
-    setMaxMinutes(40);
-    setMinutesRangeEnabled(false);
-    setLine(null);
-  };
+  // Lives here rather than inside PropFeedPage so it survives navigating
+  // away to a single-player page and back -- PropFeedPage unmounts on every
+  // such trip, which would otherwise reset the sport switcher to its
+  // default every time.
+  const [feedSport, setFeedSport] = useState(defaultFeedSport);
 
   const [myPicks, setMyPicks] = useState(() => {
     try { return JSON.parse(localStorage.getItem("propLedgerPicks") || "[]"); } catch { return []; }
@@ -9593,27 +10471,15 @@ export default function PropLedger() {
     return () => { cancelled = true; };
   }, []);
 
-  // "View Chart" jump from the Prop Feed -- for NBA the target state lives
-  // right here, so it's set directly; NFL/MLB own their player/market state
-  // inside their own page components, so those get handed a jumpTo object
-  // (nonce forces the effect to fire even if the same prop is clicked twice
-  // in a row) instead.
+  // "View Chart" jump from the Prop Feed -- every sport page owns its own
+  // player/market state internally (see e.g. NBAPropsPage/WNBAPropsPage),
+  // so this just hands each page a jumpTo object (nonce forces the effect
+  // to fire even if the same prop is clicked twice in a row).
   const [jumpTo, setJumpTo] = useState(null);
   const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
-    if (targetSport === "nba") {
-      setPlayerId(targetPlayerId);
-      setMarket(targetMarket);
-      setLine(null);
-      setOpponent("all");
-    }
     setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now(), meta });
     setPage(targetSport);
   };
-  React.useEffect(() => {
-    if (!jumpTo || jumpTo.sport !== "nba") return;
-    setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jumpTo && jumpTo.nonce]);
 
   // Flat player/team index for the header's global SearchBar -- built once
   // from the same static player pools each sport page already draws from,
@@ -9629,7 +10495,7 @@ export default function PropLedger() {
       key: `nfl_${p.id}`, sport: "nfl", sportLabel: "NFL", label: p.name, playerId: p.id, market: "passYds",
       searchText: `${p.name} ${p.team}`.toLowerCase(),
     }));
-    PLAYERS.forEach((p) => entries.push({
+    ALL_NBA_PLAYERS.forEach((p) => entries.push({
       key: `nba_${p.id}`, sport: "nba", sportLabel: "NBA", label: p.name, playerId: p.id, market: "pts",
       searchText: `${p.name} ${p.team}`.toLowerCase(),
     }));
@@ -9650,103 +10516,6 @@ export default function PropLedger() {
     });
     return entries;
   }, []);
-
-  const player = PLAYERS.find((p) => p.id === playerId);
-  const allGames = useMemo(() => genGames(player, PLAYERS.indexOf(player)), [player]);
-  const seasonAvg = useMemo(() => {
-    const n = allGames.length || 1;
-    const sum = (key) => allGames.reduce((a, g) => a + g[key], 0);
-    return {
-      pts: sum("pts") / n,
-      reb: (sum("oreb") + sum("dreb")) / n,
-      ast: sum("ast") / n,
-      min: sum("minutes") / n,
-    };
-  }, [allGames]);
-
-  const opponentsForPlayer = useMemo(
-    () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
-    [allGames]
-  );
-
-  // Multi-season history vs the selected opponent (prior 2 seasons + any mock
-  // playoff series), only computed once a specific opponent is chosen.
-  const oppHistory = useMemo(
-    () => (opponent === "all" ? { priorSeasons: [], playoffs: [] } : genOpponentHistory(player, PLAYERS.indexOf(player), opponent)),
-    [player, opponent]
-  );
-  const currentSeasonVsOpp = useMemo(
-    () => allGames.filter((g) => g.opp === opponent),
-    [allGames, opponent]
-  );
-  const h2h3yGames = useMemo(
-    () => [...oppHistory.priorSeasons, ...currentSeasonVsOpp].sort((a, b) => a.date.localeCompare(b.date)),
-    [oppHistory, currentSeasonVsOpp]
-  );
-
-  const filtered = useMemo(() => {
-    if (opponent !== "all") {
-      let g;
-      switch (oppView) {
-        case "h2h3y": g = h2h3yGames; break;
-        case "home": g = h2h3yGames.filter((x) => x.home); break;
-        case "away": g = h2h3yGames.filter((x) => !x.home); break;
-        case "playoffs": g = oppHistory.playoffs; break;
-        case "season":
-        default: g = currentSeasonVsOpp; break;
-      }
-      return g.filter((game) => game.minutes >= minMinutes && game.minutes <= maxMinutes);
-    }
-    let g = allGames.filter((game) => {
-      if (side === "home" && !game.home) return false;
-      if (side === "away" && game.home) return false;
-      if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
-      return true;
-    });
-    if (lastN !== "all") g = g.slice(-lastN);
-    return g;
-  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp]);
-
-  // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
-  // logos/abbreviations can't stay legible, so the x-axis switches to sparse
-  // date labels instead (see DateAxisTick). Desktop has enough width for
-  // logo+abbr+date per bar at any sample size -- axisTickInterval already
-  // caps the number of ticks actually drawn, so it never needs this fallback.
-  const manyGames = isNarrow && filtered.length > 10;
-
-  const isBinary = market === "dd" || market === "td";
-  const values = filtered.map((g) => statValue(g, market, rebSplit));
-  const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-  const med = median(values);
-  // Binary props (DD/TD) have a fixed 0.5 threshold — achieved (1) counts as a
-  // hit, not achieved (0) doesn't. There's nothing to drag for these.
-  const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
-  // Axis ceiling + evenly spaced tick marks: pick a "nice" step (1, 2, 5, 10, 20...)
-  // so the y-axis always shows regular, evenly spaced whole numbers instead of
-  // an uneven jump like 0, 9, 30.
-  const topValue = Math.max(...values, effectiveLine, 1);
-  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
-  const niceStep = (() => {
-    if (isBinary) return 1;
-    const targetTicks = 5;
-    const roughStep = rawMax / targetTicks;
-    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
-    const norm = roughStep / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
-    return Math.max(1, step);
-  })();
-  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
-  const chartTicks = isBinary
-    ? [0, 1]
-    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
-  const hits = values.filter((v) => v > effectiveLine).length;
-  const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
-  const hitRate = values.length ? hits / values.length : 0;
-  const edge = avg - effectiveLine;
-
-  const marketLabel = market === "reb"
-    ? `${REB_SPLITS.find((r) => r.id === rebSplit)?.label ?? "Total"} Reb.`
-    : MARKETS.find((m) => m.id === market)?.label ?? "";
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif" }}>
@@ -9795,417 +10564,7 @@ export default function PropLedger() {
       </div>
 
       {page === "nba" && (
-      <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
-      <MobilePlayerNav
-        teamA={{ label: "New York Knicks", players: PLAYERS.filter((p) => p.team === "NYK") }}
-        teamB={{ label: "San Antonio Spurs", players: PLAYERS.filter((p) => p.team === "SAS") }}
-        activeId={playerId}
-        onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-        headshotSrc={(p) => espnHeadshot(p.espnId)}
-        headshotFallback={(p) => nbaHeadshot(p.nbaId)}
-        metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
-        avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
-      />
-      <div className="roster-layout">
-      <TeamRosterPanel
-        teamLabel="New York Knicks"
-        players={PLAYERS.filter((p) => p.team === "NYK")}
-        activeId={playerId}
-        onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-        headshotSrc={(p) => espnHeadshot(p.espnId)}
-        headshotFallback={(p) => nbaHeadshot(p.nbaId)}
-        metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
-        avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
-      />
-      <div className="roster-layout-center">
-        {/* Player + market selectors */}
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
-            <select className="select" value={playerId} onChange={(e) => { setPlayerId(e.target.value); setLine(null); setOpponent("all"); }}>
-              <optgroup label="New York Knicks">
-                {PLAYERS.filter((p) => p.team === "NYK").map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} — {p.pos}</option>
-                ))}
-              </optgroup>
-              <optgroup label="San Antonio Spurs">
-                {PLAYERS.filter((p) => p.team === "SAS").map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} — {p.pos}</option>
-                ))}
-              </optgroup>
-            </select>
-            <div style={{
-              position: "relative", width: 122, height: 122, borderRadius: "50%", flexShrink: 0,
-              background: teamAvatarBackground(NBA_TEAM_COLORS, player.team),
-              boxShadow: `0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
-            }}>
-              {/* Always-visible team-colored backing, in case the headshot image can't
-                   load (ad-block / privacy extensions often block sports-CDN image
-                   requests) -- keeps the circle on-brand instead of going flat black.
-                   Sits 6px inset from the team-colored wrapper above, so that color
-                   shows only as a thin ring -- the photo itself stays 110x110, untouched. */}
-              <div style={{
-                position: "absolute", inset: 6, borderRadius: "50%",
-                background: (NBA_TEAM_COLORS[player.team] || {}).primary || "#000",
-                border: "1px solid var(--line)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }} />
-              <img
-                key={player.id}
-                src={espnHeadshot(player.espnId)}
-                alt={player.name}
-                width={110}
-                height={110}
-                referrerPolicy="no-referrer"
-                style={{
-                  position: "absolute", inset: 6,
-                  width: 110, height: 110,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  objectPosition: "center top",
-                  border: "1px solid var(--line)",
-                  opacity: 0,
-                  transition: "opacity 0.15s ease",
-                }}
-                onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
-                onError={(e) => {
-                  if (e.currentTarget.dataset.fallback !== "1") {
-                    e.currentTarget.dataset.fallback = "1";
-                    e.currentTarget.src = nbaHeadshot(player.nbaId);
-                  } else {
-                    e.currentTarget.style.opacity = 0;
-                  }
-                }}
-              />
-            </div>
-
-            {/* Player snapshot: season averages at a glance, next to the selector
-                 so the top of the page isn't just a dropdown floating in empty space. */}
-            <div style={{
-              display: "flex", alignItems: "center", gap: 18,
-              background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-              padding: "10px 20px",
-            }}>
-              <div style={{ textAlign: "center", paddingRight: 14, borderRight: "1px solid var(--line)" }}>
-                <div className="oswald" style={{ fontSize: 14, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
-                <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  {player.team} · {player.pos} · Season
-                </div>
-              </div>
-              {[
-                { label: "PTS", value: seasonAvg.pts },
-                { label: "REB", value: seasonAvg.reb },
-                { label: "AST", value: seasonAvg.ast },
-                { label: "MIN", value: seasonAvg.min },
-              ].map((s) => (
-                <div key={s.label} style={{ textAlign: "center" }}>
-                  <div className="mono" style={{ fontSize: 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(1)}</div>
-                  <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ marginTop: "var(--s-3)" }}>
-            <MarketSectionGrid
-              singleBar
-              sections={[
-                { label: "Core", markets: MARKETS_ROW_1 },
-                { label: "Combos", markets: MARKETS_ROW_3 },
-                { label: "Shooting / FT", markets: MARKETS_ROW_4 },
-                { label: "Defense & hustle", markets: MARKETS_ROW_2 },
-                { label: "Milestones", markets: MARKETS_ROW_5, pills: true },
-              ]}
-              activeMarket={market}
-              onSelect={(id) => { setMarket(id); setLine(null); }}
-              isNarrow={isNarrow}
-            />
-          </div>
-          {/* Rebound split: only shown once Rebounds is the active market */}
-          {market === "reb" && (
-            <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              {REB_SPLITS.map((r) => (
-                <div key={r.id} className={`chip ${rebSplit === r.id ? "active" : ""}`} onClick={() => { setRebSplit(r.id); setLine(null); }}>
-                  {r.label}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-          {/* Filters live inside the center column now, directly under the
-               market bar, instead of as a sibling below the whole 3-column
-               row -- that row's height is set by the taller roster columns
-               regardless of alignment, so anything waiting outside the row
-               always waited for the rosters' full height first. */}
-          <FiltersSection
-            onReset={resetFilters}
-            groups={[
-              {
-                stack: [
-                  {
-                    label: "Opponent",
-                    content: (
-                      <select
-                        className="select"
-                        value={opponent}
-                        onChange={(e) => { setOpponent(e.target.value); setOppView("season"); }}
-                        style={{ width: 240 }}
-                      >
-                        <option value="all">Any opponent</option>
-                        {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-                      </select>
-                    ),
-                  },
-                  opponent === "all"
-                    ? {
-                        label: "Game location",
-                        content: (
-                          <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                            {["all", "home", "away"].map((s) => (
-                              <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                                {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
-                              </div>
-                            ))}
-                          </div>
-                        ),
-                      }
-                    : {
-                        label: "View",
-                        content: (
-                          <select className="select" value={oppView} onChange={(e) => setOppView(e.target.value)} style={{ width: 240 }}>
-                            <option value="season">Current Season</option>
-                            <option value="h2h3y">Head-to-Head (3Y)</option>
-                            <option value="home">Home vs Opp</option>
-                            <option value="away">Away vs Opp</option>
-                            <option value="playoffs">Playoffs vs Opp</option>
-                          </select>
-                        ),
-                      },
-                ],
-              },
-              {
-                stack: [
-                  opponent === "all"
-                    ? {
-                        label: "Sample size",
-                        content: (
-                          <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                            {[5, 10, 15, 25, "all"].map((n) => (
-                              <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                                {n === "all" ? "All" : `Last ${n}`}
-                              </div>
-                            ))}
-                          </div>
-                        ),
-                      }
-                    : null,
-                  {
-                    label: "Minutes",
-                    content: (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
-                        <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
-                          {!minutesRangeEnabled
-                            ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
-                            : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
-                        </div>
-                        <ThresholdSlider
-                          min={0}
-                          max={40}
-                          step={1}
-                          lo={minMinutes}
-                          hi={maxMinutes}
-                          onChangeLo={setMinMinutes}
-                          onChangeHi={setMaxMinutes}
-                          rangeEnabled={minutesRangeEnabled}
-                          onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
-                        />
-                      </div>
-                    ),
-                  },
-                ].filter(Boolean),
-              },
-            ]}
-          />
-      </div>
-      <TeamRosterPanel
-        teamLabel="San Antonio Spurs"
-        players={PLAYERS.filter((p) => p.team === "SAS")}
-        activeId={playerId}
-        onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-        headshotSrc={(p) => espnHeadshot(p.espnId)}
-        headshotFallback={(p) => nbaHeadshot(p.nbaId)}
-        metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
-        avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
-      />
-      </div>
-
-        {/* Line input + summary — the line adjuster is centered on top, with the
-             three stat cards in a single row underneath it, spaced evenly left to right */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-              {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
-            </div>
-            <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
-              {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-              {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
-            {[
-              { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
-              { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
-              { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
-            ].map((s) => (
-              <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
-                <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
-                <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Matchup context */}
-        {opponent !== "all" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 16px", width: "fit-content", maxWidth: "100%", boxSizing: "border-box" }}>
-            <span style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>vs {opponent} defense</span>
-            <span className="mono" style={{ fontSize: 16, color: "var(--text)" }}>{TEAM_DEF[opponent].rating}</span>
-            <span className="mono" style={{
-              fontSize: 12, padding: "2px 8px", borderRadius: 3,
-              color: defTier(TEAM_DEF[opponent].rank) === "soft" ? "var(--green)" : defTier(TEAM_DEF[opponent].rank) === "tough" ? "var(--red)" : "var(--dim)",
-              border: `1px solid ${defTier(TEAM_DEF[opponent].rank) === "soft" ? "var(--green)" : defTier(TEAM_DEF[opponent].rank) === "tough" ? "var(--red)" : "var(--line)"}`,
-            }}>
-              #{TEAM_DEF[opponent].rank} defense{defTier(TEAM_DEF[opponent].rank) === "soft" ? " · favorable matchup" : defTier(TEAM_DEF[opponent].rank) === "tough" ? " · tough matchup" : ""}
-            </span>
-          </div>
-        )}
-
-        {opponent !== "all" && oppView === "playoffs" && filtered.length === 0 && (
-          <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "16px", marginBottom: 16, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
-            No playoff meetings vs {opponent} in the sample data.
-          </div>
-        )}
-
-        {/* Chart — wider now that the scroller is gone. Drag the amber tab on the
-             right edge to move the line, same as the +/- buttons above. */}
-        <div
-          ref={chartRef}
-          style={{
-            position: "relative",
-            boxSizing: "border-box",
-            height: isNarrow ? 380 : CHART_HEIGHT,
-            background: "var(--panel)",
-            border: "1px solid var(--line)",
-            borderRadius: 6,
-            padding: isNarrow ? "16px 6px" : 16,
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={filtered.map((g, i) => ({
-                idx: i + 1,
-                opp: g.opp,
-                axisKey: `${g.opp}__${g.date}`,
-                value: statValue(g, market, rebSplit),
-                date: g.date,
-                minutes: g.minutes,
-                home: g.home,
-                defRank: TEAM_DEF[g.opp].rank,
-              }))}
-              margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
-              barCategoryGap={isNarrow ? "4%" : "6%"}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
-              <XAxis
-                dataKey={manyGames ? "date" : "axisKey"}
-                interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
-                tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nbaTeamLogo} compact={isNarrow} />}
-                axisLine={{ stroke: "#343941" }}
-                tickLine={false}
-              />
-              <YAxis
-                domain={[0, chartMax]}
-                ticks={chartTicks}
-                tick={{ fill: "#8b96a5", fontSize: 11 }}
-                axisLine={{ stroke: "#343941" }}
-                tickLine={false}
-                allowDecimals={false}
-              width={isNarrow ? 24 : 60}
-                label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
-              />
-              <Tooltip
-                content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
-                cursor={{ fill: "rgba(255,255,255,0.05)" }}
-              />
-              {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-              <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                {filtered.map((g, i) => {
-                  const v = statValue(g, market, rebSplit);
-                  const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-                  return <Cell key={i} fill={fill} />;
-                })}
-                <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          </div>
-          {!isBinary && (
-            <LineHandle
-              value={effectiveLine}
-              onChange={(v) => setLine(v)}
-              onDragValue={setDragLine}
-              min={0}
-              max={chartMax}
-              containerRef={chartRef}
-            />
-          )}
-        </div>
-
-        {/* Table */}
-        <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-          <div style={{ overflowX: "auto", overflowY: "hidden" }}>
-            <div style={{ minWidth: 580 }}>
-              <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
-                <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Min</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
-              </div>
-              <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
-                {filtered.slice().reverse().map((g, i) => {
-                  const v = statValue(g, market, rebSplit);
-                  const over = v > effectiveLine;
-                  const push = !isBinary && v === effectiveLine;
-                  const def = TEAM_DEF[g.opp];
-                  const tier = defTier(def.rank);
-                  return (
-                    <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
-                      <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                      <div>{g.date}</div>
-                      <div>{g.opp}</div>
-                      <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
-                      <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
-                      <div>{g.minutes}</div>
-                      <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
-                      <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
-                      <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
-                        {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-          Sample data only — built to test the filtering and layout before wiring in a real stats/odds feed.
-        </div>
-        <PlayerNewsModule playerName={player.name} headshotSrc={espnHeadshot(player.espnId)} />
-      </div>
+        <NBAPropsPage jumpTo={jumpTo && jumpTo.sport === "nba" ? jumpTo : null} />
       )}
 
       {page === "wnba" && (
@@ -10221,7 +10580,7 @@ export default function PropLedger() {
       )}
 
       {page === "feed" && (
-        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} />
+        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} sport={feedSport} setSport={setFeedSport} />
       )}
 
       {page === "news" && <NewsPage />}
