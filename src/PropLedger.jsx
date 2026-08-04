@@ -2247,15 +2247,42 @@ function useIsNarrow(breakpoint = 480) {
   return isNarrow;
 }
 
-// Caps ticks at ~20 on narrow screens and wide ones alike, however many
-// games are in the sample -- "All" on a full MLB season can be 80+ games,
-// which would render every single logo/abbreviation crammed on top of each
-// other at any screen width without this. recharts' XAxis `interval` is a
-// skip-count, not a target tick count, so it's derived from gameCount here.
-// Narrow screens use small enough logos (see TeamAxisTick) that a full L10
-// or L20 sample still fits one tick per bar, matching the reference design.
-function axisTickInterval(gameCount, isNarrow) {
-  const maxTicks = 20;
+// Measures a DOM element's width live via ResizeObserver, so charts can size
+// their tick count to how much horizontal room they actually have rather
+// than a fixed guess -- a wide desktop panel can fit far more than 20
+// per-game logos before they'd overlap, and shrinking the browser (or a
+// tablet-width layout) needs fewer than that.
+function useElementWidth(ref) {
+  const [width, setWidth] = React.useState(0);
+  React.useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
+}
+
+// How many px each per-game logo+abbreviation+date tick needs to avoid
+// overlapping its neighbors -- used to derive how many ticks actually fit
+// in the measured chart width, instead of a fixed tick-count cap. Compact
+// (narrow-screen) ticks are smaller text/logos, so they pack tighter.
+const TICK_SLOT_WIDTH = { compact: 34, full: 56 };
+
+// Skips ticks so only as many per-game logos render as actually fit the
+// measured chart width -- "All" on a full MLB season can be 80+ games, which
+// would render every single logo/abbreviation crammed on top of each other
+// without this, but a wide desktop panel can still comfortably fit well
+// beyond the old fixed 20-tick cap this replaces. recharts' XAxis `interval`
+// is a skip-count, not a target tick count, so it's derived from gameCount
+// here. Falls back to a conservative 20 before the container has been
+// measured (width === 0, e.g. first paint).
+function axisTickInterval(gameCount, isNarrow, containerWidth) {
+  const slot = isNarrow ? TICK_SLOT_WIDTH.compact : TICK_SLOT_WIDTH.full;
+  const maxTicks = containerWidth > 0 ? Math.max(1, Math.floor(containerWidth / slot)) : 20;
   return Math.max(0, Math.ceil(gameCount / maxTicks) - 1);
 }
 
@@ -2547,6 +2574,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
   const chartRef = React.useRef(null);
+  const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -2970,7 +2998,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
             <XAxis
               dataKey={manyGames ? "date" : "axisKey"}
-              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
+              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nflTeamLogo} compact={isNarrow} />}
               axisLine={{ stroke: "#343941" }}
               tickLine={false}
@@ -3549,6 +3577,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
   const chartRef = React.useRef(null);
+  const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -3951,7 +3980,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
             <XAxis
               dataKey={manyGames ? "date" : "axisKey"}
-              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
+              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={wnbaTeamLogo} compact={isNarrow} />}
               axisLine={{ stroke: "#343941" }}
               tickLine={false}
@@ -6118,6 +6147,7 @@ function MLBPropsPage({ jumpTo }) {
   const [dragLine, setDragLine] = useState(null);
   const [showStatInfo, setShowStatInfo] = useState(false);
   const chartRef = React.useRef(null);
+  const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -6859,7 +6889,7 @@ function MLBPropsPage({ jumpTo }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
             <XAxis
               dataKey={manyGames ? "date" : "axisKey"}
-              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
+              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={mlbTeamLogo} compact={isNarrow} />}
               axisLine={{ stroke: "#343941" }}
               tickLine={false}
@@ -8975,6 +9005,7 @@ export default function PropLedger() {
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
   const chartRef = React.useRef(null);
+  const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
 
   const resetFilters = () => {
@@ -9613,7 +9644,7 @@ export default function PropLedger() {
               <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
               <XAxis
                 dataKey={manyGames ? "date" : "axisKey"}
-                interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
+                interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
                 tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nbaTeamLogo} compact={isNarrow} />}
                 axisLine={{ stroke: "#343941" }}
                 tickLine={false}
