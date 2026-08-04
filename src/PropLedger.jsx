@@ -6781,15 +6781,29 @@ function pctBadgeColor(pct) {
   return pct >= 70 ? "var(--green)" : pct <= 30 ? "var(--red)" : "var(--neutral-badge-bg)";
 }
 
+// Prop detail tabs shown above the chart/table for an individual MLB
+// player -- Graph is the existing chart+ledger, the other three all draw on
+// MLBMatchupAnalyzer's shared pitcher/batter selection (Matchup, Lineup) or
+// the bullpen lists already built in MLBPropsPage (Bullpen).
+const MLB_DETAIL_TABS = [
+  { id: "graph", label: "Graph" },
+  { id: "matchup", label: "Matchup" },
+  { id: "lineup", label: "Lineup" },
+  { id: "bullpen", label: "Bullpen" },
+];
+
 // Simple pitcher-vs-batter H2H card -- pitcher defaults to the selected
 // team's day starter, batter defaults to the first bat in whichever roster
 // is on the other side of that pitcher (so switching pitchers between the
 // two live rosters swaps the batter list to the actual opposing lineup).
 // Reuses the same headshot/team-color helpers as the rest of the MLB page;
 // the only real data fetch is fetchMLBH2H (real MLB Stats API vsPlayer
-// splits) -- the percentile/pitch-mix/lineup/bullpen sections below use the
-// seeded mock generators above (see comment at the top of this section).
-function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick }) {
+// splits) -- the percentile/pitch-mix/lineup sections below use the seeded
+// mock generators above (see comment at the top of this section). `section`
+// picks which half renders -- "matchup" for the H2H/percentile/pitch-mix
+// content, "lineup" for the expected-lineup grid -- so both tabs share one
+// pitcher/batter selection instead of keeping two copies of it in sync.
+function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) {
   const pitcherOptions = useMemo(() => [
     ...teamRoster.players.filter((p) => p.pos === "SP").map((p) => ({ ...p, oppSide: "team" })),
     ...(oppRoster ? oppRoster.players.filter((p) => p.pos === "SP").map((p) => ({ ...p, oppSide: "opp" })) : []),
@@ -6885,21 +6899,27 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick }) {
     <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
     <div className="roster-panel" style={{ maxWidth: 560, margin: "0 auto" }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-        Matchup Analyzer
+        {section === "lineup" ? "Lineup vs" : "Matchup Analyzer"}
       </div>
       <div style={{ fontSize: 10.5, color: "var(--dim)", marginBottom: 14 }}>
-        {h2h && h2h.seasons ? `H2H · Last ${h2h.seasons.length} season${h2h.seasons.length === 1 ? "" : "s"} faced (${h2h.seasons.slice().reverse().join(", ")})` : "H2H · Last 3 seasons faced"}
+        {section === "lineup"
+          ? "Pick a different starter to see the opposing lineup against them"
+          : (h2h && h2h.seasons ? `H2H · Last ${h2h.seasons.length} season${h2h.seasons.length === 1 ? "" : "s"} faced (${h2h.seasons.slice().reverse().join(", ")})` : "H2H · Last 3 seasons faced")}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap", marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap", marginBottom: section === "lineup" ? 0 : 18 }}>
         <select className="select" value={pitcher.id} onChange={(e) => setPitcherId(e.target.value)} style={{ minWidth: 170 }}>
           {pitcherOptions.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.team}</option>)}
         </select>
-        <select className="select" value={batter.id} onChange={(e) => setBatterId(e.target.value)} style={{ minWidth: 170 }}>
-          {batterOptions.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.team} · {p.pos}</option>)}
-        </select>
+        {section !== "lineup" && (
+          <select className="select" value={batter.id} onChange={(e) => setBatterId(e.target.value)} style={{ minWidth: 170 }}>
+            {batterOptions.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.team} · {p.pos}</option>)}
+          </select>
+        )}
       </div>
 
+      {section !== "lineup" && (
+      <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, marginBottom: 18 }}>
         {[pitcher, batter].map((p, i) => (
           <React.Fragment key={p.id}>
@@ -6953,29 +6973,95 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick }) {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
 
-    <PercentileRankingsPanel
-      pitcher={pitcher}
-      leftSplit={leftSplit} setLeftSplit={setLeftSplit}
-      leftSample={leftSample} setLeftSample={setLeftSample}
-      rightSplit={rightSplit} setRightSplit={setRightSplit}
-      rightSample={rightSample} setRightSample={setRightSample}
-    />
+    {section === "matchup" && (
+      <>
+        <PercentileRankingsPanel
+          pitcher={pitcher}
+          leftSplit={leftSplit} setLeftSplit={setLeftSplit}
+          leftSample={leftSample} setLeftSample={setLeftSample}
+          rightSplit={rightSplit} setRightSplit={setRightSplit}
+          rightSample={rightSample} setRightSample={setRightSample}
+        />
 
-    <PitchTypePanel pitcher={pitcher} pitchMix={pitchMix} />
+        <PitchTypePanel pitcher={pitcher} pitchMix={pitchMix} />
+      </>
+    )}
 
-    <ExpectedLineupPanel
-      battingRoster={battingRoster}
-      lineupRows={lineupRows}
-      teamSplitRow={teamSplitRow}
-      splitLabel={rightSplit}
-      sample={lineupSample} setSample={setLineupSample}
-      showTeamSplits={showTeamSplits} setShowTeamSplits={setShowTeamSplits}
-      selectedBatterId={batter.id}
-      onSelectBatter={setBatterId}
-    />
+    {section === "lineup" && (
+      <ExpectedLineupPanel
+        battingRoster={battingRoster}
+        lineupRows={lineupRows}
+        teamSplitRow={teamSplitRow}
+        splitLabel={rightSplit}
+        sample={lineupSample} setSample={setLineupSample}
+        showTeamSplits={showTeamSplits} setShowTeamSplits={setShowTeamSplits}
+        selectedBatterId={batter.id}
+        onSelectBatter={setBatterId}
+      />
+    )}
 
+    </div>
+  );
+}
+
+// ---------- Opposing Bullpen ----------
+// Workload + K%/BB% for the bullpen on the other side of the ball from
+// whichever player's props are being viewed -- teamBullpen()'s seeded mock
+// data (see comment where it's defined above) sorted by recent workload,
+// same "most relevant reliever first" ordering the batting-order/roster
+// panels use for their own bullpen lists.
+function BullpenAnalyzerPanel({ teamLabel, bullpen }) {
+  if (!bullpen || !bullpen.length) {
+    return (
+      <div className="roster-panel" style={{ maxWidth: 720, margin: "0 auto", textAlign: "center", color: "var(--dim)", fontSize: 13, padding: "24px 16px" }}>
+        Opposing bullpen isn't available yet — the opponent's roster hasn't loaded, or this team doesn't have relievers modeled.
+      </div>
+    );
+  }
+  const kColor = (v) => (v >= 25 ? "var(--green)" : v <= 17 ? "var(--red)" : "var(--text)");
+  const bbColor = (v) => (v <= 7 ? "var(--green)" : v >= 11 ? "var(--red)" : "var(--text)");
+  const restColor = (v) => (v >= 2 ? "var(--green)" : v === 0 ? "var(--red)" : "var(--text)");
+
+  return (
+    <div className="roster-panel" style={{ maxWidth: 720, margin: "0 auto", overflowX: "auto" }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+        Opposing Bullpen
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--dim)", marginBottom: 14 }}>
+        {teamLabel || "Bullpen"} · sorted by recent workload
+      </div>
+      <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, minWidth: 560 }}>
+        <thead>
+          <tr style={{ color: "var(--dim)", fontSize: 10 }}>
+            <th style={{ textAlign: "left", padding: "4px 6px" }}>RELIEVER</th>
+            <th style={{ textAlign: "center", padding: "4px 6px" }}>THROWS</th>
+            <th style={{ textAlign: "center", padding: "4px 6px" }}>REST</th>
+            <th style={{ textAlign: "center", padding: "4px 6px" }}>PC L3</th>
+            <th style={{ textAlign: "center", padding: "4px 6px" }}>K%</th>
+            <th style={{ textAlign: "center", padding: "4px 6px" }}>BB%</th>
+            <th style={{ textAlign: "center", padding: "4px 6px" }}>ERA</th>
+            <th style={{ textAlign: "center", padding: "4px 6px" }}>WHIP</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bullpen.map((p) => (
+            <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
+              <td className="oswald" style={{ padding: "7px 6px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap" }}>{p.name}</td>
+              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--dim)" }}>{p.throws}</td>
+              <td style={{ textAlign: "center", padding: "7px 6px", fontWeight: 700, color: restColor(p.restDays) }}>{p.restDays}d</td>
+              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--dim)" }}>{p.pcL3}</td>
+              <td style={{ textAlign: "center", padding: "7px 6px", fontWeight: 700, color: kColor(p.kPct) }}>{p.kPct.toFixed(1)}%</td>
+              <td style={{ textAlign: "center", padding: "7px 6px", fontWeight: 700, color: bbColor(p.bbPct) }}>{p.bbPct.toFixed(1)}%</td>
+              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--text)" }}>{p.era.toFixed(2)}</td>
+              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--text)" }}>{p.whip.toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -7228,9 +7314,10 @@ function MLBPropsPage({ jumpTo }) {
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
   const [playerId, setPlayerId] = useState(teamRoster.players[0].id);
   const [market, setMarket] = useState("h");
-  // "stats" is the existing chart/filters/ledger view; "matchup" swaps in
-  // the new pitcher-vs-batter H2H card below instead.
-  const [view, setView] = useState("stats");
+  // Which of the four prop-detail tabs (see MLB_DETAIL_TABS) is showing --
+  // "graph" is the original chart/filters/ledger view, the other three
+  // render inside MLBMatchupAnalyzer/BullpenAnalyzerPanel below.
+  const [view, setView] = useState("graph");
 
   // Last player clicked in either roster panel, fed into
   // MLBMatchupAnalyzer so it auto-selects that batter/pitcher (nonce forces
@@ -7472,6 +7559,21 @@ function MLBPropsPage({ jumpTo }) {
     ALL_MLB_PLAYERS.find((p) => p.id === playerId) ||
     liveTeamRoster.players[0];
   const isPitcher = player.pos === "SP";
+
+  // Which side of the matchup the currently selected player is on -- lets
+  // the Bullpen tab below pick the correct "opposing" bullpen regardless of
+  // whether the player came from the home roster or its live opponent's.
+  const playerOnOppSide = !!(liveOppRoster && liveOppRoster.players.some((p) => p.id === playerId));
+
+  // Keeps the Matchup/Lineup/Bullpen tabs pointed at whichever pitcher's
+  // props are being viewed on the Graph tab, instead of always defaulting
+  // back to the team's first starter when a tab is opened.
+  React.useEffect(() => {
+    if (!isPitcher) return;
+    setMatchupPick({ side: playerOnOppSide ? "opp" : "team", id: playerId, nonce: Date.now() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId, isPitcher]);
+
   const [allGames, setAllGames] = useState([]);
   const [gameLogUpdatedAt, setGameLogUpdatedAt] = useState(null);
 
@@ -7642,6 +7744,11 @@ function MLBPropsPage({ jumpTo }) {
   const teamBullpenList = useMemo(() => teamBullpen(teamAbbr), [teamAbbr]);
   const oppBullpenList = useMemo(() => (nextGame ? teamBullpen(nextGame.opp) : []), [nextGame && nextGame.opp]);
 
+  // Bullpen tab always shows the reliever corps on the *other* side of the
+  // ball from the selected player, whichever roster that turns out to be.
+  const opposingBullpenList = playerOnOppSide ? teamBullpenList : oppBullpenList;
+  const opposingBullpenLabel = playerOnOppSide ? liveTeamRoster.label : ((liveOppRoster || {}).label || "");
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <MobilePlayerNav
@@ -7720,19 +7827,28 @@ function MLBPropsPage({ jumpTo }) {
         </div>
       )}
 
-      {/* Stats / Matchup segmented toggle -- swaps the chart+filters+ledger
-           section below for the pitcher-vs-batter H2H card (MLBMatchupAnalyzer),
-           the same "Graph vs. Matchup" tab pattern the reference screenshot uses. */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 14 }}>
-        {[{ id: "stats", label: "Stats" }, { id: "matchup", label: "Matchup" }].map((v) => (
+      {/* Graph / Matchup / Lineup / Bullpen tabs -- swaps the section below
+           between the chart+filters+ledger view and the three matchup-
+           research panels. Scrolls horizontally instead of wrapping once
+           narrower than four pills fit, so it stays a single row of tap
+           targets on mobile rather than jumping to two rows. */}
+      <div
+        role="tablist"
+        style={{
+          display: "flex", justifyContent: isNarrow ? "flex-start" : "center", gap: 6, marginBottom: 14,
+          overflowX: isNarrow ? "auto" : "visible", WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {MLB_DETAIL_TABS.map((v) => (
           <div
             key={v.id}
             onClick={() => setView(v.id)}
-            role="button"
+            role="tab"
+            aria-selected={view === v.id}
             className="oswald"
             style={{
               cursor: "pointer", padding: "6px 16px", borderRadius: 999, fontSize: 12, fontWeight: 700,
-              letterSpacing: "0.03em",
+              letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
               border: `1px solid ${view === v.id ? "var(--amber)" : "var(--line)"}`,
               background: view === v.id ? "var(--amber-dim)" : "var(--panel)",
               color: view === v.id ? "var(--amber)" : "var(--dim)",
@@ -8174,13 +8290,19 @@ function MLBPropsPage({ jumpTo }) {
     />
     </div>
 
-      {view === "matchup" && (
+      {(view === "matchup" || view === "lineup") && (
         <div style={{ marginTop: "var(--s-3)" }}>
-          <MLBMatchupAnalyzer teamRoster={liveTeamRoster} oppRoster={liveOppRoster} nextGame={nextGame} pick={matchupPick} />
+          <MLBMatchupAnalyzer teamRoster={liveTeamRoster} oppRoster={liveOppRoster} nextGame={nextGame} pick={matchupPick} section={view} />
         </div>
       )}
 
-      {view === "stats" && (
+      {view === "bullpen" && (
+        <div style={{ marginTop: "var(--s-3)" }}>
+          <BullpenAnalyzerPanel teamLabel={opposingBullpenLabel} bullpen={opposingBullpenList} />
+        </div>
+      )}
+
+      {view === "graph" && (
       <>
       {/* Line input + summary */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
