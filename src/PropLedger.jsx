@@ -546,7 +546,16 @@ function NBAPropsPage({ jumpTo }) {
   // Axis ceiling + evenly spaced tick marks: pick a "nice" step (1, 2, 5, 10, 20...)
   // so the y-axis always shows regular, evenly spaced whole numbers instead of
   // an uneven jump like 0, 9, 30.
-  const topValue = Math.max(...values, effectiveLine, 1);
+  // Deliberately keyed off `line` (only non-null once the user has actually
+  // dragged the handle to a custom value), not `effectiveLine` -- including
+  // the live drag position here made the axis grow a step every time the
+  // handle crossed a half-point while dragging, since a taller axis raised
+  // topValue, which raised the handle's own `max`, letting it drag higher
+  // still. The *default* suggested line (ceilToHalfOdd(avg), used only while
+  // line is null) can still nudge the axis up if it rounds just past the
+  // tallest bar, but once a real line is set the axis stays put and the
+  // handle simply can't be dragged above it.
+  const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
   const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
   const niceStep = (() => {
     if (isBinary) return 1;
@@ -3595,7 +3604,16 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   const med = median(values);
   const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
-  const topValue = Math.max(...values, effectiveLine, 1);
+  // Deliberately keyed off `line` (only non-null once the user has actually
+  // dragged the handle to a custom value), not `effectiveLine` -- including
+  // the live drag position here made the axis grow a step every time the
+  // handle crossed a half-point while dragging, since a taller axis raised
+  // topValue, which raised the handle's own `max`, letting it drag higher
+  // still. The *default* suggested line (ceilToHalfOdd(avg), used only while
+  // line is null) can still nudge the axis up if it rounds just past the
+  // tallest bar, but once a real line is set the axis stays put and the
+  // handle simply can't be dragged above it.
+  const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
   const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
   const niceStep = (() => {
     if (isBinary) return 1;
@@ -4716,7 +4734,16 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   const med = median(values);
   const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
-  const topValue = Math.max(...values, effectiveLine, 1);
+  // Deliberately keyed off `line` (only non-null once the user has actually
+  // dragged the handle to a custom value), not `effectiveLine` -- including
+  // the live drag position here made the axis grow a step every time the
+  // handle crossed a half-point while dragging, since a taller axis raised
+  // topValue, which raised the handle's own `max`, letting it drag higher
+  // still. The *default* suggested line (ceilToHalfOdd(avg), used only while
+  // line is null) can still nudge the axis up if it rounds just past the
+  // tallest bar, but once a real line is set the axis stays put and the
+  // handle simply can't be dragged above it.
+  const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
   const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
   const niceStep = (() => {
     if (isBinary) return 1;
@@ -6420,6 +6447,47 @@ function mlbWindEffect(windStr) {
   return 0;
 }
 
+// Plain-English read of the same raw wind string, so the bar says something
+// a bettor actually cares about ("carries fly balls a bit further") instead
+// of just echoing the API's "6 mph, R To L" back at them.
+function mlbWindNarrative(windStr) {
+  const w = (windStr || "").toLowerCase();
+  const mphMatch = /(\d+)\s*mph/.exec(w);
+  const mph = mphMatch ? parseInt(mphMatch[1], 10) : 0;
+  if (!mph) return "Calm — no real effect on fly balls";
+  if (w.includes("out")) return mph >= 12 ? "Blowing out hard — fly balls carry noticeably further" : "Blowing out — a little extra carry on fly balls";
+  if (w.includes("in")) return mph >= 12 ? "Blowing in hard — knocks fly balls down significantly" : "Blowing in — holds fly balls up a bit";
+  if (w.includes("cross") || w.includes(" l to r") || w.includes(" r to l")) {
+    return mph >= 12 ? "Strong crosswind — can push balls off line" : "Light crosswind — minor effect on ball flight";
+  }
+  return `${mph} mph — minimal impact on ball flight`;
+}
+
+// Same idea for temperature -- colder/denser air holds the ball back,
+// warmer air lets it carry, which is exactly the intuition a bettor wants
+// spelled out rather than just a bare °F reading.
+function mlbTempNarrative(temp) {
+  const t = parseInt(temp, 10);
+  if (Number.isNaN(t)) return null;
+  if (t >= 85) return "Hot — thin air helps the ball carry";
+  if (t >= 70) return "Warm — small lift for hitters";
+  if (t >= 55) return "Mild — roughly neutral";
+  return "Cool — dense air holds the ball back";
+}
+
+// One-line read of the home park's power tendency, from the same
+// MLB_PARK_FACTORS numbers already driving the HR/Runs/1B swings below --
+// gives the raw "+12%" a sentence a bettor can actually reason about.
+function mlbParkNarrative(homeAbbr) {
+  const park = MLB_PARK_FACTORS[homeAbbr];
+  if (!park) return null;
+  if (park.hr >= 112) return "one of MLB's best home run parks";
+  if (park.hr >= 103) return "plays a little short for power";
+  if (park.hr <= 85) return "a tough park for home runs";
+  if (park.hr <= 95) return "leans pitcher-friendly";
+  return "roughly average for power";
+}
+
 // Combines the home park's baseline tendency with today's forecast (warmer
 // air + wind blowing out both carry the ball further) into directional %
 // swings for HR/Runs/1B, plus an overall Hitter/Pitcher Friendly read.
@@ -6471,31 +6539,38 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
     return good ? "var(--green)" : "var(--red)";
   };
   const signed = (pct) => `${pct > 0 ? "+" : ""}${pct}%`;
+  const parkNarrative = mlbParkNarrative(homeAbbr);
+  const tempNarrative = nextGame.weather ? mlbTempNarrative(nextGame.weather.temp) : null;
+  const windNarrative = nextGame.weather?.wind ? mlbWindNarrative(nextGame.weather.wind) : null;
 
   return (
     <div style={{ display: "flex", justifyContent: "center", marginBottom: "var(--s-4)" }}>
-      {/* One panel, one border -- venue/weather and the HR/Runs/1B/verdict
-           read sit in the same row separated by a hairline divider instead
-           of living in two separately-bordered boxes. */}
+      {/* Everything below stacks in a centered column (rather than a single
+           wrapping row) so it reads the same whether it's one line on a wide
+           screen or four on a phone -- a flex row's wrapped lines default to
+           flex-start, which is what previously pinned the wind/weather text
+           to the panel's left edge on mobile instead of centering it under
+           the venue line above it. */}
       <div style={{
-        display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 16,
-        padding: "10px 20px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-        fontSize: 12.5, color: "var(--dim)", maxWidth: "100%",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+        padding: "12px 20px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+        fontSize: 12.5, color: "var(--dim)", maxWidth: "100%", textAlign: "center",
       }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span className="oswald" style={{ fontWeight: 700, color: "var(--text)", letterSpacing: "0.04em", fontSize: 11.5, textTransform: "uppercase" }}>
-            Game Conditions
-          </span>
-          <span>· {nextGame.venue}</span>
-          {nextGame.weather && (
-            <>
-              <span>· {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.temp}°F</span>
-              {nextGame.weather.wind && <span>· 💨 {nextGame.weather.wind}</span>}
-            </>
-          )}
+        <span className="oswald" style={{ fontWeight: 700, color: "var(--text)", letterSpacing: "0.04em", fontSize: 11.5, textTransform: "uppercase" }}>
+          Game Conditions · {nextGame.venue}
         </span>
-        <span style={{ width: 1, alignSelf: "stretch", background: "var(--line)" }} />
-        <span style={{ display: "flex", alignItems: "center", gap: 14, fontWeight: 600, flexWrap: "wrap" }}>
+        {parkNarrative && <span>{MLB_TEAM_ROSTERS[homeAbbr]?.label || homeAbbr} home park — {parkNarrative}</span>}
+        {nextGame.weather && (
+          <span>
+            {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.condition ? `${nextGame.weather.condition}, ` : ""}{nextGame.weather.temp}°F
+            {tempNarrative ? ` — ${tempNarrative}` : ""}
+          </span>
+        )}
+        {windNarrative && (
+          <span>💨 {nextGame.weather.wind} — {windNarrative}</span>
+        )}
+        <span style={{ width: "60%", maxWidth: 220, height: 1, background: "var(--line)", margin: "2px 0" }} />
+        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, fontWeight: 600, flexWrap: "wrap" }}>
           <span className="mono" style={{ color: statColor(hrPct) }}>HR {signed(hrPct)}</span>
           <span className="mono" style={{ color: statColor(runsPct) }}>Runs {signed(runsPct)}</span>
           <span className="mono" style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
@@ -7754,7 +7829,16 @@ function MLBPropsPage({ jumpTo }) {
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   const med = median(values);
   const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
-  const topValue = Math.max(...values, effectiveLine, 1);
+  // Deliberately keyed off `line` (only non-null once the user has actually
+  // dragged the handle to a custom value), not `effectiveLine` -- including
+  // the live drag position here made the axis grow a step every time the
+  // handle crossed a half-point while dragging, since a taller axis raised
+  // topValue, which raised the handle's own `max`, letting it drag higher
+  // still. The *default* suggested line (ceilToHalfOdd(avg), used only while
+  // line is null) can still nudge the axis up if it rounds just past the
+  // tallest bar, but once a real line is set the axis stays put and the
+  // handle simply can't be dragged above it.
+  const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
   const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
   const niceStep = (() => {
     if (isBinary) return 1;
