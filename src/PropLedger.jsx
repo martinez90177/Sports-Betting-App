@@ -5017,21 +5017,24 @@ async function fetchMLBTeamNextGame(teamId) {
 // roster arrays below (see applyActiveRoster in MLBPropsPage) so an injured
 // or traded player never lingers in a lineup panel just because the day's
 // confirmed batting order (fetchMLBTeamNextGame) hasn't posted yet -- that's
-// what let an IL'd Cody Bellinger keep showing for the Yankees. Cached per
-// calendar day (same TTL pattern as loadRealMlbTeamDef), so it's refetched
-// once per day and on every page load, never mid-session.
+// what let an IL'd Cody Bellinger keep showing for the Yankees. Also cached
+// with a short TTL (not just per calendar day) and re-polled on an interval
+// -- see the teamActiveRoster/oppActiveRoster effects in MLBPropsPage -- so
+// a same-day roster move (a demotion/call-up/trade) drops or adds a player
+// within minutes instead of waiting for the next calendar day's refetch.
+const MLB_ACTIVE_ROSTER_TTL_MS = 15 * 60 * 1000;
 const mlbActiveRosterCache = new Map();
 async function fetchMLBTeamActiveRoster(teamId) {
   const dayKey = currentMLBDayKey();
   const cached = mlbActiveRosterCache.get(teamId);
-  if (cached && cached.dayKey === dayKey) return cached.roster;
+  if (cached && cached.dayKey === dayKey && Date.now() - cached.fetchedAt < MLB_ACTIVE_ROSTER_TTL_MS) return cached.roster;
 
   const cacheKey = `mlb_active_roster_v1_${teamId}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (parsed.dayKey === dayKey) {
+      if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < MLB_ACTIVE_ROSTER_TTL_MS) {
         mlbActiveRosterCache.set(teamId, parsed);
         return parsed.roster;
       }
@@ -6190,18 +6193,24 @@ function MLBPropsPage({ jumpTo }) {
   const oppRoster = (nextGame && MLB_TEAM_ROSTERS[nextGame.opp]) || null;
 
   // Live active-roster safety filter (see fetchMLBTeamActiveRoster) -- keyed
-  // by mlbId -> {name, pos}, refetched whenever the selected team or its
-  // real opponent changes and once per calendar day otherwise. null while
-  // loading/unavailable means "don't filter yet" (liveTeamRoster/liveOppRoster
-  // below fall back to the static roster rather than showing nothing).
+  // by mlbId -> {name, pos}, refetched whenever the selected team or its real
+  // opponent changes, and re-polled on MLB_ACTIVE_ROSTER_TTL_MS otherwise so
+  // a same-day demotion/call-up/trade drops out of the projected lineup on
+  // its own instead of only refreshing once a new calendar day starts. null
+  // while loading/unavailable means "don't filter yet" (liveTeamRoster/
+  // liveOppRoster below fall back to the static roster rather than showing
+  // nothing); the poll's re-fetch intentionally doesn't reset back to null
+  // first, so the panel doesn't flicker to the unfiltered roster every tick.
   const [teamActiveRoster, setTeamActiveRoster] = useState(null);
   React.useEffect(() => {
     let cancelled = false;
     setTeamActiveRoster(null);
     const teamId = MLB_ABBR_TEAM_ID[teamAbbr];
     if (!teamId) return;
-    fetchMLBTeamActiveRoster(teamId).then((r) => { if (!cancelled) setTeamActiveRoster(r); });
-    return () => { cancelled = true; };
+    const load = () => { fetchMLBTeamActiveRoster(teamId).then((r) => { if (!cancelled) setTeamActiveRoster(r); }); };
+    load();
+    const interval = setInterval(load, MLB_ACTIVE_ROSTER_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [teamAbbr]);
 
   const [oppActiveRoster, setOppActiveRoster] = useState(null);
@@ -6210,8 +6219,10 @@ function MLBPropsPage({ jumpTo }) {
     setOppActiveRoster(null);
     const oppTeamId = nextGame && MLB_ABBR_TEAM_ID[nextGame.opp];
     if (!oppTeamId) return;
-    fetchMLBTeamActiveRoster(oppTeamId).then((r) => { if (!cancelled) setOppActiveRoster(r); });
-    return () => { cancelled = true; };
+    const load = () => { fetchMLBTeamActiveRoster(oppTeamId).then((r) => { if (!cancelled) setOppActiveRoster(r); }); };
+    load();
+    const interval = setInterval(load, MLB_ACTIVE_ROSTER_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [nextGame && nextGame.opp]);
 
   // Today's real MLB slate (see fetchMLBDaySlate, same fetch the Prop Feed's
