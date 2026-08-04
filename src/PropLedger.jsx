@@ -2259,41 +2259,49 @@ function axisTickInterval(gameCount, isNarrow) {
   return Math.max(0, Math.ceil(gameCount / maxTicks) - 1);
 }
 
+// Shared "Jul 16" style formatter for axis date labels.
+function formatAxisDate(dateStr) {
+  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 // Custom chart tooltip — replaces recharts' plain default box with a small
 // card that matches the app's own styling and surfaces the info that
 // actually matters for a prop-research read: result vs. the line, date,
 // minutes played, and the opponent's defensive rank/tier.
-// Custom x-axis tick: team logo above the team abbreviation, in place of the
-// plain game-index number recharts would otherwise render. `compact` shrinks
-// the logo/text for narrow screens (see useIsNarrow) so a full sample of
-// per-game logos still fits across the width without overlapping.
+// Custom x-axis tick: team logo, abbreviation, and date stacked in place of
+// the plain game-index number recharts would otherwise render. `compact`
+// shrinks everything for narrow screens (see useIsNarrow) so a full sample
+// of per-game logos still fits across the width without overlapping. Reads
+// both the abbreviation and date off a single combined dataKey ("opp__date")
+// rather than indexing a separate games array by `index` -- recharts' tick
+// `index` isn't reliably the original data index once ticks are skipped, so
+// packing both values into the one value recharts already hands back is
+// the only lookup that stays correct under any interval.
 function TeamAxisTick({ x, y, payload, logoFn, compact }) {
-  const abbr = payload.value;
+  const [abbr, dateStr] = payload.value.split("__");
   const size = compact ? 14 : 28;
   return (
     <g transform={`translate(${x},${y})`}>
       <image href={logoFn(abbr)} x={-size / 2} y={4} width={size} height={size} />
-      <text x={0} y={compact ? 25 : 52} textAnchor="middle" fill="#8b96a5" fontSize={compact ? 8 : 13} fontWeight={600}>
+      <text x={0} y={compact ? 24 : 50} textAnchor="middle" fill="#8b96a5" fontSize={compact ? 8 : 13} fontWeight={600}>
         {abbr}
+      </text>
+      <text x={0} y={compact ? 35 : 68} textAnchor="middle" fill="#5c6470" fontSize={compact ? 7 : 11} fontWeight={500}>
+        {formatAxisDate(dateStr)}
       </text>
     </g>
   );
 }
 
 // Plain date label, no logo -- used in place of TeamAxisTick once a sample
-// has too many games for a per-game logo/abbreviation to stay legible (e.g.
-// MLB's "All" sample size over a full season can be 80+ games). Reads the
-// date straight off `payload.value` (the chart's dataKey must be "date" for
-// this tick) rather than indexing some other array by `index` -- recharts'
-// tick `index` is the position among the ticks it actually rendered after
-// skipping, not the original data index, so it doesn't line up with a
-// separate games array once ticks are sparse.
+// has too many games for a per-game logo/abbreviation to stay legible on a
+// narrow (phone-width) screen. Reads the date straight off `payload.value`
+// (the chart's dataKey must be "date" for this tick).
 function DateAxisTick({ x, y, payload, compact }) {
-  const label = new Date(`${payload.value}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   return (
     <g transform={`translate(${x},${y})`}>
       <text x={0} y={compact ? 18 : 20} textAnchor="middle" fill="#8b96a5" fontSize={compact ? 10 : 12} fontWeight={600}>
-        {label}
+        {formatAxisDate(payload.value)}
       </text>
     </g>
   );
@@ -2594,10 +2602,12 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
     return g;
   }, [allGames, side, opponent, minSnapPct, maxSnapPct, lastN]);
 
-  // Beyond a Last-10 sample, per-bar team logos/abbreviations can't stay
-  // legible on mobile widths, so the x-axis switches to sparse date labels
-  // instead (see DateAxisTick).
-  const manyGames = filtered.length > 10;
+  // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
+  // logos/abbreviations can't stay legible, so the x-axis switches to sparse
+  // date labels instead (see DateAxisTick). Desktop has enough width for
+  // logo+abbr+date per bar at any sample size -- axisTickInterval already
+  // caps the number of ticks actually drawn, so it never needs this fallback.
+  const manyGames = isNarrow && filtered.length > 10;
 
   // Anytime TD is a normal counting stat (a player can score more than once
   // in a game), not a milestone/binary market -- unlike NBA's dd/td props.
@@ -2947,18 +2957,19 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             data={filtered.map((g, i) => ({
               idx: i + 1,
               opp: g.opp,
+              axisKey: `${g.opp}__${g.date}`,
               value: statValueNFL(g, market),
               date: g.date,
               snapPct: g.snapPct,
               home: g.home,
               defRank: getNFLDefRank(market, player.pos, g.opp).rank,
             }))}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: isNarrow ? 30 : 56, left: isNarrow ? 0 : 20 }}
+            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
             <XAxis
-              dataKey={manyGames ? "date" : "opp"}
+              dataKey={manyGames ? "date" : "axisKey"}
               interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nflTeamLogo} compact={isNarrow} />}
               axisLine={{ stroke: "#343941" }}
@@ -3593,10 +3604,12 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     return g;
   }, [allGames, side, opponent, minMinutes, maxMinutes, lastN]);
 
-  // Beyond a Last-10 sample, per-bar team logos/abbreviations can't stay
-  // legible on mobile widths, so the x-axis switches to sparse date labels
-  // instead (see DateAxisTick).
-  const manyGames = filtered.length > 10;
+  // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
+  // logos/abbreviations can't stay legible, so the x-axis switches to sparse
+  // date labels instead (see DateAxisTick). Desktop has enough width for
+  // logo+abbr+date per bar at any sample size -- axisTickInterval already
+  // caps the number of ticks actually drawn, so it never needs this fallback.
+  const manyGames = isNarrow && filtered.length > 10;
 
   const isBinary = market === "dd" || market === "td";
   const values = filtered.map((g) => statValue(g, market, rebSplit));
@@ -3926,17 +3939,18 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             data={filtered.map((g, i) => ({
               idx: i + 1,
               opp: g.opp,
+              axisKey: `${g.opp}__${g.date}`,
               value: statValue(g, market, rebSplit),
               date: g.date,
               minutes: g.minutes,
               home: g.home,
             }))}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: isNarrow ? 30 : 56, left: isNarrow ? 0 : 20 }}
+            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
             <XAxis
-              dataKey={manyGames ? "date" : "opp"}
+              dataKey={manyGames ? "date" : "axisKey"}
               interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={wnbaTeamLogo} compact={isNarrow} />}
               axisLine={{ stroke: "#343941" }}
@@ -6251,10 +6265,12 @@ function MLBPropsPage({ jumpTo }) {
   const pitchingWindow = useMemo(() => (isPitcher ? pitchingRateAgg(filtered) : null), [filtered, isPitcher]);
   const pitchingSeason = useMemo(() => (isPitcher ? pitchingRateAgg(allGames) : null), [allGames, isPitcher]);
 
-  // Beyond a Last-10 sample, per-bar team logos/abbreviations can't stay
-  // legible on mobile widths, so the x-axis switches to sparse date labels
-  // instead (see DateAxisTick).
-  const manyGames = filtered.length > 10;
+  // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
+  // logos/abbreviations can't stay legible, so the x-axis switches to sparse
+  // date labels instead (see DateAxisTick). Desktop has enough width for
+  // logo+abbr+date per bar at any sample size -- axisTickInterval already
+  // caps the number of ticks actually drawn, so it never needs this fallback.
+  const manyGames = isNarrow && filtered.length > 10;
 
   const isBinary = false;
   const values = filtered.map((g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)));
@@ -6830,18 +6846,19 @@ function MLBPropsPage({ jumpTo }) {
             data={filtered.map((g, i) => ({
               idx: i + 1,
               opp: g.opp,
+              axisKey: `${g.opp}__${g.date}`,
               value: isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market),
               date: g.date,
               minutes: isPitcher ? formatOuts(g.outs) : g.pa,
               home: g.home,
               defRank: MLB_TEAM_DEF[g.opp].rank,
             }))}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: isNarrow ? 30 : 56, left: isNarrow ? 0 : 20 }}
+            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
             <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
             <XAxis
-              dataKey={manyGames ? "date" : "opp"}
+              dataKey={manyGames ? "date" : "axisKey"}
               interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={mlbTeamLogo} compact={isNarrow} />}
               axisLine={{ stroke: "#343941" }}
@@ -9196,10 +9213,12 @@ export default function PropLedger() {
     return g;
   }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp]);
 
-  // Beyond a Last-10 sample, per-bar team logos/abbreviations can't stay
-  // legible on mobile widths, so the x-axis switches to sparse date labels
-  // instead (see DateAxisTick).
-  const manyGames = filtered.length > 10;
+  // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
+  // logos/abbreviations can't stay legible, so the x-axis switches to sparse
+  // date labels instead (see DateAxisTick). Desktop has enough width for
+  // logo+abbr+date per bar at any sample size -- axisTickInterval already
+  // caps the number of ticks actually drawn, so it never needs this fallback.
+  const manyGames = isNarrow && filtered.length > 10;
 
   const isBinary = market === "dd" || market === "td";
   const values = filtered.map((g) => statValue(g, market, rebSplit));
@@ -9581,18 +9600,19 @@ export default function PropLedger() {
               data={filtered.map((g, i) => ({
                 idx: i + 1,
                 opp: g.opp,
+                axisKey: `${g.opp}__${g.date}`,
                 value: statValue(g, market, rebSplit),
                 date: g.date,
                 minutes: g.minutes,
                 home: g.home,
                 defRank: TEAM_DEF[g.opp].rank,
               }))}
-              margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: isNarrow ? 30 : 56, left: isNarrow ? 0 : 20 }}
+              margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
               barCategoryGap={isNarrow ? "4%" : "6%"}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
               <XAxis
-                dataKey={manyGames ? "date" : "opp"}
+                dataKey={manyGames ? "date" : "axisKey"}
                 interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow)}
                 tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nbaTeamLogo} compact={isNarrow} />}
                 axisLine={{ stroke: "#343941" }}
