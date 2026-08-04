@@ -282,7 +282,6 @@ select.select:focus, select.select:focus-visible {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--r-sm); }
 ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
-.hscroll-hide::-webkit-scrollbar { display: none; }
 
 /* ---------- market tab bar ----------
    One row of markets instead of a stacked heading per category. The category
@@ -361,8 +360,8 @@ select.select:focus, select.select:focus-visible {
    TeamRosterPanel's compact render) rather than disappearing, so
    the quick-switch is still there on mobile, just full-width above/
    below the main content instead of beside it. */
-.roster-layout { display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px; align-items: stretch; margin-bottom: 14px; }
-.roster-layout-center { display: flex; flex-direction: column; justify-content: center; }
+.roster-layout { display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px; align-items: start; margin-bottom: var(--s-4); }
+.roster-layout-center { display: flex; flex-direction: column; justify-content: flex-start; }
 @media (max-width: 1100px) {
   .roster-layout { display: block; }
   .roster-panel { margin-bottom: 14px; }
