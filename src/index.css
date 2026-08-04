@@ -355,14 +355,59 @@ select.select:focus, select.select:focus-visible {
 /* Fills the wide gutters beside the player selector/market grid on
    desktop with the two teams' rosters (see TeamRosterPanel). Below
    the breakpoint there isn't room for three columns, so it collapses
-   to a single stacked column -- the roster panels switch to a
-   compact horizontal-scroll strip at this same breakpoint (see
-   TeamRosterPanel's compact render) rather than disappearing, so
-   the quick-switch is still there on mobile, just full-width above/
-   below the main content instead of beside it. */
+   to a single stacked column -- TeamRosterPanel itself renders nothing
+   in that range, replaced by MobilePlayerNav's fixed bottom strip +
+   Lineup drawer (below), so the quick-switch is still there on mobile,
+   just pinned to the viewport instead of inline in the column flow. */
 .roster-layout { display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px; align-items: start; margin-bottom: var(--s-4); }
 .roster-layout-center { display: flex; flex-direction: column; justify-content: flex-start; }
 @media (max-width: 1100px) {
   .roster-layout { display: block; }
   .roster-panel { margin-bottom: 14px; }
 }
+
+/* MobilePlayerNav: persistent bottom player-switcher strip + slide-in
+   Lineup drawer, shown only below the same 1100px breakpoint .roster-layout
+   collapses at (see useIsNarrow(1100) in MobilePlayerNav/TeamRosterPanel).
+   page-shell--mobile-nav reserves room at the bottom of the page so the
+   fixed strip never covers the last rows of the game log table -- it's a
+   no-op above the breakpoint since the strip itself doesn't render there. */
+@media (max-width: 1100px) {
+  .page-shell--mobile-nav { padding-bottom: 84px; }
+}
+.mobile-player-strip {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 2500;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom));
+  background: var(--panel); border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
+}
+.mobile-player-strip-lineup-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  flex-shrink: 0; width: 52px; height: 52px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--amber); color: var(--amber); background: var(--amber-dim);
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.mobile-player-strip-scroll {
+  display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; flex: 1;
+  scrollbar-width: none;
+}
+.mobile-player-strip-scroll::-webkit-scrollbar { display: none; }
+
+/* Backdrop is always mounted (not conditionally rendered) so the panel's
+   transform transition has something to animate from on open, instead of
+   popping in already-open on first mount. */
+.lineup-drawer-backdrop {
+  position: fixed; inset: 0; z-index: 3000;
+  background: rgba(0, 0, 0, 0); pointer-events: none;
+  transition: background 0.25s ease;
+}
+.lineup-drawer-backdrop.open { background: rgba(0, 0, 0, 0.55); pointer-events: auto; }
+.lineup-drawer-panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 82%; max-width: 340px;
+  background: var(--panel); border-left: 1px solid var(--line);
+  padding: 16px 14px; overflow-y: auto; box-sizing: border-box;
+  transform: translateX(100%); transition: transform 0.25s ease;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+}
+.lineup-drawer-backdrop.open .lineup-drawer-panel { transform: translateX(0); }

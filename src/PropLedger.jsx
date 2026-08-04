@@ -2667,7 +2667,16 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   const defCategoryLabel = nflDefCategoryLabel(market, player.pos);
 
   return (
-    <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <MobilePlayerNav
+      teamA={teamRoster}
+      teamB={oppRoster}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (NFL_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={teamRoster.label}
@@ -3667,7 +3676,16 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const marketLabel = WNBA_MARKETS.find((m) => m.id === market)?.label ?? "";
 
   return (
-    <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <MobilePlayerNav
+      teamA={matchup.teamA}
+      teamB={matchup.teamB}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => wnbaHeadshot(p.espnId)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (WNBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={matchup.teamA.label}
@@ -6329,7 +6347,21 @@ function MLBPropsPage({ jumpTo }) {
   const marketLabel = (isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS).find((m) => m.id === market)?.label ?? "";
 
   return (
-    <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <MobilePlayerNav
+      teamA={liveTeamRoster}
+      teamB={liveOppRoster || { label: "Loading…", players: [] }}
+      activeId={playerId}
+      onSelect={(id) => {
+        setPlayerId(id); setLine(null); setOpponent("all");
+        const side = liveTeamRoster.players.some((p) => p.id === id) ? "team" : "opp";
+        setMatchupPick({ side, id, nonce: Date.now() });
+      }}
+      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
+      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={liveTeamRoster.label}
@@ -8297,59 +8329,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 // grid on desktop (the NYK/SAS Finals matchup means there's a natural
 // "other roster" to show) and doubles as a quick-switch so you don't have
 // to go back to the dropdown to compare teammates or the opposing five.
-// Below the .roster-layout breakpoint, the desktop vertical list swaps for
-// a compact horizontally-scrolling chip strip (see renderChip) instead of
-// disappearing entirely -- the quick-switch is too useful to lose on
-// mobile, it just can't afford the same vertical space there.
-// Bottom sheet used by TeamRosterPanel's mobile "Lineup" picker -- a fixed
-// backdrop + panel anchored to the bottom of the viewport, closing on
-// backdrop click or the X button. Also used as-is on tablet-width screens
-// (anything under the 1100px roster-panel breakpoint), where it reads as a
-// larger centered modal since maxWidth caps it well short of the viewport.
-function LineupSheet({ open, onClose, title, children }) {
-  if (!open) return null;
-  return (
-    <div
-      onClick={onClose}
-      role="presentation"
-      style={{
-        position: "fixed", inset: 0, zIndex: 3000,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex", alignItems: "flex-end", justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%", maxWidth: 640, maxHeight: "78vh", overflowY: "auto",
-          background: "var(--panel)", border: "1px solid var(--line)", borderBottom: "none",
-          borderRadius: "16px 16px 0 0", padding: "14px 16px 22px",
-          boxShadow: "0 -8px 30px rgba(0,0,0,0.4)", boxSizing: "border-box",
-        }}
-      >
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--line)", margin: "0 auto 12px" }} />
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <div className="oswald" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            {title}
-          </div>
-          <div
-            onClick={onClose}
-            role="button"
-            aria-label="Close"
-            style={{ cursor: "pointer", width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", color: "var(--dim)", fontSize: 14, flexShrink: 0 }}
-          >
-            ✕
-          </div>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
+// Below the .roster-layout breakpoint, the desktop vertical list is replaced
+// entirely by MobilePlayerNav (persistent bottom chip strip + Lineup side
+// drawer, rendered once per page rather than once per TeamRosterPanel) --
+// see below. TeamRosterPanel itself renders nothing in that range.
 function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, confirmed }) {
   const compact = useIsNarrow(1100);
-  const [sheetOpen, setSheetOpen] = useState(false);
   // Pitchers (pos "SP") get sectioned off from the batting order rather than
   // just tacked onto the end of the list -- MLB is the only sport that
   // populates this today, so NBA/NFL rosters (no "SP" entries) render exactly
@@ -8417,164 +8402,9 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
     );
   };
 
-  // Rectangular card used inside the mobile "Lineup" bottom sheet's grid --
-  // headshot + name + position, tapping selects and closes the sheet.
-  const renderGridCard = (p) => {
-    const active = p.id === activeId;
-    return (
-      <div
-        key={p.id}
-        onClick={() => { onSelect(p.id); setSheetOpen(false); }}
-        role="button"
-        style={{
-          display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-          padding: "12px 6px", borderRadius: 10, cursor: "pointer",
-          border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
-          background: active ? "var(--amber-dim)" : "var(--panel2)",
-        }}
-      >
-        <div style={{
-          position: "relative", width: 46, height: 46, borderRadius: "50%", flexShrink: 0,
-          background: avatarBg ? avatarBg(p) : "#000",
-          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
-        }}>
-          <img
-            src={headshotSrc(p)}
-            alt={p.name}
-            width={42}
-            height={42}
-            referrerPolicy="no-referrer"
-            style={{ position: "absolute", inset: 2, width: 42, height: 42, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
-            onError={(e) => {
-              const fallback = headshotFallback && headshotFallback(p);
-              if (fallback && e.currentTarget.dataset.fallback !== "1") {
-                e.currentTarget.dataset.fallback = "1";
-                e.currentTarget.src = fallback;
-              }
-            }}
-          />
-        </div>
-        <div
-          className="oswald"
-          style={{
-            fontSize: 11.5, fontWeight: 600, color: active ? "var(--amber)" : "var(--text)",
-            textAlign: "center", lineHeight: 1.25, width: "100%",
-            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-          }}
-        >
-          {p.name}
-        </div>
-        <div className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>{metaLine(p)}</div>
-      </div>
-    );
-  };
-
-  const sectionLabelStyle = {
-    fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase",
-    letterSpacing: "0.06em", marginBottom: 8,
-  };
-
-  if (compact) {
-    // The currently selected player, shown as a compact summary card --
-    // tapping it (or the "Lineup" pill) opens the bottom sheet with every
-    // player in the starting lineup as a grid of cards, instead of a
-    // cramped horizontal-scroll strip.
-    const activePlayer = players.find((p) => p.id === activeId) || players[0];
-
-    // Roster panels render before the live opposing-team fetch resolves
-    // (see MLBPropsPage/NFLPropsPage's nextGame effects) -- players is []
-    // for that render or two, so there's no player yet to summarize.
-    if (!activePlayer) {
-      return (
-        <div className="roster-panel">
-          <div
-            className="oswald"
-            style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8 }}
-          >
-            {teamLabel}
-          </div>
-          <div style={{ textAlign: "center", color: "var(--dim)", fontSize: 12.5, padding: "10px 12px" }}>
-            Loading lineup…
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="roster-panel">
-        <div
-          className="oswald"
-          style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-        >
-          {teamLabel}
-          {confirmed && (
-            <span title="Confirmed starting lineup" style={{ color: "var(--green)", fontSize: 13, fontWeight: 900 }}>✓</span>
-          )}
-        </div>
-        <div
-          onClick={() => setSheetOpen(true)}
-          role="button"
-          aria-haspopup="dialog"
-          style={{
-            display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 8, cursor: "pointer",
-            border: "1px solid var(--amber)", background: "var(--amber-dim)",
-          }}
-        >
-          <div style={{
-            position: "relative", width: 44, height: 44, borderRadius: "50%", flexShrink: 0,
-            background: avatarBg ? avatarBg(activePlayer) : "#000",
-            boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(activePlayer)}, 0 0 6px 1px ${avatarBg(activePlayer)}99` : "none",
-          }}>
-            <img
-              src={headshotSrc(activePlayer)}
-              alt={activePlayer.name}
-              width={40}
-              height={40}
-              referrerPolicy="no-referrer"
-              style={{ position: "absolute", inset: 2, width: 40, height: 40, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
-              onError={(e) => {
-                const fallback = headshotFallback && headshotFallback(activePlayer);
-                if (fallback && e.currentTarget.dataset.fallback !== "1") {
-                  e.currentTarget.dataset.fallback = "1";
-                  e.currentTarget.src = fallback;
-                }
-              }}
-            />
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div className="oswald" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--amber)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {activePlayer.name}
-            </div>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{metaLine(activePlayer)}</div>
-          </div>
-          <div
-            className="oswald"
-            style={{
-              fontSize: 11, fontWeight: 700, color: "var(--amber)", whiteSpace: "nowrap", flexShrink: 0,
-              padding: "6px 10px", borderRadius: 999, border: "1px solid var(--amber)",
-            }}
-          >
-            Lineup
-          </div>
-        </div>
-
-        <LineupSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={`${teamLabel} — Starting Lineup`}>
-          {pitchers.length > 0 && (
-            <>
-              <div style={sectionLabelStyle}>Starting Pitcher</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-                {pitchers.map(renderGridCard)}
-              </div>
-            </>
-          )}
-          <div style={sectionLabelStyle}>Starting Lineup</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-            {batters.map(renderGridCard)}
-          </div>
-        </LineupSheet>
-      </div>
-    );
-  }
+  // Below the roster-panel breakpoint, MobilePlayerNav (rendered once per
+  // page) takes over player-switching entirely -- nothing to render here.
+  if (compact) return null;
 
   return (
     <div className="roster-panel">
@@ -8614,6 +8444,185 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {batters.map(renderRow)}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Mobile-only player switcher, rendered once per page (not once per side)
+// below the TeamRosterPanel pair -- a persistent bottom strip showing chips
+// for the active player's own team only (so switching teams is a deliberate
+// action via the drawer, not something you scroll or swipe into by
+// accident), plus a "Lineup" entry point into LineupDrawer for the full
+// two-team matchup. Replaces TeamRosterPanel's old per-side bottom sheet.
+function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg }) {
+  const compact = useIsNarrow(1100);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  if (!compact) return null;
+
+  const activeInA = (teamA.players || []).some((p) => p.id === activeId);
+  const stripPlayers = (activeInA ? teamA : teamB).players || [];
+  // Roster panels can render before an async opposing-roster fetch resolves
+  // (see MLBPropsPage's nextGame effect) -- nothing to show yet.
+  if (!stripPlayers.length) return null;
+
+  const renderChip = (p) => {
+    const active = p.id === activeId;
+    return (
+      <div
+        key={p.id}
+        onClick={() => onSelect(p.id)}
+        role="button"
+        style={{
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0,
+          width: 56, padding: "6px 4px 5px", borderRadius: 10, cursor: "pointer",
+          border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
+          background: active ? "var(--amber-dim)" : "var(--panel)",
+        }}
+      >
+        <div style={{
+          position: "relative", width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+          background: avatarBg ? avatarBg(p) : "#000",
+          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
+        }}>
+          <img
+            src={headshotSrc(p)}
+            alt={p.name}
+            width={28}
+            height={28}
+            referrerPolicy="no-referrer"
+            style={{ position: "absolute", inset: 2, width: 28, height: 28, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
+            onError={(e) => {
+              const fallback = headshotFallback && headshotFallback(p);
+              if (fallback && e.currentTarget.dataset.fallback !== "1") {
+                e.currentTarget.dataset.fallback = "1";
+                e.currentTarget.src = fallback;
+              }
+            }}
+          />
+        </div>
+        <div
+          className="oswald"
+          style={{
+            fontSize: 9.5, fontWeight: 600, color: active ? "var(--amber)" : "var(--dim)",
+            textAlign: "center", lineHeight: 1.15, width: "100%",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}
+        >
+          {p.name.split(" ").slice(-1)[0]}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="mobile-player-strip">
+        <div
+          onClick={() => setDrawerOpen(true)}
+          role="button"
+          aria-haspopup="dialog"
+          className="mobile-player-strip-lineup-btn"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
+          </svg>
+          Lineup
+        </div>
+        <div className="mobile-player-strip-scroll">
+          {stripPlayers.map(renderChip)}
+        </div>
+      </div>
+      <LineupDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        teamA={teamA}
+        teamB={teamB}
+        activeId={activeId}
+        onSelect={(id) => { onSelect(id); setDrawerOpen(false); }}
+        headshotSrc={headshotSrc}
+        headshotFallback={headshotFallback}
+        metaLine={metaLine}
+        avatarBg={avatarBg}
+      />
+    </>
+  );
+}
+
+// Slide-in side drawer opened from MobilePlayerNav's "Lineup" button -- the
+// full matchup roster for both teams, grouped under team-name headers, so
+// switching to a player on the other side doesn't require backing out to
+// the market/matchup selector above the chart.
+function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg }) {
+  const renderPlayerRow = (p) => {
+    const active = p.id === activeId;
+    return (
+      <div
+        key={p.id}
+        onClick={() => onSelect(p.id)}
+        role="button"
+        style={{
+          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+          border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
+          background: active ? "var(--amber-dim)" : "var(--panel2)",
+          marginBottom: 6,
+        }}
+      >
+        <div style={{
+          position: "relative", width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
+          background: avatarBg ? avatarBg(p) : "#000",
+          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
+        }}>
+          <img
+            src={headshotSrc(p)}
+            alt={p.name}
+            width={28}
+            height={28}
+            referrerPolicy="no-referrer"
+            style={{ position: "absolute", inset: 2, width: 28, height: 28, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
+            onError={(e) => {
+              const fallback = headshotFallback && headshotFallback(p);
+              if (fallback && e.currentTarget.dataset.fallback !== "1") {
+                e.currentTarget.dataset.fallback = "1";
+                e.currentTarget.src = fallback;
+              }
+            }}
+          />
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="oswald" style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--amber)" : "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {p.name}
+          </div>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{metaLine(p)}</div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className={`lineup-drawer-backdrop ${open ? "open" : ""}`} onClick={onClose} role="presentation" aria-hidden={!open}>
+      <div className="lineup-drawer-panel" onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div className="oswald" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Lineup
+          </div>
+          <div
+            onClick={onClose}
+            role="button"
+            aria-label="Close"
+            style={{ cursor: "pointer", width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", color: "var(--dim)", fontSize: 15, flexShrink: 0 }}
+          >
+            ✕
+          </div>
+        </div>
+        {[teamA, teamB].map((team) => (
+          <div key={team.label} style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+              {team.label}
+            </div>
+            {(team.players || []).map(renderPlayerRow)}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -9326,7 +9335,17 @@ export default function PropLedger() {
       </div>
 
       {page === "nba" && (
-      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+      <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+      <MobilePlayerNav
+        teamA={{ label: "New York Knicks", players: PLAYERS.filter((p) => p.team === "NYK") }}
+        teamB={{ label: "San Antonio Spurs", players: PLAYERS.filter((p) => p.team === "SAS") }}
+        activeId={playerId}
+        onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+        headshotSrc={(p) => espnHeadshot(p.espnId)}
+        headshotFallback={(p) => nbaHeadshot(p.nbaId)}
+        metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
+        avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      />
       <div className="roster-layout">
       <TeamRosterPanel
         teamLabel="New York Knicks"
