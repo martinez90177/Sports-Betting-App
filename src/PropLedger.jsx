@@ -5180,12 +5180,6 @@ const statValueMLBPitcher = (g, market) => {
   }
 };
 
-// Every team available in the "TEAM" dropdown, alphabetical by city/name --
-// built once from the same roster map every page reads from.
-const MLB_TEAM_OPTIONS = Object.keys(MLB_TEAM_ROSTERS).sort(
-  (a, b) => MLB_TEAM_ROSTERS[a].label.localeCompare(MLB_TEAM_ROSTERS[b].label)
-);
-
 // ---------- Game Conditions (park factor + weather) ----------
 // Rough, widely-known park tendencies (100 = league average) for how much
 // each home park inflates/suppresses HR, runs, and singles -- these are
@@ -6132,6 +6126,49 @@ function MLBPropsPage({ jumpTo }) {
   }, [teamAbbr]);
   const oppRoster = (nextGame && MLB_TEAM_ROSTERS[nextGame.opp]) || null;
 
+  // Today's real MLB slate (see fetchMLBDaySlate, same fetch the Prop Feed's
+  // MATCHUP dropdown uses) -- this is what lets the team selector below show
+  // "Away @ Home" matchups instead of a flat A-Z team list, so picking one
+  // row populates both roster panels at once like the NFL/WNBA pages.
+  const [mlbSlate, setMlbSlate] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetchMLBDaySlate().then((slate) => { if (!cancelled) setMlbSlate(slate); });
+    };
+    load();
+    const interval = setInterval(load, MLB_SLATE_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  const matchupOptions = useMemo(() => {
+    if (!mlbSlate) return [];
+    return mlbSlate.map((g, i) => ({
+      id: `${g.awayAbbr}-${g.homeAbbr}-${i}`,
+      teams: [g.awayAbbr, g.homeAbbr],
+      label: `${(MLB_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(MLB_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
+      time: matchupTimeLabel(g.date),
+    }));
+  }, [mlbSlate]);
+  const activeMatchupId = matchupOptions.find((m) => m.teams.includes(teamAbbr))?.id || "";
+
+  // Once the slate loads, if the hardcoded default team (or whatever
+  // jumpTo/a prior session left selected) isn't actually playing today,
+  // snap the selection to the first real matchup instead of leaving the
+  // dropdown showing nothing selected -- only runs once, so it never
+  // overrides a team the user (or a jumpTo) has deliberately picked since.
+  const initializedFromSlate = React.useRef(false);
+  React.useEffect(() => {
+    if (initializedFromSlate.current || !matchupOptions.length) return;
+    initializedFromSlate.current = true;
+    if (!matchupOptions.some((m) => m.teams.includes(teamAbbr))) {
+      const nextTeam = matchupOptions[0].teams[0];
+      setTeamAbbr(nextTeam);
+      setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchupOptions]);
+
   // Bridges a jump to a live-pitcher id (see mlbLivePitcherId) for the
   // render or two before nextGame has refetched for the newly-selected
   // team -- without this, liveTeamRoster below wouldn't yet know about the
@@ -6445,26 +6482,30 @@ function MLBPropsPage({ jumpTo }) {
         ))}
       </div>
 
-      {/* Team + market selectors -- picking a team here automatically pulls
-           that team's real next scheduled opponent (see fetchMLBTeamNextGame)
-           to populate the other roster panel, instead of manually picking a
-           fixed matchup pairing. Picking an individual player happens by
-           clicking their row in either roster panel. */}
+      {/* Matchup + market selectors -- picking one of today's real games
+           (see fetchMLBDaySlate) sets the "our side" team, and its real next
+           scheduled opponent (see fetchMLBTeamNextGame) populates the other
+           roster panel -- the same "pick a matchup, see its two rosters"
+           pattern the NFL/WNBA pages use. Picking an individual player
+           happens by clicking their row in either roster panel. */}
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
           <select
             className="select"
-            value={teamAbbr}
+            value={activeMatchupId}
             onChange={(e) => {
-              const nextTeam = e.target.value;
+              const mo = matchupOptions.find((m) => m.id === e.target.value);
+              if (!mo) return;
+              const nextTeam = mo.teams[0];
               setTeamAbbr(nextTeam);
               setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
               setLine(null);
               setOpponent("all");
             }}
           >
-            {MLB_TEAM_OPTIONS.map((abbr) => (
-              <option key={abbr} value={abbr}>{MLB_TEAM_ROSTERS[abbr].label}</option>
+            {!matchupOptions.length && <option value="">Loading today's games…</option>}
+            {matchupOptions.map((mo) => (
+              <option key={mo.id} value={mo.id}>{mo.label} — {mo.time}</option>
             ))}
           </select>
           <div style={{
