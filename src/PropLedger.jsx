@@ -221,40 +221,44 @@ const SPURS_PLAYERS = [
     base: { pts: 24.3, oreb: 2.2, dreb: 9.6, ast: 3.7, stl: 1.1, blk: 3.5, fg3m: 2.3, fg3a: 6.0, ftm: 5.5, fta: 7.0, tov: 3.0 },
     var:  { pts: 6.5,  oreb: 1.2, dreb: 2.8, ast: 1.6, stl: 0.6, blk: 1.4, fg3m: 1.3, fg3a: 1.9, ftm: 2.0, fta: 2.4, tov: 1.3 } },
 ];
-// Philadelphia 76ers projected 2026-27 starting five -- mock per-game lines
-// (base/var), not live stats, since the season doesn't open until October.
+// Philadelphia 76ers projected 2026-27 starting five, updated for the
+// roster as it actually stands today -- LeBron James and Jaylen Brown both
+// landed in Philadelphia alongside Embiid/Maxey this offseason. Stat lines
+// (base/var) are still mock, not live, since the season doesn't open until
+// October.
 const SIXERS_PLAYERS = [
   { id: "maxey", name: "Tyrese Maxey", team: "PHI", pos: "PG", espnId: "4431678", nbaId: "1630178",
-    base: { pts: 26, oreb: 0.4, dreb: 3.2, ast: 6.5, stl: 1.0, blk: 0.3, fg3m: 3.0, fg3a: 7.8, ftm: 4.5, fta: 5.2, tov: 2.4 },
-    var:  { pts: 7,  oreb: 0.4, dreb: 1.5, ast: 2.4, stl: 0.6, blk: 0.3, fg3m: 1.6, fg3a: 2.2, ftm: 1.8, fta: 2.0, tov: 1.2 } },
-  { id: "edgecombe", name: "VJ Edgecombe", team: "PHI", pos: "SG", espnId: "5124612", nbaId: "1642526",
-    base: { pts: 12, oreb: 0.6, dreb: 3.0, ast: 2.4, stl: 1.1, blk: 0.3, fg3m: 1.4, fg3a: 4.0, ftm: 1.8, fta: 2.2, tov: 1.6 },
-    var:  { pts: 4.5, oreb: 0.5, dreb: 1.4, ast: 1.2, stl: 0.6, blk: 0.3, fg3m: 1.0, fg3a: 1.6, ftm: 1.1, fta: 1.3, tov: 0.9 } },
-  { id: "george", name: "Paul George", team: "PHI", pos: "SF", espnId: "4251", nbaId: "202331",
-    base: { pts: 18, oreb: 0.7, dreb: 4.5, ast: 3.2, stl: 1.2, blk: 0.4, fg3m: 2.2, fg3a: 6.0, ftm: 3.0, fta: 3.5, tov: 1.8 },
-    var:  { pts: 6,   oreb: 0.5, dreb: 1.7, ast: 1.5, stl: 0.7, blk: 0.4, fg3m: 1.2, fg3a: 1.9, ftm: 1.5, fta: 1.7, tov: 1.0 } },
-  { id: "yabusele", name: "Guerschon Yabusele", team: "PHI", pos: "PF", espnId: "3064428", nbaId: "1627824",
-    base: { pts: 11, oreb: 1.2, dreb: 4.0, ast: 1.6, stl: 0.7, blk: 0.4, fg3m: 1.6, fg3a: 4.2, ftm: 1.2, fta: 1.5, tov: 1.0 },
-    var:  { pts: 4,   oreb: 0.8, dreb: 1.6, ast: 1.0, stl: 0.5, blk: 0.3, fg3m: 1.0, fg3a: 1.5, ftm: 0.8, fta: 1.0, tov: 0.7 } },
+    base: { pts: 24, oreb: 0.4, dreb: 3.0, ast: 6.0, stl: 1.0, blk: 0.3, fg3m: 2.8, fg3a: 7.2, ftm: 4.0, fta: 4.6, tov: 2.2 },
+    var:  { pts: 6.5, oreb: 0.4, dreb: 1.4, ast: 2.2, stl: 0.6, blk: 0.3, fg3m: 1.5, fg3a: 2.1, ftm: 1.6, fta: 1.8, tov: 1.1 } },
+  { id: "jbrown", name: "Jaylen Brown", team: "PHI", pos: "SG", espnId: "3917376", nbaId: "1627759",
+    base: { pts: 23, oreb: 0.8, dreb: 5.0, ast: 3.5, stl: 1.1, blk: 0.4, fg3m: 2.4, fg3a: 6.5, ftm: 4.0, fta: 4.8, tov: 2.4 },
+    var:  { pts: 6.5, oreb: 0.6, dreb: 1.8, ast: 1.5, stl: 0.6, blk: 0.4, fg3m: 1.3, fg3a: 1.9, ftm: 1.7, fta: 1.9, tov: 1.1 } },
+  { id: "lebron", name: "LeBron James", team: "PHI", pos: "SF", espnId: "1966", nbaId: "2544",
+    base: { pts: 24, oreb: 0.6, dreb: 6.5, ast: 7.5, stl: 1.0, blk: 0.5, fg3m: 2.0, fg3a: 5.5, ftm: 4.5, fta: 5.8, tov: 3.3 },
+    var:  { pts: 6,   oreb: 0.5, dreb: 2.2, ast: 2.6, stl: 0.6, blk: 0.4, fg3m: 1.1, fg3a: 1.8, ftm: 1.8, fta: 2.0, tov: 1.3 } },
+  { id: "watford", name: "Trendon Watford", team: "PHI", pos: "PF", espnId: "4431675", nbaId: "1630217",
+    base: { pts: 10, oreb: 1.8, dreb: 4.5, ast: 1.8, stl: 0.6, blk: 0.4, fg3m: 0.8, fg3a: 2.2, ftm: 1.4, fta: 1.8, tov: 1.0 },
+    var:  { pts: 4,   oreb: 1.1, dreb: 1.8, ast: 1.0, stl: 0.4, blk: 0.3, fg3m: 0.6, fg3a: 1.1, ftm: 0.9, fta: 1.1, tov: 0.7 } },
   { id: "embiid", name: "Joel Embiid", team: "PHI", pos: "C", espnId: "3059318", nbaId: "203954",
     base: { pts: 23, oreb: 1.0, dreb: 7.0, ast: 4.0, stl: 0.8, blk: 1.3, fg3m: 1.0, fg3a: 3.0, ftm: 6.5, fta: 7.5, tov: 3.2 },
     var:  { pts: 7,   oreb: 0.7, dreb: 2.4, ast: 1.8, stl: 0.5, blk: 0.7, fg3m: 0.8, fg3a: 1.5, ftm: 2.4, fta: 2.6, tov: 1.4 } },
 ];
-// Miami Heat projected 2026-27 starting five -- mock per-game lines, same
-// scope as SIXERS_PLAYERS above.
+// Miami Heat projected 2026-27 starting five, updated for the roster as it
+// actually stands today -- Giannis Antetokounmpo is now in Miami alongside
+// Bam Adebayo. Same mock-stats scope as SIXERS_PLAYERS above.
 const HEAT_PLAYERS = [
-  { id: "herro", name: "Tyler Herro", team: "MIA", pos: "PG", espnId: "4066648", nbaId: "1629639",
-    base: { pts: 22, oreb: 0.5, dreb: 4.0, ast: 5.2, stl: 0.8, blk: 0.2, fg3m: 3.2, fg3a: 8.2, ftm: 4.5, fta: 5.0, tov: 2.8 },
-    var:  { pts: 7,  oreb: 0.4, dreb: 1.6, ast: 2.2, stl: 0.5, blk: 0.2, fg3m: 1.6, fg3a: 2.4, ftm: 1.9, fta: 2.1, tov: 1.3 } },
-  { id: "powell", name: "Norman Powell", team: "MIA", pos: "SG", espnId: "3907498", nbaId: "1626181",
-    base: { pts: 17, oreb: 0.5, dreb: 2.8, ast: 2.2, stl: 0.9, blk: 0.3, fg3m: 2.6, fg3a: 6.4, ftm: 2.0, fta: 2.3, tov: 1.3 },
-    var:  { pts: 5.5, oreb: 0.4, dreb: 1.3, ast: 1.2, stl: 0.5, blk: 0.3, fg3m: 1.3, fg3a: 2.0, ftm: 1.2, fta: 1.4, tov: 0.8 } },
+  { id: "dmitchell", name: "Davion Mitchell", team: "MIA", pos: "PG", espnId: "4278053", nbaId: "1630703",
+    base: { pts: 11, oreb: 0.5, dreb: 2.6, ast: 4.8, stl: 1.3, blk: 0.3, fg3m: 1.0, fg3a: 3.0, ftm: 1.4, fta: 1.8, tov: 1.6 },
+    var:  { pts: 4,   oreb: 0.4, dreb: 1.2, ast: 1.9, stl: 0.7, blk: 0.3, fg3m: 0.8, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 0.9 } },
+  { id: "thardaway", name: "Tim Hardaway Jr.", team: "MIA", pos: "SG", espnId: "2528210", nbaId: "203501",
+    base: { pts: 15, oreb: 0.4, dreb: 2.6, ast: 1.8, stl: 0.7, blk: 0.2, fg3m: 2.8, fg3a: 7.0, ftm: 1.8, fta: 2.1, tov: 1.1 },
+    var:  { pts: 5,   oreb: 0.4, dreb: 1.2, ast: 0.9, stl: 0.5, blk: 0.2, fg3m: 1.5, fg3a: 2.1, ftm: 1.1, fta: 1.3, tov: 0.7 } },
   { id: "wiggins", name: "Andrew Wiggins", team: "MIA", pos: "SF", espnId: "3064514", nbaId: "203952",
     base: { pts: 15, oreb: 0.6, dreb: 3.6, ast: 2.0, stl: 0.9, blk: 0.5, fg3m: 1.6, fg3a: 4.2, ftm: 2.0, fta: 2.4, tov: 1.2 },
     var:  { pts: 5,   oreb: 0.5, dreb: 1.5, ast: 1.1, stl: 0.6, blk: 0.4, fg3m: 1.0, fg3a: 1.6, ftm: 1.2, fta: 1.4, tov: 0.7 } },
-  { id: "ware", name: "Kel'el Ware", team: "MIA", pos: "PF", espnId: "4433137", nbaId: "1642267",
-    base: { pts: 11, oreb: 2.4, dreb: 5.6, ast: 1.4, stl: 0.5, blk: 1.1, fg3m: 0.5, fg3a: 1.4, ftm: 1.6, fta: 2.2, tov: 1.3 },
-    var:  { pts: 4.5, oreb: 1.4, dreb: 2.1, ast: 0.9, stl: 0.4, blk: 0.7, fg3m: 0.4, fg3a: 0.9, ftm: 1.0, fta: 1.3, tov: 0.8 } },
+  { id: "giannis", name: "Giannis Antetokounmpo", team: "MIA", pos: "PF", espnId: "3032977", nbaId: "203507",
+    base: { pts: 30, oreb: 2.2, dreb: 9.0, ast: 6.0, stl: 1.1, blk: 1.0, fg3m: 0.5, fg3a: 1.8, ftm: 7.5, fta: 11.0, tov: 3.4 },
+    var:  { pts: 7,   oreb: 1.3, dreb: 2.8, ast: 2.2, stl: 0.7, blk: 0.6, fg3m: 0.4, fg3a: 1.1, ftm: 2.6, fta: 3.4, tov: 1.4 } },
   { id: "adebayo", name: "Bam Adebayo", team: "MIA", pos: "C", espnId: "4066261", nbaId: "1628389",
     base: { pts: 19, oreb: 2.2, dreb: 6.8, ast: 4.0, stl: 1.2, blk: 0.9, fg3m: 0.3, fg3a: 1.0, ftm: 3.5, fta: 4.5, tov: 2.6 },
     var:  { pts: 6,   oreb: 1.3, dreb: 2.4, ast: 1.8, stl: 0.7, blk: 0.6, fg3m: 0.3, fg3a: 0.8, ftm: 1.6, fta: 2.0, tov: 1.3 } },
