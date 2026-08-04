@@ -2910,17 +2910,9 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
-      {/* align-items: center puts "All" (short) on the same vertical center
-           as the taller card tiles instead of pinned to their top edge. */}
+      {/* align-items: center keeps the arrow vertically centered
+           on the taller card tiles instead of pinned to their top edge. */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div
-          role="button"
-          onClick={() => onChange([])}
-          className="chip"
-          style={{ fontSize: 12.5, fontWeight: 600, padding: "8px 16px", flexShrink: 0 }}
-        >
-          All
-        </div>
         <div
           role="button"
           aria-label="Scroll teammates left"
@@ -4314,6 +4306,90 @@ const WNBA_MATCHUPS = [
 ];
 const WNBA_MATCHUPS_BY_DATE = groupMatchupsByDate(WNBA_MATCHUPS);
 
+// Live slate -- ESPN's free, keyless scoreboard endpoint (no API key, no
+// paid tier; same host already used by fetchWNBAPlayerGameLog/
+// fetchWNBATeamDefense elsewhere in this file) replaces the static
+// WNBA_MATCHUPS dates/pairings above with tonight's & tomorrow's real
+// games, the same way fetchMLBTeamNextGame keeps the MLB page off a frozen
+// snapshot. Only games between the 10 teams we have full rosters for are
+// usable; everyone else's games are filtered out rather than shown with an
+// empty roster panel.
+const WNBA_ESPN_TEAM_IDS = {
+  ATL: 20, CHI: 19, CON: 18, DAL: 3, GS: 129689,
+  LV: 17, MIN: 8, NY: 9, PHX: 11, TOR: 131935,
+};
+const WNBA_TEAM_PLAYERS_BY_ABBR = {
+  ATL: ATLANTA_DREAM_PLAYERS, CHI: CHICAGO_SKY_PLAYERS, CON: CONNECTICUT_SUN_PLAYERS,
+  DAL: DALLAS_WINGS_PLAYERS, GS: GOLDEN_STATE_VALKYRIES_PLAYERS, LV: LAS_VEGAS_ACES_PLAYERS,
+  MIN: MINNESOTA_LYNX_PLAYERS, NY: NEW_YORK_LIBERTY_PLAYERS, PHX: PHOENIX_MERCURY_PLAYERS,
+  TOR: TORONTO_TEMPO_PLAYERS,
+};
+const WNBA_TEAM_FULL_NAME = {
+  ATL: "Atlanta Dream", CHI: "Chicago Sky", CON: "Connecticut Sun", DAL: "Dallas Wings",
+  GS: "Golden State Valkyries", LV: "Las Vegas Aces", MIN: "Minnesota Lynx",
+  NY: "New York Liberty", PHX: "Phoenix Mercury", TOR: "Toronto Tempo",
+};
+
+const WNBA_SCHEDULE_TTL_MS = 60 * 60 * 1000;
+let wnbaScheduleCache = null;
+async function fetchWNBALiveSlate() {
+  const cacheKey = "wnba_live_slate_v1";
+  const now = Date.now();
+  if (wnbaScheduleCache && now - wnbaScheduleCache.fetchedAt < WNBA_SCHEDULE_TTL_MS) {
+    return wnbaScheduleCache.matchups;
+  }
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (now - parsed.fetchedAt < WNBA_SCHEDULE_TTL_MS) {
+        wnbaScheduleCache = parsed;
+        return parsed.matchups;
+      }
+    }
+  } catch {}
+
+  const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
+  const today = new Date();
+  const dayAfter = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
+  let matchups = [];
+  try {
+    const res = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${fmt(today)}-${fmt(dayAfter)}`
+    );
+    const data = await res.json();
+    matchups = (data?.events || [])
+      .map((ev) => {
+        const comp = ev.competitions?.[0];
+        const competitors = comp?.competitors || [];
+        const home = competitors.find((c) => c.homeAway === "home");
+        const away = competitors.find((c) => c.homeAway === "away");
+        const homeAbbr = home?.team?.abbreviation;
+        const awayAbbr = away?.team?.abbreviation;
+        if (!WNBA_TEAM_PLAYERS_BY_ABBR[homeAbbr] || !WNBA_TEAM_PLAYERS_BY_ABBR[awayAbbr]) return null;
+        const venue = comp?.venue;
+        const city = venue?.address
+          ? [venue.address.city, venue.address.state].filter(Boolean).join(", ")
+          : "";
+        return {
+          id: `${awayAbbr}-${homeAbbr}-${ev.id}`,
+          label: `${WNBA_TEAM_FULL_NAME[awayAbbr].split(" ").pop()} @ ${WNBA_TEAM_FULL_NAME[homeAbbr].split(" ").pop()}`,
+          teamA: { label: WNBA_TEAM_FULL_NAME[awayAbbr], players: WNBA_TEAM_PLAYERS_BY_ABBR[awayAbbr] },
+          teamB: { label: WNBA_TEAM_FULL_NAME[homeAbbr], players: WNBA_TEAM_PLAYERS_BY_ABBR[homeAbbr] },
+          date: ev.date,
+          venue: venue?.fullName || "",
+          city,
+        };
+      })
+      .filter(Boolean);
+  } catch {}
+
+  const record = { matchups, fetchedAt: now };
+  wnbaScheduleCache = record;
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return matchups;
+}
+
 // Same synthetic-game-log approach as genGames (NBA) -- per-player base/var
 // noised out into a season's worth of games -- just drawing its random
 // opponent from the WNBA's own team pool instead of the NBA's.
@@ -4495,11 +4571,38 @@ function wnbaPlayerMarkets(player) {
 }
 
 function WNBAPropsPage({ jumpTo, dataVersion }) {
+  // Starts from the static fallback slate, then swaps to ESPN's live
+  // scoreboard once it resolves (see fetchWNBALiveSlate) -- keeps the page
+  // usable immediately and offline-safe if the fetch ever fails, while still
+  // showing tonight's real games instead of a frozen date.
+  const [liveMatchups, setLiveMatchups] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    fetchWNBALiveSlate().then((m) => {
+      if (!cancelled && m.length) setLiveMatchups(m);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const matchups = liveMatchups && liveMatchups.length ? liveMatchups : WNBA_MATCHUPS;
+  const matchupsByDate = useMemo(() => groupMatchupsByDate(matchups), [matchups]);
+
   const [matchupId, setMatchupId] = useState(WNBA_MATCHUPS[0].id);
-  const matchup = WNBA_MATCHUPS.find((m) => m.id === matchupId);
+  const matchup = matchups.find((m) => m.id === matchupId) || matchups[0];
   const [playerId, setPlayerId] = useState(WNBA_MATCHUPS[0].teamA.players[0].id);
   const [market, setMarket] = useState("pts");
   const [rebSplit, setRebSplit] = useState("total");
+  // Once the live slate lands, jump off the static default matchup/player
+  // onto the real first game of the day (its id won't exist in WNBA_MATCHUPS).
+  React.useEffect(() => {
+    if (!liveMatchups || !liveMatchups.length) return;
+    if (!liveMatchups.some((m) => m.id === matchupId)) {
+      setMatchupId(liveMatchups[0].id);
+      setPlayerId(liveMatchups[0].teamA.players[0].id);
+      setLine(null);
+      setOpponent("all");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMatchups]);
   React.useEffect(() => {
     if (!jumpTo) return;
     setPlayerId(jumpTo.playerId);
@@ -4669,14 +4772,14 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             className="select"
             value={matchupId}
             onChange={(e) => {
-              const next = WNBA_MATCHUPS.find((m) => m.id === e.target.value);
+              const next = matchups.find((m) => m.id === e.target.value);
               setMatchupId(next.id);
               setPlayerId(next.teamA.players[0].id);
               setLine(null);
               setOpponent("all");
             }}
           >
-            {WNBA_MATCHUPS_BY_DATE.map((group) => (
+            {matchupsByDate.map((group) => (
               <optgroup label={group.label} key={group.label}>
                 {group.matchups.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
@@ -5157,7 +5260,9 @@ const mlbEspnHeadshot = (id) =>
 const MLB_PLAYERS = [
   { id: "grisham", name: "Trent Grisham", team: "NYY", pos: "CF", mlbId: 663757 },
   { id: "rice", name: "Ben Rice", team: "NYY", pos: "DH", mlbId: 700250 },
-  { id: "goldschmidt", name: "Paul Goldschmidt", team: "NYY", pos: "1B", mlbId: 502671 },
+  // Acquired from Washington at the 2026 trade deadline -- primary 1B/DH
+  // option, alternating with Goldschmidt while Stanton is out.
+  { id: "lgarcia", name: "Luis García Jr.", team: "NYY", pos: "1B", mlbId: 671277 },
   { id: "bellinger", name: "Cody Bellinger", team: "NYY", pos: "LF", mlbId: 641355 },
   { id: "chisholm", name: "Jazz Chisholm Jr.", team: "NYY", pos: "2B", mlbId: 665862 },
   { id: "dominguez", name: "Jasson Dominguez", team: "NYY", pos: "RF", mlbId: 691176 },
@@ -5177,14 +5282,16 @@ const MLB_PLAYERS = [
 // "next matchup" summary.
 const PHILLIES_PLAYERS = [
   { id: "turner", name: "Trea Turner", team: "PHI", pos: "SS", mlbId: 607208 },
-  { id: "harper", name: "Bryce Harper", team: "PHI", pos: "1B", mlbId: 547180 },
   { id: "schwarber", name: "Kyle Schwarber", team: "PHI", pos: "DH", mlbId: 656941 },
-  { id: "bohm", name: "Alec Bohm", team: "PHI", pos: "3B", mlbId: 664761 },
-  { id: "stott", name: "Bryson Stott", team: "PHI", pos: "2B", mlbId: 681082 },
+  // Deadline-trade domino from the Luis Arraez deal: Bohm shifts to 1B,
+  // Stott to 3B, and Harper -- back from his elbow injury -- to RF.
+  { id: "bohm", name: "Alec Bohm", team: "PHI", pos: "1B", mlbId: 664761 },
+  { id: "stott", name: "Bryson Stott", team: "PHI", pos: "3B", mlbId: 681082 },
+  { id: "arraez", name: "Luis Arraez", team: "PHI", pos: "2B", mlbId: 650333 },
   { id: "realmuto", name: "J.T. Realmuto", team: "PHI", pos: "C", mlbId: 592663 },
   { id: "marsh", name: "Brandon Marsh", team: "PHI", pos: "LF", mlbId: 669016 },
   { id: "crawford", name: "Justin Crawford", team: "PHI", pos: "CF", mlbId: 702222 },
-  { id: "delacruz", name: "Bryan De La Cruz", team: "PHI", pos: "RF", mlbId: 650559 },
+  { id: "harper", name: "Bryce Harper", team: "PHI", pos: "RF", mlbId: 547180 },
   { id: "sanchez", name: "Cristopher Sánchez", team: "PHI", pos: "SP", mlbId: 650911 },
 ];
 
@@ -5228,7 +5335,8 @@ const BRAVES_PLAYERS = [
   { id: "smith", name: "Dominic Smith", team: "ATL", pos: "DH", mlbId: 642086 },
   { id: "baldwin", name: "Drake Baldwin", team: "ATL", pos: "C", mlbId: 686948 },
   { id: "yastrzemski", name: "Mike Yastrzemski", team: "ATL", pos: "LF", mlbId: 573262 },
-  { id: "white", name: "Eli White", team: "ATL", pos: "RF", mlbId: 642201 },
+  // Acquired from Kansas City at the deadline (White went back the other way).
+  { id: "lthomas", name: "Lane Thomas", team: "ATL", pos: "RF", mlbId: 657041 },
   { id: "mateo", name: "Jorge Mateo", team: "ATL", pos: "SS", mlbId: 622761 },
   { id: "lopez", name: "Reynaldo López", team: "ATL", pos: "SP", mlbId: 625643 },
 ];
@@ -5240,10 +5348,13 @@ const ORIOLES_PLAYERS = [
   { id: "alonso", name: "Pete Alonso", team: "BAL", pos: "1B", mlbId: 624413 },
   { id: "mayo", name: "Coby Mayo", team: "BAL", pos: "3B", mlbId: 691723 },
   { id: "encarnacion", name: "Christian Encarnacion-Strand", team: "BAL", pos: "DH", mlbId: 687952 },
-  { id: "ward", name: "Taylor Ward", team: "BAL", pos: "LF", mlbId: 621493 },
+  // Ward was flipped to Seattle days after arriving (see MARINERS_PLAYERS);
+  // Beavers gets the everyday look in left as a result.
+  { id: "beavers", name: "Dylan Beavers", team: "BAL", pos: "LF", mlbId: 687637 },
   { id: "cowser", name: "Colton Cowser", team: "BAL", pos: "CF", mlbId: 681297 },
   { id: "oneill", name: "Tyler O'Neill", team: "BAL", pos: "RF", mlbId: 641933 },
-  { id: "huff", name: "Sam Huff", team: "BAL", pos: "C", mlbId: 669087 },
+  // Came back from Boston in the Rutschman trade, taking over behind the plate.
+  { id: "narvaez", name: "Carlos Narváez", team: "BAL", pos: "C", mlbId: 665966 },
   { id: "baz", name: "Shane Baz", team: "BAL", pos: "SP", mlbId: 669358 },
 ];
 const BLUEJAYS_PLAYERS = [
@@ -5256,10 +5367,13 @@ const BLUEJAYS_PLAYERS = [
   { id: "varsho", name: "Daulton Varsho", team: "TOR", pos: "CF", mlbId: 662139 },
   { id: "lukes", name: "Nathan Lukes", team: "TOR", pos: "RF", mlbId: 664770 },
   { id: "springer", name: "George Springer", team: "TOR", pos: "DH", mlbId: 543807 },
-  { id: "gausman", name: "Kevin Gausman", team: "TOR", pos: "SP", mlbId: 592332 },
+  // Acquired from the Angels at the deadline (Gausman went to the Cubs).
+  { id: "soriano", name: "José Soriano", team: "TOR", pos: "SP", mlbId: 667755 },
 ];
 const REDSOX_PLAYERS = [
-  { id: "narvaez", name: "Carlos Narváez", team: "BOS", pos: "C", mlbId: 665966 },
+  // Acquired from Baltimore at the deadline; Narváez went back to the
+  // Orioles as part of the return (see ORIOLES_PLAYERS below).
+  { id: "rutschman", name: "Adley Rutschman", team: "BOS", pos: "C", mlbId: 668939 },
   { id: "contreras", name: "Willson Contreras", team: "BOS", pos: "1B", mlbId: 575929 },
   { id: "seigler", name: "Anthony Seigler", team: "BOS", pos: "2B", mlbId: 678011 },
   { id: "durbin", name: "Caleb Durbin", team: "BOS", pos: "3B", mlbId: 702332 },
@@ -5280,7 +5394,9 @@ const CUBS_PLAYERS = [
   { id: "pca", name: "Pete Crow-Armstrong", team: "CHC", pos: "CF", mlbId: 691718 },
   { id: "suzuki", name: "Seiya Suzuki", team: "CHC", pos: "RF", mlbId: 673548 },
   { id: "conforto", name: "Michael Conforto", team: "CHC", pos: "DH", mlbId: 624424 },
-  { id: "taillon", name: "Jameson Taillon", team: "CHC", pos: "SP", mlbId: 592791 },
+  // Acquired from Toronto at the deadline; Taillon (DFA'd, 5.92 ERA) went
+  // back to the Blue Jays as the headline return piece.
+  { id: "gausman", name: "Kevin Gausman", team: "CHC", pos: "SP", mlbId: 592332 },
 ];
 const PIRATES_PLAYERS = [
   { id: "hdavis", name: "Henry Davis", team: "PIT", pos: "C", mlbId: 680779 },
@@ -5302,15 +5418,19 @@ const MARINERS_PLAYERS = [
   { id: "crawfordjp", name: "J.P. Crawford", team: "SEA", pos: "SS", mlbId: 641487 },
   { id: "arozarena", name: "Randy Arozarena", team: "SEA", pos: "LF", mlbId: 668227 },
   { id: "rodriguez", name: "Julio Rodríguez", team: "SEA", pos: "CF", mlbId: 677594 },
-  { id: "raley", name: "Luke Raley", team: "SEA", pos: "RF", mlbId: 670042 },
+  // Acquired from Baltimore at the deadline; Raley (elbow) was on the IL
+  // when Ward stepped into the RF picture alongside Arozarena.
+  { id: "ward", name: "Taylor Ward", team: "SEA", pos: "RF", mlbId: 621493 },
   { id: "canzone", name: "Dominic Canzone", team: "SEA", pos: "DH", mlbId: 686527 },
   { id: "gilbert", name: "Logan Gilbert", team: "SEA", pos: "SP", mlbId: 669302 },
 ];
 const RANGERS_PLAYERS = [
   { id: "diaz", name: "Elias Díaz", team: "TEX", pos: "C", mlbId: 553869 },
   { id: "burger", name: "Jake Burger", team: "TEX", pos: "1B", mlbId: 669394 },
-  { id: "smithj", name: "Josh Smith", team: "TEX", pos: "2B", mlbId: 669701 },
-  { id: "duranez", name: "Ezequiel Duran", team: "TEX", pos: "3B", mlbId: 677649 },
+  // Smith was traded to Toronto at the deadline; Duran has taken over
+  // everyday second base duties, with Jung back at third.
+  { id: "duranez", name: "Ezequiel Duran", team: "TEX", pos: "2B", mlbId: 677649 },
+  { id: "jung", name: "Josh Jung", team: "TEX", pos: "3B", mlbId: 673962 },
   { id: "cauley", name: "Cam Cauley", team: "TEX", pos: "SS", mlbId: 695508 },
   { id: "langford", name: "Wyatt Langford", team: "TEX", pos: "LF", mlbId: 694671 },
   { id: "carter", name: "Evan Carter", team: "TEX", pos: "CF", mlbId: 694497 },
@@ -5349,7 +5469,9 @@ const ROYALS_PLAYERS = [
   { id: "jrojas", name: "Josh Rojas", team: "KC", pos: "3B", mlbId: 668942 },
   { id: "velazquez", name: "Andrew Velazquez", team: "KC", pos: "SS", mlbId: 623205 },
   { id: "icollins", name: "Isaac Collins", team: "KC", pos: "LF", mlbId: 686555 },
-  { id: "lthomas", name: "Lane Thomas", team: "KC", pos: "CF", mlbId: 657041 },
+  // Thomas was traded to Atlanta at the deadline (see BRAVES_PLAYERS);
+  // Misner gets the everyday look in center with Isbel (foot) out for the year.
+  { id: "misner", name: "Kameron Misner", team: "KC", pos: "CF", mlbId: 670224 },
   { id: "caglianone", name: "Jac Caglianone", team: "KC", pos: "RF", mlbId: 695506 },
   { id: "sperez", name: "Salvador Perez", team: "KC", pos: "DH", mlbId: 521692 },
   { id: "avila", name: "Luinder Avila", team: "KC", pos: "SP", mlbId: 679883 },
@@ -5391,7 +5513,9 @@ const WHITESOX_PLAYERS = [
   { id: "fedde", name: "Erick Fedde", team: "CWS", pos: "SP", mlbId: 607200 },
 ];
 const ANGELS_PLAYERS = [
-  { id: "ohoppe", name: "Logan O'Hoppe", team: "LAA", pos: "C", mlbId: 681351 },
+  // O'Hoppe was traded to Texas at the deadline; d'Arnaud (activated off
+  // the 60-day IL) takes over behind the plate.
+  { id: "darnaud", name: "Travis d'Arnaud", team: "LAA", pos: "C", mlbId: 518595 },
   { id: "schanuel", name: "Nolan Schanuel", team: "LAA", pos: "1B", mlbId: 694384 },
   { id: "peraza", name: "Oswald Peraza", team: "LAA", pos: "2B", mlbId: 672724 },
   { id: "guzman", name: "Denzer Guzman", team: "LAA", pos: "3B", mlbId: 694203 },
@@ -5400,15 +5524,21 @@ const ANGELS_PLAYERS = [
   { id: "trout", name: "Mike Trout", team: "LAA", pos: "CF", mlbId: 545361 },
   { id: "adell", name: "Jo Adell", team: "LAA", pos: "RF", mlbId: 666176 },
   { id: "soler", name: "Jorge Soler", team: "LAA", pos: "DH", mlbId: 624585 },
-  { id: "soriano", name: "José Soriano", team: "LAA", pos: "SP", mlbId: 667755 },
+  // Soriano was traded to Toronto at the deadline; Kikuchi slots back in
+  // as the rotation's veteran arm.
+  { id: "kikuchi", name: "Yusei Kikuchi", team: "LAA", pos: "SP", mlbId: 579328 },
 ];
 const GIANTS_PLAYERS_MLB = [
   { id: "susac", name: "Daniel Susac", team: "SF", pos: "C", mlbId: 691740 },
   { id: "devers", name: "Rafael Devers", team: "SF", pos: "1B", mlbId: 646240 },
-  { id: "arraez", name: "Luis Arraez", team: "SF", pos: "2B", mlbId: 650333 },
+  // Arraez was traded to Philadelphia at the deadline; Basabe takes over
+  // at second in the Giants' post-selloff infield.
+  { id: "basabe", name: "Osleivis Basabe", team: "SF", pos: "2B", mlbId: 678545 },
   { id: "koss", name: "Christian Koss", team: "SF", pos: "3B", mlbId: 683766 },
   { id: "adames", name: "Willy Adames", team: "SF", pos: "SS", mlbId: 642715 },
-  { id: "ramos", name: "Heliot Ramos", team: "SF", pos: "LF", mlbId: 671218 },
+  // Ramos was traded to the Yankees at the deadline; Luciano gets first
+  // crack at left field while the Giants look for a longer-term answer.
+  { id: "luciano", name: "Marco Luciano", team: "SF", pos: "LF", mlbId: 682617 },
   { id: "mccray", name: "Grant McCray", team: "SF", pos: "CF", mlbId: 687529 },
   { id: "jhlee", name: "Jung Hoo Lee", team: "SF", pos: "RF", mlbId: 808982 },
   { id: "eldridge", name: "Bryce Eldridge", team: "SF", pos: "DH", mlbId: 805811 },
@@ -5428,7 +5558,9 @@ const DBACKS_PLAYERS = [
 ];
 const NATIONALS_PLAYERS = [
   { id: "keibertruiz", name: "Keibert Ruiz", team: "WSH", pos: "C", mlbId: 660688 },
-  { id: "lgarcia", name: "Luis García Jr.", team: "WSH", pos: "1B", mlbId: 671277 },
+  // García Jr. was traded to the Yankees at the deadline; Ortiz was
+  // recalled from Triple-A Rochester to replace him at first.
+  { id: "aortiz", name: "Abimelec Ortiz", team: "WSH", pos: "1B", mlbId: 694673 },
   { id: "nunez", name: "Nasim Nuñez", team: "WSH", pos: "2B", mlbId: 683083 },
   { id: "vivas", name: "Jorbit Vivas", team: "WSH", pos: "3B", mlbId: 678391 },
   { id: "abrams", name: "CJ Abrams", team: "WSH", pos: "SS", mlbId: 682928 },
