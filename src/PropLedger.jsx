@@ -4797,7 +4797,10 @@ async function fetchMLBGameLog(mlbId) {
   const cached = mlbGameLogCache.get(mlbId);
   if (cached && Date.now() - cached.fetchedAt < MLB_GAMELOG_TTL_MS) return cached.games;
 
-  const cacheKey = `mlb_gamelog_v3_${mlbId}`;
+  // v4 adds gamePk (see fetchMLBGameBoxscoreLineupIds) -- bumped so any
+  // cache written before that field existed gets refetched instead of
+  // silently missing it.
+  const cacheKey = `mlb_gamelog_v4_${mlbId}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -4832,6 +4835,7 @@ async function fetchMLBGameLog(mlbId) {
       ab: st.atBats || 0,
       hbp: st.hitByPitch || 0,
       sf: st.sacFlies || 0,
+      gamePk: s.game?.gamePk || null,
     };
   });
 
@@ -4839,6 +4843,49 @@ async function fetchMLBGameLog(mlbId) {
   mlbGameLogCache.set(mlbId, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
   return games;
+}
+
+// Set of every mlbId who appeared (either team) in one historical game --
+// used by the "Teammates" With/Without filter (see MLBPropsPage) to check
+// whether a given teammate played in each of a batter's logged games.
+// Historical boxscores are immutable once the game is final, so this is
+// cached with no TTL (in-memory Map + sessionStorage) rather than refetched
+// on any schedule.
+const mlbBoxscoreLineupCache = new Map();
+async function fetchMLBGameBoxscoreLineupIds(gamePk) {
+  if (!gamePk) return new Set();
+  const cached = mlbBoxscoreLineupCache.get(gamePk);
+  if (cached) return cached;
+
+  const cacheKey = `mlb_boxscore_lineup_v1_${gamePk}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const ids = new Set(JSON.parse(stored));
+      mlbBoxscoreLineupCache.set(gamePk, ids);
+      return ids;
+    }
+  } catch {}
+
+  let ids = new Set();
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`);
+    const data = await res.json();
+    // `batters`/`pitchers` are id arrays of who actually appeared -- the
+    // boxscore's `players` dict lists the whole active roster present that
+    // day (including bench players who never got in), so those two arrays
+    // are the correct "did they play" signal, not presence in `players`.
+    [data?.teams?.home, data?.teams?.away].forEach((side) => {
+      (side?.batters || []).forEach((id) => ids.add(id));
+      (side?.pitchers || []).forEach((id) => ids.add(id));
+    });
+  } catch {
+    return new Set();
+  }
+
+  mlbBoxscoreLineupCache.set(gamePk, ids);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify([...ids])); } catch {}
+  return ids;
 }
 
 // Rolls a set of batter game logs up into the rate stats shown on the
@@ -4962,6 +5009,56 @@ async function fetchMLBTeamNextGame(teamId) {
   mlbScheduleCache.set(teamId, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
   return game;
+}
+
+// The team's real active (25/26-man) roster -- the official MLB Stats API
+// roster endpoint, which automatically excludes anyone on the IL, DFA'd, or
+// no longer with the org. Used as a live safety filter over the static
+// roster arrays below (see applyActiveRoster in MLBPropsPage) so an injured
+// or traded player never lingers in a lineup panel just because the day's
+// confirmed batting order (fetchMLBTeamNextGame) hasn't posted yet -- that's
+// what let an IL'd Cody Bellinger keep showing for the Yankees. Cached per
+// calendar day (same TTL pattern as loadRealMlbTeamDef), so it's refetched
+// once per day and on every page load, never mid-session.
+const mlbActiveRosterCache = new Map();
+async function fetchMLBTeamActiveRoster(teamId) {
+  const dayKey = currentMLBDayKey();
+  const cached = mlbActiveRosterCache.get(teamId);
+  if (cached && cached.dayKey === dayKey) return cached.roster;
+
+  const cacheKey = `mlb_active_roster_v1_${teamId}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.dayKey === dayKey) {
+        mlbActiveRosterCache.set(teamId, parsed);
+        return parsed.roster;
+      }
+    }
+  } catch {}
+
+  let roster = null;
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}/roster/active`);
+    const data = await res.json();
+    roster = (data?.roster || []).map((r) => ({
+      mlbId: r.person?.id,
+      name: r.person?.fullName,
+      pos: r.position?.abbreviation,
+    })).filter((p) => p.mlbId && p.name);
+  } catch {
+    roster = null;
+  }
+  // A failed/empty fetch isn't cached (dayKey stays unset) so the next call
+  // -- same page load or a later one -- retries instead of permanently
+  // trusting the static roster for the rest of the day.
+  if (!roster) return null;
+
+  const record = { dayKey, roster, fetchedAt: Date.now() };
+  mlbActiveRosterCache.set(teamId, record);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return roster;
 }
 
 // Real pitcher-vs-batter head-to-head splits for the Matchup Analyzer, from
@@ -5258,11 +5355,14 @@ function computeMLBGameConditions({ weather, homeAbbr }) {
   return { hrPct, runsPct, singlePct, verdict };
 }
 
-// Bottom-of-page conditions bar. Colors read from whichever side of the ball
-// the current props page is on: a Hitter Friendly reading is green on batter
-// props (favors overs) but red on pitcher props (bad for the pitcher's
-// unders), and vice versa for Pitcher Friendly -- same underlying numbers,
-// flipped framing per the `isPitcher` page you're viewing.
+// Single centered conditions strip, rendered full-width above the page's
+// 3-column roster layout (see MLBPropsPage) rather than squeezed into the
+// narrow center column between the two roster panels. Colors read from
+// whichever side of the ball the current props page is on: a Hitter
+// Friendly reading is green on batter props (favors overs) but red on
+// pitcher props (bad for the pitcher's unders), and vice versa for Pitcher
+// Friendly -- same underlying numbers, flipped framing per the `isPitcher`
+// page you're viewing.
 function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
   if (!nextGame?.venue) return null;
   const homeAbbr = nextGame.home ? teamAbbr : nextGame.opp;
@@ -5279,33 +5379,34 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
   const signed = (pct) => `${pct > 0 ? "+" : ""}${pct}%`;
 
   return (
-    <div style={{
-      display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10,
-      marginBottom: 12, fontSize: 12.5, color: "var(--dim)",
-    }}>
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: "var(--s-4)" }}>
+      {/* One panel, one border -- venue/weather and the HR/Runs/1B/verdict
+           read sit in the same row separated by a hairline divider instead
+           of living in two separately-bordered boxes. */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
-        padding: "10px 16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
+        display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 16,
+        padding: "10px 20px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+        fontSize: 12.5, color: "var(--dim)", maxWidth: "100%",
       }}>
-        <span className="oswald" style={{ fontWeight: 700, color: "var(--text)", letterSpacing: "0.04em", fontSize: 11.5, textTransform: "uppercase" }}>
-          Game Conditions
+        <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span className="oswald" style={{ fontWeight: 700, color: "var(--text)", letterSpacing: "0.04em", fontSize: 11.5, textTransform: "uppercase" }}>
+            Game Conditions
+          </span>
+          <span>· {nextGame.venue}</span>
+          {nextGame.weather && (
+            <>
+              <span>· {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.temp}°F</span>
+              {nextGame.weather.wind && <span>· 💨 {nextGame.weather.wind}</span>}
+            </>
+          )}
         </span>
-        <span>· {nextGame.venue}</span>
-        {nextGame.weather && (
-          <>
-            <span>· {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.temp}°F</span>
-            {nextGame.weather.wind && <span>· 💨 {nextGame.weather.wind}</span>}
-          </>
-        )}
-      </div>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 14, fontWeight: 600,
-        padding: "10px 16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
-      }}>
-        <span className="mono" style={{ color: statColor(hrPct) }}>HR {signed(hrPct)}</span>
-        <span className="mono" style={{ color: statColor(runsPct) }}>Runs {signed(runsPct)}</span>
-        <span className="mono" style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
-        <span className="oswald" style={{ color: verdictColor, fontSize: 12.5 }}>{verdict}</span>
+        <span style={{ width: 1, alignSelf: "stretch", background: "var(--line)" }} />
+        <span style={{ display: "flex", alignItems: "center", gap: 14, fontWeight: 600, flexWrap: "wrap" }}>
+          <span className="mono" style={{ color: statColor(hrPct) }}>HR {signed(hrPct)}</span>
+          <span className="mono" style={{ color: statColor(runsPct) }}>Runs {signed(runsPct)}</span>
+          <span className="mono" style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
+          <span className="oswald" style={{ color: verdictColor, fontSize: 12.5 }}>{verdict}</span>
+        </span>
       </div>
     </div>
   );
@@ -5691,9 +5792,6 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick }) {
     () => teamAggregateSplit(battingRoster, lineupSplitKey),
     [battingRoster, lineupSplitKey]
   );
-  const bullpenTeamAbbr = pitcher.team;
-  const bullpen = useMemo(() => teamBullpen(bullpenTeamAbbr), [bullpenTeamAbbr]);
-
   const [h2h, setH2h] = useState(undefined);
   React.useEffect(() => {
     if (!pitcher || !batter) { setH2h(null); return; }
@@ -5811,7 +5909,6 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick }) {
       onSelectBatter={setBatterId}
     />
 
-    <BullpenPanel teamAbbr={bullpenTeamAbbr} teamLabel={pitcher.team} bullpen={bullpen} />
     </div>
   );
 }
@@ -6059,45 +6156,6 @@ function ExpectedLineupPanel({ battingRoster, lineupRows, teamSplitRow, splitLab
   );
 }
 
-// ---------- Bullpen ----------
-function BullpenPanel({ teamAbbr, teamLabel, bullpen }) {
-  const cols = [
-    ["pcL3", "PC L3", (v) => v],
-    ["restDays", "REST", (v) => v],
-    ["kPct", "K%", (v) => `${v.toFixed(1)}%`],
-    ["bbPct", "BB%", (v) => `${v.toFixed(1)}%`],
-    ["era", "ERA", (v) => v.toFixed(2)],
-    ["whip", "WHIP", (v) => v.toFixed(2)],
-  ];
-  return (
-    <div className="roster-panel" style={{ overflowX: "auto" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-        Bullpen{teamLabel ? ` · ${teamLabel}` : ""}
-      </div>
-      <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, minWidth: 480 }}>
-        <thead>
-          <tr style={{ color: "var(--dim)", fontSize: 10 }}>
-            <th style={{ textAlign: "left", padding: "4px 6px" }}>PITCHER</th>
-            {cols.map(([key, label]) => <th key={key} style={{ textAlign: "center", padding: "4px 6px", fontWeight: 700 }}>{label}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {bullpen.map((p) => (
-            <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
-              <td className="oswald" style={{ padding: "6px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap" }}>
-                {p.name} <span className="mono" style={{ fontSize: 10, color: "var(--dim)", fontWeight: 400 }}>{p.throws}</span>
-              </td>
-              {cols.map(([key, , fmt]) => (
-                <td key={key} style={{ textAlign: "center", padding: "6px", color: "var(--text)" }}>{fmt(p[key])}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function MLBPropsPage({ jumpTo }) {
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -6130,6 +6188,31 @@ function MLBPropsPage({ jumpTo }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, [teamAbbr]);
   const oppRoster = (nextGame && MLB_TEAM_ROSTERS[nextGame.opp]) || null;
+
+  // Live active-roster safety filter (see fetchMLBTeamActiveRoster) -- keyed
+  // by mlbId -> {name, pos}, refetched whenever the selected team or its
+  // real opponent changes and once per calendar day otherwise. null while
+  // loading/unavailable means "don't filter yet" (liveTeamRoster/liveOppRoster
+  // below fall back to the static roster rather than showing nothing).
+  const [teamActiveRoster, setTeamActiveRoster] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    setTeamActiveRoster(null);
+    const teamId = MLB_ABBR_TEAM_ID[teamAbbr];
+    if (!teamId) return;
+    fetchMLBTeamActiveRoster(teamId).then((r) => { if (!cancelled) setTeamActiveRoster(r); });
+    return () => { cancelled = true; };
+  }, [teamAbbr]);
+
+  const [oppActiveRoster, setOppActiveRoster] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    setOppActiveRoster(null);
+    const oppTeamId = nextGame && MLB_ABBR_TEAM_ID[nextGame.opp];
+    if (!oppTeamId) return;
+    fetchMLBTeamActiveRoster(oppTeamId).then((r) => { if (!cancelled) setOppActiveRoster(r); });
+    return () => { cancelled = true; };
+  }, [nextGame && nextGame.opp]);
 
   // Today's real MLB slate (see fetchMLBDaySlate, same fetch the Prop Feed's
   // MATCHUP dropdown uses) -- this is what lets the team selector below show
@@ -6210,6 +6293,14 @@ function MLBPropsPage({ jumpTo }) {
   const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
 
+  // With/Without teammate splits -- each chip is {mlbId, name, mode}, mode
+  // "with" requires that teammate to have played (per the real boxscore) in
+  // a given game for it to count, "without" requires them to not have. See
+  // the "Teammates" filter group below and fetchMLBGameBoxscoreLineupIds.
+  const [teammateChips, setTeammateChips] = useState([]);
+  const [boxscoreLineups, setBoxscoreLineups] = useState({});
+  const [boxscoresLoading, setBoxscoresLoading] = useState(false);
+
   const resetFilters = () => {
     setSide("all");
     setLastN(10);
@@ -6218,6 +6309,7 @@ function MLBPropsPage({ jumpTo }) {
     setMaxPA(6);
     setPaRangeEnabled(false);
     setLine(null);
+    setTeammateChips([]);
   };
 
   // Swaps each roster's static "SP" placeholder for the actual live probable
@@ -6234,11 +6326,41 @@ function MLBPropsPage({ jumpTo }) {
   // hasn't posted yet, or happens to share zero mlbIds with our static
   // roster (e.g. a mid-week call-up we don't have modeled), it falls back
   // to showing the full static roster rather than an empty/wrong panel.
-  const applyConfirmedLineup = (roster, lineupIds) => {
+  const applyConfirmedLineup = (roster, lineupIds, activeRoster, abbr) => {
     if (!lineupIds || !lineupIds.length) return roster;
-    const filtered = roster.players.filter((p) => p.pos === "SP" || lineupIds.includes(p.mlbId));
+    const known = roster.players.filter((p) => p.pos === "SP" || lineupIds.includes(p.mlbId));
+    // A confirmed starter who isn't in our static projected 9 (a call-up or
+    // trade-deadline addition we don't have modeled) still needs to show --
+    // pull their name/position from the active-roster fetch (which has both)
+    // so the panel reflects the real confirmed lineup rather than silently
+    // dropping them.
+    const knownIds = new Set(known.map((p) => p.mlbId));
+    const extras = (activeRoster || [])
+      .filter((p) => lineupIds.includes(p.mlbId) && !knownIds.has(p.mlbId))
+      .map((p) => ({ id: `mlb_live_${p.mlbId}`, name: p.name, team: abbr, pos: p.pos, mlbId: p.mlbId }));
+    const filtered = [...known, ...extras];
     if (!filtered.some((p) => p.pos !== "SP")) return roster;
     return { label: roster.label, players: filtered };
+  };
+
+  // Live safety filter run before applyConfirmedLineup: drops any static
+  // roster entry (see MLB_PLAYERS etc.) that isn't actually on the team's
+  // real active roster right now -- an IL'd, DFA'd, or traded-away player
+  // never shows up here regardless of whether MLB has posted today's exact
+  // batting order yet, which is what applyConfirmedLineup alone couldn't
+  // guard against. This only ever trims the static 9-man projected lineup
+  // down, never adds the rest of the active/bench roster on top of it --
+  // that's what kept every backup catcher/utility infielder showing up
+  // alongside the real projected starters before a lineup is confirmed.
+  // `activeRoster` is null while loading or if the fetch failed -- in that
+  // case this is a no-op, same "never show an empty/wrong panel" fallback
+  // philosophy as applyConfirmedLineup below.
+  const applyActiveRoster = (roster, activeRoster) => {
+    if (!activeRoster || !activeRoster.length) return roster;
+    const activeIds = new Set(activeRoster.map((p) => p.mlbId));
+    const kept = roster.players.filter((p) => p.pos === "SP" || activeIds.has(p.mlbId));
+    if (!kept.some((p) => p.pos !== "SP")) return roster;
+    return { label: roster.label, players: kept };
   };
 
   const liveTeamRoster = useMemo(() => {
@@ -6252,8 +6374,9 @@ function MLBPropsPage({ jumpTo }) {
           label: teamRoster.label,
           players: [...teamRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(teamAbbr, live.mlbId), name: live.name, team: teamAbbr, pos: "SP", mlbId: live.mlbId }],
         };
-    return applyConfirmedLineup(base, nextGame?.ourLineupIds);
-  }, [teamRoster, teamAbbr, nextGame, jumpedPitcher]);
+    const reconciled = applyActiveRoster(base, teamActiveRoster);
+    return applyConfirmedLineup(reconciled, nextGame?.ourLineupIds, teamActiveRoster, teamAbbr);
+  }, [teamRoster, teamAbbr, nextGame, jumpedPitcher, teamActiveRoster]);
 
   const liveOppRoster = useMemo(() => {
     if (!oppRoster) return oppRoster;
@@ -6264,8 +6387,9 @@ function MLBPropsPage({ jumpTo }) {
           label: oppRoster.label,
           players: [...oppRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(nextGame.opp, live.mlbId), name: live.name, team: nextGame.opp, pos: "SP", mlbId: live.mlbId }],
         };
-    return applyConfirmedLineup(base, nextGame?.oppLineupIds);
-  }, [oppRoster, nextGame]);
+    const reconciled = applyActiveRoster(base, oppActiveRoster);
+    return applyConfirmedLineup(reconciled, nextGame?.oppLineupIds, oppActiveRoster, nextGame.opp);
+  }, [oppRoster, nextGame, oppActiveRoster]);
 
   const player =
     liveTeamRoster.players.find((p) => p.id === playerId) ||
@@ -6330,17 +6454,65 @@ function MLBPropsPage({ jumpTo }) {
     [allGames]
   );
 
+  // Every gamePk within the current side/opponent/PA scope (i.e. everything
+  // the teammate predicate below might need to check) -- NOT the full
+  // season blind, and computed before the teammate filter itself so adding
+  // a chip doesn't change what counts as "in scope." Only populated while
+  // at least one teammate chip is active, since boxscore fetches are
+  // otherwise unnecessary.
+  const teammateScopeGamePks = useMemo(() => {
+    if (isPitcher || !teammateChips.length) return [];
+    const scoped = allGames.filter((game) => {
+      if (side === "home" && !game.home) return false;
+      if (side === "away" && game.home) return false;
+      if (opponent !== "all" && game.opp !== opponent) return false;
+      if (game.pa < minPA || game.pa > maxPA) return false;
+      return true;
+    });
+    return Array.from(new Set(scoped.map((g) => g.gamePk).filter(Boolean)));
+  }, [allGames, side, opponent, minPA, maxPA, teammateChips.length, isPitcher]);
+
+  React.useEffect(() => {
+    if (!teammateScopeGamePks.length) return;
+    let cancelled = false;
+    setBoxscoresLoading(true);
+    Promise.all(teammateScopeGamePks.map((pk) => fetchMLBGameBoxscoreLineupIds(pk).then((ids) => [pk, ids])))
+      .then((pairs) => {
+        if (cancelled) return;
+        setBoxscoreLineups((prev) => {
+          const next = { ...prev };
+          pairs.forEach(([pk, ids]) => { next[pk] = ids; });
+          return next;
+        });
+      })
+      .finally(() => { if (!cancelled) setBoxscoresLoading(false); });
+    return () => { cancelled = true; };
+  }, [teammateScopeGamePks]);
+
   const filtered = useMemo(() => {
     let g = allGames.filter((game) => {
       if (side === "home" && !game.home) return false;
       if (side === "away" && game.home) return false;
       if (opponent !== "all" && game.opp !== opponent) return false;
       if (!isPitcher && (game.pa < minPA || game.pa > maxPA)) return false;
+      if (!isPitcher && teammateChips.length) {
+        if (!game.gamePk) return false;
+        const ids = boxscoreLineups[game.gamePk];
+        // Still loading that game's boxscore -- excluded rather than
+        // counted as a hit until we actually know, so the sample never
+        // silently over-includes while fetches are in flight.
+        if (!ids) return false;
+        for (const chip of teammateChips) {
+          const played = ids.has(chip.mlbId);
+          if (chip.mode === "with" && !played) return false;
+          if (chip.mode === "without" && played) return false;
+        }
+      }
       return true;
     });
     if (lastN !== "all") g = g.slice(-lastN);
     return g;
-  }, [allGames, side, opponent, minPA, maxPA, lastN, isPitcher]);
+  }, [allGames, side, opponent, minPA, maxPA, lastN, isPitcher, teammateChips, boxscoreLineups]);
 
   // Batter rate-stat card (PA/Hits/AVG/OBP/BABIP/K%) -- the top value is the
   // rate over whatever the filters above have narrowed "filtered" down to,
@@ -6388,11 +6560,18 @@ function MLBPropsPage({ jumpTo }) {
   const edge = avg - effectiveLine;
   const marketLabel = (isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS).find((m) => m.id === market)?.label ?? "";
 
+  // Bullpen lists shown under each team's lineup (see TeamRosterPanel /
+  // LineupDrawer's `bullpen` prop) -- teamBullpen() itself is still the
+  // seeded mock generator described where it's defined above; only where
+  // it renders has moved.
+  const teamBullpenList = useMemo(() => teamBullpen(teamAbbr), [teamAbbr]);
+  const oppBullpenList = useMemo(() => (nextGame ? teamBullpen(nextGame.opp) : []), [nextGame && nextGame.opp]);
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <MobilePlayerNav
-      teamA={liveTeamRoster}
-      teamB={liveOppRoster || { label: "Loading…", players: [] }}
+      teamA={{ ...liveTeamRoster, bullpen: teamBullpenList }}
+      teamB={liveOppRoster ? { ...liveOppRoster, bullpen: oppBullpenList } : { label: "Loading…", players: [] }}
       activeId={playerId}
       onSelect={(id) => {
         setPlayerId(id); setLine(null); setOpponent("all");
@@ -6404,6 +6583,11 @@ function MLBPropsPage({ jumpTo }) {
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
     />
+    {/* Game Conditions: rendered full-width above the 3-column roster
+         layout (rather than inside its narrow center column) so it's
+         genuinely centered across the whole page, not squeezed between the
+         two roster panels. */}
+    <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={liveTeamRoster.label}
@@ -6415,12 +6599,9 @@ function MLBPropsPage({ jumpTo }) {
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
       confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
+      bullpen={teamBullpenList}
     />
     <div className="roster-layout-center">
-      {/* Game Conditions: sits above the date/matchup pill so the park +
-           weather read is the first thing visible for every player, not
-           buried at the bottom of the page. */}
-      <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
       {/* Next-game info bar: the selected team's real next scheduled
            opponent (see fetchMLBTeamNextGame), not a fixed mock date -- so
            it always reflects the actual live schedule. Sits above the
@@ -6885,6 +7066,60 @@ function MLBPropsPage({ jumpTo }) {
               }]),
             ],
           },
+          ...(isPitcher ? [] : [{
+            stack: [
+              {
+                label: "Teammates",
+                content: (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 280 }}>
+                    <select
+                      className="select"
+                      value=""
+                      onChange={(e) => {
+                        const mlbId = Number(e.target.value);
+                        const tp = liveTeamRoster.players.find((p) => p.mlbId === mlbId);
+                        if (!tp) return;
+                        setTeammateChips((prev) => (prev.some((c) => c.mlbId === mlbId) ? prev : [...prev, { mlbId, name: tp.name, mode: "without" }]));
+                      }}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">Add teammate…</option>
+                      {liveTeamRoster.players.filter((p) => p.mlbId !== player.mlbId && p.pos !== "SP").map((p) => (
+                        <option key={p.mlbId} value={p.mlbId}>{p.name}</option>
+                      ))}
+                    </select>
+                    {teammateChips.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {teammateChips.map((c) => (
+                          <div key={c.mlbId} className="chip active" style={{ display: "flex", alignItems: "center", gap: 7, cursor: "default" }}>
+                            <span
+                              role="button"
+                              title="Click to toggle With / Without"
+                              onClick={() => setTeammateChips((prev) => prev.map((x) => (x.mlbId === c.mlbId ? { ...x, mode: x.mode === "with" ? "without" : "with" } : x)))}
+                              style={{ cursor: "pointer" }}
+                            >
+                              {c.mode === "with" ? "W/" : "W/O"}: {c.name}
+                            </span>
+                            <span
+                              role="button"
+                              aria-label={`Remove ${c.name}`}
+                              onClick={() => setTeammateChips((prev) => prev.filter((x) => x.mlbId !== c.mlbId))}
+                              style={{ cursor: "pointer", color: "var(--dim)", fontWeight: 700 }}
+                            >
+                              ×
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {boxscoresLoading && (
+                      <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>Loading boxscores…</div>
+                    )}
+                  </div>
+                ),
+              },
+            ],
+          }]),
         ]}
       />
     </div>
@@ -6898,6 +7133,7 @@ function MLBPropsPage({ jumpTo }) {
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
       confirmed={(nextGame?.oppLineupIds?.length || 0) > 0}
+      bullpen={oppBullpenList}
     />
     </div>
 
@@ -8379,7 +8615,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 // entirely by MobilePlayerNav (persistent bottom chip strip + Lineup side
 // drawer, rendered once per page rather than once per TeamRosterPanel) --
 // see below. TeamRosterPanel itself renders nothing in that range.
-function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, confirmed }) {
+function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, confirmed, bullpen }) {
   const compact = useIsNarrow(1100);
   // Pitchers (pos "SP") get sectioned off from the batting order rather than
   // just tacked onto the end of the list -- MLB is the only sport that
@@ -8448,6 +8684,24 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
     );
   };
 
+  // Compact reliever row for the bullpen list under the batting order --
+  // just name + throws, a quick-glance list rather than the fuller
+  // PC/REST/K%/BB%/ERA/WHIP table teamBullpen()'s data also supports.
+  const renderBullpenRow = (p) => (
+    <div
+      key={p.id}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+        padding: "6px 10px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--panel)",
+      }}
+    >
+      <span className="oswald" style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {p.name}
+      </span>
+      <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)", flexShrink: 0 }}>{p.throws}</span>
+    </div>
+  );
+
   // Below the roster-panel breakpoint, MobilePlayerNav (rendered once per
   // page) takes over player-switching entirely -- nothing to render here.
   if (compact) return null;
@@ -8463,11 +8717,12 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
           <span title="Confirmed starting lineup" style={{ color: "var(--green)", fontSize: 13, fontWeight: 900 }}>✓</span>
         )}
       </div>
-      {/* Capped height + scroll instead of letting the panel grow -- rows keep
-           their normal size no matter how many players are listed (batters +
-           starting pitcher), so the list scrolls rather than shrinking or
-           pushing the page layout taller. */}
-      <div style={{ maxHeight: 500, overflowY: "auto", overflowX: "hidden", paddingRight: 4 }}>
+      {/* No capped height/scroll here -- the column grows to fit the whole
+           lineup (and bullpen below it) so nothing is hidden behind an
+           inner scrollbar; .roster-layout already aligns columns to the
+           top (align-items: start), so a taller column just grows past its
+           neighbors instead of stretching them. */}
+      <div style={{ paddingRight: 4 }}>
         {pitchers.length > 0 && (
           <>
             <div style={{
@@ -8490,6 +8745,19 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {batters.map(renderRow)}
         </div>
+        {bullpen && bullpen.length > 0 && (
+          <>
+            <div style={{
+              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em",
+              textAlign: "center", margin: "12px 0 6px", paddingTop: 10, borderTop: "1px solid var(--line)",
+            }}>
+              Bullpen
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {bullpen.map(renderBullpenRow)}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -8667,6 +8935,21 @@ function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headsho
               {team.label}
             </div>
             {(team.players || []).map(renderPlayerRow)}
+            {/* Optional -- only MLB's roster objects carry a `bullpen` array
+                 (see MLBPropsPage), so this is a no-op for every other sport. */}
+            {team.bullpen && team.bullpen.length > 0 && (
+              <>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "10px 0 6px", paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+                  Bullpen
+                </div>
+                {team.bullpen.map((p) => (
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel2)", marginBottom: 6 }}>
+                    <span className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{p.name}</span>
+                    <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{p.throws}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -8790,6 +9073,84 @@ function PageNavDropdown({ page, setPage, options }) {
               {p.label}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Global player/team search, rendered once in the header (next to
+// PageNavDropdown) so it's identical on every page instead of duplicated
+// per sport. `index` is the flat [{key, sport, sportLabel, label, playerId,
+// market, searchText}] list built once in PropLedger (see searchIndex) --
+// this component only filters/renders it. Picking a result reuses the same
+// goToProp(sport, playerId, market) cross-sport jump the Prop Feed's "View
+// Chart" buttons already use, so there's no second navigation concept.
+function SearchBar({ index, onSelect }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const rootRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDocPointerDown = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocPointerDown);
+    return () => document.removeEventListener("mousedown", onDocPointerDown);
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const results = useMemo(() => {
+    if (!q) return [];
+    return index.filter((item) => item.searchText.includes(q)).slice(0, 8);
+  }, [index, q]);
+
+  return (
+    <div ref={rootRef} style={{ position: "relative", minWidth: 0 }}>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Search players or teams…"
+        aria-label="Search players or teams"
+        className="select"
+        style={{ width: "min(260px, 46vw)", cursor: "text" }}
+      />
+      {open && q && (
+        <div
+          role="listbox"
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100,
+            width: "max(260px, min(320px, 90vw))", maxHeight: 320, overflowY: "auto",
+            background: "var(--panel)", border: "1px solid var(--line)",
+            borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          }}
+        >
+          {results.length === 0 ? (
+            <div className="mono" style={{ padding: "12px 14px", fontSize: 12, color: "var(--dim)" }}>No matches</div>
+          ) : (
+            results.map((r) => (
+              <div
+                key={r.key}
+                role="option"
+                aria-selected={false}
+                onClick={() => { onSelect(r); setQuery(""); setOpen(false); }}
+                className="oswald"
+                style={{
+                  cursor: "pointer", padding: "9px 14px", fontSize: 13, fontWeight: 600,
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                  color: "var(--text)",
+                }}
+              >
+                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</span>
+                <span className="mono" style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.04em", flexShrink: 0 }}>
+                  {r.sportLabel}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>
@@ -9243,6 +9604,42 @@ export default function PropLedger() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
 
+  // Flat player/team index for the header's global SearchBar -- built once
+  // from the same static player pools each sport page already draws from,
+  // plus one entry per real MLB team (MLB_TEAM_ROSTERS is the only one of
+  // the four sports modeling all 30 league teams rather than a fixed
+  // matchup). Each entry's `market` is just that sport's default -- the
+  // destination page's own player-switch effect (see e.g. MLBPropsPage's
+  // "market still applies to them" effect) reconciles it if the picked
+  // player/team needs a different one (e.g. a pitcher).
+  const searchIndex = useMemo(() => {
+    const entries = [];
+    ALL_NFL_PLAYERS.forEach((p) => entries.push({
+      key: `nfl_${p.id}`, sport: "nfl", sportLabel: "NFL", label: p.name, playerId: p.id, market: "passYds",
+      searchText: `${p.name} ${p.team}`.toLowerCase(),
+    }));
+    PLAYERS.forEach((p) => entries.push({
+      key: `nba_${p.id}`, sport: "nba", sportLabel: "NBA", label: p.name, playerId: p.id, market: "pts",
+      searchText: `${p.name} ${p.team}`.toLowerCase(),
+    }));
+    ALL_WNBA_PLAYERS.forEach((p) => entries.push({
+      key: `wnba_${p.id}`, sport: "wnba", sportLabel: "WNBA", label: p.name, playerId: p.id, market: "pts",
+      searchText: `${p.name} ${p.team}`.toLowerCase(),
+    }));
+    ALL_MLB_PLAYERS.forEach((p) => entries.push({
+      key: `mlb_${p.id}`, sport: "mlb", sportLabel: "MLB", label: p.name, playerId: p.id, market: "h",
+      searchText: `${p.name} ${p.team}`.toLowerCase(),
+    }));
+    Object.entries(MLB_TEAM_ROSTERS).forEach(([abbr, roster]) => {
+      if (!roster.players.length) return;
+      entries.push({
+        key: `mlb_team_${abbr}`, sport: "mlb", sportLabel: "MLB Team", label: roster.label,
+        playerId: roster.players[0].id, market: "h", searchText: `${roster.label} ${abbr}`.toLowerCase(),
+      });
+    });
+    return entries;
+  }, []);
+
   const player = PLAYERS.find((p) => p.id === playerId);
   const allGames = useMemo(() => genGames(player, PLAYERS.indexOf(player)), [player]);
   const seasonAvg = useMemo(() => {
@@ -9366,18 +9763,24 @@ export default function PropLedger() {
           </h1>
           <span style={{ color: "var(--dim)", fontSize: 13 }}>your own hit-rate research, before you place it</span>
         </div>
-        <PageNavDropdown
-          page={page}
-          setPage={setPage}
-          options={[
-            { id: "feed", label: "Prop Feed" },
-            { id: "nfl", label: "NFL Props" },
-            { id: "mlb", label: "MLB Props" },
-            { id: "nba", label: "NBA Props" },
-            { id: "wnba", label: "WNBA Props" },
-            { id: "news", label: "News" },
-          ]}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <PageNavDropdown
+            page={page}
+            setPage={setPage}
+            options={[
+              { id: "feed", label: "Prop Feed" },
+              { id: "nfl", label: "NFL Props" },
+              { id: "mlb", label: "MLB Props" },
+              { id: "nba", label: "NBA Props" },
+              { id: "wnba", label: "WNBA Props" },
+              { id: "news", label: "News" },
+            ]}
+          />
+          {/* Global search -- same on every page (see SearchBar), reuses
+               goToProp for navigation so picking a result works exactly like
+               clicking "View Chart" on a Prop Feed row. */}
+          <SearchBar index={searchIndex} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />
+        </div>
       </div>
 
       {page === "nba" && (
