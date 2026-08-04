@@ -5280,7 +5280,7 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
 
   return (
     <div style={{
-      display: "flex", flexWrap: "wrap", justifyContent: "flex-start", alignItems: "center", gap: 10,
+      display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10,
       marginBottom: 12, fontSize: 12.5, color: "var(--dim)",
     }}>
       <div style={{
