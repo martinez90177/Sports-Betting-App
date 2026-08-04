@@ -2911,8 +2911,11 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
       {/* align-items: center keeps the arrow vertically centered
-           on the taller card tiles instead of pinned to their top edge. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+           on the taller card tiles instead of pinned to their top edge.
+           justifyContent: center keeps the fixed-width arrows+track group
+           centered within the full-width row now that the ancestor group
+           stretches instead of shrink-wrapping (see FiltersSection). */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
         <div
           role="button"
           aria-label="Scroll teammates left"
@@ -3111,10 +3114,15 @@ function FiltersSection({ children, groups, onReset, defaultOpen = true }) {
                     // the panel's full content width instead. It's also the
                     // only group that ever ends up alone on its row, so
                     // without centering it just sits pinned to the left edge
-                    // with the rest of the row empty -- align-items/text-align
-                    // center keeps the label and content centered like every
-                    // other (content-sized) group on the two-per-row rows.
-                    ...(g.fullWidth ? { flexBasis: "100%", minWidth: 0, alignItems: "center" } : null),
+                    // with the rest of the row empty. Centering happens via
+                    // textAlign below and (for the teammate carousel) its own
+                    // internal justifyContent instead of alignItems here --
+                    // alignItems: "center" made this column shrink-to-fit
+                    // instead of stretching to the group's full width, which
+                    // broke every percentage-width descendant (the teammate
+                    // track sized itself against that collapsed 0 width and
+                    // rendered no cards at all).
+                    ...(g.fullWidth ? { flexBasis: "100%", minWidth: 0 } : null),
                   }}
                 >
                   {cell.map((f) => (
@@ -7986,97 +7994,18 @@ function MLBPropsPage({ jumpTo }) {
     </>
   );
 
-  const tabsBar = (
-    <div
-      role="tablist"
-      style={{
-        display: "flex", justifyContent: isNarrow ? "flex-start" : "center", gap: 6, marginBottom: 14,
-        overflowX: isNarrow ? "auto" : "visible", WebkitOverflowScrolling: "touch",
-      }}
-    >
-      {MLB_DETAIL_TABS.map((v) => (
-        <div
-          key={v.id}
-          onClick={() => setView(v.id)}
-          role="tab"
-          aria-selected={view === v.id}
-          className="oswald"
-          style={{
-            cursor: "pointer", padding: "6px 16px", borderRadius: 999, fontSize: 12, fontWeight: 700,
-            letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
-            border: `1px solid ${view === v.id ? "var(--amber)" : "var(--line)"}`,
-            background: view === v.id ? "var(--amber-dim)" : "var(--panel)",
-            color: view === v.id ? "var(--amber)" : "var(--dim)",
-          }}
-        >
-          {v.label}
-        </div>
-      ))}
-    </div>
-  );
-
-  return (
-    <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
-    <MobilePlayerNav
-      teamA={{ ...liveTeamRoster, bullpen: teamBullpenList }}
-      teamB={liveOppRoster ? { ...liveOppRoster, bullpen: oppBullpenList } : { label: "Loading…", players: [] }}
-      activeId={playerId}
-      onSelect={(id) => {
-        setPlayerId(id); setLine(null); setOpponent("all");
-        const side = liveTeamRoster.players.some((p) => p.id === id) ? "team" : "opp";
-        setMatchupPick({ side, id, nonce: Date.now() });
-      }}
-      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
-      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
-      metaLine={(p) => p.pos}
-      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
-    />
-    {/* Game Conditions: rendered full-width above the 3-column roster
-         layout (rather than inside its narrow center column) so it's
-         genuinely centered across the whole page, not squeezed between the
-         two roster panels. */}
-    <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
-
-    {/* Below the `compact` breakpoint (roster columns already stacked into
-         one column -- see .roster-layout in index.css), the tabs and their
-         content render here, full-width and immediately under the game info,
-         instead of waiting at the bottom of the matchup selector/stat
-         card/market grid/filters column below. Above that breakpoint the
-         3-column layout has room for all of it, so this stays out of the
-         way and the tabs/content render in their original spot inside the
-         center column instead (see further down). */}
-    {compact && (
-      <>
-        {nextGamePill}
-        {tabsBar}
-        {activeTabContent}
-      </>
-    )}
-
-    <div className="roster-layout">
-    <TeamRosterPanel
-      teamLabel={liveTeamRoster.label}
-      players={liveTeamRoster.players}
-      activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); setMatchupPick({ side: "team", id, nonce: Date.now() }); }}
-      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
-      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
-      metaLine={(p) => p.pos}
-      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
-      confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
-    />
-    <div className="roster-layout-center">
-      {!compact && nextGamePill}
-      {!compact && tabsBar}
-
-      {/* Matchup + market selectors -- picking one of today's real games
-           (see fetchMLBDaySlate) sets the "our side" team, and its real next
-           scheduled opponent (see fetchMLBTeamNextGame) populates the other
-           roster panel -- the same "pick a matchup, see its two rosters"
-           pattern the NFL/WNBA pages use. Picking an individual player
-           happens by clicking their row in either roster panel. */}
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 20, marginBottom: 12, flexWrap: "wrap" }}>
+  // Matchup + market selectors -- picking one of today's real games
+  // (see fetchMLBDaySlate) sets the "our side" team, and its real next
+  // scheduled opponent (see fetchMLBTeamNextGame) populates the other
+  // roster panel -- the same "pick a matchup, see its two rosters"
+  // pattern the NFL/WNBA pages use. Picking an individual player
+  // happens by clicking their row in either roster panel. Pulled into a
+  // variable (same pattern as nextGamePill/tabsBar/activeTabContent above)
+  // so it can render as a compact top header on mobile instead of after
+  // the whole tab content, where it used to land at the bottom of the page.
+  const matchupHeaderBlock = (
+    <div style={{ marginBottom: 8, marginTop: compact ? 14 : 20 }}>
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: compact ? 10 : 20, marginBottom: compact ? 8 : 12, flexWrap: "wrap" }}>
           <select
             className="select"
             value={activeMatchupId}
@@ -8092,6 +8021,7 @@ function MLBPropsPage({ jumpTo }) {
             style={{
               width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              textAlign: "center", textAlignLast: "center",
             }}
           >
             {!matchupOptions.length && <option value="">Loading today's games…</option>}
@@ -8100,14 +8030,14 @@ function MLBPropsPage({ jumpTo }) {
             ))}
           </select>
           <div style={{
-            position: "relative", width: 122, height: 122, borderRadius: "50%", flexShrink: 0,
+            position: "relative", width: compact ? 64 : 122, height: compact ? 64 : 122, borderRadius: "50%", flexShrink: 0,
             background: teamAvatarBackground(MLB_TEAM_COLORS, player.team),
             boxShadow: `0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
           }}>
             {/* Always-visible black backing, in case the headshot image can't load
                  -- covers rookies/trades/missing photos. */}
             <div style={{
-              position: "absolute", inset: 6, borderRadius: "50%",
+              position: "absolute", inset: compact ? 3 : 6, borderRadius: "50%",
               background: "#000",
               border: "1px solid var(--line)",
               display: "flex", alignItems: "center", justifyContent: "center",
@@ -8116,12 +8046,12 @@ function MLBPropsPage({ jumpTo }) {
               key={player.id}
               src={mlbHeadshot(player.mlbId)}
               alt={player.name}
-              width={110}
-              height={110}
+              width={compact ? 58 : 110}
+              height={compact ? 58 : 110}
               referrerPolicy="no-referrer"
               style={{
-                position: "absolute", inset: 6,
-                width: 110, height: 110,
+                position: "absolute", inset: compact ? 3 : 6,
+                width: compact ? 58 : 110, height: compact ? 58 : 110,
                 borderRadius: "50%",
                 objectFit: "cover",
                 objectPosition: "center top",
@@ -8144,13 +8074,13 @@ function MLBPropsPage({ jumpTo }) {
 
           {/* Player snapshot: season averages at a glance, next to the selector. */}
           <div style={{
-            display: "flex", alignItems: "center", gap: 18,
+            display: "flex", alignItems: "center", gap: compact ? 10 : 18,
             background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-            padding: "10px 20px",
+            padding: compact ? "6px 10px" : "10px 20px",
           }}>
-            <div style={{ textAlign: "center", paddingRight: 14, borderRight: "1px solid var(--line)" }}>
-              <div className="oswald" style={{ fontSize: 14, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
-              <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <div style={{ textAlign: "center", paddingRight: compact ? 8 : 14, borderRight: "1px solid var(--line)" }}>
+              <div className="oswald" style={{ fontSize: compact ? 12 : 14, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
+              <div style={{ fontSize: compact ? 9 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 {player.team} · {player.pos} · Season
               </div>
             </div>
@@ -8169,8 +8099,8 @@ function MLBPropsPage({ jumpTo }) {
                 ]
             ).map((s) => (
               <div key={s.label} style={{ textAlign: "center" }}>
-                <div className="mono" style={{ fontSize: 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(2)}</div>
-                <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+                <div className="mono" style={{ fontSize: compact ? 15 : 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(2)}</div>
+                <div style={{ fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
               </div>
             ))}
           </div>
@@ -8212,22 +8142,22 @@ function MLBPropsPage({ jumpTo }) {
           return (
             <div style={{ position: "relative" }}>
               <div style={{
-                display: "flex", justifyContent: "center", gap: 26, flexWrap: "wrap",
+                display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
                 background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-                padding: "10px 20px", marginTop: 10,
+                padding: compact ? "8px 10px" : "10px 20px", marginTop: compact ? 8 : 10,
               }}>
                 {cards.map((c) => (
-                  <div key={c.key} style={{ textAlign: "center", minWidth: 52 }}>
+                  <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
                     <div style={{
-                      fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
+                      fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
                       marginBottom: 2,
-                      textDecoration: c.key === "hits" && market === "h" ? "underline var(--amber)" : "none",
+                      textDecoration: "none",
                       textUnderlineOffset: 3,
                     }}>
                       {c.label}
                     </div>
-                    <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
-                    <div className="mono" style={{ fontSize: 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                    <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
+                    <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
                   </div>
                 ))}
                 <div
@@ -8311,22 +8241,22 @@ function MLBPropsPage({ jumpTo }) {
           return (
             <div style={{ position: "relative" }}>
               <div style={{
-                display: "flex", justifyContent: "center", gap: 26, flexWrap: "wrap",
+                display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
                 background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-                padding: "10px 20px", marginTop: 10,
+                padding: compact ? "8px 10px" : "10px 20px", marginTop: compact ? 8 : 10,
               }}>
                 {cards.map((c) => (
-                  <div key={c.key} style={{ textAlign: "center", minWidth: 52 }}>
+                  <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
                     <div style={{
-                      fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
+                      fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
                       marginBottom: 2,
                       textDecoration: c.key === "k" && market === "p_k" ? "underline var(--amber)" : "none",
                       textUnderlineOffset: 3,
                     }}>
                       {c.label}
                     </div>
-                    <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
-                    <div className="mono" style={{ fontSize: 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                    <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
+                    <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
                   </div>
                 ))}
                 <div
@@ -8376,6 +8306,94 @@ function MLBPropsPage({ jumpTo }) {
           );
         })()}
 
+    </div>
+  );
+
+  const tabsBar = (
+    <div
+      role="tablist"
+      style={{
+        display: "flex", justifyContent: "center", gap: 6, marginBottom: 14,
+        overflowX: isNarrow ? "auto" : "visible", WebkitOverflowScrolling: "touch",
+      }}
+    >
+      {MLB_DETAIL_TABS.map((v) => (
+        <div
+          key={v.id}
+          onClick={() => setView(v.id)}
+          role="tab"
+          aria-selected={view === v.id}
+          className="oswald"
+          style={{
+            cursor: "pointer", padding: "6px 16px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+            letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
+            border: `1px solid ${view === v.id ? "var(--amber)" : "var(--line)"}`,
+            background: view === v.id ? "var(--amber-dim)" : "var(--panel)",
+            color: view === v.id ? "var(--amber)" : "var(--dim)",
+          }}
+        >
+          {v.label}
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <MobilePlayerNav
+      teamA={{ ...liveTeamRoster, bullpen: teamBullpenList }}
+      teamB={liveOppRoster ? { ...liveOppRoster, bullpen: oppBullpenList } : { label: "Loading…", players: [] }}
+      activeId={playerId}
+      onSelect={(id) => {
+        setPlayerId(id); setLine(null); setOpponent("all");
+        const side = liveTeamRoster.players.some((p) => p.id === id) ? "team" : "opp";
+        setMatchupPick({ side, id, nonce: Date.now() });
+      }}
+      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
+      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+    />
+    {/* Game Conditions: rendered full-width above the 3-column roster
+         layout (rather than inside its narrow center column) so it's
+         genuinely centered across the whole page, not squeezed between the
+         two roster panels. */}
+    <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
+
+    {/* Below the `compact` breakpoint (roster columns already stacked into
+         one column -- see .roster-layout in index.css), the tabs and their
+         content render here, full-width and immediately under the game info,
+         instead of waiting at the bottom of the matchup selector/stat
+         card/market grid/filters column below. Above that breakpoint the
+         3-column layout has room for all of it, so this stays out of the
+         way and the tabs/content render in their original spot inside the
+         center column instead (see further down). */}
+    {compact && (
+      <>
+        {matchupHeaderBlock}
+        {nextGamePill}
+        {tabsBar}
+        {activeTabContent}
+      </>
+    )}
+
+    <div className="roster-layout">
+    <TeamRosterPanel
+      teamLabel={liveTeamRoster.label}
+      players={liveTeamRoster.players}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); setMatchupPick({ side: "team", id, nonce: Date.now() }); }}
+      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
+      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
+      metaLine={(p) => p.pos}
+      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
+    />
+    <div className="roster-layout-center">
+      {!compact && nextGamePill}
+      {!compact && tabsBar}
+      {!compact && matchupHeaderBlock}
+
         <div style={{ marginTop: "var(--s-3)" }}>
           <MarketSectionGrid
             singleBar
@@ -8392,7 +8410,7 @@ function MLBPropsPage({ jumpTo }) {
             isNarrow={isNarrow}
           />
         </div>
-      </div>
+
 
       {/* Filters live inside the center column now, directly under the
            market bar, instead of as a sibling below the whole 3-column
