@@ -5280,11 +5280,13 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
 
   return (
     <div style={{
-      display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12,
-      marginBottom: 12, padding: "10px 16px", background: "var(--panel)", border: "1px solid var(--line)",
-      borderRadius: 6, fontSize: 12.5, color: "var(--dim)",
+      display: "flex", flexWrap: "wrap", justifyContent: "flex-start", alignItems: "center", gap: 10,
+      marginBottom: 12, fontSize: 12.5, color: "var(--dim)",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+        padding: "10px 16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
+      }}>
         <span className="oswald" style={{ fontWeight: 700, color: "var(--text)", letterSpacing: "0.04em", fontSize: 11.5, textTransform: "uppercase" }}>
           Game Conditions
         </span>
@@ -5296,7 +5298,10 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
           </>
         )}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, fontWeight: 600 }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 14, fontWeight: 600,
+        padding: "10px 16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
+      }}>
         <span className="mono" style={{ color: statColor(hrPct) }}>HR {signed(hrPct)}</span>
         <span className="mono" style={{ color: statColor(runsPct) }}>Runs {signed(runsPct)}</span>
         <span className="mono" style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
