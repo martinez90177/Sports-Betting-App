@@ -830,7 +830,7 @@ function NBAPropsPage({ jumpTo }) {
                 {
                   label: "Minutes",
                   content: (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
                       <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
                         {!minutesRangeEnabled
                           ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
@@ -2926,7 +2926,7 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
              underneath visually without adding to the height flexbox sees,
              which is what keeps this row's cross-axis center matching the
              card center exactly, not the center of cards-plus-track. */}
-        <div style={{ position: "relative", width: TEAMMATE_SCROLL_WIDTH, height: TEAMMATE_CARD_SIZE, flexShrink: 0 }}>
+        <div style={{ position: "relative", width: "100%", maxWidth: TEAMMATE_SCROLL_WIDTH, height: TEAMMATE_CARD_SIZE, minWidth: 0, flexShrink: 1 }}>
           <div
             ref={scrollRef}
             onScroll={updateScrollState}
@@ -3048,8 +3048,8 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
 // (still used by the pages that haven't been migrated yet) and keeps its
 // original centred single-column rendering, so moving a page over is a
 // call-site change rather than a coordinated one.
-function FiltersSection({ children, groups, onReset }) {
-  const [open, setOpen] = useState(true);
+function FiltersSection({ children, groups, onReset, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="panel" style={{ marginBottom: "var(--s-4)" }}>
       <div
@@ -3097,7 +3097,21 @@ function FiltersSection({ children, groups, onReset }) {
             {groups.map((g) => {
               const cell = g.stack || [g];
               return (
-                <div key={cell[0].label} style={{ display: "flex", flexDirection: "column", gap: "var(--s-4)" }}>
+                <div
+                  key={cell[0].label}
+                  style={{
+                    display: "flex", flexDirection: "column", gap: "var(--s-4)",
+                    // Full-width groups (e.g. the teammate carousel) need a
+                    // definite width to size their scroll track against --
+                    // flex's default shrink-to-fit sizing collapses them to
+                    // ~0 since their real content is positioned absolutely
+                    // (so it doesn't contribute to intrinsic sizing) and
+                    // their fallback size is just the two arrow buttons.
+                    // flexBasis: 100% forces this group onto its own row at
+                    // the panel's full content width instead.
+                    ...(g.fullWidth ? { flexBasis: "100%", minWidth: 0 } : null),
+                  }}
+                >
                   {cell.map((f) => (
                     <div key={f.label}>
                       <div className="micro-label" style={{ marginBottom: "var(--s-2)" }}>{f.label}</div>
@@ -3811,7 +3825,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
                 {
                   label: "Snap %",
                   content: (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
                       <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
                         {!snapRangeEnabled
                           ? `${minSnapPct}%+ snaps`
@@ -4924,7 +4938,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
               {
                 label: "Minutes",
                 content: (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
                     <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
                       {!minutesRangeEnabled
                         ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
@@ -7454,6 +7468,12 @@ function MLBPropsPage({ jumpTo }) {
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
+  // Same breakpoint the roster columns collapse to a single stack at (see
+  // .roster-layout in index.css) -- once that happens, everything used to
+  // render in one long column with the tab content at the very bottom, so
+  // this also gates moving the tabs + their content up to the top of that
+  // column instead.
+  const compact = useIsNarrow(1100);
 
   // With/Without teammate splits -- each chip is {mlbId, name, mode}, mode
   // "with" requires that teammate to have played (per the real boxscore) in
@@ -7749,6 +7769,247 @@ function MLBPropsPage({ jumpTo }) {
   const opposingBullpenList = playerOnOppSide ? teamBullpenList : oppBullpenList;
   const opposingBullpenLabel = playerOnOppSide ? liveTeamRoster.label : ((liveOppRoster || {}).label || "");
 
+  // Next-game info bar: the selected team's real next scheduled opponent
+  // (see fetchMLBTeamNextGame), not a fixed mock date -- so it always
+  // reflects the actual live schedule. Renders nothing until the live fetch
+  // resolves. Below the `compact` breakpoint this renders full-width above
+  // the tabs instead of squeezed into the roster-layout center column,
+  // which is what was clipping the "vs Team — Venue" line against the tabs
+  // underneath it.
+  const nextGamePill = nextGame && (
+    <div style={{
+      display: "flex", justifyContent: "center", alignItems: "center", gap: 14,
+      flexWrap: "wrap", textAlign: "center",
+      width: compact ? "100%" : "fit-content", margin: "0 auto 12px", padding: "9px 16px",
+      background: "var(--panel)", border: "1px solid var(--line)", borderRadius: compact ? 14 : 999,
+      fontSize: 12.5, color: "var(--dim)",
+    }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <span style={{ color: "var(--text)", fontWeight: 600 }}>
+          {new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+        </span>
+        <span>·</span>
+        <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
+          {new Date(nextGame.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+        </span>
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+        <span style={{ color: "var(--text)", fontWeight: 600 }}>
+          {nextGame.home ? "vs" : "@"} {(oppRoster || {}).label || nextGame.opp}
+        </span>
+        {nextGame.venue && <span>— {nextGame.venue}</span>}
+      </span>
+      {/* Weather already shows in the Game Conditions bar directly
+           above this pill -- repeating it here just duplicated the
+           same temp/wind reading twice on screen. */}
+    </div>
+  );
+
+  // Matchup / Lineup / Bullpen panels, or the Graph tab's chart + ledger --
+  // whichever of the four tabs above is active. Pulled into a variable so it
+  // can render either right under the tabs (compact/mobile) or in its original
+  // spot below the matchup selector/filters column (wide layout).
+  const activeTabContent = (
+    <>
+      {(view === "matchup" || view === "lineup") && (
+        <div style={{ marginTop: "var(--s-3)" }}>
+          <MLBMatchupAnalyzer teamRoster={liveTeamRoster} oppRoster={liveOppRoster} nextGame={nextGame} pick={matchupPick} section={view} />
+        </div>
+      )}
+
+      {view === "bullpen" && (
+        <div style={{ marginTop: "var(--s-3)" }}>
+          <BullpenAnalyzerPanel teamLabel={opposingBullpenLabel} bullpen={opposingBullpenList} />
+        </div>
+      )}
+
+      {view === "graph" && (
+      <>
+      {/* Line input + summary */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
+          </div>
+          <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
+            {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
+            {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
+          {[
+            { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
+            { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
+            { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
+          ].map((s) => (
+            <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
+              <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <SportsbookOddsPanel teamAbbr={teamAbbr} playerName={player.name} market={market} isPitcher={isPitcher} />
+
+      {/* Chart */}
+      <div
+        ref={chartRef}
+        style={{
+          position: "relative", boxSizing: "border-box", height: isNarrow ? 380 : CHART_HEIGHT,
+          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: isNarrow ? "16px 6px" : 16, marginBottom: 16,
+        }}
+      >
+        <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            data={filtered.map((g, i) => ({
+              idx: i + 1,
+              opp: g.opp,
+              axisKey: `${g.opp}__${g.date}`,
+              value: isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market),
+              date: g.date,
+              minutes: isPitcher ? formatOuts(g.outs) : g.pa,
+              home: g.home,
+              defRank: MLB_TEAM_DEF[g.opp].rank,
+            }))}
+            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
+            barCategoryGap={isNarrow ? "4%" : "6%"}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            <XAxis
+              dataKey={manyGames ? "date" : "axisKey"}
+              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
+              tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={mlbTeamLogo} compact={isNarrow} />}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+            />
+            <YAxis
+              domain={[0, chartMax]}
+              ticks={chartTicks}
+              tick={{ fill: "#8b96a5", fontSize: 11 }}
+              axisLine={{ stroke: "#343941" }}
+              tickLine={false}
+              allowDecimals={false}
+              width={isNarrow ? 24 : 60}
+              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+            />
+            <Tooltip
+              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
+              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+            />
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
+            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              {filtered.map((g, i) => {
+                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
+                const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
+                return <Cell key={i} fill={fill} />;
+              })}
+              <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        </div>
+        {!isBinary && (
+          <LineHandle
+            value={effectiveLine}
+            onChange={(v) => setLine(v)}
+            onDragValue={setDragLine}
+            min={0}
+            max={chartMax}
+            containerRef={chartRef}
+          />
+        )}
+      </div>
+
+      {/* Table */}
+      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
+          <div style={{ minWidth: 580 }}>
+            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
+              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>{isPitcher ? "IP" : "PA"}</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
+            </div>
+            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
+              {filtered.slice().reverse().map((g, i) => {
+                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
+                const over = v > effectiveLine;
+                const push = !isBinary && v === effectiveLine;
+                const def = MLB_TEAM_DEF[g.opp];
+                const tier = mlbDefTier(def.rank);
+                return (
+                  <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
+                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
+                    <div>{g.date}</div>
+                    <div>{g.opp}</div>
+                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
+                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
+                    <div>{isPitcher ? formatOuts(g.outs) : g.pa}</div>
+                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
+                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
+                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
+                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
+        Live 2026 regular-season game logs (MLB Stats API) for the {teamRoster.label}{oppRoster ? ` and ${oppRoster.label}` : ""} lineups shown above, refreshed on load and every 15 minutes
+        {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
+        Defensive matchup ranks are real team ERA, refreshed nightly.
+      </div>
+      </>
+      )}
+    </>
+  );
+
+  const tabsBar = (
+    <div
+      role="tablist"
+      style={{
+        display: "flex", justifyContent: isNarrow ? "flex-start" : "center", gap: 6, marginBottom: 14,
+        overflowX: isNarrow ? "auto" : "visible", WebkitOverflowScrolling: "touch",
+      }}
+    >
+      {MLB_DETAIL_TABS.map((v) => (
+        <div
+          key={v.id}
+          onClick={() => setView(v.id)}
+          role="tab"
+          aria-selected={view === v.id}
+          className="oswald"
+          style={{
+            cursor: "pointer", padding: "6px 16px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+            letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
+            border: `1px solid ${view === v.id ? "var(--amber)" : "var(--line)"}`,
+            background: view === v.id ? "var(--amber-dim)" : "var(--panel)",
+            color: view === v.id ? "var(--amber)" : "var(--dim)",
+          }}
+        >
+          {v.label}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <MobilePlayerNav
@@ -7770,6 +8031,23 @@ function MLBPropsPage({ jumpTo }) {
          genuinely centered across the whole page, not squeezed between the
          two roster panels. */}
     <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
+
+    {/* Below the `compact` breakpoint (roster columns already stacked into
+         one column -- see .roster-layout in index.css), the tabs and their
+         content render here, full-width and immediately under the game info,
+         instead of waiting at the bottom of the matchup selector/stat
+         card/market grid/filters column below. Above that breakpoint the
+         3-column layout has room for all of it, so this stays out of the
+         way and the tabs/content render in their original spot inside the
+         center column instead (see further down). */}
+    {compact && (
+      <>
+        {nextGamePill}
+        {tabsBar}
+        {activeTabContent}
+      </>
+    )}
+
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={liveTeamRoster.label}
@@ -7784,80 +8062,8 @@ function MLBPropsPage({ jumpTo }) {
       bullpen={teamBullpenList}
     />
     <div className="roster-layout-center">
-      {/* Next-game info bar: the selected team's real next scheduled
-           opponent (see fetchMLBTeamNextGame), not a fixed mock date -- so
-           it always reflects the actual live schedule. Sits above the
-           player photo/selector since it's context about the game, not the
-           player. Renders nothing until the live fetch resolves. */}
-      {nextGame && (
-        <div style={{
-          display: "flex", justifyContent: "center", alignItems: "center", gap: 14, flexWrap: "wrap",
-          width: "fit-content", margin: "0 auto 12px", padding: "9px 20px",
-          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 999,
-          fontSize: 12.5, color: "var(--dim)",
-        }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            <span style={{ color: "var(--text)", fontWeight: 600 }}>
-              {new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-            </span>
-            <span>·</span>
-            <span className="mono" style={{ color: "var(--amber)", fontWeight: 700 }}>
-              {new Date(nextGame.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
-            </span>
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
-              <circle cx="12" cy="10" r="3" />
-            </svg>
-            <span style={{ color: "var(--text)", fontWeight: 600 }}>
-              {nextGame.home ? "vs" : "@"} {(oppRoster || {}).label || nextGame.opp}
-            </span>
-            {nextGame.venue && <span>— {nextGame.venue}</span>}
-          </span>
-          {/* Weather already shows in the Game Conditions bar directly
-               above this pill -- repeating it here just duplicated the
-               same temp/wind reading twice on screen. */}
-        </div>
-      )}
-
-      {/* Graph / Matchup / Lineup / Bullpen tabs -- swaps the section below
-           between the chart+filters+ledger view and the three matchup-
-           research panels. Scrolls horizontally instead of wrapping once
-           narrower than four pills fit, so it stays a single row of tap
-           targets on mobile rather than jumping to two rows. */}
-      <div
-        role="tablist"
-        style={{
-          display: "flex", justifyContent: isNarrow ? "flex-start" : "center", gap: 6, marginBottom: 14,
-          overflowX: isNarrow ? "auto" : "visible", WebkitOverflowScrolling: "touch",
-        }}
-      >
-        {MLB_DETAIL_TABS.map((v) => (
-          <div
-            key={v.id}
-            onClick={() => setView(v.id)}
-            role="tab"
-            aria-selected={view === v.id}
-            className="oswald"
-            style={{
-              cursor: "pointer", padding: "6px 16px", borderRadius: 999, fontSize: 12, fontWeight: 700,
-              letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
-              border: `1px solid ${view === v.id ? "var(--amber)" : "var(--line)"}`,
-              background: view === v.id ? "var(--amber-dim)" : "var(--panel)",
-              color: view === v.id ? "var(--amber)" : "var(--dim)",
-            }}
-          >
-            {v.label}
-          </div>
-        ))}
-      </div>
+      {!compact && nextGamePill}
+      {!compact && tabsBar}
 
       {/* Matchup + market selectors -- picking one of today's real games
            (see fetchMLBDaySlate) sets the "our side" team, and its real next
@@ -7878,6 +8084,10 @@ function MLBPropsPage({ jumpTo }) {
               setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
               setLine(null);
               setOpponent("all");
+            }}
+            style={{
+              width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}
           >
             {!matchupOptions.length && <option value="">Loading today's games…</option>}
@@ -8187,6 +8397,7 @@ function MLBPropsPage({ jumpTo }) {
            always waited for the rosters' full height first. */}
       <FiltersSection
         onReset={resetFilters}
+        defaultOpen={!compact}
         groups={[
           {
             stack: [
@@ -8197,7 +8408,7 @@ function MLBPropsPage({ jumpTo }) {
                     className="select"
                     value={opponent}
                     onChange={(e) => setOpponent(e.target.value)}
-                    style={{ width: 240 }}
+                    style={{ width: "100%", maxWidth: 240 }}
                   >
                     <option value="all">Any opponent</option>
                     {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
@@ -8235,7 +8446,7 @@ function MLBPropsPage({ jumpTo }) {
               ...(isPitcher ? [] : [{
                 label: "Plate appearances",
                 content: (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: 260 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
                     <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
                       {!paRangeEnabled
                         ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)
@@ -8258,6 +8469,7 @@ function MLBPropsPage({ jumpTo }) {
             ],
           },
           ...(isPitcher ? [] : [{
+            fullWidth: true,
             stack: [
               {
                 label: "Teammates",
@@ -8290,163 +8502,7 @@ function MLBPropsPage({ jumpTo }) {
     />
     </div>
 
-      {(view === "matchup" || view === "lineup") && (
-        <div style={{ marginTop: "var(--s-3)" }}>
-          <MLBMatchupAnalyzer teamRoster={liveTeamRoster} oppRoster={liveOppRoster} nextGame={nextGame} pick={matchupPick} section={view} />
-        </div>
-      )}
-
-      {view === "bullpen" && (
-        <div style={{ marginTop: "var(--s-3)" }}>
-          <BullpenAnalyzerPanel teamLabel={opposingBullpenLabel} bullpen={opposingBullpenList} />
-        </div>
-      )}
-
-      {view === "graph" && (
-      <>
-      {/* Line input + summary */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-            {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
-          </div>
-          <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
-            {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-            {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
-          {[
-            { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
-            { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
-            { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
-          ].map((s) => (
-            <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
-              <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
-              <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <SportsbookOddsPanel teamAbbr={teamAbbr} playerName={player.name} market={market} isPitcher={isPitcher} />
-
-      {/* Chart */}
-      <div
-        ref={chartRef}
-        style={{
-          position: "relative", boxSizing: "border-box", height: isNarrow ? 380 : CHART_HEIGHT,
-          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: isNarrow ? "16px 6px" : 16, marginBottom: 16,
-        }}
-      >
-        <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={filtered.map((g, i) => ({
-              idx: i + 1,
-              opp: g.opp,
-              axisKey: `${g.opp}__${g.date}`,
-              value: isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market),
-              date: g.date,
-              minutes: isPitcher ? formatOuts(g.outs) : g.pa,
-              home: g.home,
-              defRank: MLB_TEAM_DEF[g.opp].rank,
-            }))}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
-            barCategoryGap={isNarrow ? "4%" : "6%"}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
-            <XAxis
-              dataKey={manyGames ? "date" : "axisKey"}
-              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
-              tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={mlbTeamLogo} compact={isNarrow} />}
-              axisLine={{ stroke: "#343941" }}
-              tickLine={false}
-            />
-            <YAxis
-              domain={[0, chartMax]}
-              ticks={chartTicks}
-              tick={{ fill: "#8b96a5", fontSize: 11 }}
-              axisLine={{ stroke: "#343941" }}
-              tickLine={false}
-              allowDecimals={false}
-              width={isNarrow ? 24 : 60}
-              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
-            />
-            <Tooltip
-              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
-              cursor={{ fill: "rgba(255,255,255,0.05)" }}
-            />
-            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-              {filtered.map((g, i) => {
-                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
-                const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-                return <Cell key={i} fill={fill} />;
-              })}
-              <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-        </div>
-        {!isBinary && (
-          <LineHandle
-            value={effectiveLine}
-            onChange={(v) => setLine(v)}
-            onDragValue={setDragLine}
-            min={0}
-            max={chartMax}
-            containerRef={chartRef}
-          />
-        )}
-      </div>
-
-      {/* Table */}
-      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <div style={{ minWidth: 580 }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
-              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>{isPitcher ? "IP" : "PA"}</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
-            </div>
-            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
-              {filtered.slice().reverse().map((g, i) => {
-                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
-                const over = v > effectiveLine;
-                const push = !isBinary && v === effectiveLine;
-                const def = MLB_TEAM_DEF[g.opp];
-                const tier = mlbDefTier(def.rank);
-                return (
-                  <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
-                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>{g.date}</div>
-                    <div>{g.opp}</div>
-                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
-                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
-                    <div>{isPitcher ? formatOuts(g.outs) : g.pa}</div>
-                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
-                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
-                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
-                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Live 2026 regular-season game logs (MLB Stats API) for the {teamRoster.label}{oppRoster ? ` and ${oppRoster.label}` : ""} lineups shown above, refreshed on load and every 15 minutes
-        {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
-        Defensive matchup ranks are real team ERA, refreshed nightly.
-      </div>
-      </>
-      )}
+      {!compact && activeTabContent}
       <PlayerNewsModule playerName={player.name} headshotSrc={mlbHeadshot(player.mlbId)} />
     </div>
   );
