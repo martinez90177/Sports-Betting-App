@@ -7349,7 +7349,12 @@ function MLBPropsPage({ jumpTo }) {
   // Last player clicked in either roster panel, fed into
   // MLBMatchupAnalyzer so it auto-selects that batter/pitcher (nonce forces
   // the effect to re-fire even if the same id is clicked twice in a row).
-  const [matchupPick, setMatchupPick] = useState(null);
+  // Seeded to the initial default player (not null) so the Matchup tab opens
+  // already synced to them on first load -- leaving this null until the user
+  // clicks a roster row meant MLBMatchupAnalyzer's sync effect never fired,
+  // so it fell back to its own defaults (the team's first SP vs. the
+  // opponent's first batter) instead of the actual player being viewed.
+  const [matchupPick, setMatchupPick] = useState(() => ({ side: "team", id: playerId, nonce: Date.now() }));
 
   // The selected team's actual next scheduled opponent -- pulled live from
   // the MLB Stats API (see fetchMLBTeamNextGame) instead of a fixed mock
