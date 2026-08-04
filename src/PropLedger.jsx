@@ -8448,6 +8448,11 @@ function MLBPropsPage({ jumpTo }) {
          genuinely centered across the whole page, not squeezed between the
          two roster panels. */}
     <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
+    {/* Date/time + matchup pill sits directly under Game Conditions (both
+         are pre-game info about the matchup itself) rather than after the
+         player avatar/stat header below -- reads as "here's the game, here's
+         its conditions" before the page turns to the selected player. */}
+    {compact && nextGamePill}
 
     {/* Below the `compact` breakpoint (roster columns already stacked into
          one column -- see .roster-layout in index.css), the tabs and their
@@ -8460,7 +8465,6 @@ function MLBPropsPage({ jumpTo }) {
     {compact && (
       <>
         {matchupHeaderBlock}
-        {nextGamePill}
         {tabsBar}
         {activeTabContent}
       </>
