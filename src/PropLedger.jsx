@@ -6901,7 +6901,6 @@ function pctBadgeColor(pct) {
 // MLBMatchupAnalyzer's shared pitcher/batter selection (Matchup, Lineup) or
 // the bullpen lists already built in MLBPropsPage (Bullpen).
 const MLB_DETAIL_TABS = [
-  { id: "graph", label: "Graph" },
   { id: "matchup", label: "Matchup" },
   { id: "lineup", label: "Lineup" },
   { id: "bullpen", label: "Bullpen" },
@@ -7429,10 +7428,11 @@ function MLBPropsPage({ jumpTo }) {
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
   const [playerId, setPlayerId] = useState(teamRoster.players[0].id);
   const [market, setMarket] = useState("h");
-  // Which of the four prop-detail tabs (see MLB_DETAIL_TABS) is showing --
-  // "graph" is the original chart/filters/ledger view, the other three
-  // render inside MLBMatchupAnalyzer/BullpenAnalyzerPanel below.
-  const [view, setView] = useState("graph");
+  // Which of the three side-panel tabs (see MLB_DETAIL_TABS) is showing
+  // underneath the always-visible graph card -- null means none are open.
+  // Clicking the already-active tab again closes it (see tabsBar below).
+  const [view, setView] = useState(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Last player clicked in either roster panel, fed into
   // MLBMatchupAnalyzer so it auto-selects that batter/pitcher (nonce forces
@@ -7960,10 +7960,9 @@ function MLBPropsPage({ jumpTo }) {
     </div>
   );
 
-  // Matchup / Lineup / Bullpen panels, or the Graph tab's chart + ledger --
-  // whichever of the four tabs above is active. Pulled into a variable so it
-  // can render either right under the tabs (compact/mobile) or in its original
-  // spot below the matchup selector/filters column (wide layout).
+  // Matchup / Lineup / Bullpen -- an optional single side panel, shown
+  // underneath the always-visible graph card below (see graphCard). At most
+  // one of the three is open at a time; view is null when none are.
   const activeTabContent = (
     <>
       {(view === "matchup" || view === "lineup") && (
@@ -7977,46 +7976,263 @@ function MLBPropsPage({ jumpTo }) {
           <BullpenAnalyzerPanel teamLabel={opposingBullpenLabel} bullpen={opposingBullpenList} />
         </div>
       )}
+    </>
+  );
 
-      {view === "graph" && (
-      <>
-      {/* Line input + summary */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-            {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
-          </div>
-          <div className="mono" style={{ fontSize: 28, color: "var(--amber)", textAlign: "center" }}>
-            {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-            {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "row", flexWrap: "nowrap", justifyContent: "space-between", gap: 20, width: "100%" }}>
-          {[
-            { label: "Hit rate", value: `${Math.round(hitRate * 100)}%`, sub: isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}` },
-            { label: "Average", value: avg.toFixed(isBinary ? 2 : 1), sub: isBinary ? "per-game rate" : `median ${med}` },
-            { label: isBinary ? "Edge vs 50%" : "Edge vs line", value: `${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`, sub: edge >= 0 ? "trending over" : "trending under", color: edge >= 0 ? "var(--green)" : "var(--red)" },
-          ].map((s) => (
-            <div key={s.label} style={{ flex: 1, minWidth: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: "10px 8px", textAlign: "center" }}>
-              <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.label}</div>
-              <div className="mono" style={{ fontSize: 22, color: s.color || "var(--text)" }}>{s.value}</div>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>{s.sub}</div>
+  // Sample-window rate-stat bar (batter PA/Hits/AVG/OBP/BABIP/K%, or pitcher
+  // IP/K/ERA/WHIP/H9/BB9) + its info-glossary toggle -- same data/markup as
+  // before, just recessed into the graph card's header instead of standing
+  // as its own bordered panel below the chart.
+  const sampleStatsRow = !isPitcher
+    ? (battingWindow && battingSeason && (() => {
+        const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
+          const sign = diff < 0 ? "-" : "+";
+          const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
+          const rounded = parseFloat(diff.toFixed(decimals));
+          const color = rounded === 0 || higherIsBetter === null
+            ? "var(--dim)"
+            : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
+          return { text, color };
+        };
+        const cards = [
+          { key: "pa", label: "PA", value: battingWindow.pa.toFixed(1), delta: fmtDelta(battingWindow.pa - battingSeason.pa, 1, null) },
+          { key: "hits", label: "Hits", value: battingWindow.hits.toFixed(1), delta: fmtDelta(battingWindow.hits - battingSeason.hits, 1, true) },
+          { key: "avg", label: "AVG", value: battingWindow.avg.toFixed(3), delta: fmtDelta(battingWindow.avg - battingSeason.avg, 3, true) },
+          { key: "obp", label: "OBP", value: battingWindow.obp.toFixed(3), delta: fmtDelta(battingWindow.obp - battingSeason.obp, 3, true) },
+          { key: "babip", label: "BABIP", value: battingWindow.babip.toFixed(3), delta: fmtDelta(battingWindow.babip - battingSeason.babip, 3, true) },
+          { key: "kpct", label: "K%", value: `${battingWindow.kpct.toFixed(1)}%`, delta: fmtDelta(battingWindow.kpct - battingSeason.kpct, 1, false, "%") },
+        ];
+        const glossary = [
+          { key: "pa", label: "PA — Plate Appearances", body: "Every time a player completes a turn at bat — including walks and getting hit by a pitch, not just official at-bats. It's basically \"how many chances did they get.\" More PA usually means more opportunities to rack up hits, RBIs, etc." },
+          { key: "hits", label: "Hits", body: "How many times the player got a hit (single, double, triple, or home run) per game in the sample shown." },
+          { key: "avg", label: "AVG — Batting Average", body: "Hits divided by at-bats. The classic \"batting average\" you've probably heard on a broadcast — shown here as 0.300 instead of the usual \".300\". Around 0.250 is roughly average for MLB, 0.300+ is very good." },
+          { key: "obp", label: "OBP — On-Base Percentage", body: "How often a player reaches base by any means — hit, walk, or hit-by-pitch — not just hits. Many bettors and analysts consider it a better gauge of a hitter's value than AVG, since it also credits players who draw a lot of walks." },
+          { key: "babip", label: "BABIP — Batting Average on Balls In Play", body: "Batting average counting only balls the player actually put in play (strikeouts and home runs don't count). It's a useful \"regression\" signal — if it's way above or below a player's normal range, their recent hot or cold streak may not last much longer." },
+          { key: "kpct", label: "K% — Strikeout Rate", body: "The percentage of plate appearances that end in a strikeout. Lower is better for a hitter — a high K% means they're missing a lot, which can make Over bets on contact-based props (hits, total bases) riskier." },
+        ];
+        return (
+          <div style={{ position: "relative", background: "rgba(0,0,0,0.16)", borderBottom: "1px solid var(--line)" }}>
+            <div style={{
+              display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
+              padding: compact ? "8px 10px" : "10px 20px",
+            }}>
+              {cards.map((c) => (
+                <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
+                  <div style={{ fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
+                    {c.label}
+                  </div>
+                  <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
+                  <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                </div>
+              ))}
+              <div
+                onClick={() => setShowStatInfo((v) => !v)}
+                title="What do these stats mean?"
+                role="button"
+                aria-expanded={showStatInfo}
+                className="mono"
+                style={{
+                  position: "absolute", top: 8, right: 10,
+                  cursor: "pointer",
+                  width: 18, height: 18, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700,
+                  border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
+                  color: showStatInfo ? "var(--amber)" : "var(--dim)",
+                  background: showStatInfo ? "var(--amber-dim)" : "transparent",
+                }}
+              >
+                i
+              </div>
             </div>
-          ))}
+            {showStatInfo && (
+              <div style={{ padding: "12px 14px", background: "var(--panel2)", borderTop: "1px solid var(--line)" }}>
+                <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
+                  A quick guide to these stats, if you're newer to baseball props. One thing that trips people up:
+                  the small card above (H/HR/RBI/R) is always the <strong>full season</strong> average, while the
+                  numbers below are for whatever your filters are currently showing — so "Hits" here and "H" up
+                  there can show different values for the same player at the same time.
+                </div>
+                {glossary.map((g) => (
+                  <div key={g.key} style={{ marginBottom: 10 }}>
+                    <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
+                      {g.label}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
+                      {g.body}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })())
+    : (pitchingWindow && pitchingSeason && (() => {
+        const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
+          const sign = diff < 0 ? "-" : "+";
+          const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
+          const rounded = parseFloat(diff.toFixed(decimals));
+          const color = rounded === 0 || higherIsBetter === null
+            ? "var(--dim)"
+            : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
+          return { text, color };
+        };
+        const cards = [
+          { key: "ip", label: "IP", value: pitchingWindow.ip.toFixed(1), delta: fmtDelta(pitchingWindow.ip - pitchingSeason.ip, 1, null) },
+          { key: "k", label: "K", value: pitchingWindow.k.toFixed(1), delta: fmtDelta(pitchingWindow.k - pitchingSeason.k, 1, true) },
+          { key: "era", label: "ERA", value: pitchingWindow.era.toFixed(2), delta: fmtDelta(pitchingWindow.era - pitchingSeason.era, 2, false) },
+          { key: "whip", label: "WHIP", value: pitchingWindow.whip.toFixed(2), delta: fmtDelta(pitchingWindow.whip - pitchingSeason.whip, 2, false) },
+          { key: "h9", label: "H/9", value: pitchingWindow.h9.toFixed(1), delta: fmtDelta(pitchingWindow.h9 - pitchingSeason.h9, 1, false) },
+          { key: "bb9", label: "BB/9", value: pitchingWindow.bb9.toFixed(1), delta: fmtDelta(pitchingWindow.bb9 - pitchingSeason.bb9, 1, false) },
+        ];
+        const glossary = [
+          { key: "ip", label: "IP — Innings Pitched", body: "How many innings the pitcher worked, on average, in the games shown. More innings usually means a start went deep and went well; a short outing usually means they got pulled early (hit hard, high pitch count, etc.)." },
+          { key: "k", label: "K — Strikeouts", body: "Strikeouts recorded per game in the sample shown. Higher is generally better for a pitcher — more swings and misses, less contact for the opposing lineup." },
+          { key: "er", label: "ER — Earned Runs (in the card above)", body: "A raw count of earned runs allowed per game — runs that scored without help from a fielding error. It's not adjusted for how long the pitcher was out there, which is exactly what ERA (below) fixes." },
+          { key: "era", label: "ERA — Earned Run Average", body: "Earned runs allowed per 9 innings pitched — ER × 9 ÷ IP. This is the standardized version of ER above: 3 earned runs in a 3-inning start (bad) and 3 earned runs in a 7-inning start (fine) both just say \"ER: 3\", but they produce very different ERAs. Lower is better; under ~4.00 is solid, under 3.00 is excellent." },
+          { key: "whip", label: "WHIP — Walks + Hits per Inning Pitched", body: "How many baserunners (via walk or hit) a pitcher allows per inning, on average. Lower is better — a quick read on how often they're letting hitters reach base, independent of whether those runners actually score." },
+          { key: "h9", label: "H/9 — Hits Allowed per 9", body: "Hits allowed per 9 innings pitched. Lower is better — a good gauge of how hittable a pitcher has been lately, useful context for Over/Under bets on the opposing lineup's hits props too." },
+          { key: "bb9", label: "BB/9 — Walks Allowed per 9", body: "Walks allowed per 9 innings pitched. Lower is better — a pitcher walking a lot of batters is giving up free baserunners, and it's often a sign their command is off that night." },
+        ];
+        return (
+          <div style={{ position: "relative", background: "rgba(0,0,0,0.16)", borderBottom: "1px solid var(--line)" }}>
+            <div style={{
+              display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
+              padding: compact ? "8px 10px" : "10px 20px",
+            }}>
+              {cards.map((c) => (
+                <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
+                  <div style={{
+                    fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
+                    marginBottom: 2,
+                    textDecoration: c.key === "k" && market === "p_k" ? "underline var(--amber)" : "none",
+                    textUnderlineOffset: 3,
+                  }}>
+                    {c.label}
+                  </div>
+                  <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
+                  <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                </div>
+              ))}
+              <div
+                onClick={() => setShowStatInfo((v) => !v)}
+                title="What do these stats mean?"
+                role="button"
+                aria-expanded={showStatInfo}
+                className="mono"
+                style={{
+                  position: "absolute", top: 8, right: 10,
+                  cursor: "pointer",
+                  width: 18, height: 18, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700,
+                  border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
+                  color: showStatInfo ? "var(--amber)" : "var(--dim)",
+                  background: showStatInfo ? "var(--amber-dim)" : "transparent",
+                }}
+              >
+                i
+              </div>
+            </div>
+            {showStatInfo && (
+              <div style={{ padding: "12px 14px", background: "var(--panel2)", borderTop: "1px solid var(--line)" }}>
+                <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
+                  A quick guide to these stats, if you're newer to baseball props. Two things that trip people up:
+                  the small card above (K/ER/BB/H) is always the <strong>full season</strong> average, while the
+                  numbers below are for whatever your filters are currently showing — and "ER" up there is a
+                  different kind of stat than "ERA" below (see those two entries first if that's what brought you here).
+                </div>
+                {glossary.map((g) => (
+                  <div key={g.key} style={{ marginBottom: 10 }}>
+                    <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
+                      {g.label}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
+                      {g.body}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })());
+
+  // Line hero row -- replaces the old stacked "line value" block plus its
+  // separate 3-box Hit Rate / Average / Edge grid with one inline strip:
+  // Hit Rate on the left, the draggable line value centered and large,
+  // Average + Edge on the right.
+  const lineHeroRow = (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap",
+      gap: 18, padding: compact ? "14px 16px 10px" : "18px 24px 12px",
+    }}>
+      <div style={{ display: "flex", gap: compact ? 16 : 28, flexWrap: "wrap" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Hit Rate</div>
+          <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--text)" }}>{Math.round(hitRate * 100)}%</div>
+          <div style={{ fontSize: 10.5, color: "var(--dim)" }}>{isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}`}</div>
         </div>
       </div>
 
-      <SportsbookOddsPanel teamAbbr={teamAbbr} playerName={player.name} market={market} isPitcher={isPitcher} />
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
+        </div>
+        <div className="mono" style={{ fontSize: 34, color: "var(--amber)", fontWeight: 700, lineHeight: 1.1 }}>
+          {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--dim)" }}>
+          {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: compact ? 16 : 28, flexWrap: "wrap" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Average</div>
+          <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--text)" }}>{avg.toFixed(isBinary ? 2 : 1)}</div>
+          <div style={{ fontSize: 10.5, color: "var(--dim)" }}>{isBinary ? "per-game rate" : `median ${med}`}</div>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{isBinary ? "Edge vs 50%" : "Edge vs Line"}</div>
+          <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: edge >= 0 ? "var(--green)" : "var(--red)" }}>
+            {`${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`}
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--dim)" }}>{edge >= 0 ? "trending over" : "trending under"}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Local chart height for the blended graph card -- deliberately its own
+  // constant rather than the shared CHART_HEIGHT (which other sports' pages
+  // also use), sized taller than the old bare-chart box since the card now
+  // also carries the identity/sample-stat/line-hero rows above the plot and
+  // still wants the bars themselves to read bigger than before.
+  const MLB_GRAPH_CHART_HEIGHT = isNarrow ? 440 : 760;
+
+  // The always-visible graph card: player identity, sample-window stats,
+  // and the line-hero row blended into one header directly on top of the
+  // chart, plus a small Filters/Get Odds action row underneath -- replaces
+  // the old separately-bordered line-summary card + Get Odds panel + bare
+  // chart box that used to stack above/around the chart.
+  // A function (not a plain JSX const) so it can reference playerIdentityRow
+  // and filterGroups, which are only defined further down this component --
+  // it's invoked once at the bottom, by which point everything it closes
+  // over already exists.
+  const graphCard = () => (
+    <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, marginBottom: 16, overflow: "hidden" }}>
+      {playerIdentityRow}
+      {sampleStatsRow}
+      {lineHeroRow}
 
       {/* Chart */}
       <div
         ref={chartRef}
         style={{
-          position: "relative", boxSizing: "border-box", height: isNarrow ? 380 : CHART_HEIGHT,
-          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: isNarrow ? "16px 6px" : 16, marginBottom: 16,
+          position: "relative", boxSizing: "border-box", height: MLB_GRAPH_CHART_HEIGHT,
+          padding: isNarrow ? "16px 6px" : "16px 16px 0",
         }}
       >
         <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
@@ -8081,7 +8297,48 @@ function MLBPropsPage({ jumpTo }) {
         )}
       </div>
 
-      {/* Table */}
+      {/* Action row -- Filters popover + Get Odds, relocated out from
+           above the chart (Get Odds) and out from the always-open center
+           column (Filters) into one small row under the chart itself. */}
+      <div style={{ position: "relative", display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 16px 16px" }}>
+        {filtersOpen && (
+          <div
+            style={{
+              position: "absolute", right: 16, bottom: "calc(100% - 4px)", zIndex: 5,
+              width: "min(560px, calc(100% - 32px))",
+              background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+            }}
+          >
+            <FiltersSection
+              onReset={resetFilters}
+              defaultOpen
+              evenColumns
+              groups={filterGroups}
+            />
+          </div>
+        )}
+        <button
+          type="button"
+          className="oswald"
+          onClick={() => setFiltersOpen((v) => !v)}
+          style={{
+            cursor: "pointer", padding: "7px 14px", borderRadius: 6, fontSize: 11.5, fontWeight: 700,
+            border: `1px solid ${filtersOpen ? "var(--amber)" : "var(--line)"}`,
+            background: filtersOpen ? "var(--amber-dim)" : "var(--panel)",
+            color: filtersOpen ? "var(--amber)" : "var(--dim)",
+          }}
+        >
+          Filters
+        </button>
+        <SportsbookOddsPanel teamAbbr={teamAbbr} playerName={player.name} market={market} isPitcher={isPitcher} />
+      </div>
+    </div>
+  );
+
+  // Game-log ledger table -- unchanged, still directly under the graph card.
+  const ledgerTable = (
+    <>
       <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
         <div style={{ overflowX: "auto", overflowY: "hidden" }}>
           <div style={{ minWidth: 580 }}>
@@ -8121,8 +8378,6 @@ function MLBPropsPage({ jumpTo }) {
         {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
         Defensive matchup ranks are real team ERA, refreshed nightly.
       </div>
-      </>
-      )}
     </>
   );
 
@@ -8135,320 +8390,213 @@ function MLBPropsPage({ jumpTo }) {
   // variable (same pattern as nextGamePill/tabsBar/activeTabContent above)
   // so it can render as a compact top header on mobile instead of after
   // the whole tab content, where it used to land at the bottom of the page.
-  const matchupHeaderBlock = (
-    <div style={{ marginBottom: 8, marginTop: compact ? 14 : 20 }}>
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: compact ? 10 : 20, marginBottom: compact ? 8 : 12, flexWrap: "wrap" }}>
-          <select
-            className="select"
-            value={activeMatchupId}
-            onChange={(e) => {
-              const mo = matchupOptions.find((m) => m.id === e.target.value);
-              if (!mo) return;
-              // Always the home team (teams[1], not the away team at
-              // teams[0]) -- picking a *different* matchup only fires this
-              // once, but selecting this same option again later (e.g.
-              // after clicking away to another game and back) re-fires it
-              // too, and defaulting to teams[0] every time meant that
-              // second pick flipped left/right from whichever side you'd
-              // actually been viewing, since it always landed on the away
-              // team regardless. A fixed side for a given matchup is stable
-              // across re-selections.
-              const nextTeam = mo.teams[1];
-              setTeamAbbr(nextTeam);
-              setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
-              setLine(null);
-              setOpponent("all");
-            }}
-            style={{
-              width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              textAlign: "center", textAlignLast: "center",
-            }}
-          >
-            {!matchupOptions.length && <option value="">Loading today's games…</option>}
-            {matchupOptions.map((mo) => (
-              <option key={mo.id} value={mo.id}>{mo.label}</option>
-            ))}
-          </select>
-          <div style={{
-            position: "relative", width: compact ? 64 : 122, height: compact ? 64 : 122, borderRadius: "50%", flexShrink: 0,
-            background: teamAvatarBackground(MLB_TEAM_COLORS, player.team),
-            boxShadow: `0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
-          }}>
-            {/* Always-visible black backing, in case the headshot image can't load
-                 -- covers rookies/trades/missing photos. */}
-            <div style={{
-              position: "absolute", inset: compact ? 3 : 6, borderRadius: "50%",
-              background: "#000",
-              border: "1px solid var(--line)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }} />
-            <img
-              key={player.id}
-              src={mlbHeadshot(player.mlbId)}
-              alt={player.name}
-              width={compact ? 58 : 110}
-              height={compact ? 58 : 110}
-              referrerPolicy="no-referrer"
-              style={{
-                position: "absolute", inset: compact ? 3 : 6,
-                width: compact ? 58 : 110, height: compact ? 58 : 110,
-                borderRadius: "50%",
-                objectFit: "cover",
-                objectPosition: "center top",
-                border: "1px solid var(--line)",
-                opacity: 0,
-                transition: "opacity 0.15s ease",
-              }}
-              onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
-              onError={(e) => {
-                const fallback = mlbEspnHeadshot(player.id);
-                if (fallback && e.currentTarget.dataset.fallback !== "1") {
-                  e.currentTarget.dataset.fallback = "1";
-                  e.currentTarget.src = fallback;
-                } else {
-                  e.currentTarget.style.opacity = 0;
-                }
-              }}
-            />
-          </div>
-
-          {/* Player snapshot: season averages at a glance, next to the selector. */}
-          <div style={{
-            display: "flex", alignItems: "center", gap: compact ? 10 : 18,
-            background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-            padding: compact ? "6px 10px" : "10px 20px",
-          }}>
-            <div style={{ textAlign: "center", paddingRight: compact ? 8 : 14, borderRight: "1px solid var(--line)" }}>
-              <div className="oswald" style={{ fontSize: compact ? 12 : 14, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
-              <div style={{ fontSize: compact ? 9 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {player.team} · {player.pos} · Season
-              </div>
-            </div>
-            {(isPitcher
-              ? [
-                  { label: "K", value: seasonAvg.k },
-                  { label: "ER", value: seasonAvg.er },
-                  { label: "BB", value: seasonAvg.bb },
-                  { label: "H", value: seasonAvg.h },
-                ]
-              : [
-                  { label: "H", value: seasonAvg.h },
-                  { label: "HR", value: seasonAvg.hr },
-                  { label: "RBI", value: seasonAvg.rbi },
-                  { label: "R", value: seasonAvg.r },
-                ]
-            ).map((s) => (
-              <div key={s.label} style={{ textAlign: "center" }}>
-                <div className="mono" style={{ fontSize: compact ? 15 : 19, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(2)}</div>
-                <div style={{ fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Batter rate-stat bar -- value on top is the current filtered
-             sample's rate, the small line underneath is the delta against
-             the full-season baseline (dim when it rounds to ~0, green/red
-             depending on whether that stat trending up is good or bad for
-             a batter). Only batters carry the AB/BB/HBP/SF fields needed
-             for AVG/OBP/BABIP, so pitchers keep their existing K/ER/BB/H
-             card above instead. */}
-        {!isPitcher && battingWindow && battingSeason && (() => {
-          const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
-            const sign = diff < 0 ? "-" : "+";
-            const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
-            const rounded = parseFloat(diff.toFixed(decimals));
-            const color = rounded === 0 || higherIsBetter === null
-              ? "var(--dim)"
-              : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
-            return { text, color };
-          };
-          const cards = [
-            { key: "pa", label: "PA", value: battingWindow.pa.toFixed(1), delta: fmtDelta(battingWindow.pa - battingSeason.pa, 1, null) },
-            { key: "hits", label: "Hits", value: battingWindow.hits.toFixed(1), delta: fmtDelta(battingWindow.hits - battingSeason.hits, 1, true) },
-            { key: "avg", label: "AVG", value: battingWindow.avg.toFixed(3), delta: fmtDelta(battingWindow.avg - battingSeason.avg, 3, true) },
-            { key: "obp", label: "OBP", value: battingWindow.obp.toFixed(3), delta: fmtDelta(battingWindow.obp - battingSeason.obp, 3, true) },
-            { key: "babip", label: "BABIP", value: battingWindow.babip.toFixed(3), delta: fmtDelta(battingWindow.babip - battingSeason.babip, 3, true) },
-            { key: "kpct", label: "K%", value: `${battingWindow.kpct.toFixed(1)}%`, delta: fmtDelta(battingWindow.kpct - battingSeason.kpct, 1, false, "%") },
-          ];
-          const glossary = [
-            { key: "pa", label: "PA — Plate Appearances", body: "Every time a player completes a turn at bat — including walks and getting hit by a pitch, not just official at-bats. It's basically \"how many chances did they get.\" More PA usually means more opportunities to rack up hits, RBIs, etc." },
-            { key: "hits", label: "Hits", body: "How many times the player got a hit (single, double, triple, or home run) per game in the sample shown." },
-            { key: "avg", label: "AVG — Batting Average", body: "Hits divided by at-bats. The classic \"batting average\" you've probably heard on a broadcast — shown here as 0.300 instead of the usual \".300\". Around 0.250 is roughly average for MLB, 0.300+ is very good." },
-            { key: "obp", label: "OBP — On-Base Percentage", body: "How often a player reaches base by any means — hit, walk, or hit-by-pitch — not just hits. Many bettors and analysts consider it a better gauge of a hitter's value than AVG, since it also credits players who draw a lot of walks." },
-            { key: "babip", label: "BABIP — Batting Average on Balls In Play", body: "Batting average counting only balls the player actually put in play (strikeouts and home runs don't count). It's a useful \"regression\" signal — if it's way above or below a player's normal range, their recent hot or cold streak may not last much longer." },
-            { key: "kpct", label: "K% — Strikeout Rate", body: "The percentage of plate appearances that end in a strikeout. Lower is better for a hitter — a high K% means they're missing a lot, which can make Over bets on contact-based props (hits, total bases) riskier." },
-          ];
-          return (
-            <div style={{ position: "relative" }}>
-              <div style={{
-                display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
-                background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-                padding: compact ? "8px 10px" : "10px 20px", marginTop: compact ? 8 : 10,
-              }}>
-                {cards.map((c) => (
-                  <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
-                    <div style={{
-                      fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
-                      marginBottom: 2,
-                      textDecoration: "none",
-                      textUnderlineOffset: 3,
-                    }}>
-                      {c.label}
-                    </div>
-                    <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
-                    <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
-                  </div>
-                ))}
-                <div
-                  onClick={() => setShowStatInfo((v) => !v)}
-                  title="What do these stats mean?"
-                  role="button"
-                  aria-expanded={showStatInfo}
-                  className="mono"
-                  style={{
-                    position: "absolute", top: 8, right: 10,
-                    cursor: "pointer",
-                    width: 18, height: 18, borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 11, fontWeight: 700,
-                    border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
-                    color: showStatInfo ? "var(--amber)" : "var(--dim)",
-                    background: showStatInfo ? "var(--amber-dim)" : "transparent",
-                  }}
-                >
-                  i
-                </div>
-              </div>
-              {showStatInfo && (
-                <div style={{
-                  marginTop: 8, padding: "12px 14px",
-                  background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
-                }}>
-                  <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
-                    A quick guide to these stats, if you're newer to baseball props. One thing that trips people up:
-                    the small card above (H/HR/RBI/R) is always the <strong>full season</strong> average, while the
-                    numbers below are for whatever your filters are currently showing — so "Hits" here and "H" up
-                    there can show different values for the same player at the same time.
-                  </div>
-                  {glossary.map((g) => (
-                    <div key={g.key} style={{ marginBottom: 10 }}>
-                      <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
-                        {g.label}
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
-                        {g.body}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Pitcher rate-stat bar -- same "current filtered view vs. full-
-             season baseline" framing as the batter bar above, just with the
-             pitching-side equivalents (IP/K/ERA/WHIP/H9/BB9) computed from
-             the pitcher game log's outs/k/er/h/bb fields. */}
-        {isPitcher && pitchingWindow && pitchingSeason && (() => {
-          const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
-            const sign = diff < 0 ? "-" : "+";
-            const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
-            const rounded = parseFloat(diff.toFixed(decimals));
-            const color = rounded === 0 || higherIsBetter === null
-              ? "var(--dim)"
-              : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
-            return { text, color };
-          };
-          const cards = [
-            { key: "ip", label: "IP", value: pitchingWindow.ip.toFixed(1), delta: fmtDelta(pitchingWindow.ip - pitchingSeason.ip, 1, null) },
-            { key: "k", label: "K", value: pitchingWindow.k.toFixed(1), delta: fmtDelta(pitchingWindow.k - pitchingSeason.k, 1, true) },
-            { key: "era", label: "ERA", value: pitchingWindow.era.toFixed(2), delta: fmtDelta(pitchingWindow.era - pitchingSeason.era, 2, false) },
-            { key: "whip", label: "WHIP", value: pitchingWindow.whip.toFixed(2), delta: fmtDelta(pitchingWindow.whip - pitchingSeason.whip, 2, false) },
-            { key: "h9", label: "H/9", value: pitchingWindow.h9.toFixed(1), delta: fmtDelta(pitchingWindow.h9 - pitchingSeason.h9, 1, false) },
-            { key: "bb9", label: "BB/9", value: pitchingWindow.bb9.toFixed(1), delta: fmtDelta(pitchingWindow.bb9 - pitchingSeason.bb9, 1, false) },
-          ];
-          const glossary = [
-            { key: "ip", label: "IP — Innings Pitched", body: "How many innings the pitcher worked, on average, in the games shown. More innings usually means a start went deep and went well; a short outing usually means they got pulled early (hit hard, high pitch count, etc.)." },
-            { key: "k", label: "K — Strikeouts", body: "Strikeouts recorded per game in the sample shown. Higher is generally better for a pitcher — more swings and misses, less contact for the opposing lineup." },
-            { key: "er", label: "ER — Earned Runs (in the card above)", body: "A raw count of earned runs allowed per game — runs that scored without help from a fielding error. It's not adjusted for how long the pitcher was out there, which is exactly what ERA (below) fixes." },
-            { key: "era", label: "ERA — Earned Run Average", body: "Earned runs allowed per 9 innings pitched — ER × 9 ÷ IP. This is the standardized version of ER above: 3 earned runs in a 3-inning start (bad) and 3 earned runs in a 7-inning start (fine) both just say \"ER: 3\", but they produce very different ERAs. Lower is better; under ~4.00 is solid, under 3.00 is excellent." },
-            { key: "whip", label: "WHIP — Walks + Hits per Inning Pitched", body: "How many baserunners (via walk or hit) a pitcher allows per inning, on average. Lower is better — a quick read on how often they're letting hitters reach base, independent of whether those runners actually score." },
-            { key: "h9", label: "H/9 — Hits Allowed per 9", body: "Hits allowed per 9 innings pitched. Lower is better — a good gauge of how hittable a pitcher has been lately, useful context for Over/Under bets on the opposing lineup's hits props too." },
-            { key: "bb9", label: "BB/9 — Walks Allowed per 9", body: "Walks allowed per 9 innings pitched. Lower is better — a pitcher walking a lot of batters is giving up free baserunners, and it's often a sign their command is off that night." },
-          ];
-          return (
-            <div style={{ position: "relative" }}>
-              <div style={{
-                display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
-                background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-                padding: compact ? "8px 10px" : "10px 20px", marginTop: compact ? 8 : 10,
-              }}>
-                {cards.map((c) => (
-                  <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
-                    <div style={{
-                      fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
-                      marginBottom: 2,
-                      textDecoration: c.key === "k" && market === "p_k" ? "underline var(--amber)" : "none",
-                      textUnderlineOffset: 3,
-                    }}>
-                      {c.label}
-                    </div>
-                    <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
-                    <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
-                  </div>
-                ))}
-                <div
-                  onClick={() => setShowStatInfo((v) => !v)}
-                  title="What do these stats mean?"
-                  role="button"
-                  aria-expanded={showStatInfo}
-                  className="mono"
-                  style={{
-                    position: "absolute", top: 8, right: 10,
-                    cursor: "pointer",
-                    width: 18, height: 18, borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 11, fontWeight: 700,
-                    border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
-                    color: showStatInfo ? "var(--amber)" : "var(--dim)",
-                    background: showStatInfo ? "var(--amber-dim)" : "transparent",
-                  }}
-                >
-                  i
-                </div>
-              </div>
-              {showStatInfo && (
-                <div style={{
-                  marginTop: 8, padding: "12px 14px",
-                  background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
-                }}>
-                  <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
-                    A quick guide to these stats, if you're newer to baseball props. Two things that trip people up:
-                    the small card above (K/ER/BB/H) is always the <strong>full season</strong> average, while the
-                    numbers below are for whatever your filters are currently showing — and "ER" up there is a
-                    different kind of stat than "ERA" below (see those two entries first if that's what brought you here).
-                  </div>
-                  {glossary.map((g) => (
-                    <div key={g.key} style={{ marginBottom: 10 }}>
-                      <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
-                        {g.label}
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
-                        {g.body}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
+  const matchupSelectorBlock = (
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20 }}>
+      <select
+        className="select"
+        value={activeMatchupId}
+        onChange={(e) => {
+          const mo = matchupOptions.find((m) => m.id === e.target.value);
+          if (!mo) return;
+          // Always the home team (teams[1], not the away team at
+          // teams[0]) -- picking a *different* matchup only fires this
+          // once, but selecting this same option again later (e.g.
+          // after clicking away to another game and back) re-fires it
+          // too, and defaulting to teams[0] every time meant that
+          // second pick flipped left/right from whichever side you'd
+          // actually been viewing, since it always landed on the away
+          // team regardless. A fixed side for a given matchup is stable
+          // across re-selections.
+          const nextTeam = mo.teams[1];
+          setTeamAbbr(nextTeam);
+          setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
+          setLine(null);
+          setOpponent("all");
+        }}
+        style={{
+          width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          textAlign: "center", textAlignLast: "center",
+        }}
+      >
+        {!matchupOptions.length && <option value="">Loading today's games…</option>}
+        {matchupOptions.map((mo) => (
+          <option key={mo.id} value={mo.id}>{mo.label}</option>
+        ))}
+      </select>
     </div>
   );
+
+  // Player identity row: avatar + name/team/pos + season snapshot
+  // (H/HR/RBI/R, or K/ER/BB/H for pitchers) -- now the top of the blended
+  // graph card (see graphCard) instead of its own bordered panel next to
+  // the matchup selector, so it no longer carries its own background/
+  // border, just a bottom divider against the sample-stats row below it.
+  const playerIdentityRow = (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 10 : 20,
+      flexWrap: "wrap", padding: compact ? "12px 12px" : "16px 20px", borderBottom: "1px solid var(--line)",
+    }}>
+      <div style={{
+        position: "relative", width: compact ? 56 : 84, height: compact ? 56 : 84, borderRadius: "50%", flexShrink: 0,
+        background: teamAvatarBackground(MLB_TEAM_COLORS, player.team),
+        boxShadow: `0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
+      }}>
+        {/* Always-visible black backing, in case the headshot image can't load
+             -- covers rookies/trades/missing photos. */}
+        <div style={{
+          position: "absolute", inset: compact ? 3 : 5, borderRadius: "50%",
+          background: "#000",
+          border: "1px solid var(--line)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }} />
+        <img
+          key={player.id}
+          src={mlbHeadshot(player.mlbId)}
+          alt={player.name}
+          width={compact ? 50 : 74}
+          height={compact ? 50 : 74}
+          referrerPolicy="no-referrer"
+          style={{
+            position: "absolute", inset: compact ? 3 : 5,
+            width: compact ? 50 : 74, height: compact ? 50 : 74,
+            borderRadius: "50%",
+            objectFit: "cover",
+            objectPosition: "center top",
+            border: "1px solid var(--line)",
+            opacity: 0,
+            transition: "opacity 0.15s ease",
+          }}
+          onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
+          onError={(e) => {
+            const fallback = mlbEspnHeadshot(player.id);
+            if (fallback && e.currentTarget.dataset.fallback !== "1") {
+              e.currentTarget.dataset.fallback = "1";
+              e.currentTarget.src = fallback;
+            } else {
+              e.currentTarget.style.opacity = 0;
+            }
+          }}
+        />
+      </div>
+
+      <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
+        <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
+        <div style={{ fontSize: compact ? 9 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {player.team} · {player.pos} · Season
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: compact ? 12 : 20, flexWrap: "wrap" }}>
+        {(isPitcher
+          ? [
+              { label: "K", value: seasonAvg.k },
+              { label: "ER", value: seasonAvg.er },
+              { label: "BB", value: seasonAvg.bb },
+              { label: "H", value: seasonAvg.h },
+            ]
+          : [
+              { label: "H", value: seasonAvg.h },
+              { label: "HR", value: seasonAvg.hr },
+              { label: "RBI", value: seasonAvg.rbi },
+              { label: "R", value: seasonAvg.r },
+            ]
+        ).map((s) => (
+          <div key={s.label} style={{ textAlign: "center" }}>
+            <div className="mono" style={{ fontSize: compact ? 14 : 18, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(2)}</div>
+            <div style={{ fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Same filter fields the old always-open FiltersSection rendered inline in
+  // the center column -- now handed to the Filters popover inside graphCard
+  // instead, so the config lives in one place regardless of where it's used.
+  const filterGroups = [
+    {
+      stack: [
+        {
+          label: "Opponent",
+          content: (
+            <select
+              className="select"
+              value={opponent}
+              onChange={(e) => setOpponent(e.target.value)}
+              style={{ width: "100%", maxWidth: 240 }}
+            >
+              <option value="all">Any opponent</option>
+              {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+            </select>
+          ),
+        },
+        {
+          label: "Game location",
+          content: (
+            <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+              {["all", "home", "away"].map((s) => (
+                <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                  {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
+                </div>
+              ))}
+            </div>
+          ),
+        },
+      ],
+    },
+    {
+      stack: [
+        {
+          label: "Sample size",
+          content: (
+            <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+              {[5, 10, 15, 25, "all"].map((n) => (
+                <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
+                  {n === "all" ? "All" : `Last ${n}`}
+                </div>
+              ))}
+            </div>
+          ),
+        },
+        ...(isPitcher ? [] : [{
+          label: "Plate appearances",
+          content: (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
+              <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
+                {!paRangeEnabled
+                  ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)
+                  : (minPA === 0 && maxPA === 6 ? "Any PA" : `${minPA}-${maxPA} PA`)}
+              </div>
+              <ThresholdSlider
+                min={0}
+                max={6}
+                step={1}
+                lo={minPA}
+                hi={maxPA}
+                onChangeLo={setMinPA}
+                onChangeHi={setMaxPA}
+                rangeEnabled={paRangeEnabled}
+                onToggleRange={() => setPaRangeEnabled((v) => !v)}
+              />
+            </div>
+          ),
+        }]),
+      ],
+    },
+    ...(isPitcher ? [] : [{
+      label: "Teammates",
+      content: (
+        <TeammateChipGrid
+          roster={liveTeamRoster.players}
+          excludeId={player.mlbId}
+          chips={teammateChips}
+          onChange={setTeammateChips}
+          loading={boxscoresLoading}
+        />
+      ),
+    }]),
+  ];
 
   const tabsBar = (
     <div
@@ -8461,7 +8609,7 @@ function MLBPropsPage({ jumpTo }) {
       {MLB_DETAIL_TABS.map((v) => (
         <div
           key={v.id}
-          onClick={() => setView(v.id)}
+          onClick={() => setView((cur) => (cur === v.id ? null : v.id))}
           role="tab"
           aria-selected={view === v.id}
           className="oswald"
@@ -8516,8 +8664,10 @@ function MLBPropsPage({ jumpTo }) {
          center column instead (see further down). */}
     {compact && (
       <>
-        {matchupHeaderBlock}
+        {matchupSelectorBlock}
         {tabsBar}
+        {graphCard()}
+        {ledgerTable}
         {activeTabContent}
       </>
     )}
@@ -8537,7 +8687,7 @@ function MLBPropsPage({ jumpTo }) {
     <div className="roster-layout-center">
       {!compact && nextGamePill}
       {!compact && tabsBar}
-      {!compact && matchupHeaderBlock}
+      {!compact && matchupSelectorBlock}
 
         <div style={{ marginTop: "var(--s-3)" }}>
           <MarketSectionGrid
@@ -8556,100 +8706,13 @@ function MLBPropsPage({ jumpTo }) {
           />
         </div>
 
-
-      {/* Filters live inside the center column now, directly under the
-           market bar, instead of as a sibling below the whole 3-column
-           row -- that row's height is set by the taller roster columns
-           regardless of alignment, so anything waiting outside the row
-           always waited for the rosters' full height first. */}
-      <FiltersSection
-        onReset={resetFilters}
-        defaultOpen={!compact}
-        evenColumns
-        groups={[
-          {
-            stack: [
-              {
-                label: "Opponent",
-                content: (
-                  <select
-                    className="select"
-                    value={opponent}
-                    onChange={(e) => setOpponent(e.target.value)}
-                    style={{ width: "100%", maxWidth: 240 }}
-                  >
-                    <option value="all">Any opponent</option>
-                    {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-                  </select>
-                ),
-              },
-              {
-                label: "Game location",
-                content: (
-                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                    {["all", "home", "away"].map((s) => (
-                      <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                        {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
-                      </div>
-                    ))}
-                  </div>
-                ),
-              },
-            ],
-          },
-          {
-            stack: [
-              {
-                label: "Sample size",
-                content: (
-                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                    {[5, 10, 15, 25, "all"].map((n) => (
-                      <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                        {n === "all" ? "All" : `Last ${n}`}
-                      </div>
-                    ))}
-                  </div>
-                ),
-              },
-              ...(isPitcher ? [] : [{
-                label: "Plate appearances",
-                content: (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
-                    <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
-                      {!paRangeEnabled
-                        ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)
-                        : (minPA === 0 && maxPA === 6 ? "Any PA" : `${minPA}-${maxPA} PA`)}
-                    </div>
-                    <ThresholdSlider
-                      min={0}
-                      max={6}
-                      step={1}
-                      lo={minPA}
-                      hi={maxPA}
-                      onChangeLo={setMinPA}
-                      onChangeHi={setMaxPA}
-                      rangeEnabled={paRangeEnabled}
-                      onToggleRange={() => setPaRangeEnabled((v) => !v)}
-                    />
-                  </div>
-                ),
-              }]),
-            ],
-          },
-          ...(isPitcher ? [] : [{
-            label: "Teammates",
-            content: (
-              <TeammateChipGrid
-                roster={liveTeamRoster.players}
-                excludeId={player.mlbId}
-                chips={teammateChips}
-                onChange={setTeammateChips}
-                loading={boxscoresLoading}
-              />
-            ),
-          }]),
-        ]}
-      />
+      {/* Filters now live in a popover off the Filters button inside
+           graphCard's action row (see filterGroups above) instead of
+           always-open here in the center column. */}
+      <div style={{ marginTop: "var(--s-3)" }}>
+        {graphCard()}
+        {ledgerTable}
+      </div>
       {!compact && activeTabContent}
     </div>
     <TeamRosterPanel
