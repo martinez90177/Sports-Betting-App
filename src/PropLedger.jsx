@@ -2920,11 +2920,8 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
       {/* align-items: center keeps the arrow vertically centered
-           on the taller card tiles instead of pinned to their top edge.
-           justifyContent: center keeps the fixed-width arrows+track group
-           centered within the full-width row now that the ancestor group
-           stretches instead of shrink-wrapping (see FiltersSection). */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+           on the taller card tiles instead of pinned to their top edge. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         <div
           role="button"
           aria-label="Scroll teammates left"
@@ -2937,8 +2934,15 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
              -- the track is positioned absolutely below it, so it hangs
              underneath visually without adding to the height flexbox sees,
              which is what keeps this row's cross-axis center matching the
-             card center exactly, not the center of cards-plus-track. */}
-        <div style={{ position: "relative", width: "100%", maxWidth: TEAMMATE_SCROLL_WIDTH, height: TEAMMATE_CARD_SIZE, minWidth: 0, flexShrink: 1 }}>
+             card center exactly, not the center of cards-plus-track.
+             Width is a fixed pixel value (its preferred size), not a
+             percentage -- the real content inside is absolutely positioned
+             and so never contributes intrinsic size, which previously
+             collapsed this to ~0 whenever a percentage resolved against an
+             indefinite ancestor. flexShrink here (with a one-card minWidth)
+             lets it compress when it's sharing a row with the other filter
+             columns instead of forcing them all onto their own line. */}
+        <div style={{ position: "relative", width: TEAMMATE_SCROLL_WIDTH, minWidth: TEAMMATE_CARD_SIZE, height: TEAMMATE_CARD_SIZE, flexShrink: 1 }}>
           <div
             ref={scrollRef}
             onScroll={updateScrollState}
@@ -3060,7 +3064,7 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
 // (still used by the pages that haven't been migrated yet) and keeps its
 // original centred single-column rendering, so moving a page over is a
 // call-site change rather than a coordinated one.
-function FiltersSection({ children, groups, onReset, defaultOpen = true }) {
+function FiltersSection({ children, groups, onReset, defaultOpen = true, evenColumns = false }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="panel" style={{ marginBottom: "var(--s-4)" }}>
@@ -3112,30 +3116,23 @@ function FiltersSection({ children, groups, onReset, defaultOpen = true }) {
                 <div
                   key={cell[0].label}
                   style={{
-                    display: "flex", flexDirection: "column", gap: "var(--s-4)",
-                    // Full-width groups (e.g. the teammate carousel) need a
-                    // definite width to size their scroll track against --
-                    // flex's default shrink-to-fit sizing collapses them to
-                    // ~0 since their real content is positioned absolutely
-                    // (so it doesn't contribute to intrinsic sizing) and
-                    // their fallback size is just the two arrow buttons.
-                    // flexBasis: 100% forces this group onto its own row at
-                    // the panel's full content width instead. It's also the
-                    // only group that ever ends up alone on its row, so
-                    // without centering it just sits pinned to the left edge
-                    // with the rest of the row empty. Centering happens via
-                    // textAlign below and (for the teammate carousel) its own
-                    // internal justifyContent instead of alignItems here --
-                    // alignItems: "center" made this column shrink-to-fit
-                    // instead of stretching to the group's full width, which
-                    // broke every percentage-width descendant (the teammate
-                    // track sized itself against that collapsed 0 width and
-                    // rendered no cards at all).
-                    ...(g.fullWidth ? { flexBasis: "100%", minWidth: 0 } : null),
+                    display: "flex", flexDirection: "column", gap: "var(--s-4)", minWidth: 0,
+                    // Line-wrapping in a flex-wrap row is decided from each
+                    // item's own preferred (content) width before any
+                    // shrinking -- so as long as columns size themselves off
+                    // their content, one wide column (e.g. the teammate
+                    // carousel) can force a wrap even when there's room for
+                    // everyone if they shared it. flex-basis: 0 with flex-
+                    // grow makes every column start from nothing and split
+                    // the row evenly instead, so all of them land on one
+                    // line and shrink together -- opt-in per caller since
+                    // most FiltersSection callers still want columns sized
+                    // to their own content.
+                    ...(evenColumns ? { flex: "1 1 0%" } : null),
                   }}
                 >
                   {cell.map((f) => (
-                    <div key={f.label} style={g.fullWidth ? { textAlign: "center" } : undefined}>
+                    <div key={f.label}>
                       <div className="micro-label" style={{ marginBottom: "var(--s-2)" }}>{f.label}</div>
                       {f.content}
                     </div>
@@ -6088,7 +6085,17 @@ async function fetchMLBTeamNextGame(teamId) {
   } catch {}
 
   const today = new Date();
-  const start = today.toISOString().slice(0, 10);
+  // Start the search a day early rather than at today's UTC date: for any
+  // US team, the UTC calendar date rolls over to "tomorrow" 4-5 hours
+  // before local midnight (e.g. 8pm ET), so a plain toISOString() cutoff
+  // starts missing a game that's still live -- the schedule request would
+  // only find the following day's later game, which has no confirmed
+  // lineup posted yet, and the panel would show just the static roster's
+  // handful of hardcoded batters instead of tonight's real, fully-posted
+  // lineup. Casting a day wider and letting the "not Final" filter below
+  // pick the right game handles every timezone without needing to know
+  // the team's actual local offset.
+  const start = new Date(today.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const end = new Date(today.getTime() + 9 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const res = await fetch(
     `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${teamId}&startDate=${start}&endDate=${end}&hydrate=probablePitcher,venue,weather,lineups`
@@ -8513,6 +8520,7 @@ function MLBPropsPage({ jumpTo }) {
       <FiltersSection
         onReset={resetFilters}
         defaultOpen={!compact}
+        evenColumns
         groups={[
           {
             stack: [
@@ -8584,21 +8592,16 @@ function MLBPropsPage({ jumpTo }) {
             ],
           },
           ...(isPitcher ? [] : [{
-            fullWidth: true,
-            stack: [
-              {
-                label: "Teammates",
-                content: (
-                  <TeammateChipGrid
-                    roster={liveTeamRoster.players}
-                    excludeId={player.mlbId}
-                    chips={teammateChips}
-                    onChange={setTeammateChips}
-                    loading={boxscoresLoading}
-                  />
-                ),
-              },
-            ],
+            label: "Teammates",
+            content: (
+              <TeammateChipGrid
+                roster={liveTeamRoster.players}
+                excludeId={player.mlbId}
+                chips={teammateChips}
+                onChange={setTeammateChips}
+                loading={boxscoresLoading}
+              />
+            ),
           }]),
         ]}
       />
