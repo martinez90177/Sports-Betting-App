@@ -338,12 +338,20 @@ select.select:focus, select.select:focus-visible {
    they wrap and their chip rows reflow inside the panel rather than pushing
    past its padding. */
 .filter-grid > * { flex: 0 1 auto; min-width: 0; }
-/* Native scrollbar hidden -- the teammate selector draws its own draggable
-   track underneath the cards (a plain div synced to this element's scroll
-   position) instead, so a reserved native scrollbar never adds extra height
-   that would throw the cards' vertical center off from "All"/the chevrons. */
-.teammate-scroll { scrollbar-width: none; -ms-overflow-style: none; }
-.teammate-scroll::-webkit-scrollbar { display: none; }
+/* Vertical teammate pill list -- headshot-left/name-right rows stacked in a
+   scrollable column instead of the old horizontal card carousel. A normal
+   vertical scrollbar is fine here (it's a plain list, not a drag-track
+   carousel), just given a little breathing room from the pills. */
+.teammate-pill-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+  width: 100%;
+  min-width: 280px;
+}
 /* ---------- game log table ----------
    The column template was duplicated inline on the header row and every
    body row of all four sports pages. Defined once here so the header can

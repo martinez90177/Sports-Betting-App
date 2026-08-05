@@ -2798,86 +2798,17 @@ function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, r
   );
 }
 
-// Compact tappable teammate cards replacing the old "Add teammate..." select.
-// Each card cycles neutral -> with -> without -> neutral on click; an "All"
-// pill clears every chip back to neutral. `chips` is the same
-// {mlbId, name, mode} shape the rest of PropLedger already threads through
-// to the With/Without game-log filter, so this is purely a presentation
-// swap -- it reads/writes the identical state.
-// Cards are square tiles in a single horizontally-scrolling row (chevrons on
-// each end, plus a visible drag-scrollbar underneath) rather than wrapping
-// onto new lines -- a full roster wrapped into a grid left a lot of dead
-// vertical space in the filter panel, and a fixed-height scroller reads
-// closer to a real "selector" than a list that grows.
-const TEAMMATE_CARD_SIZE = 96;
-const TEAMMATE_CARD_GAP = 10;
-const TEAMMATE_VISIBLE_COUNT = 4;
-// Exactly enough width for 3 full tiles -- wide enough to stop wasting the
-// empty space to the right of the old narrower track, but fixed rather than
-// stretched to fill whatever room happens to be left so a tile is never
-// half-cut at the edge.
-const TEAMMATE_SCROLL_WIDTH = TEAMMATE_VISIBLE_COUNT * TEAMMATE_CARD_SIZE + (TEAMMATE_VISIBLE_COUNT - 1) * TEAMMATE_CARD_GAP;
-
+// Tappable teammate pills replacing the old "Add teammate..." select.
+// Each pill cycles neutral -> with -> without -> neutral on click. `chips`
+// is the same {mlbId, name, mode} shape the rest of PropLedger already
+// threads through to the With/Without game-log filter, so this is purely a
+// presentation swap -- it reads/writes the identical state.
+// Pills are horizontal rows (headshot left, name right) stacked vertically
+// in a scrollable column -- easier to scan a full roster than the old fixed
+// set of square tiles in a horizontally-scrolling carousel.
 function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
   const candidates = roster.filter((p) => p.mlbId !== excludeId && p.pos !== "SP");
   const modeFor = (mlbId) => (chips.find((c) => c.mlbId === mlbId) || {}).mode || "neutral";
-  const scrollRef = React.useRef(null);
-  const trackRef = React.useRef(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-  // Thumb geometry as fractions of the track (0-1) -- driven off the real
-  // scroll container's metrics so the custom bar always matches it exactly.
-  const [thumb, setThumb] = useState({ pos: 0, size: 1 });
-
-  const updateScrollState = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    setCanScrollLeft(el.scrollLeft > 2);
-    setCanScrollRight(el.scrollLeft < maxScroll - 2);
-    setThumb({
-      pos: maxScroll > 0 ? el.scrollLeft / maxScroll : 0,
-      size: Math.min(1, el.clientWidth / el.scrollWidth),
-    });
-  };
-
-  React.useEffect(() => {
-    updateScrollState();
-  }, [candidates.length]);
-
-  const scrollBy = (dir) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * (TEAMMATE_CARD_SIZE + 10) * 2, behavior: "smooth" });
-  };
-
-  // The visible track is a plain div (not the real overflow element) so its
-  // height never grows to make room for a native scrollbar -- that reserved
-  // space was what threw the cards' vertical center off from "All" and the
-  // arrows above. Dragging/clicking it just sets scrollLeft on the real
-  // scroller directly, same pattern as ThresholdSlider's track handling.
-  const scrollToRatio = (ratio) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollLeft = ratio * (el.scrollWidth - el.clientWidth);
-  };
-
-  const ratioFromClientX = (clientX) => {
-    const rect = trackRef.current.getBoundingClientRect();
-    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-  };
-
-  const handleTrackPointerDown = (e) => {
-    e.preventDefault();
-    scrollToRatio(ratioFromClientX(e.clientX));
-    const handleMove = (ev) => scrollToRatio(ratioFromClientX(ev.clientX));
-    const stop = () => {
-      window.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", stop);
-    };
-    window.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", stop);
-  };
 
   const cycle = (p) => {
     const current = modeFor(p.mlbId);
@@ -2890,7 +2821,7 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
     }
   };
 
-  const cardStyle = (mode) => {
+  const pillStyle = (mode) => {
     if (mode === "with") {
       return {
         background: "color-mix(in srgb, var(--green) 16%, transparent)",
@@ -2908,141 +2839,64 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
     return { background: "var(--panel2)", borderColor: "var(--line)", color: "var(--text)" };
   };
 
-  const arrowStyle = (enabled) => ({
-    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-    width: 26, height: 26, borderRadius: "50%",
-    border: "1px solid var(--line)", background: "var(--panel2)",
-    color: enabled ? "var(--text)" : "var(--line)",
-    cursor: enabled ? "pointer" : "default",
-    fontSize: 13, userSelect: "none",
-  });
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
-      {/* align-items: center keeps the arrow vertically centered
-           on the taller card tiles instead of pinned to their top edge. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <div
-          role="button"
-          aria-label="Scroll teammates left"
-          onClick={() => canScrollLeft && scrollBy(-1)}
-          style={arrowStyle(canScrollLeft)}
-        >
-          ‹
-        </div>
-        {/* This wrapper's own height is fixed to exactly the cards' height
-             -- the track is positioned absolutely below it, so it hangs
-             underneath visually without adding to the height flexbox sees,
-             which is what keeps this row's cross-axis center matching the
-             card center exactly, not the center of cards-plus-track.
-             Width is a fixed pixel value (its preferred size), not a
-             percentage -- the real content inside is absolutely positioned
-             and so never contributes intrinsic size, which previously
-             collapsed this to ~0 whenever a percentage resolved against an
-             indefinite ancestor. flexShrink here (with a one-card minWidth)
-             lets it compress when it's sharing a row with the other filter
-             columns instead of forcing them all onto their own line. */}
-        <div style={{ position: "relative", width: TEAMMATE_SCROLL_WIDTH, minWidth: TEAMMATE_CARD_SIZE, height: TEAMMATE_CARD_SIZE, flexShrink: 1 }}>
-          <div
-            ref={scrollRef}
-            onScroll={updateScrollState}
-            className="teammate-scroll"
-            style={{
-              display: "flex", gap: TEAMMATE_CARD_GAP, overflowX: "auto", scrollSnapType: "x proximity",
-              position: "absolute", inset: 0,
-            }}
-          >
-            {candidates.map((p) => {
-              const mode = modeFor(p.mlbId);
-              const style = cardStyle(mode);
-              return (
-                <div
-                  key={p.mlbId}
-                  role="button"
-                  title={mode === "neutral" ? `Tap to require ${p.name} on the field` : mode === "with" ? `Tap to require ${p.name} off the field` : `Tap to clear ${p.name}`}
-                  onClick={() => cycle(p)}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 5,
-                    width: TEAMMATE_CARD_SIZE,
-                    height: TEAMMATE_CARD_SIZE,
-                    padding: "10px 6px",
-                    borderRadius: 18,
-                    border: "1px solid",
-                    cursor: "pointer",
-                    userSelect: "none",
-                    flexShrink: 0,
-                    boxSizing: "border-box",
-                    scrollSnapAlign: "start",
-                    transition: "box-shadow 0.12s ease",
-                    ...style,
-                  }}
-                >
-                  <img
-                    src={mlbHeadshot(p.mlbId)}
-                    onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
-                    alt=""
-                    style={{ width: 40, height: 40, borderRadius: "50%", objectFit: "cover", background: "var(--panel)", flexShrink: 0 }}
-                  />
-                  <span
-                    className="oswald"
-                    style={{
-                      fontSize: 11.5, fontWeight: 600, textAlign: "center",
-                      maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                    }}
-                  >
-                    {p.name}
-                  </span>
-                  {/* Badge is always in the layout (just invisible when
-                       neutral) so a state change never changes the tile's
-                       fixed height/width. */}
-                  <span
-                    style={{
-                      fontSize: 9, fontWeight: 800, letterSpacing: 0.3, lineHeight: 1,
-                      visibility: mode === "neutral" ? "hidden" : "visible",
-                    }}
-                  >
-                    {mode === "without" ? "W/O" : "WITH"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          {/* Custom draggable track -- click-to-jump plus drag, same
-               interaction as ThresholdSlider's track handling elsewhere in
-               this file. Positioned absolutely below the cards (not a
-               normal-flow sibling) so it never adds to the wrapper's own
-               height; scrollRef is the real overflow element it's steering. */}
-          <div
-            ref={trackRef}
-            onPointerDown={handleTrackPointerDown}
-            style={{
-              position: "absolute", top: TEAMMATE_CARD_SIZE + 6, left: 0, width: "100%", height: 6,
-              cursor: "pointer", touchAction: "none",
-            }}
-          >
-            <div style={{ position: "absolute", inset: 0, borderRadius: 3, background: "var(--line)" }} />
+      <div className="teammate-pill-list">
+        {candidates.map((p) => {
+          const mode = modeFor(p.mlbId);
+          const style = pillStyle(mode);
+          return (
             <div
+              key={p.mlbId}
+              role="button"
+              title={mode === "neutral" ? `Tap to require ${p.name} on the field` : mode === "with" ? `Tap to require ${p.name} off the field` : `Tap to clear ${p.name}`}
+              onClick={() => cycle(p)}
               style={{
-                position: "absolute", top: 0, height: 6, borderRadius: 3,
-                left: `${thumb.pos * (1 - thumb.size) * 100}%`,
-                width: `${thumb.size * 100}%`,
-                background: "var(--dim)",
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: "1px solid",
+                cursor: "pointer",
+                userSelect: "none",
+                flexShrink: 0,
+                transition: "box-shadow 0.12s ease",
+                ...style,
               }}
-            />
-          </div>
-        </div>
-        <div
-          role="button"
-          aria-label="Scroll teammates right"
-          onClick={() => canScrollRight && scrollBy(1)}
-          style={arrowStyle(canScrollRight)}
-        >
-          ›
-        </div>
+            >
+              <img
+                src={mlbHeadshot(p.mlbId)}
+                onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
+                alt=""
+                style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", background: "var(--panel)", flexShrink: 0 }}
+              />
+              <span
+                className="oswald"
+                style={{
+                  fontSize: 13, fontWeight: 600, textAlign: "left",
+                  flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}
+              >
+                {p.name}
+              </span>
+              {/* Badge is always in the layout (just invisible when
+                   neutral) so a state change never changes the pill's
+                   height. */}
+              <span
+                style={{
+                  fontSize: 10, fontWeight: 800, letterSpacing: 0.3, lineHeight: 1, flexShrink: 0,
+                  visibility: mode === "neutral" ? "hidden" : "visible",
+                }}
+              >
+                {mode === "without" ? "W/O" : "WITH"}
+              </span>
+            </div>
+          );
+        })}
       </div>
       {loading && (
         <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>Loading boxscores…</div>
@@ -8227,6 +8081,40 @@ function MLBPropsPage({ jumpTo }) {
       {sampleStatsRow}
       {lineHeroRow}
 
+      {/* Teammate filter summary -- only shows once a With/Without chip is
+           active, so the graph makes clear which teammates' presence/absence
+           is being required in the game log below rather than leaving that
+           implicit in the (closed-by-default) Filters popover. */}
+      {teammateChips.length > 0 && (() => {
+        const withNames = teammateChips.filter((c) => c.mode === "with").map((c) => c.name);
+        const withoutNames = teammateChips.filter((c) => c.mode === "without").map((c) => c.name);
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, padding: "0 16px 14px" }}>
+            {withNames.length > 0 && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+                padding: "6px 12px", borderRadius: 999, fontSize: 12,
+                background: "color-mix(in srgb, var(--green) 16%, transparent)",
+                border: "1px solid var(--green)", color: "var(--green)",
+              }}>
+                <span style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>Including</span>
+                <span>{withNames.join(", ")}</span>
+              </div>
+            )}
+            {withoutNames.length > 0 && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+                padding: "6px 12px", borderRadius: 999, fontSize: 12,
+                background: "var(--red-dim)", border: "1px solid var(--red)", color: "var(--red)",
+              }}>
+                <span style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>Excluding</span>
+                <span>{withoutNames.join(", ")}</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Chart */}
       <div
         ref={chartRef}
@@ -8305,7 +8193,7 @@ function MLBPropsPage({ jumpTo }) {
           <div
             style={{
               position: "absolute", right: 16, bottom: "calc(100% - 4px)", zIndex: 5,
-              width: "min(560px, calc(100% - 32px))",
+              width: "min(760px, calc(100% - 32px))",
               background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
               boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
             }}
@@ -8323,7 +8211,13 @@ function MLBPropsPage({ jumpTo }) {
           className="oswald"
           onClick={() => setFiltersOpen((v) => !v)}
           style={{
-            cursor: "pointer", padding: "7px 14px", borderRadius: 6, fontSize: 11.5, fontWeight: 700,
+            // Fixed height + min-width so this reads as the exact same
+            // button on every player's page -- a hitter page's Teammates
+            // filter and a pitcher page's shorter filter list used to leave
+            // this sized off its neighbors instead of a stable box.
+            cursor: "pointer", height: 32, minWidth: 84, boxSizing: "border-box",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "0 14px", borderRadius: 6, fontSize: 11.5, fontWeight: 700,
             border: `1px solid ${filtersOpen ? "var(--amber)" : "var(--line)"}`,
             background: filtersOpen ? "var(--amber-dim)" : "var(--panel)",
             color: filtersOpen ? "var(--amber)" : "var(--dim)",
