@@ -6567,14 +6567,20 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
           Game Conditions · {nextGame.venue}
         </span>
         {parkNarrative && <span>{MLB_TEAM_ROSTERS[homeAbbr]?.label || homeAbbr} home park — {parkNarrative}</span>}
-        {nextGame.weather && (
-          <span>
-            {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.condition ? `${nextGame.weather.condition}, ` : ""}{nextGame.weather.temp}°F
-            {tempNarrative ? ` — ${tempNarrative}` : ""}
-          </span>
-        )}
-        {windNarrative && (
-          <span>💨 {nextGame.weather.wind} — {windNarrative}</span>
+        {nextGame.weather ? (
+          <>
+            <span>
+              {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.condition ? `${nextGame.weather.condition}, ` : ""}{nextGame.weather.temp}°F
+              {tempNarrative ? ` — ${tempNarrative}` : ""}
+            </span>
+            {windNarrative && <span>💨 {nextGame.weather.wind} — {windNarrative}</span>}
+          </>
+        ) : (
+          // MLB only posts a forecast within roughly a day of first pitch --
+          // for anything further out this says so explicitly instead of just
+          // quietly dropping the weather/wind lines, which otherwise reads
+          // like the feature is broken rather than just not available yet.
+          <span style={{ fontStyle: "italic" }}>Forecast not posted yet — check back closer to first pitch</span>
         )}
         <span style={{ width: "60%", maxWidth: 220, height: 1, background: "var(--line)", margin: "2px 0" }} />
         <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, fontWeight: 600, flexWrap: "wrap" }}>
@@ -7516,20 +7522,23 @@ function MLBPropsPage({ jumpTo }) {
   }, [mlbSlate]);
   const activeMatchupId = matchupOptions.find((m) => m.teams.includes(teamAbbr))?.id || "";
 
-  // Once the slate loads, if the hardcoded default team (or whatever
-  // jumpTo/a prior session left selected) isn't actually playing today,
-  // snap the selection to the first real matchup instead of leaving the
-  // dropdown showing nothing selected -- only runs once, so it never
-  // overrides a team the user (or a jumpTo) has deliberately picked since.
+  // Once the slate loads, snap the selection to the day's first scheduled
+  // game (matchupOptions is already sorted by start time -- see
+  // fetchMLBDaySlate) instead of leaving whatever hardcoded team the state
+  // was seeded with -- that's what let a fixed Yankees default linger all
+  // day even on days they aren't the first game. Only runs once (skips
+  // entirely if a jumpTo already requested a specific player/team on this
+  // same first load), so it never overrides a deliberate pick made since,
+  // and re-fires fresh each calendar day since matchupOptions is rebuilt
+  // from fetchMLBDaySlate's own day-keyed cache.
   const initializedFromSlate = React.useRef(false);
   React.useEffect(() => {
     if (initializedFromSlate.current || !matchupOptions.length) return;
     initializedFromSlate.current = true;
-    if (!matchupOptions.some((m) => m.teams.includes(teamAbbr))) {
-      const nextTeam = matchupOptions[0].teams[0];
-      setTeamAbbr(nextTeam);
-      setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
-    }
+    if (jumpTo) return;
+    const nextTeam = matchupOptions[0].teams[1];
+    setTeamAbbr(nextTeam);
+    setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchupOptions]);
 
@@ -7645,6 +7654,31 @@ function MLBPropsPage({ jumpTo }) {
     return { label: roster.label, players: kept };
   };
 
+  // Last-resort fill for whenever MLB hasn't posted a confirmed lineup yet
+  // (applyConfirmedLineup is then a no-op) and our own static roster array
+  // -- which was only ever meant as a rough projected 9, not a full 26-man
+  // model -- happens to be short a recent call-up/trade addition it doesn't
+  // have modeled. Rather than showing whatever handful of hardcoded batters
+  // is left, top the lineup back up to a believable 9 using real active-
+  // roster players (favoring ones at a position not already covered, so it
+  // reads like a real defensive lineup rather than three extra first
+  // basemen) until it either hits 9 or runs out of active-roster batters to
+  // add. A no-op once a real confirmed lineup already filled all 9 spots.
+  const topUpProjectedBatters = (roster, activeRoster, abbr, targetCount = 9) => {
+    const batters = roster.players.filter((p) => p.pos !== "SP");
+    if (batters.length >= targetCount || !activeRoster || !activeRoster.length) return roster;
+    const haveIds = new Set(roster.players.map((p) => p.mlbId));
+    const havePositions = new Set(batters.map((p) => p.pos));
+    const candidates = activeRoster.filter((p) => p.mlbId && p.pos && p.pos !== "P" && p.pos !== "SP" && !haveIds.has(p.mlbId));
+    const preferred = candidates.filter((p) => !havePositions.has(p.pos));
+    const rest = candidates.filter((p) => havePositions.has(p.pos));
+    const additions = [...preferred, ...rest]
+      .slice(0, targetCount - batters.length)
+      .map((p) => ({ id: `mlb_live_${p.mlbId}`, name: p.name, team: abbr, pos: p.pos, mlbId: p.mlbId }));
+    if (!additions.length) return roster;
+    return { label: roster.label, players: [...roster.players, ...additions] };
+  };
+
   const liveTeamRoster = useMemo(() => {
     const live =
       (nextGame?.probablePitcher && { name: nextGame.probablePitcher.name, mlbId: nextGame.probablePitcher.mlbId }) ||
@@ -7657,7 +7691,8 @@ function MLBPropsPage({ jumpTo }) {
           players: [...teamRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(teamAbbr, live.mlbId), name: live.name, team: teamAbbr, pos: "SP", mlbId: live.mlbId }],
         };
     const reconciled = applyActiveRoster(base, teamActiveRoster);
-    return applyConfirmedLineup(reconciled, nextGame?.ourLineupIds, teamActiveRoster, teamAbbr);
+    const withConfirmed = applyConfirmedLineup(reconciled, nextGame?.ourLineupIds, teamActiveRoster, teamAbbr);
+    return topUpProjectedBatters(withConfirmed, teamActiveRoster, teamAbbr);
   }, [teamRoster, teamAbbr, nextGame, jumpedPitcher, teamActiveRoster]);
 
   const liveOppRoster = useMemo(() => {
@@ -7670,7 +7705,8 @@ function MLBPropsPage({ jumpTo }) {
           players: [...oppRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(nextGame.opp, live.mlbId), name: live.name, team: nextGame.opp, pos: "SP", mlbId: live.mlbId }],
         };
     const reconciled = applyActiveRoster(base, oppActiveRoster);
-    return applyConfirmedLineup(reconciled, nextGame?.oppLineupIds, oppActiveRoster, nextGame.opp);
+    const withConfirmed = applyConfirmedLineup(reconciled, nextGame?.oppLineupIds, oppActiveRoster, nextGame.opp);
+    return topUpProjectedBatters(withConfirmed, oppActiveRoster, nextGame.opp);
   }, [oppRoster, nextGame, oppActiveRoster]);
 
   const player =
@@ -8108,7 +8144,16 @@ function MLBPropsPage({ jumpTo }) {
             onChange={(e) => {
               const mo = matchupOptions.find((m) => m.id === e.target.value);
               if (!mo) return;
-              const nextTeam = mo.teams[0];
+              // Always the home team (teams[1], not the away team at
+              // teams[0]) -- picking a *different* matchup only fires this
+              // once, but selecting this same option again later (e.g.
+              // after clicking away to another game and back) re-fires it
+              // too, and defaulting to teams[0] every time meant that
+              // second pick flipped left/right from whichever side you'd
+              // actually been viewing, since it always landed on the away
+              // team regardless. A fixed side for a given matchup is stable
+              // across re-selections.
+              const nextTeam = mo.teams[1];
               setTeamAbbr(nextTeam);
               setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
               setLine(null);
