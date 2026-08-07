@@ -678,6 +678,7 @@ function NBAPropsPage({ jumpTo }) {
             value={matchupId}
             onChange={(e) => {
               const next = NBA_MATCHUPS.find((m) => m.id === e.target.value);
+              if (!next) return;
               setMatchupId(next.id);
               setPlayerId(next.teamA.players[0].id);
               setLine(null);
@@ -4342,6 +4343,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             value={matchupId}
             onChange={(e) => {
               const next = NFL_MATCHUPS.find((m) => m.id === e.target.value);
+              if (!next) return;
               setMatchupId(next.id);
               setPlayerId(next.teamA.players[0].id);
               setLine(null);
@@ -5497,6 +5499,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             value={matchupId}
             onChange={(e) => {
               const next = matchups.find((m) => m.id === e.target.value);
+              if (!next) return;
               setMatchupId(next.id);
               setPlayerId(next.teamA.players[0].id);
               setLine(null);
@@ -7790,7 +7793,11 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
   const [lineupSample, setLineupSample] = useState("All");
   const [showTeamSplits, setShowTeamSplits] = useState(false);
 
-  const pitchMix = useMemo(() => pitcherPitchMix(pitcher), [pitcher.mlbId]);
+  // `pitcher` is undefined whenever neither roster has a starter yet -- the
+  // bail-out below renders a friendly message for exactly that case, but this
+  // memo runs first, so reading .mlbId eagerly threw before the guard could
+  // ever fire and took the whole tab down instead.
+  const pitchMix = useMemo(() => (pitcher ? pitcherPitchMix(pitcher) : []), [pitcher?.mlbId]);
   const lineupSplitKey = `${rightSplit}_${lineupSample}`;
   const lineupRows = useMemo(
     () => batterOptions.map((b) => ({ batter: b, ...expectedLineupRow(b, lineupSplitKey) })),
