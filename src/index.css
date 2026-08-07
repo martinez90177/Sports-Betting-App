@@ -423,38 +423,6 @@ select.select:focus, select.select:focus-visible {
   .market-bar .market-divider { margin: 4px var(--s-1); }
 }
 
-/* ---------- filters ----------
-   Filter groups used to stack vertically, one per row, which made the panel
-   as tall as the number of filters. They now sit side by side and wrap to a
-   single column on narrow screens without needing a breakpoint.
-
-   Deliberately flex rather than a 1fr grid: the panel spans the full page
-   width (up to 1920px) but the controls inside are only ~300px wide, so
-   equal-width stretched columns leave a large dead channel between them.
-   Sizing each group to its content keeps each control at its natural size;
-   space-between then pins the outermost groups to the panel's own left/right
-   padding edge instead of leaving matching dead margins on both sides of a
-   centred cluster. Text inside each group still starts on that group's own
-   left edge. */
-.filter-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--s-5) var(--s-8);
-  text-align: left;
-}
-/* Groups size to their content but may still shrink, so on a narrow screen
-   they wrap and their chip rows reflow inside the panel rather than pushing
-   past its padding. */
-.filter-grid > * { flex: 0 1 auto; min-width: 0; }
-/* Below 560px (the mobile Filters bottom sheet) force one group per row --
-   content-sized wrapping alone can still leave two narrow groups sharing a
-   row with a large dead gap between them from justify-content:space-between. */
-@media (max-width: 560px) {
-  .filter-grid { flex-direction: column; gap: var(--s-5); }
-  .filter-grid > * { width: 100%; }
-}
 /* Native scrollbar hidden on the teammate chip row -- a reserved scrollbar
    gutter would eat into the tiles' fixed height, and the row already signals
    that it scrolls by clipping the next chip at its bleeding right edge. */

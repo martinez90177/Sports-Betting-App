@@ -3143,16 +3143,14 @@ function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact,
 // ---------------------------------------------------------------------------
 // Filters panel shell.
 //
-// Replaces FiltersSection's single wrapped row of label-above-control columns
-// (see .filter-grid) for the MLB page. The difference is structural, not
-// cosmetic: that layout had exactly one spacing value, one type level and one
-// active state, so a new filter could only ever be another column in the same
+// Used by all four sports pages. It replaced an earlier component that laid
+// every control out as a label-above-control column in one wrapped flex row,
+// which had exactly one spacing value, one type level and one active state --
+// so a new filter could only ever be another column in the same
 // undifferentiated row. This is a vertical stack of sections whose grouping
 // comes from surface shading and an intentionally uneven spacing rhythm (see
 // the --fp-* scale in index.css), with a sticky header and footer so the
 // count and the reset stay reachable while the body scrolls.
-//
-// FiltersSection stays as-is for the NBA/NFL/WNBA pages until they're ported.
 // ---------------------------------------------------------------------------
 function FilterPanel({ activeCount = 0, onReset, children }) {
   return (
@@ -3561,105 +3559,6 @@ function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel }) 
   );
 }
 
-// Collapsible wrapper for the Opponent/Game Location/Sample Size/etc. filter
-// block shared by the NBA/NFL/MLB pages -- defaults open so nothing changes
-// for people who don't touch it, but the whole group (which can get tall
-// once a range slider is in play) can be tucked away with one click instead
-// of always eating vertical space above the chart.
-// `groups` is [{ label, content }] and lays the filters out on a responsive
-// grid, which is the layout every page should be on. An entry can instead be
-// { stack: [{ label, content }, ...] } to put several filters in one column,
-// which is how related controls (the two chip rows) stay together and get a
-// column wide enough not to wrap. `children` is the older free-form body
-// (still used by the pages that haven't been migrated yet) and keeps its
-// original centred single-column rendering, so moving a page over is a
-// call-site change rather than a coordinated one.
-function FiltersSection({ children, groups, onReset, defaultOpen = true, evenColumns = false }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="panel" style={{ marginBottom: "var(--s-4)" }}>
-      <div
-        onClick={() => setOpen((v) => !v)}
-        className="oswald"
-        role="button"
-        aria-expanded={open}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--s-2)",
-          padding: "var(--s-2) var(--s-4)", cursor: "pointer", userSelect: "none",
-          fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase",
-          color: "var(--dim)",
-          borderBottom: open ? "1px solid var(--line)" : "none",
-        }}
-      >
-        <span style={{ display: "flex", alignItems: "center", gap: "var(--s-2)" }}>
-          Filters
-          <span
-            className="mono"
-            style={{
-              color: "var(--amber)", fontSize: 11,
-              display: "inline-block", transform: open ? "rotate(0deg)" : "rotate(-90deg)",
-              transition: "transform .15s ease",
-            }}
-          >
-            ▼
-          </span>
-        </span>
-        {/* Sits in the header rather than its own row at the bottom of the
-             panel, which saves a full row of height. stopPropagation so
-             resetting doesn't also collapse the section. */}
-        {onReset && open && (
-          <span
-            role="button"
-            onClick={(e) => { e.stopPropagation(); onReset(); }}
-            style={{ fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)", textDecoration: "underline", cursor: "pointer" }}
-          >
-            Reset
-          </span>
-        )}
-      </div>
-      {open && (
-        groups ? (
-          <div className="filter-grid" style={{ padding: "var(--s-3) var(--s-4)" }}>
-            {groups.map((g) => {
-              const cell = g.stack || [g];
-              return (
-                <div
-                  key={cell[0].label}
-                  style={{
-                    display: "flex", flexDirection: "column", gap: "var(--s-4)", minWidth: 0,
-                    // Line-wrapping in a flex-wrap row is decided from each
-                    // item's own preferred (content) width before any
-                    // shrinking -- so as long as columns size themselves off
-                    // their content, one wide column (e.g. the teammate
-                    // carousel) can force a wrap even when there's room for
-                    // everyone if they shared it. flex-basis: 0 with flex-
-                    // grow makes every column start from nothing and split
-                    // the row evenly instead, so all of them land on one
-                    // line and shrink together -- opt-in per caller since
-                    // most FiltersSection callers still want columns sized
-                    // to their own content.
-                    ...(evenColumns ? { flex: "1 1 0%" } : null),
-                  }}
-                >
-                  {cell.map((f) => (
-                    <div key={f.label}>
-                      <div className="micro-label" style={{ marginBottom: "var(--s-2)" }}>{f.label}</div>
-                      {f.content}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div style={{ padding: "12px 14px", textAlign: "center" }}>
-            {children}
-          </div>
-        )
-      )}
-    </div>
-  );
-}
 
 // Generic disclosure used to hide long-but-secondary content (the game log
 // table today) behind a "▸ Title" header instead of it always taking up
