@@ -1,4 +1,4 @@
-# Sports Betting App (Prop Ledger)
+# PropPalace
 
 ## Testing on your phone
 

@@ -622,7 +622,7 @@ function NBAPropsPage({ jumpTo }) {
       headshotSrc={(p) => espnHeadshot(p.espnId)}
       headshotFallback={(p) => nbaHeadshot(p.nbaId)}
       metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
-      avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(NBA_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout">
     <TeamRosterPanel
@@ -633,7 +633,7 @@ function NBAPropsPage({ jumpTo }) {
       headshotSrc={(p) => espnHeadshot(p.espnId)}
       headshotFallback={(p) => nbaHeadshot(p.nbaId)}
       metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
-      avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(NBA_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout-center">
       {/* Matchup + player + market selectors */}
@@ -919,7 +919,7 @@ function NBAPropsPage({ jumpTo }) {
       headshotSrc={(p) => espnHeadshot(p.espnId)}
       headshotFallback={(p) => nbaHeadshot(p.nbaId)}
       metaLine={(p) => `${p.pos} · ${p.base.pts.toFixed(1)} PTS`}
-      avatarBg={(p) => (NBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(NBA_TEAM_COLORS, p.team)}
     />
     </div>
 
@@ -1003,7 +1003,11 @@ function NBAPropsPage({ jumpTo }) {
               home: g.home,
               defRank: TEAM_DEF[g.opp].rank,
             }))}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
+            // right clears LineHandle, which anchors to the container's right
+            // edge: it needs right:8 + its 52px minimum, less the 6px the
+            // narrow chart wrapper already pads, so 54 is the floor. 30 left
+            // the pill sitting on top of the last bar.
+            margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
             {/* Invisible (stroke="transparent"), not removed: rendered fully
@@ -2770,7 +2774,7 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
       aria-valuenow={value}
       style={{
         position: "absolute",
-        left: 8,
+        right: 8,
         top: y - 15,
         height: 30,
         minWidth: 52,
@@ -3698,8 +3702,23 @@ function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, 
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isNarrow ? "0 12px 14px" : "0 20px 16px" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      {/* Labelled and width-contained rather than an edge-to-edge bare
+           track: this slider and the L5/L10/... cells above are two faces of
+           the same `lastN` state (dragging to 15 lights up L15; clicking L20
+           moves the thumb), which a full-width unlabelled bar sitting under
+           the pills gave no way to guess. "Sample size" is the term the
+           Filters panel already uses for this exact control -- see
+           FilterSection title="Sample size" / SampleSizeGrid /
+           SampleSizeSlider. */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: isNarrow ? "0 12px 14px" : "0 20px 16px" }}>
+        <span className="micro-label" style={{ fontSize: 10, flexShrink: 0 }}>
+          Sample size
+        </span>
+        {/* Grows to fill what the label and value leave, but capped so it
+             stays a contained control rather than the old edge-to-edge bar.
+             The cap (not a fixed width) is what keeps it from overflowing on
+             a 320px phone, where there isn't room for the full 150. */}
+        <div style={{ flex: "1 1 auto", maxWidth: isNarrow ? 150 : 220, minWidth: 80 }}>
           <ThresholdSlider
             min={1}
             max={cappedMax}
@@ -3721,7 +3740,7 @@ function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, 
            chart showing three teammate-filtered games looks like a bug. */}
       <div style={{ textAlign: "center", padding: isNarrow ? "0 12px 10px" : "0 20px 12px" }}>
         <span className="micro-label" style={{ fontSize: 9, letterSpacing: "0.07em" }}>
-          Hit rates vs full log
+          Sample size sets the games in the graph · hit rates vs full log
         </span>
       </div>
     </div>
@@ -4317,7 +4336,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (NFL_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout">
     <TeamRosterPanel
@@ -4327,7 +4346,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (NFL_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout-center">
       {/* Matchup + market selectors -- picking a matchup here swaps which two
@@ -4564,7 +4583,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (NFL_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
     />
     </div>
 
@@ -4639,7 +4658,11 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
               home: g.home,
               defRank: getNFLDefRank(market, player.pos, g.opp).rank,
             }))}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
+            // right clears LineHandle, which anchors to the container's right
+            // edge: it needs right:8 + its 52px minimum, less the 6px the
+            // narrow chart wrapper already pads, so 54 is the floor. 30 left
+            // the pill sitting on top of the last bar.
+            margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
             {/* Invisible (stroke="transparent"), not removed: rendered fully
@@ -5478,7 +5501,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (WNBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout">
     <TeamRosterPanel
@@ -5488,7 +5511,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (WNBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout-center">
       <div style={{ marginBottom: 8 }}>
@@ -5707,7 +5730,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (WNBA_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
     </div>
 
@@ -5779,7 +5802,11 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
               minutes: g.minutes,
               home: g.home,
             }))}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
+            // right clears LineHandle, which anchors to the container's right
+            // edge: it needs right:8 + its 52px minimum, less the 6px the
+            // narrow chart wrapper already pads, so 54 is the floor. 30 left
+            // the pill sitting on top of the last bar.
+            margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
             {/* Invisible (stroke="transparent"), not removed: rendered fully
@@ -7349,7 +7376,10 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLab
       // which still floats in the card's absolute top-right corner.
       <div style={{ padding: "12px 110px 12px 20px", borderBottom: "1px solid var(--line)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px 16px" }}>
-          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 10px", minWidth: 0 }}>
+          {/* Column gap is wider than the row gap: the segments needed air
+               between them, but a wrapped second line shouldn't open a
+               matching vertical hole. */}
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 16px", minWidth: 0 }}>
             <span className="micro-label">Game Info</span>
             <span style={{ color: "var(--text)", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>
               {new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
@@ -7358,11 +7388,15 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLab
                 {new Date(nextGame.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
               </span>
             </span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
+            {/* --dim, not --line-strong: the latter is a border token, tuned
+                 to draw a 1px rule against a dark surface, which leaves a
+                 glyph almost invisible in dark mode (it read fine in light,
+                 which is why it survived this long). */}
+            <span style={{ color: "var(--dim)" }}>·</span>
             <span style={{ fontSize: 12.5, color: "var(--text)", whiteSpace: "nowrap" }}>
               {nextGame.home ? "vs" : "@"} <strong>{opponentLabel || nextGame.opp}</strong>
             </span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span style={{ color: "var(--dim)" }}>·</span>
             <span
               style={{ fontSize: 12.5, color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}
               title={venueTitle}
@@ -9293,18 +9327,32 @@ function MLBPropsPage({ jumpTo }) {
   // over already exists.
   const graphCard = () => (
     <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden", position: "relative" }}>
-      {/* Trigger sits in the card top-right; the launcher owns the popover,
-           bottom sheet, click-outside and Escape handling (shared with the
-           other sports pages). Opening it is also what kicks off the
-           teammate boxscore prefetch that backs the chip differentials. */}
-      <FilterPanelLauncher
-        open={filtersOpen}
-        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
-        activeCount={activeFilterCount}
-        compact={compact}
-      >
-        {filtersBody}
-      </FilterPanelLauncher>
+      {/* The launcher owns the popover, bottom sheet, click-outside and
+           Escape handling (shared with the other sports pages). Opening it
+           is also what kicks off the teammate boxscore prefetch that backs
+           the chip differentials.
+
+           Anchored (absolute card top-right) only on desktop, where
+           playerIdentityRow and GameConditionsBar both reserve 110px of
+           right-side clearance for it. In compact mode that reservation
+           drops to 12px while the button stayed pinned at top/right: 10,
+           which is what put it on top of the H/HR/RBI/R season stats. Going
+           unanchored below 1100px drops it into normal flow as its own
+           right-aligned row above the identity row, where it cannot overlap
+           anything at any width. The panel itself is unaffected either way:
+           compact already renders it as a position:fixed bottom sheet that
+           doesn't care where the trigger sits. */}
+      <div style={compact ? { padding: "10px 12px 0" } : undefined}>
+        <FilterPanelLauncher
+          open={filtersOpen}
+          onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
+          activeCount={activeFilterCount}
+          compact={compact}
+          anchored={!compact}
+        >
+          {filtersBody}
+        </FilterPanelLauncher>
+      </div>
 
       {/* Game Conditions -- desktop only, a full-width strip across the top
            of the card (PropsMadness reference) instead of sitting above the
@@ -9450,7 +9498,11 @@ function MLBPropsPage({ jumpTo }) {
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}
-            margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
+            // right clears LineHandle, which anchors to the container's right
+            // edge: it needs right:8 + its 52px minimum, less the 6px the
+            // narrow chart wrapper already pads, so 54 is the floor. 30 left
+            // the pill sitting on top of the last bar.
+            margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
             {/* Invisible (stroke="transparent"), not removed: rendered fully
@@ -9904,7 +9956,7 @@ function MLBPropsPage({ jumpTo }) {
       headshotSrc={(p) => mlbHeadshot(p.mlbId)}
       headshotFallback={(p) => mlbEspnHeadshot(p.id)}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(MLB_TEAM_COLORS, p.team)}
     />
     {/* Game Conditions: full-width, mobile only. Desktop (!compact) instead
          gets the compact variant inside the left roster gutter below -- a
@@ -9952,7 +10004,7 @@ function MLBPropsPage({ jumpTo }) {
         headshotSrc={(p) => mlbHeadshot(p.mlbId)}
         headshotFallback={(p) => mlbEspnHeadshot(p.id)}
         metaLine={(p) => p.pos}
-        avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+        avatarBg={(p) => teamAvatarBackground(MLB_TEAM_COLORS, p.team)}
         confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
       />
     <div className="roster-layout-center">
@@ -9984,7 +10036,7 @@ function MLBPropsPage({ jumpTo }) {
       headshotSrc={(p) => mlbHeadshot(p.mlbId)}
       headshotFallback={(p) => mlbEspnHeadshot(p.id)}
       metaLine={(p) => p.pos}
-      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+      avatarBg={(p) => teamAvatarBackground(MLB_TEAM_COLORS, p.team)}
       confirmed={(nextGame?.oppLineupIds?.length || 0) > 0}
     />
     </div>
@@ -10464,7 +10516,8 @@ function FeedSplitsStrip({ r, sampleWindow, size }) {
 // add-button / avatar / proposition / line / odds / L5 / L10 / L20 /
 // season / view-chart. It's CSS rather than a template string here
 // because the tracks and gaps widen with the viewport (see the media
-// query tiers there); `.feed-num` is the right-aligned numeric cell.
+// query tiers there). All six numeric columns are centered so the gaps
+// between them stay even at every width -- see the .feed-grid comment.
 
 // Desktop table header -- Line/Odds/L5/L10/L20/Season are all real sortable
 // columns (see PropFeedPage's columnSort state); Outlier's reference layout
@@ -10476,14 +10529,14 @@ function FeedSplitsStrip({ r, sampleWindow, size }) {
 // opaque and sits at a higher z-index, so a header pinned to 0 would spend
 // the whole scroll hidden behind it.
 function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
-  const col = (label, key, align = "right") => {
+  const col = (label, key, align = "center") => {
     const active = columnSort?.key === key;
     const justify = align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start";
     return (
       <div
         role="button"
         onClick={() => onSort(key)}
-        className={align === "right" ? "mono feed-num" : "mono"}
+        className="mono"
         style={{
           cursor: "pointer", textAlign: align, color: active ? "var(--amber)" : "var(--dim)",
           fontWeight: active ? 700 : 600, fontSize: 11, display: "flex", alignItems: "center",
@@ -10506,8 +10559,8 @@ function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
     >
       <div /><div />
       <div className="mono" style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600 }}>Proposition</div>
-      {col("Line", "line")}
-      {col("Odds", "odds")}
+      {col("Line", "line", "center")}
+      {col("Odds", "odds", "center")}
       {col("L5", "l5", "center")}
       {col("L10", "l10", "center")}
       {col("L20", "l20", "center")}
@@ -10759,8 +10812,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
         </div>
         <div style={{ marginTop: 3 }}>{oppRankLine}</div>
       </div>
-      <div className="mono feed-num" style={{ textAlign: "right", fontSize: 13, color: "var(--text)" }}>{r.line}</div>
-      <div className="mono feed-num" style={{ textAlign: "right", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds)}</div>
+      {/* Centered, like the four percentage cells that follow -- see
+           FeedTableHeader for why mixing center and right alignment across
+           these six columns is what made the gaps read as uneven. */}
+      <div className="mono" style={{ textAlign: "center", fontSize: 13, color: "var(--text)" }}>{r.line}</div>
+      <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds)}</div>
       <FeedPctCell v={r.l5} />
       <FeedPctCell v={r.l10} />
       <FeedPctCell v={r.l20} />
@@ -11217,8 +11273,19 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the Sort By dropdown's mode until cleared. null means "use the Sort By/
   // primary-hit-rate behavior below" (see sortedRows).
   const [columnSort, setColumnSort] = useState(null);
+  // Three-state cycle per column: neutral -> ascending -> descending ->
+  // neutral. This used to be a two-state asc/desc flip with no branch back
+  // to null, so once you'd sorted a column there was no way to get the
+  // list back to its default order short of a reload. Nothing else was
+  // needed to restore it -- the sortedRows memo below already falls through
+  // to the Sort By dropdown's ordering whenever columnSort is null, so
+  // neutral doesn't require snapshotting the pre-sort array.
   const onSortColumn = (key) => {
-    setColumnSort((prev) => (prev?.key === key ? { key, dir: prev.dir === "desc" ? "asc" : "desc" } : { key, dir: "desc" }));
+    setColumnSort((prev) => {
+      if (prev?.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
   };
 
   // Odds range filter. The slider itself drags a uniform 4-96 "encoded"
@@ -11957,14 +12024,21 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
              to-edge -- some players' official photos are a plain white-
              backdrop studio shot rather than an action shot, which would
              otherwise hide the team color entirely and make that one
-             player look inconsistent with the rest of the roster. The glow
-             box-shadow (a solid-color ring plus a soft blur in the same
-             color) is what gives it the brighter, neon-ish pop instead of
-             just a flat-colored disc peeking out from behind the photo. */}
+             player look inconsistent with the rest of the roster.
+
+             avatarBg is teamAvatarBackground()'s primary->secondary
+             gradient, the same treatment the big player-card header avatar
+             uses, so every avatar in the app now reads as one component at
+             different sizes. It replaced a flat primary-hex fill plus a
+             hard 1px ring and a 6px same-color blur, which made these small
+             avatars glow far harder than anything else on screen. The
+             drop shadow below is deliberately neutral rather than team-
+             tinted: avatarBg now returns a linear-gradient() string, which
+             cannot be interpolated into a box-shadow color. */}
         <div style={{
           position: "relative", width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
           background: avatarBg ? avatarBg(p) : "#000",
-          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
         }}>
           <img
             src={headshotSrc(p)}
@@ -12088,7 +12162,7 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
         <div style={{
           position: "relative", width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
           background: avatarBg ? avatarBg(p) : "#000",
-          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
         }}>
           <img
             src={headshotSrc(p)}
@@ -12176,7 +12250,7 @@ function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headsho
         <div style={{
           position: "relative", width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
           background: avatarBg ? avatarBg(p) : "#000",
-          boxShadow: avatarBg ? `0 0 0 1px ${avatarBg(p)}, 0 0 6px 1px ${avatarBg(p)}99` : "none",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
         }}>
           <img
             src={headshotSrc(p)}
@@ -12887,31 +12961,48 @@ export default function PropLedger() {
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif" }}>
 
       {/* Header */}
-      <div
-        onClick={() => setSettingsOpen((v) => !v)}
-        role="button"
-        aria-label="Toggle Settings panel"
-        title="Settings"
-        style={{
-          // Above every other fixed/high-z-index layer in the app (the
-          // lineup drawer's 3000, its backdrop, and the player-detail
-          // Filters bottom sheet's 3500/3501) so the gear never gets buried
-          // under an open panel -- previously at 2000, below all of them.
-          position: "fixed", top: "max(16px, env(safe-area-inset-top))", right: 16, zIndex: 4000,
-          width: 36, height: 36, borderRadius: 8, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 18,
-          boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
-        }}
-      >
-        ⚙
-      </div>
       <div style={{ borderBottom: "1px solid var(--line)", padding: "16px", background: "linear-gradient(to bottom, rgba(255,255,255,0.015), transparent)" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-          <h1 className="oswald" style={{ fontSize: 26, letterSpacing: "0.03em", margin: 0, color: "var(--text)", display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ color: "var(--amber)" }}>●</span> PROP LEDGER
-          </h1>
-          <span style={{ color: "var(--dim)", fontSize: 13 }}>your own hit-rate research, before you place it</span>
+        {/* Wordmark + tagline on the left, Settings gear pinned to the right
+             edge of the same row. The gear used to be position:fixed at
+             z-index 4000 so it floated over the player cards for the whole
+             scroll; it's now an ordinary header control that scrolls away
+             with everything else. Nothing else relied on that top layer --
+             every drawer/sheet (2100/3000/3501) simply covers it now, which
+             is the correct reading for a header button. */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
+            {/* "Palace" takes var(--amber) rather than a fixed brand hex so the
+                 wordmark tracks whatever accent the user picks in the color
+                 wheel -- it can't clash with their accent because it is their
+                 accent. clamp() covers phone through desktop in one
+                 declaration instead of a breakpoint ternary. */}
+            <h1
+              className="oswald"
+              style={{
+                fontSize: "clamp(22px, 5vw, 30px)", fontWeight: 700, letterSpacing: "-0.02em",
+                margin: 0, color: "var(--text)", display: "flex", alignItems: "baseline", gap: 8,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ color: "var(--amber)" }}>●</span>
+              <span>Prop<span style={{ color: "var(--amber)" }}>Palace</span></span>
+            </h1>
+            <span style={{ color: "var(--dim)", fontSize: 13 }}>your own hit-rate research, before you place it</span>
+          </div>
+          <div
+            onClick={() => setSettingsOpen((v) => !v)}
+            role="button"
+            aria-label="Toggle Settings panel"
+            title="Settings"
+            style={{
+              flexShrink: 0,
+              width: 36, height: 36, borderRadius: 8, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 18,
+            }}
+          >
+            ⚙
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <PageNavDropdown

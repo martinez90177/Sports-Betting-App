@@ -457,20 +457,21 @@ select.select:focus, select.select:focus-visible {
   padding-right: 12px;
 }
 
-/* Line and Odds are right-aligned, so their digits sat flush against the
-   track edge and the only thing separating "-900" from the L5 pill was
-   the column gap (17px of visual air, versus ~30px between the centered
-   pills). The inline-end padding is what actually evens that out -- a
-   bigger gap alone would still leave Odds tighter than its neighbours. */
-.feed-grid > .feed-num { padding-right: 6px; }
+/* Line and Odds used to be right-aligned while L5/L10/L20/Season were
+   centered, which is what made the Odds->L5 gap read as tighter than the
+   rest: a right-aligned "-900" pushes all of its track's slack to the left,
+   so that gap was column-gap + L5's left slack, while every gap further
+   right was column-gap + slack on *both* sides. A `.feed-num` inline-end
+   padding used to paper over it, but the slack scales with the viewport
+   (the tracks are fr-weighted) so a fixed padding could never track it
+   across the tiers below. All six sortable columns are centered now, which
+   makes the gaps even by construction and made `.feed-num` redundant. */
 
 @media (min-width: 1100px) {
   .feed-grid { column-gap: 18px; padding-left: 20px; padding-right: 20px; }
-  .feed-grid > .feed-num { padding-right: 8px; }
 }
 @media (min-width: 1400px) {
   .feed-grid { column-gap: 24px; padding-left: 24px; padding-right: 24px; }
-  .feed-grid > .feed-num { padding-right: 10px; }
 }
 ::-webkit-scrollbar { height: 7px; width: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
