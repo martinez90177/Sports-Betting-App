@@ -3800,6 +3800,39 @@ function useElementWidth(ref) {
   return width;
 }
 
+// Same idea for height, for stacking one sticky element beneath another:
+// the Prop Feed's table header pins below its filter rail, and the rail's
+// height isn't a constant to hardcode -- it wraps onto a second (or third)
+// line as the window narrows, and grows once a sport's Games multi-select
+// has real games in it.
+//
+// Belt and braces on purpose, because being stale here isn't cosmetic: too
+// small a value tucks the pinned header underneath the opaque rail. The
+// ResizeObserver catches content-driven growth, but its callbacks are
+// delivered in the frame loop, so a window that isn't compositing can sit
+// on one indefinitely; the resize listener is a plain event and fires
+// regardless. Math.ceil because a fractional height would round down into
+// a 1px overlap.
+function useElementHeight(ref) {
+  const [height, setHeight] = React.useState(0);
+  React.useLayoutEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    const update = () => setHeight(Math.ceil(el.getBoundingClientRect().height));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener("resize", update);
+    // Web fonts landing after first paint reflow the rail's controls.
+    if (document.fonts?.ready) document.fonts.ready.then(update).catch(() => {});
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [ref]);
+  return height;
+}
+
 // How many px each per-game logo+abbreviation+date tick needs to avoid
 // overlapping its neighbors -- used to derive how many ticks actually fit
 // in the measured chart width, instead of a fixed tick-count cap. Compact
@@ -10426,17 +10459,23 @@ function FeedSplitsStrip({ r, sampleWindow, size }) {
   );
 }
 
-// Shared column template for the desktop table -- header and every row grid
-// against the same string so cells line up exactly. add-button / avatar /
-// proposition / line / odds / L5 / L10 / L20 / season / view-chart.
-const FEED_TABLE_COLUMNS = "40px 40px minmax(180px,2fr) 64px 84px 60px 60px 60px 64px 108px";
+// The desktop table's column template is the `.feed-grid` class in
+// index.css -- header and every row carry it so cells line up exactly:
+// add-button / avatar / proposition / line / odds / L5 / L10 / L20 /
+// season / view-chart. It's CSS rather than a template string here
+// because the tracks and gaps widen with the viewport (see the media
+// query tiers there); `.feed-num` is the right-aligned numeric cell.
 
 // Desktop table header -- Line/Odds/L5/L10/L20/Season are all real sortable
 // columns (see PropFeedPage's columnSort state); Outlier's reference layout
 // this was modeled on also shows IP%/H2H/prior-season columns, which are
 // left out here rather than faked -- there's no real implied-probability
 // price or per-row prior-season game log behind this feed's data today.
-function FeedTableHeader({ columnSort, onSort }) {
+// `stickyTop` is the measured height of PropFeedPage's sticky filter rail.
+// The header pins directly under it rather than at top:0 -- the rail is
+// opaque and sits at a higher z-index, so a header pinned to 0 would spend
+// the whole scroll hidden behind it.
+function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
   const col = (label, key, align = "right") => {
     const active = columnSort?.key === key;
     const justify = align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start";
@@ -10444,7 +10483,7 @@ function FeedTableHeader({ columnSort, onSort }) {
       <div
         role="button"
         onClick={() => onSort(key)}
-        className="mono"
+        className={align === "right" ? "mono feed-num" : "mono"}
         style={{
           cursor: "pointer", textAlign: align, color: active ? "var(--amber)" : "var(--dim)",
           fontWeight: active ? 700 : 600, fontSize: 11, display: "flex", alignItems: "center",
@@ -10458,11 +10497,11 @@ function FeedTableHeader({ columnSort, onSort }) {
   };
   return (
     <div
+      className="feed-grid"
       style={{
-        display: "grid", gridTemplateColumns: FEED_TABLE_COLUMNS, gap: 8, alignItems: "center",
-        padding: "8px 16px", borderBottom: "1px solid var(--line)",
+        paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--line)",
         textTransform: "uppercase", letterSpacing: "0.04em",
-        position: "sticky", top: 0, zIndex: 3, background: "var(--surface-sunken)",
+        position: "sticky", top: stickyTop, zIndex: 3, background: "var(--surface-sunken)",
       }}
     >
       <div /><div />
@@ -10608,6 +10647,12 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
       style={{
         cursor: "pointer",
         flexShrink: 0,
+        // Hugs its own text instead of stretching to fill the grid track,
+        // so the button stays a consistent size as the column widens and
+        // the row still ends on a clean right edge. (No effect in the
+        // narrow layout, where this sits in a flex row.)
+        justifySelf: "end",
+        textAlign: "center",
         padding: "8px 12px",
         borderRadius: 4,
         fontSize: 12,
@@ -10697,10 +10742,9 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
   // their own aligned, independently sortable column.
   return (
     <div
-      className="feed-row"
+      className="feed-row feed-grid"
       style={{
-        display: "grid", gridTemplateColumns: FEED_TABLE_COLUMNS, gap: 8, alignItems: "center",
-        padding: "10px 16px",
+        paddingTop: 10, paddingBottom: 10,
         borderBottom: isLast ? "none" : "1px solid var(--line)",
       }}
     >
@@ -10715,8 +10759,8 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
         </div>
         <div style={{ marginTop: 3 }}>{oppRankLine}</div>
       </div>
-      <div className="mono" style={{ textAlign: "right", fontSize: 13, color: "var(--text)" }}>{r.line}</div>
-      <div className="mono" style={{ textAlign: "right", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds)}</div>
+      <div className="mono feed-num" style={{ textAlign: "right", fontSize: 13, color: "var(--text)" }}>{r.line}</div>
+      <div className="mono feed-num" style={{ textAlign: "right", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds)}</div>
       <FeedPctCell v={r.l5} />
       <FeedPctCell v={r.l10} />
       <FeedPctCell v={r.l20} />
@@ -11449,8 +11493,18 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   }, [sport, selectedMarket, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
   const visibleRows = sortedRows.slice(0, visibleCount);
 
+  // Measured live rather than hardcoded -- the rail wraps onto more lines
+  // as the window narrows, and the table header pins directly beneath it.
+  const filterRailRef = React.useRef(null);
+  const filterRailHeight = useElementHeight(filterRailRef);
+
   return (
-    <div className="page-shell" style={{ maxWidth: 900, margin: "0 auto", boxSizing: "border-box" }}>
+    // 900px left ~270px of dead gutter either side of a 1440px window while
+    // the table itself overflowed its container -- the feed is a ten-column
+    // table, not a reading column, so it gets the same generous ceiling as
+    // the single-player pages (1920 there; 1600 here keeps the rows from
+    // stretching past the point where scanning a row is comfortable).
+    <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", boxSizing: "border-box" }}>
       {/* Sport switcher */}
       <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         {FEED_SPORTS.map((s) => (
@@ -11492,9 +11546,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
            of today's/this week's games at once) instead of a flat team
            list, since picking a team only ever matters in relation to who
            they're actually playing. NBA/WNBA keep the plain TEAM dropdown. */}
-      <div style={{
+      {/* Sticky only in the table layout. This rail has always been styled
+          sticky but never actually stuck (see the overflow-x note in
+          index.css); now that it does, pinning it on a phone would cost
+          ~18% of the viewport -- it wraps to three lines at 375px -- and
+          buy nothing, since the card layout has no column header to keep
+          it company. */}
+      <div ref={filterRailRef} style={{
         display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "flex-end", gap: 16,
-        marginBottom: 10, position: "sticky", top: 0, zIndex: 15, background: "var(--bg)",
+        marginBottom: 10, position: isNarrow ? "static" : "sticky", top: 0, zIndex: 15, background: "var(--bg)",
         paddingTop: 8, paddingBottom: 12,
       }}>
         {showMatchupDropdown ? (
@@ -11812,8 +11872,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           Tough matchup
         </span>
       </div>
-      <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} />}
+      {/* .feed-table-wrap replaces the old inline overflow:hidden -- see
+          index.css for why the horizontal overflow mode has to change with
+          the viewport (it decides whether the sticky header below can pin
+          to the viewport at all). */}
+      <div className="feed-table-wrap">
+        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} stickyTop={filterRailHeight} />}
         {sortedRows.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
             {sport === "mlb" && mlbLoading ? "Loading live MLB matchup data…" : "No props match these filters yet."}

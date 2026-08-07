@@ -259,8 +259,20 @@ a:focus-visible, div[role="button"]:focus-visible, button:focus-visible,
 /* Safeguard: nothing on the page should ever force horizontal
    scrolling of the whole app -- any element that needs to overflow
    (the game-log table, the feed) scrolls internally instead via its
-   own overflow-x: auto wrapper. */
-html, body { max-width: 100%; overflow-x: hidden; }
+   own overflow-x: auto wrapper.
+
+   `clip`, not `hidden`: overflow-x: hidden forces the other axis from
+   `visible` up to `auto`, which quietly made <body> a scroll container
+   (computed `hidden auto`) even though <html> is what actually scrolls.
+   Every position:sticky descendant then resolved its offsets against
+   that never-scrolling box instead of the viewport, so nothing on the
+   page could stick -- the Prop Feed's filter rail and table header both
+   looked correct in the styles and simply scrolled away. `clip` blocks
+   horizontal scrolling exactly the same way without creating a scroll
+   container. Sticky elements inside their own scrolling panels (the
+   FilterPanel header/footer, the prop-picker search box) resolve against
+   those panels either way and are unaffected. */
+html, body { max-width: 100%; overflow-x: clip; }
 body {
   background:
     radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--amber) 7%, transparent), transparent 60%),
@@ -388,6 +400,78 @@ select.select:focus, select.select:focus-visible {
 .feed-row:nth-child(odd) { background: var(--row-stripe); }
 .feed-row, .ledger-row { transition: background-color .15s ease; }
 .feed-row:hover, .ledger-row:hover { background: color-mix(in srgb, var(--amber) 5%, transparent); }
+
+/* The panel around the feed's header + rows. The overflow mode here is
+   load-bearing for FeedTableHeader's `position: sticky`: sticky offsets
+   resolve against the nearest ancestor *scroll container*, and both `auto`
+   and the `hidden` this used to be make one. That's why the header never
+   actually stuck -- it pinned to the top of this box, which just scrolls
+   away with the page, instead of to the viewport.
+
+   `clip` is the way out: it clips overflow (so the rounded corners still
+   cut the header and last row cleanly) without establishing a scroll
+   container, leaving sticky to resolve against the viewport. It's only
+   safe above 900px, where the .feed-grid minimums fit and there's nothing
+   to scroll to; below that the columns genuinely overflow and reaching
+   View Chart needs a real scrollbar, so `auto` wins and the header gives
+   up sticking. Browsers without `overflow: clip` drop the declaration and
+   inherit `auto` -- a non-sticky header, i.e. exactly today's behaviour. */
+.feed-table-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+@media (min-width: 900px) {
+  .feed-table-wrap { overflow-x: clip; }
+}
+
+/* ---------- prop feed table ----------
+   One PropFeedPage renders all four sports (the NFL/NBA/MLB/WNBA switcher
+   only swaps its `sport` prop), so FeedTableHeader and every FeedRow grid
+   against this one class and stay aligned by construction. It lives here
+   rather than in a JS template string because the columns need to widen
+   with the viewport: the old fixed template summed to 848px inside an
+   836px container, so the last column (View Chart) was quietly clipped by
+   the wrapper's overflow at every width.
+
+   Track minimums are what each column actually needs -- notably 128px for
+   View Chart, whose button measures ~107px (80px of text + 12px padding
+   either side + border) and used to be given a 108px track. Above those
+   minimums the fr weights hand the extra width to every column rather
+   than letting the Proposition column swallow it. The minimums sum to
+   ~806px including gaps and padding, which is what lets the full table
+   still fit a ~900px window; below that the wrapper scrolls (the card
+   layout takes over under 560 -- see FeedRow's isNarrow branch). */
+.feed-grid {
+  display: grid;
+  align-items: center;
+  grid-template-columns:
+    40px 40px minmax(130px, 2fr)
+    minmax(56px, 0.6fr) minmax(70px, 0.75fr)
+    minmax(56px, 0.5fr) minmax(56px, 0.5fr) minmax(56px, 0.5fr)
+    minmax(60px, 0.55fr)
+    minmax(128px, 0.7fr);
+  column-gap: 10px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* Line and Odds are right-aligned, so their digits sat flush against the
+   track edge and the only thing separating "-900" from the L5 pill was
+   the column gap (17px of visual air, versus ~30px between the centered
+   pills). The inline-end padding is what actually evens that out -- a
+   bigger gap alone would still leave Odds tighter than its neighbours. */
+.feed-grid > .feed-num { padding-right: 6px; }
+
+@media (min-width: 1100px) {
+  .feed-grid { column-gap: 18px; padding-left: 20px; padding-right: 20px; }
+  .feed-grid > .feed-num { padding-right: 8px; }
+}
+@media (min-width: 1400px) {
+  .feed-grid { column-gap: 24px; padding-left: 24px; padding-right: 24px; }
+  .feed-grid > .feed-num { padding-right: 10px; }
+}
 ::-webkit-scrollbar { height: 7px; width: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: var(--r-sm); }
