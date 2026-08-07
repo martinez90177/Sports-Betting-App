@@ -2986,15 +2986,17 @@ function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact,
     el.scrollBy({ left: dir * (chipW + TEAMMATE_CHIP_GAP) * 2, behavior: "smooth" });
   };
 
+  // The current mode is read from `prev` inside the updater, not from the
+  // `chips` prop outside it. Reading the prop meant two clicks landing in one
+  // render both saw "neutral" and both appended, so a quick double-tap added
+  // the same player to the filter twice.
   const cycle = (p) => {
-    const current = modeFor(p.mlbId);
-    if (current === "neutral") {
-      onChange((prev) => [...prev, { mlbId: p.mlbId, name: p.name, mode: "with" }]);
-    } else if (current === "with") {
-      onChange((prev) => prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: "without" } : c)));
-    } else {
-      onChange((prev) => prev.filter((c) => c.mlbId !== p.mlbId));
-    }
+    onChange((prev) => {
+      const current = (prev.find((c) => c.mlbId === p.mlbId) || {}).mode || "neutral";
+      if (current === "neutral") return [...prev, { mlbId: p.mlbId, name: p.name, mode: "with" }];
+      if (current === "with") return prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: "without" } : c));
+      return prev.filter((c) => c.mlbId !== p.mlbId);
+    });
   };
 
   // Solid fill when selected, no border at all -- the fill is the signal.
@@ -3429,15 +3431,15 @@ function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel }) 
 
   const modeFor = (mlbId) => (chips.find((c) => c.mlbId === mlbId) || {}).mode || "neutral";
 
+  // Same functional-update discipline as TeammateChipRow's cycle: derive the
+  // current mode from `prev` so rapid clicks can't both act on a stale read.
   const toggle = (p) => {
-    const current = modeFor(p.mlbId);
-    if (current === tab) {
-      onChange((prev) => prev.filter((c) => c.mlbId !== p.mlbId));
-    } else if (current === "neutral") {
-      onChange((prev) => [...prev, { mlbId: p.mlbId, name: p.name, mode: tab }]);
-    } else {
-      onChange((prev) => prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: tab } : c)));
-    }
+    onChange((prev) => {
+      const current = (prev.find((c) => c.mlbId === p.mlbId) || {}).mode || "neutral";
+      if (current === tab) return prev.filter((c) => c.mlbId !== p.mlbId);
+      if (current === "neutral") return [...prev, { mlbId: p.mlbId, name: p.name, mode: tab }];
+      return prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: tab } : c));
+    });
   };
 
   const q = query.trim().toLowerCase();
@@ -9410,6 +9412,62 @@ function MLBPropsPage({ jumpTo }) {
 
       {sampleStatsRow}
       {metricRail}
+
+      {/* Teammate filter summary. The Filters panel is closed by default, so
+           without this the only trace of an active With/Without filter is the
+           count badge on the trigger -- the chart silently shows a different
+           sample with nothing on screen saying whose presence is being
+           required. Sits directly above the chart it qualifies.
+
+           Full names here, not the chips' abbreviated "T. Grisham": the chip
+           is 132px and has a headshot to disambiguate it, this is a sentence
+           about what you're looking at.
+
+           Tint plus a 1px border rather than the solid fill the panel's
+           controls use -- solid means "this is a selected control" in the new
+           design, and this is a readout. The x is the exception: it clears
+           that whole group, so the pill is also the fastest way to undo the
+           filter it's describing. */}
+      {!isPitcher && teammateChips.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, padding: "0 16px 12px" }}>
+          {[
+            { mode: "with", label: "Including", color: "var(--green)", bg: "color-mix(in srgb, var(--green) 14%, transparent)" },
+            { mode: "without", label: "Excluding", color: "var(--red)", bg: "var(--red-dim)" },
+          ].map(({ mode, label, color, bg }) => {
+            const names = teammateChips.filter((c) => c.mode === mode).map((c) => c.name);
+            if (!names.length) return null;
+            return (
+              <div
+                key={mode}
+                style={{
+                  display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap",
+                  padding: "5px 8px 5px 11px", borderRadius: 999, fontSize: 12,
+                  background: bg, border: `1px solid ${color}`, color,
+                }}
+              >
+                <span className="oswald" style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  {label}
+                </span>
+                <span style={{ color: "var(--text)" }}>{names.join(", ")}</span>
+                <span
+                  role="button"
+                  aria-label={`Clear ${label.toLowerCase()} filter`}
+                  title={`Clear ${label.toLowerCase()} filter`}
+                  onClick={() => setTeammateChips((prev) => prev.filter((c) => c.mode !== mode))}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 15, height: 15, borderRadius: "50%", flexShrink: 0,
+                    fontSize: 11, lineHeight: 1, cursor: "pointer",
+                    background: "color-mix(in srgb, currentColor 18%, transparent)",
+                  }}
+                >
+                  ×
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Chart -- user-resizable via the native browser drag handle (CSS
            `resize`, bottom-right corner) rather than a custom pointer-drag
