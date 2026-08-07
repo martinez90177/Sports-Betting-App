@@ -6875,7 +6875,7 @@ async function fetchMLBTeamNextGame(teamId) {
 // The team's real active (25/26-man) roster -- the official MLB Stats API
 // roster endpoint, which automatically excludes anyone on the IL, DFA'd, or
 // no longer with the org. Used as a live safety filter over the static
-// roster arrays below (see applyActiveRoster in MLBPropsPage) so an injured
+// roster arrays below (see applyActiveRoster / reconcileMlbLineup) so an injured
 // or traded player never lingers in a lineup panel just because the day's
 // confirmed batting order (fetchMLBTeamNextGame) hasn't posted yet -- that's
 // what let an IL'd Cody Bellinger keep showing for the Yankees. Also cached
@@ -6923,6 +6923,106 @@ async function fetchMLBTeamActiveRoster(teamId) {
   mlbActiveRosterCache.set(teamId, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
   return roster;
+}
+
+// Live safety filter: drops any static roster entry (see MLB_PLAYERS etc.)
+// that isn't actually on the team's real active roster right now -- an IL'd,
+// DFA'd, or traded-away player never shows up regardless of whether MLB has
+// posted today's exact batting order yet, which is what applyConfirmedLineup
+// alone couldn't guard against. This only ever trims the static 9-man
+// projected lineup down, never adds the rest of the active/bench roster on
+// top of it -- that's what kept every backup catcher/utility infielder
+// showing up alongside the real projected starters before a lineup is
+// confirmed. `activeRoster` is null while loading or if the fetch failed --
+// in that case this is a no-op, same "never show an empty/wrong panel"
+// fallback philosophy as applyConfirmedLineup below.
+function applyActiveRoster(roster, activeRoster) {
+  if (!activeRoster || !activeRoster.length) return roster;
+  const activeIds = new Set(activeRoster.map((p) => p.mlbId));
+  const kept = roster.players.filter((p) => p.pos === "SP" || activeIds.has(p.mlbId));
+  if (!kept.some((p) => p.pos !== "SP")) return roster;
+  return { label: roster.label, players: kept };
+}
+
+// Once MLB posts the day's confirmed batting order (real mlbIds from the
+// live schedule fetch), position players are narrowed to just that list --
+// this is what drops someone like an IL'd Bellinger out of a static roster
+// array without needing a separate "who's on the IL" lookup. If the
+// confirmed list hasn't posted yet, or happens to share zero mlbIds with our
+// static roster (e.g. a mid-week call-up we don't have modeled), it falls
+// back to the full static roster rather than an empty/wrong lineup.
+function applyConfirmedLineup(roster, lineupIds, activeRoster, abbr) {
+  if (!lineupIds || !lineupIds.length) return roster;
+  const known = roster.players.filter((p) => p.pos === "SP" || lineupIds.includes(p.mlbId));
+  // A confirmed starter who isn't in our static projected 9 (a call-up or
+  // trade-deadline addition we don't have modeled) still needs to show --
+  // pull their name/position from the active-roster fetch (which has both)
+  // so the lineup reflects the real confirmed one rather than silently
+  // dropping them.
+  const knownIds = new Set(known.map((p) => p.mlbId));
+  const extras = (activeRoster || [])
+    .filter((p) => lineupIds.includes(p.mlbId) && !knownIds.has(p.mlbId))
+    .map((p) => ({ id: mlbLiveBatterId(abbr, p.mlbId), name: p.name, team: abbr, pos: p.pos, mlbId: p.mlbId }));
+  const filtered = [...known, ...extras];
+  if (!filtered.some((p) => p.pos !== "SP")) return roster;
+  return { label: roster.label, players: filtered };
+}
+
+// Last-resort fill for whenever MLB hasn't posted a confirmed lineup yet
+// (applyConfirmedLineup is then a no-op) and our own static roster array --
+// which was only ever meant as a rough projected 9, not a full 26-man model
+// -- happens to be short a recent call-up/trade addition it doesn't have
+// modeled, or was just trimmed by applyActiveRoster. Rather than showing
+// whatever handful of hardcoded batters is left, top the lineup back up to a
+// believable 9 using real active-roster players (favoring ones at a position
+// not already covered, so it reads like a real defensive lineup rather than
+// three extra first basemen) until it either hits 9 or runs out of
+// active-roster batters to add. A no-op once a real confirmed lineup already
+// filled all 9 spots.
+function topUpProjectedBatters(roster, activeRoster, abbr, targetCount = 9) {
+  const batters = roster.players.filter((p) => p.pos !== "SP");
+  if (batters.length >= targetCount || !activeRoster || !activeRoster.length) return roster;
+  const haveIds = new Set(roster.players.map((p) => p.mlbId));
+  const havePositions = new Set(batters.map((p) => p.pos));
+  const candidates = activeRoster.filter((p) => p.mlbId && p.pos && p.pos !== "P" && p.pos !== "SP" && !haveIds.has(p.mlbId));
+  const preferred = candidates.filter((p) => !havePositions.has(p.pos));
+  const rest = candidates.filter((p) => havePositions.has(p.pos));
+  const additions = [...preferred, ...rest]
+    .slice(0, targetCount - batters.length)
+    .map((p) => ({ id: mlbLiveBatterId(abbr, p.mlbId), name: p.name, team: abbr, pos: p.pos, mlbId: p.mlbId }));
+  if (!additions.length) return roster;
+  return { label: roster.label, players: [...roster.players, ...additions] };
+}
+
+// Every mlbId on *any* team's real active roster, as one Set. The per-team
+// fetches underneath are the same cached ones the feed and player page use
+// (module Map + sessionStorage, 15-minute TTL), so on an MLB page these are
+// already warm and this costs nothing extra. Returns null if every team's
+// fetch failed, which callers treat as "don't filter" -- never as "nobody is
+// active". Teams that individually fail are simply absent from the Set,
+// which is why callers must only ever use this to *rank* or *annotate*
+// leaguewide, and to filter only where a false negative is cheap.
+async function fetchAllMLBActiveMlbIds() {
+  const rosters = await Promise.all(
+    Object.values(MLB_ABBR_TEAM_ID).map((teamId) => fetchMLBTeamActiveRoster(teamId))
+  );
+  if (!rosters.some(Boolean)) return null;
+  const ids = new Set();
+  rosters.forEach((roster) => (roster || []).forEach((p) => ids.add(p.mlbId)));
+  return ids;
+}
+
+// The one reconciliation pipeline that turns a hand-maintained static
+// projected lineup into who is really available today, shared by the MLB
+// player page (liveTeamRoster/liveOppRoster) and the Prop Feed. Order
+// matters: trim to the real active roster first (removes IL'd/DFA'd/traded
+// players), then narrow to the confirmed batting order if one has posted,
+// then backfill up to nine from the active roster so trade-deadline
+// additions we never hardcoded still get props built for them.
+function reconcileMlbLineup(roster, { activeRoster, lineupIds, abbr }) {
+  const reconciled = applyActiveRoster(roster, activeRoster);
+  const withConfirmed = applyConfirmedLineup(reconciled, lineupIds, activeRoster, abbr);
+  return topUpProjectedBatters(withConfirmed, activeRoster, abbr);
 }
 
 // Roster status (IL / day-to-day / optioned / DFA'd) for every player on a
@@ -7056,7 +7156,10 @@ async function fetchMLBDaySlate() {
   if (mlbSlateCache && mlbSlateCache.dayKey === dayKey && Date.now() - mlbSlateCache.fetchedAt < MLB_SLATE_TTL_MS) {
     return mlbSlateCache.games;
   }
-  const cacheKey = "mlb_day_slate_v1";
+  // v2: the cached shape gained home/awayLineupIds below, so a v1 payload
+  // left over in sessionStorage would silently skip the confirmed-lineup
+  // narrowing for the rest of the day.
+  const cacheKey = "mlb_day_slate_v2";
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -7068,7 +7171,10 @@ async function fetchMLBDaySlate() {
     }
   } catch {}
 
-  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dayKey}&hydrate=probablePitcher`);
+  // `lineups` is hydrated here too (not just in the per-team schedule fetch)
+  // so the Prop Feed can narrow each team to its confirmed batting order off
+  // the same single league-wide request -- see reconcileMlbLineup.
+  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dayKey}&hydrate=probablePitcher,lineups`);
   const data = await res.json();
   const rawGames = (data?.dates || []).flatMap((d) => d.games || []);
   const games = rawGames
@@ -7077,6 +7183,8 @@ async function fetchMLBDaySlate() {
       status: g.status?.detailedState || "Scheduled",
       awayAbbr: MLB_TEAM_ID_ABBR[g.teams?.away?.team?.id] || "???",
       homeAbbr: MLB_TEAM_ID_ABBR[g.teams?.home?.team?.id] || "???",
+      awayLineupIds: (g.lineups?.awayPlayers || []).map((p) => p.id),
+      homeLineupIds: (g.lineups?.homePlayers || []).map((p) => p.id),
       awayProbablePitcher: g.teams?.away?.probablePitcher
         ? { mlbId: g.teams.away.probablePitcher.id, name: g.teams.away.probablePitcher.fullName }
         : null,
@@ -8463,9 +8571,16 @@ function MLBPropsPage({ jumpTo }) {
   React.useEffect(() => {
     if (!jumpTo) return;
     const live = parseMlbLivePitcherId(jumpTo.playerId);
+    const liveBatter = live ? null : parseMlbLiveBatterId(jumpTo.playerId);
     if (live) {
       setTeamAbbr(live.team);
       setJumpedPitcher({ id: jumpTo.playerId, name: jumpTo.meta?.name || "Probable Pitcher", team: live.team, mlbId: live.mlbId });
+    } else if (liveBatter) {
+      // A batter the static rosters don't model (confirmed-lineup or
+      // deadline addition). Only the team needs setting -- reconcileMlbLineup
+      // rebuilds this exact id for that team's roster, so the playerId set
+      // below then resolves against liveTeamRoster on its own.
+      setTeamAbbr(liveBatter.team);
     } else {
       const jumpPlayer = ALL_MLB_PLAYERS.find((p) => p.id === jumpTo.playerId);
       if (jumpPlayer) setTeamAbbr(jumpPlayer.team);
@@ -8579,77 +8694,9 @@ function MLBPropsPage({ jumpTo }) {
   // link to whoever is really starting instead of a hardcoded stand-in.
   // teamRoster falls back to a pending jumped-to pitcher (see the jumpTo
   // effect above) for the render or two before nextGame catches up.
-  //
-  // Once MLB posts the day's confirmed batting order (nextGame.ourLineupIds
-  // -- real mlbIds from the live schedule fetch), position players are
-  // filtered down to just that list -- this is what drops someone like an
-  // IL'd Bellinger out of the Yankees' static roster array below without
-  // needing a separate "who's on the IL" lookup. If the confirmed list
-  // hasn't posted yet, or happens to share zero mlbIds with our static
-  // roster (e.g. a mid-week call-up we don't have modeled), it falls back
-  // to showing the full static roster rather than an empty/wrong panel.
-  const applyConfirmedLineup = (roster, lineupIds, activeRoster, abbr) => {
-    if (!lineupIds || !lineupIds.length) return roster;
-    const known = roster.players.filter((p) => p.pos === "SP" || lineupIds.includes(p.mlbId));
-    // A confirmed starter who isn't in our static projected 9 (a call-up or
-    // trade-deadline addition we don't have modeled) still needs to show --
-    // pull their name/position from the active-roster fetch (which has both)
-    // so the panel reflects the real confirmed lineup rather than silently
-    // dropping them.
-    const knownIds = new Set(known.map((p) => p.mlbId));
-    const extras = (activeRoster || [])
-      .filter((p) => lineupIds.includes(p.mlbId) && !knownIds.has(p.mlbId))
-      .map((p) => ({ id: `mlb_live_${p.mlbId}`, name: p.name, team: abbr, pos: p.pos, mlbId: p.mlbId }));
-    const filtered = [...known, ...extras];
-    if (!filtered.some((p) => p.pos !== "SP")) return roster;
-    return { label: roster.label, players: filtered };
-  };
-
-  // Live safety filter run before applyConfirmedLineup: drops any static
-  // roster entry (see MLB_PLAYERS etc.) that isn't actually on the team's
-  // real active roster right now -- an IL'd, DFA'd, or traded-away player
-  // never shows up here regardless of whether MLB has posted today's exact
-  // batting order yet, which is what applyConfirmedLineup alone couldn't
-  // guard against. This only ever trims the static 9-man projected lineup
-  // down, never adds the rest of the active/bench roster on top of it --
-  // that's what kept every backup catcher/utility infielder showing up
-  // alongside the real projected starters before a lineup is confirmed.
-  // `activeRoster` is null while loading or if the fetch failed -- in that
-  // case this is a no-op, same "never show an empty/wrong panel" fallback
-  // philosophy as applyConfirmedLineup below.
-  const applyActiveRoster = (roster, activeRoster) => {
-    if (!activeRoster || !activeRoster.length) return roster;
-    const activeIds = new Set(activeRoster.map((p) => p.mlbId));
-    const kept = roster.players.filter((p) => p.pos === "SP" || activeIds.has(p.mlbId));
-    if (!kept.some((p) => p.pos !== "SP")) return roster;
-    return { label: roster.label, players: kept };
-  };
-
-  // Last-resort fill for whenever MLB hasn't posted a confirmed lineup yet
-  // (applyConfirmedLineup is then a no-op) and our own static roster array
-  // -- which was only ever meant as a rough projected 9, not a full 26-man
-  // model -- happens to be short a recent call-up/trade addition it doesn't
-  // have modeled. Rather than showing whatever handful of hardcoded batters
-  // is left, top the lineup back up to a believable 9 using real active-
-  // roster players (favoring ones at a position not already covered, so it
-  // reads like a real defensive lineup rather than three extra first
-  // basemen) until it either hits 9 or runs out of active-roster batters to
-  // add. A no-op once a real confirmed lineup already filled all 9 spots.
-  const topUpProjectedBatters = (roster, activeRoster, abbr, targetCount = 9) => {
-    const batters = roster.players.filter((p) => p.pos !== "SP");
-    if (batters.length >= targetCount || !activeRoster || !activeRoster.length) return roster;
-    const haveIds = new Set(roster.players.map((p) => p.mlbId));
-    const havePositions = new Set(batters.map((p) => p.pos));
-    const candidates = activeRoster.filter((p) => p.mlbId && p.pos && p.pos !== "P" && p.pos !== "SP" && !haveIds.has(p.mlbId));
-    const preferred = candidates.filter((p) => !havePositions.has(p.pos));
-    const rest = candidates.filter((p) => havePositions.has(p.pos));
-    const additions = [...preferred, ...rest]
-      .slice(0, targetCount - batters.length)
-      .map((p) => ({ id: `mlb_live_${p.mlbId}`, name: p.name, team: abbr, pos: p.pos, mlbId: p.mlbId }));
-    if (!additions.length) return roster;
-    return { label: roster.label, players: [...roster.players, ...additions] };
-  };
-
+  // Everything after that -- dropping IL'd/traded players, honoring the day's
+  // confirmed batting order, topping the nine back up -- is reconcileMlbLineup
+  // (module scope, shared with the Prop Feed).
   const liveTeamRoster = useMemo(() => {
     const live =
       (nextGame?.probablePitcher && { name: nextGame.probablePitcher.name, mlbId: nextGame.probablePitcher.mlbId }) ||
@@ -8661,9 +8708,7 @@ function MLBPropsPage({ jumpTo }) {
           label: teamRoster.label,
           players: [...teamRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(teamAbbr, live.mlbId), name: live.name, team: teamAbbr, pos: "SP", mlbId: live.mlbId }],
         };
-    const reconciled = applyActiveRoster(base, teamActiveRoster);
-    const withConfirmed = applyConfirmedLineup(reconciled, nextGame?.ourLineupIds, teamActiveRoster, teamAbbr);
-    return topUpProjectedBatters(withConfirmed, teamActiveRoster, teamAbbr);
+    return reconcileMlbLineup(base, { activeRoster: teamActiveRoster, lineupIds: nextGame?.ourLineupIds, abbr: teamAbbr });
   }, [teamRoster, teamAbbr, nextGame, jumpedPitcher, teamActiveRoster]);
 
   const liveOppRoster = useMemo(() => {
@@ -8675,9 +8720,7 @@ function MLBPropsPage({ jumpTo }) {
           label: oppRoster.label,
           players: [...oppRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(nextGame.opp, live.mlbId), name: live.name, team: nextGame.opp, pos: "SP", mlbId: live.mlbId }],
         };
-    const reconciled = applyActiveRoster(base, oppActiveRoster);
-    const withConfirmed = applyConfirmedLineup(reconciled, nextGame?.oppLineupIds, oppActiveRoster, nextGame.opp);
-    return topUpProjectedBatters(withConfirmed, oppActiveRoster, nextGame.opp);
+    return reconcileMlbLineup(base, { activeRoster: oppActiveRoster, lineupIds: nextGame?.oppLineupIds, abbr: nextGame.opp });
   }, [oppRoster, nextGame, oppActiveRoster]);
 
   const player =
@@ -11099,6 +11142,22 @@ function parseMlbLivePitcherId(id) {
   return m ? { team: m[1], mlbId: Number(m[2]) } : null;
 }
 
+// Same idea for batters who aren't in a static roster array -- a confirmed
+// starter or trade-deadline addition pulled in off the live active roster
+// (see applyConfirmedLineup/topUpProjectedBatters). Kept a distinct prefix
+// from the pitcher id above rather than reusing it, because MLBPropsPage's
+// jump handler treats a parsed pitcher id as "mount this person as the SP",
+// which would be wrong for a position player. Without the team abbreviation
+// baked in, a "View Chart" jump to one of these had nothing to look the
+// player's team up from and silently landed on the roster's first batter.
+function mlbLiveBatterId(teamAbbr, mlbId) {
+  return `mlb_livebat_${teamAbbr}_${mlbId}`;
+}
+function parseMlbLiveBatterId(id) {
+  const m = /^mlb_livebat_([A-Z]+)_(\d+)$/.exec(id || "");
+  return m ? { team: m[1], mlbId: Number(m[2]) } : null;
+}
+
 // Pitcher props are scoped to whoever is actually announced to start each
 // team's next game (see fetchMLBTeamNextGame's probablePitcher field) --
 // not the full staff -- so this rolls to the new starter automatically once
@@ -11376,6 +11435,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               teamEntries.push({
                 abbr,
                 roster,
+                lineupIds: isHome ? game.homeLineupIds : game.awayLineupIds,
                 nextGame: {
                   date: game.date,
                   opp: isHome ? game.awayAbbr : game.homeAbbr,
@@ -11388,18 +11448,32 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           });
           // Only the announced probable starter's log is fetched per team --
           // pitcher props roll to whoever that is once MLB names a new one.
+          //
+          // The active-roster fetch is awaited *before* the game logs, not
+          // alongside them: the feed used to build its rows straight off the
+          // static MLB_TEAM_ROSTERS arrays, which is why an IL'd player (or
+          // one traded away at the deadline) kept getting props built for
+          // him here long after the MLB player page had already stopped
+          // showing him. Running the same reconcileMlbLineup pipeline first
+          // means only players really available today are fetched at all --
+          // fewer game-log requests, not more, since a trimmed nine is never
+          // larger than the static one.
           return Promise.all(
-            teamEntries.map(({ abbr, roster, nextGame }) =>
-              Promise.all([
-                Promise.all(roster.players.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
-                nextGame.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
-              ]).then(([entries, pitcherGames]) => ({
-                teamAbbr: abbr,
-                players: roster.players,
-                gameLogsById: Object.fromEntries(entries),
-                pitcherGames,
-                nextGame,
-              }))
+            teamEntries.map(({ abbr, roster, lineupIds, nextGame }) =>
+              fetchMLBTeamActiveRoster(MLB_ABBR_TEAM_ID[abbr])
+                .then((activeRoster) => reconcileMlbLineup(roster, { activeRoster, lineupIds, abbr }))
+                .then((liveRoster) =>
+                  Promise.all([
+                    Promise.all(liveRoster.players.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
+                    nextGame.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
+                  ]).then(([entries, pitcherGames]) => ({
+                    teamAbbr: abbr,
+                    players: liveRoster.players,
+                    gameLogsById: Object.fromEntries(entries),
+                    pitcherGames,
+                    nextGame,
+                  }))
+                )
             )
           );
         })
@@ -12436,7 +12510,10 @@ function PageNavDropdown({ page, setPage, options }) {
 // this component only filters/renders it. Picking a result reuses the same
 // goToProp(sport, playerId, market) cross-sport jump the Prop Feed's "View
 // Chart" buttons already use, so there's no second navigation concept.
-function SearchBar({ index, onSelect }) {
+// `onOpen` fires the first time the box is focused -- PropLedger uses it to
+// kick off the live roster fetch that filters unavailable players out of
+// `index`, so that fan-out only happens for sessions that actually search.
+function SearchBar({ index, onSelect, onOpen }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const rootRef = React.useRef(null);
@@ -12461,8 +12538,8 @@ function SearchBar({ index, onSelect }) {
       <input
         type="text"
         value={query}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); onOpen?.(); }}
+        onFocus={() => { setOpen(true); onOpen?.(); }}
         placeholder="Search players or teams…"
         aria-label="Search players or teams"
         className="select"
@@ -12921,6 +12998,23 @@ export default function PropLedger() {
     setPage(targetSport);
   };
 
+  // Live availability filter for the MLB half of the search index below.
+  // Loaded lazily the first time the search box is focused rather than on
+  // mount -- it fans out to 30 team-roster requests, and a session that never
+  // opens search shouldn't pay for them (on an MLB page they're already
+  // cached anyway). Re-polled on the same TTL as everywhere else so a
+  // same-day IL move or call-up reaches search without a reload.
+  const [searchOpened, setSearchOpened] = useState(false);
+  const [mlbActiveIds, setMlbActiveIds] = useState(null);
+  React.useEffect(() => {
+    if (!searchOpened) return;
+    let cancelled = false;
+    const load = () => { fetchAllMLBActiveMlbIds().then((ids) => { if (!cancelled) setMlbActiveIds(ids); }); };
+    load();
+    const interval = setInterval(load, MLB_ACTIVE_ROSTER_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [searchOpened]);
+
   // Flat player/team index for the header's global SearchBar -- built once
   // from the same static player pools each sport page already draws from,
   // plus one entry per real MLB team (MLB_TEAM_ROSTERS is the only one of
@@ -12943,7 +13037,13 @@ export default function PropLedger() {
       key: `wnba_${p.id}`, sport: "wnba", sportLabel: "WNBA", label: p.name, playerId: p.id, market: "pts",
       searchText: `${p.name} ${p.team}`.toLowerCase(),
     }));
-    ALL_MLB_PLAYERS.forEach((p) => entries.push({
+    // Hidden while a player isn't on anyone's active roster. This isn't
+    // cosmetic: the roster panels already drop IL'd/traded players
+    // (reconcileMlbLineup), so a search hit for one used to navigate to a
+    // page that couldn't find them and silently rendered a *different*
+    // player's chart instead. Until mlbActiveIds resolves it's null and
+    // nothing is filtered, same fallback rule as everywhere else.
+    ALL_MLB_PLAYERS.filter((p) => !mlbActiveIds || mlbActiveIds.has(p.mlbId)).forEach((p) => entries.push({
       key: `mlb_${p.id}`, sport: "mlb", sportLabel: "MLB", label: p.name, playerId: p.id, market: "h",
       searchText: `${p.name} ${p.team}`.toLowerCase(),
     }));
@@ -12955,7 +13055,7 @@ export default function PropLedger() {
       });
     });
     return entries;
-  }, []);
+  }, [mlbActiveIds]);
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif" }}>
@@ -13020,7 +13120,7 @@ export default function PropLedger() {
           {/* Global search -- same on every page (see SearchBar), reuses
                goToProp for navigation so picking a result works exactly like
                clicking "View Chart" on a Prop Feed row. */}
-          <SearchBar index={searchIndex} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />
+          <SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />
         </div>
       </div>
 
