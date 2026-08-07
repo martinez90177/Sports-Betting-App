@@ -32,21 +32,37 @@
 
   /* Four type levels. Replaces the ad-hoc 10.5/11.5/12.5/13.5/14.5 sizes
      that accumulated across the inline styles. */
+  --fs-xs: 10px;     /* smallest legible caption */
   --fs-micro: 11px;  /* uppercase micro-labels  */
   --fs-sm: 12px;     /* table cells, meta lines */
   --fs-base: 14px;   /* body                    */
   --fs-lg: 16px;     /* tabs, section headers   */
   --fs-xl: 20px;     /* card values             */
   --fs-2xl: 28px;    /* hero line value         */
+
+  /* Card-scale radii, added alongside the small/medium/pill trio above --
+     the graph card and feed cards read better with a slightly softer
+     corner than the 6px .panel default. */
+  --r-lg: 10px;
+  --r-xl: 14px;
 }
 
 /* ---------- colour: dark (default) ---------- */
 :root {
   --bg: #0a0b0d;
-  --panel: #131519;
-  --panel2: #191c21;
+  /* Surface ramp -- three steps of "how raised is this" instead of the
+     old flat panel/panel2 pair. --panel/--panel2 stay defined as
+     aliases so the ~40 call sites already reading them are unaffected;
+     new code should reach for --surface-N directly. */
+  --surface-1: #131519;   /* cards, the graph card, panels        */
+  --surface-2: #191c21;   /* nested strips inside a card           */
+  --surface-3: #20242b;   /* hover/raised state of a surface-1/2   */
+  --surface-sunken: #0d0f12; /* inset wells -- table headers, chart plot */
+  --panel: var(--surface-1);
+  --panel2: var(--surface-2);
   --line: #2b2f36;
   --text: #e8ecf2;
+  --text-2: #aab2c0;
   --dim: #8b98ab;
   /* The accent. --accent-color is only set once the user picks one in
      Settings (see the accentColor state in PropLedger), so by default
@@ -57,6 +73,15 @@
   --amber: var(--accent-color, #2f8cf5);
   --amber-dim: color-mix(in srgb, var(--amber) 14%, transparent);
   --amber-glow: color-mix(in srgb, var(--amber) 28%, transparent);
+  --amber-ring: color-mix(in srgb, var(--amber) 35%, transparent);
+  --amber-strong: color-mix(in srgb, var(--amber) 85%, black);
+  /* Text-on-dark-surface variant of the accent. Any hue reads fine
+     directly on the near-black dark surfaces, so this is just an
+     alias -- it exists so component code can use one token
+     (--amber-ink) that resolves differently per theme (see the
+     light block below, where a pale accent needs help). */
+  --amber-ink: var(--amber);
+  --focus-ring: 0 0 0 3px var(--amber-dim);
   /* Label colour for text on a solid --amber fill. Recomputed in JS
      from the resolved accent (see accentForeground); this is just the
      pre-hydration default for the fallback blue. */
@@ -64,6 +89,10 @@
   --green: #3ecf8e;
   --red: #ef5b5b;
   --red-dim: rgba(239,91,91,0.14);
+  --pos: var(--green);
+  --neg: var(--red);
+  --pos-dim: color-mix(in srgb, var(--pos) 14%, transparent);
+  --neg-dim: var(--red-dim);
   /* --line-strong matches --line here -- dark mode already reads
      fine at the default border contrast, it only needs to diverge
      in light mode (see below). --dim-strong instead matches --text
@@ -72,6 +101,7 @@
      than the dimmer grey used for less important text elsewhere. */
   --dim-strong: var(--text);
   --line-strong: #2b2f36;
+  --line-subtle: rgba(255,255,255,0.06);
   --avatar-ring-shade1: 0.2;
   --avatar-ring-shade2: 0.45;
   --info-btn-bg: transparent;
@@ -83,6 +113,23 @@
      background, making a neutral matchup look almost invisible next
      to the green/red badges either side of it. */
   --neutral-badge-bg: #565e6b;
+  /* Elevation. Dark mode previously had none at all -- panels read as
+     flat slabs distinguished from the page only by their border. These
+     lean on deep, low-alpha black (visible against the near-black page)
+     plus a 1px top highlight that reads as a light catching a raised
+     edge. --panel-shadow is what the [style*="var(--panel)"] hook below
+     actually applies -- see that rule for why it, not --shadow-2
+     directly, is the one consumed at call sites. */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03);
+  --shadow-2: 0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+  --shadow-3: 0 14px 34px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05);
+  --panel-shadow: var(--shadow-2);
+  /* Chart chrome -- was hardcoded #343941/#8b96a5/#5c6470 inline at the
+     MLB/NBA/NFL/WNBA graph call sites, so it never responded to the
+     light theme. --chart-ink is deliberately close to --dim: axis/tick
+     text is supporting information, not data. */
+  --chart-ink: var(--dim);
+  --chart-ink-dim: #5c6b7a;
 }
 
 /* Light theme -- overrides the same custom properties, set via
@@ -91,10 +138,15 @@
    so no other CSS/inline styles need a light-mode branch. */
 :root[data-theme="light"] {
   --bg: #e6e9ee;
-  --panel: #ffffff;
-  --panel2: #eef1f5;
+  --surface-1: #ffffff;
+  --surface-2: #eef1f5;
+  --surface-3: #e4e8ee;
+  --surface-sunken: #eef1f5;
+  --panel: var(--surface-1);
+  --panel2: var(--surface-2);
   --line: #d7dce3;
   --text: #171a20;
+  --text-2: #464f5c;
   --dim: #5b6472;
   /* Same accent wiring as the dark block, but falling back to a
      deeper blue -- dark mode's #2f8cf5 washes out against white
@@ -102,10 +154,29 @@
   --amber: var(--accent-color, #1a68e0);
   --amber-dim: color-mix(in srgb, var(--amber) 10%, transparent);
   --amber-glow: color-mix(in srgb, var(--amber) 22%, transparent);
+  --amber-ring: color-mix(in srgb, var(--amber) 28%, transparent);
+  --amber-strong: color-mix(in srgb, var(--amber) 85%, black);
+  /* Unlike dark mode, a user-picked hue can be pale enough (yellows,
+     light pinks) to nearly vanish as text on a white panel -- this
+     folds in a fixed amount of --text so accent-colored copy (times,
+     active-tab labels, stat highlights) stays legible in every hue
+     the color wheel can produce, while fills/borders still read the
+     picked hue directly via plain --amber. */
+  --amber-ink: color-mix(in srgb, var(--amber) 72%, var(--text) 28%);
+  --focus-ring: 0 0 0 3px var(--amber-dim);
   --green: #1f9d68;
   --red: #d6453f;
   --red-dim: rgba(214,69,63,0.12);
-  --panel-shadow: 0 1px 2px rgba(30,41,59,0.06), 0 2px 6px rgba(30,41,59,0.08);
+  --pos: var(--green);
+  --neg: var(--red);
+  --pos-dim: color-mix(in srgb, var(--pos) 10%, transparent);
+  --neg-dim: var(--red-dim);
+  --shadow-1: 0 1px 2px rgba(30,41,59,0.05);
+  --shadow-2: 0 1px 2px rgba(30,41,59,0.06), 0 2px 6px rgba(30,41,59,0.08);
+  --shadow-3: 0 12px 28px rgba(30,41,59,0.12), 0 2px 6px rgba(30,41,59,0.06);
+  --panel-shadow: var(--shadow-2);
+  --chart-ink: var(--dim);
+  --chart-ink-dim: #8791a0;
   /* Dark wash rather than the dark theme's white one -- a white stripe
      on a white panel is invisible. */
   --row-stripe: rgba(23,26,32,0.028);
@@ -122,17 +193,18 @@
      just read as a faint circle floating on the page background. */
   --dim-strong: var(--text);
   --line-strong: #aab2bd;
+  --line-subtle: rgba(11,11,11,0.06);
   --avatar-ring-shade1: 0.35;
   --avatar-ring-shade2: 0.6;
   --info-btn-bg: var(--panel);
   --neutral-badge-bg: #c3c9d1;
 }
 
-/* Gives light-mode panels/chips/selects a slight lift instead of
-   reading as flat white slabs on a barely-different grey page --
-   dark mode leaves --panel-shadow unset (falls back to "none")
-   since dark panels already read as elevated via contrast alone.
-   The [style*="var(--panel)"] hook catches every inline-styled div
+/* Gives panels/chips/selects a lift off the page instead of reading as
+   flat slabs distinguished only by their border -- --panel-shadow is
+   now set in both themes (see --shadow-2 in each :root block above),
+   so dark mode gets real elevation too, not just light mode's original
+   fix. The [style*="var(--panel)"] hook catches every inline-styled div
    that uses --panel/--panel2 as its background without requiring a
    shared class name (there isn't one across ~40 call sites); .chip,
    select.select and .panel get their panel background from a CSS
@@ -143,9 +215,45 @@
 
    Keep .panel in this list: as inline panel styling migrates to the
    class, the attribute selector stops matching those elements and the
-   class is the only thing still carrying light-mode elevation. */
+   class is the only thing still carrying elevation. */
 [style*="var(--panel)"], .panel, .chip, select.select {
   box-shadow: var(--panel-shadow, none);
+}
+/* One focus treatment, reused by every interactive control below
+   instead of relying on the browser default outline (invisible on a
+   dark panel) or no visible focus state at all. Only fires for
+   keyboard focus -- mouse clicks don't get a ring around the chip
+   they just pressed. */
+a:focus-visible, div[role="button"]:focus-visible, button:focus-visible,
+.chip:focus-visible, .tab:focus-visible, .cta-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+/* Tabular-figure numerals for anything that must line up in a column
+   (table cells, axis ticks, stat rails) -- default proportional
+   figures elsewhere, per the type scale above. */
+.tnum { font-variant-numeric: tabular-nums; }
+/* Sharp, premium-reading stat numbers -- Space Grotesk (already used
+   via .oswald) at tight tracking with tabular figures, so a card's
+   headline value and its neighboring stat rail always line up. */
+.stat-value {
+  font-family: 'Space Grotesk', sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+}
+/* Small rounded status readout -- the Game Conditions verdict
+   ("Neutral"/"Hitter Friendly"/"Pitcher Friendly") and similar
+   short verdict strings, in place of loose colored text. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  background: var(--surface-2);
+  border: 1px solid var(--line-subtle);
 }
 * { box-sizing: border-box; }
 /* Safeguard: nothing on the page should ever force horizontal
@@ -255,9 +363,10 @@ select.select:hover { border-color: var(--amber); }
 select.select:focus, select.select:focus-visible {
   outline: none;
   border-color: var(--amber);
-  box-shadow: 0 0 0 3px var(--amber-dim);
+  box-shadow: var(--focus-ring);
 }
 .cta-btn {
+  border-radius: var(--r-sm);
   transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
 }
 .cta-btn:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 6px 18px var(--amber-glow); }
@@ -266,6 +375,7 @@ select.select:focus, select.select:focus-visible {
   border: 1px solid var(--line);
   background: transparent;
   color: var(--dim);
+  border-radius: var(--r-sm);
   transition: all .15s ease;
 }
 .danger-btn:hover {
@@ -338,19 +448,162 @@ select.select:focus, select.select:focus-visible {
    they wrap and their chip rows reflow inside the panel rather than pushing
    past its padding. */
 .filter-grid > * { flex: 0 1 auto; min-width: 0; }
-/* Vertical teammate pill list -- headshot-left/name-right rows stacked in a
-   scrollable column instead of the old horizontal card carousel. A normal
-   vertical scrollbar is fine here (it's a plain list, not a drag-track
-   carousel), just given a little breathing room from the pills. */
-.teammate-pill-list {
+/* Below 560px (the mobile Filters bottom sheet) force one group per row --
+   content-sized wrapping alone can still leave two narrow groups sharing a
+   row with a large dead gap between them from justify-content:space-between. */
+@media (max-width: 560px) {
+  .filter-grid { flex-direction: column; gap: var(--s-5); }
+  .filter-grid > * { width: 100%; }
+}
+/* Native scrollbar hidden on the teammate chip row -- a reserved scrollbar
+   gutter would eat into the tiles' fixed height, and the row already signals
+   that it scrolls by clipping the next chip at its bleeding right edge. */
+.teammate-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+.teammate-scroll::-webkit-scrollbar { display: none; }
+
+/* ---------- filters panel ----------
+   A local spacing scale, deliberately not the global --s-N ramp. The panel's
+   whole problem was that every gap in it was the same 16-20px, so nothing
+   read as grouped; these values are chosen against each other -- tight
+   between controls, loose between sections -- so the rhythm itself carries
+   the grouping and the panel needs no dividing rules at all. */
+:root {
+  --fp-pad-x: 18px;
+  --fp-pad-y: 14px;
+  --fp-section-gap: 22px;  /* between sections            */
+  --fp-header-gap: 10px;   /* section header -> its body  */
+  --fp-row-gap: 12px;      /* rows within a section       */
+  --fp-control-gap: 6px;   /* controls within a row       */
+}
+
+.fp-section { padding: var(--fp-pad-y) var(--fp-pad-x); }
+/* Grouping is a shift in surface, not a border. Shaded sections read as
+   inset cards floating on the panel; the 10px side margin is what makes the
+   inset legible without drawing a line to prove it. */
+.fp-section--shaded {
+  background: var(--surface-2);
+  border-radius: 10px;
+  margin: 0 10px 8px;
+  padding: var(--fp-pad-y) 16px;
+}
+.fp-section-head {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--s-2);
-  max-height: 320px;
-  overflow-y: auto;
-  padding-right: 4px;
+  margin-bottom: var(--fp-header-gap);
+}
+.fp-section-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+/* Paired controls sit side by side rather than each claiming a full row --
+   this is what lets Game location and Plate appearances share the vertical
+   space they used to take one after the other. */
+.fp-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+}
+.fp-row { display: flex; flex-wrap: wrap; gap: var(--fp-control-gap); }
+
+/* Compact pill chip. The global .chip is 15px text on a 4px radius, which is
+   the single biggest reason the panel reads loose; this is the same control
+   at panel density. .chip itself is untouched so the pages still using it
+   don't shift. */
+.chip-sm {
+  border: 1px solid var(--line);
+  background: transparent;   /* lets the section shading show through */
+  color: var(--dim);
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color .14s ease, border-color .14s ease, color .14s ease, box-shadow .14s ease;
+}
+.chip-sm:hover { border-color: var(--amber); color: var(--text); }
+/* Selected inverts to a solid fill instead of the tint-plus-outline the rest
+   of the app uses -- at 12px in a dense row an outlined chip and a filled one
+   are much easier to tell apart at a glance than two shades of outline. */
+.chip-sm.active {
+  background: var(--amber);
+  border-color: transparent;
+  color: var(--accent-on);
+  font-weight: 700;
+  box-shadow: 0 0 0 3px var(--amber-dim);
+}
+.chip-sm[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
+
+/* Sample-size selector: seven equal cells rather than a centred wrapped
+   flex row, so the windows line up as one segmented control. */
+.fp-splits {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.fp-split-cell {
+  text-align: center;
+  padding: 7px 2px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color .14s ease, border-color .14s ease;
+}
+.fp-split-cell:hover { background: var(--surface-3); }
+.fp-split-cell.active { background: var(--amber); border-color: transparent; }
+.fp-split-cell.active:hover { background: var(--amber); }
+.fp-split-cell[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
+.fp-split-cell[aria-disabled="true"]:hover { background: transparent; }
+/* Pages without a single "tonight's opponent" to compare against drop the
+   H2H cell rather than showing one permanently disabled. */
+.fp-splits--6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+/* Panel-density select, matching .chip-sm the way .chip and select.select
+   match each other at page density. */
+select.select-sm {
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  color: var(--text);
   width: 100%;
-  min-width: 280px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+}
+select.select-sm:hover { border-color: var(--amber); }
+select.select-sm:focus, select.select-sm:focus-visible {
+  outline: none;
+  border-color: var(--amber);
+  box-shadow: var(--focus-ring);
+}
+
+/* Precision list rows (games with / without player) */
+.fp-player-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto 18px;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.fp-player-row:hover { background: var(--surface-3); }
+
+/* Placed after the modifiers above so it wins for every split-cell count. */
+@media (max-width: 560px) {
+  .fp-grid-2 { grid-template-columns: 1fr; }
+  .fp-splits, .fp-splits--6 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .fp-section { padding: var(--fp-pad-y) 14px; }
+  .fp-section--shaded { margin: 0 8px 8px; padding: var(--fp-pad-y) 14px; }
 }
 /* ---------- game log table ----------
    The column template was duplicated inline on the header row and every
@@ -375,7 +628,7 @@ select.select:focus, select.select:focus-visible {
    in that range, replaced by MobilePlayerNav's fixed bottom strip +
    Lineup drawer (below), so the quick-switch is still there on mobile,
    just pinned to the viewport instead of inline in the column flow. */
-.roster-layout { display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px; align-items: start; margin-bottom: var(--s-4); }
+.roster-layout { display: grid; grid-template-columns: 240px 1fr 240px; gap: 20px; align-items: start; margin-bottom: var(--s-4); }
 .roster-layout-center { display: flex; flex-direction: column; justify-content: flex-start; }
 @media (max-width: 1100px) {
   .roster-layout { display: block; }
@@ -396,7 +649,7 @@ select.select:focus, select.select:focus-visible {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom));
   background: var(--panel); border-top: 1px solid var(--line);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-3);
 }
 .mobile-player-strip-lineup-btn {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;

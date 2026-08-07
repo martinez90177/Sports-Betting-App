@@ -448,6 +448,7 @@ function NBAPropsPage({ jumpTo }) {
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
@@ -570,6 +571,38 @@ function NBAPropsPage({ jumpTo }) {
   const chartTicks = isBinary
     ? [0, 1]
     : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+
+  // Filters-panel wiring. Picking an opponent here switches the page into a
+  // different mode (see the oppView switch in the `filtered` memo), where Game
+  // location and Sample size stop applying entirely -- so the count below
+  // only ever tallies the controls that are actually live in the current
+  // mode, rather than reporting filters that aren't doing anything.
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (opponent !== 'all') {
+      n += 1;
+      if (oppView !== 'season') n += 1;
+    } else {
+      if (side !== 'all') n += 1;
+      if (lastN !== 10) n += 1;
+    }
+    if (minMinutes !== 0 || maxMinutes !== 40) n += 1;
+    return n;
+  }, [opponent, oppView, side, lastN, minMinutes, maxMinutes]);
+
+  const splitCells = buildHitRateSplits({
+    allGames,
+    statValue: (g) => statValue(g, market, rebSplit),
+    effectiveLine,
+    lastN,
+    onSetLastN: setLastN,
+    h2h: false,
+    onSetH2h: () => {},
+    opponentAbbr: null,
+    shortLabels: true,
+    includeH2h: false,
+  });
+
   const hits = values.filter((v) => v > effectiveLine).length;
   const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
   const hitRate = values.length ? hits / values.length : 0;
@@ -774,95 +807,108 @@ function NBAPropsPage({ jumpTo }) {
              row -- that row's height is set by the taller roster columns
              regardless of alignment, so anything waiting outside the row
              always waited for the rosters' full height first. */}
-        <FiltersSection
-          onReset={resetFilters}
-          groups={[
-            {
-              stack: [
-                {
-                  label: "Opponent",
-                  content: (
-                    <select
-                      className="select"
-                      value={opponent}
-                      onChange={(e) => { setOpponent(e.target.value); setOppView("season"); }}
-                      style={{ width: 240 }}
-                    >
-                      <option value="all">Any opponent</option>
-                      {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-                    </select>
-                  ),
-                },
-                opponent === "all"
-                  ? {
-                      label: "Game location",
-                      content: (
-                        <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                          {["all", "home", "away"].map((s) => (
-                            <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                              {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
-                            </div>
-                          ))}
+        <FilterPanelLauncher
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          activeCount={activeFilterCount}
+          compact={isNarrow}
+          anchored={false}
+        >
+          <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+            {/* Sample size only exists in "any opponent" mode -- once a
+                 specific opponent is picked the predicate switches to the
+                 oppView branch, which ignores lastN entirely. Rendering it
+                 anyway would be a control that visibly does nothing. */}
+            {opponent === "all" && (
+              <FilterSection title="Sample size">
+                <SampleSizeGrid cells={splitCells} />
+                <SampleSizeSlider total={allGames.length} lastN={lastN} onSetLastN={setLastN} />
+              </FilterSection>
+            )}
+
+            <FilterSection shaded>
+              <div className={opponent === "all" ? "fp-grid-2" : ""}>
+                {opponent === "all" && (
+                  <div>
+                    <div className="micro-label" style={{ fontSize: 10, marginBottom: 7 }}>Game location</div>
+                    <div className="fp-row">
+                      {["all", "home", "away"].map((s) => (
+                        <div key={s} role="button" className={`chip-sm ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                          {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
                         </div>
-                      ),
-                    }
-                  : {
-                      label: "View",
-                      content: (
-                        <select className="select" value={oppView} onChange={(e) => setOppView(e.target.value)} style={{ width: 240 }}>
-                          <option value="season">Current Season</option>
-                          <option value="h2h3y">Head-to-Head (3Y)</option>
-                          <option value="home">Home vs Opp</option>
-                          <option value="away">Away vs Opp</option>
-                          <option value="playoffs">Playoffs vs Opp</option>
-                        </select>
-                      ),
-                    },
-              ],
-            },
-            {
-              stack: [
-                opponent === "all"
-                  ? {
-                      label: "Sample size",
-                      content: (
-                        <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                          {[5, 10, 15, 25, "all"].map((n) => (
-                            <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                              {n === "all" ? "All" : `Last ${n}`}
-                            </div>
-                          ))}
-                        </div>
-                      ),
-                    }
-                  : null,
-                {
-                  label: "Minutes",
-                  content: (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
-                      <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
-                        {!minutesRangeEnabled
-                          ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
-                          : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
-                      </div>
-                      <ThresholdSlider
-                        min={0}
-                        max={40}
-                        step={1}
-                        lo={minMinutes}
-                        hi={maxMinutes}
-                        onChangeLo={setMinMinutes}
-                        onChangeHi={setMaxMinutes}
-                        rangeEnabled={minutesRangeEnabled}
-                        onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
-                      />
+                      ))}
                     </div>
-                  ),
-                },
-              ].filter(Boolean),
-            },
-          ]}
-        />
+                  </div>
+                )}
+                <div>
+                  <div className="micro-label" style={{ fontSize: 10, marginBottom: 7 }}>Opponent</div>
+                  <select
+                    className="select-sm"
+                    value={opponent}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setOpponent(next);
+                      setOppView("season");
+                      // Picking a specific opponent drops Game location and
+                      // Sample size out of the predicate *and* hides their
+                      // controls, so any selection made beforehand would sit
+                      // there invisibly and silently reapply the moment you
+                      // switched back to "Any opponent". Reset on the way in
+                      // so hidden state is never stale.
+                      if (next !== "all") { setSide("all"); setLastN(10); }
+                    }}
+                  >
+                    <option value="all">Any opponent</option>
+                    {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                  </select>
+                </div>
+              </div>
+            </FilterSection>
+
+            {/* Opponent mode gets its own section rather than swapping itself
+                 into Game location's slot. Head-to-Head (3Y) and Playoffs read
+                 from multi-season arrays that only exist once an opponent is
+                 chosen (see oppHistory), so this genuinely is a different view
+                 of a different dataset -- not another predicate over the same
+                 game log, and worth being labelled as such. */}
+            {opponent !== "all" && (
+              <FilterSection shaded title={`View vs ${opponent}`}>
+                <select className="select-sm" value={oppView} onChange={(e) => setOppView(e.target.value)}>
+                  <option value="season">Current Season</option>
+                  <option value="h2h3y">Head-to-Head (3Y)</option>
+                  <option value="home">Home vs Opp</option>
+                  <option value="away">Away vs Opp</option>
+                  <option value="playoffs">Playoffs vs Opp</option>
+                </select>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 8, lineHeight: 1.5 }}>
+                  Game location and sample size don’t apply while an opponent is selected — this view sets the sample.
+                </div>
+              </FilterSection>
+            )}
+
+            <FilterSection shaded>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+                <span className="micro-label" style={{ fontSize: 10 }}>Minutes</span>
+                <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
+                  {!minutesRangeEnabled
+                    ? (minMinutes === 0 ? "Any" : `${minMinutes}+`)
+                    : (minMinutes === 0 && maxMinutes === 40 ? "Any" : `${minMinutes}–${maxMinutes}`)}
+                </span>
+              </div>
+              <ThresholdSlider
+                min={0}
+                max={40}
+                step={1}
+                lo={minMinutes}
+                hi={maxMinutes}
+                onChangeLo={setMinMinutes}
+                onChangeHi={setMaxMinutes}
+                rangeEnabled={minutesRangeEnabled}
+                onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+              />
+            </FilterSection>
+          </FilterPanel>
+        </FilterPanelLauncher>
     </div>
     <TeamRosterPanel
       teamLabel={matchup.teamB.label}
@@ -935,9 +981,10 @@ function NBAPropsPage({ jumpTo }) {
           position: "relative",
           boxSizing: "border-box",
           height: isNarrow ? 380 : CHART_HEIGHT,
-          background: "var(--panel)",
+          background: "var(--surface-1)",
           border: "1px solid var(--line)",
-          borderRadius: 6,
+          borderRadius: "var(--r-lg)",
+          boxShadow: "var(--panel-shadow)",
           padding: isNarrow ? "16px 6px" : 16,
           marginBottom: 16,
         }}
@@ -958,30 +1005,38 @@ function NBAPropsPage({ jumpTo }) {
             margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            {/* Invisible (stroke="transparent"), not removed: rendered fully
+                 open per the PropsMadness reference (no grid lines, just
+                 floating y-tick labels), but LineHandle's drag math
+                 (getPlotBoundsY, above) measures the plot's top/bottom by
+                 querying this component's own rendered .recharts-cartesian-
+                 grid-horizontal line elements -- removing the component
+                 entirely would silently break the drag handle instead of
+                 just hiding a visual grid. */}
+            <CartesianGrid stroke="transparent" vertical={false} />
             <XAxis
               dataKey={manyGames ? "date" : "axisKey"}
               interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nbaTeamLogo} compact={isNarrow} />}
-              axisLine={{ stroke: "#343941" }}
+              axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={[0, chartMax]}
               ticks={chartTicks}
-              tick={{ fill: "#8b96a5", fontSize: 11 }}
-              axisLine={{ stroke: "#343941" }}
+              tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
+              axisLine={false}
               tickLine={false}
               allowDecimals={false}
             width={isNarrow ? 24 : 60}
-              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
             />
             <Tooltip
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
-              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+              cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
             />
             {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+            <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
               {filtered.map((g, i) => {
                 const v = statValue(g, market, rebSplit);
                 const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
@@ -2591,9 +2646,11 @@ function getPlotBoundsY(containerEl) {
   return { zeroY, maxY };
 }
 
-// Darker/more saturated bar colors, shared across every bar chart (NFL/MLB/NBA).
-const CHART_GREEN = "#1c9a52";
-const CHART_RED = "#d6392a";
+// Bar colors, shared across every bar chart (NFL/MLB/NBA/WNBA) -- themed
+// tokens rather than fixed hex so bars stay legible in both themes
+// instead of the old dark-mode-only hardcoded pair.
+const CHART_GREEN = "var(--pos)";
+const CHART_RED = "var(--neg)";
 
 // Snap any value to the nearest "X.5" — real prop lines are almost never whole numbers
 const snapToHalfOdd = (v) => Math.round(v - 0.5) + 0.5;
@@ -2628,6 +2685,17 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
   // visible position in lockstep with that snap.
   const [dragValue, setDragValue] = useState(null);
 
+  // handlePointerMove/stopDrag are subscribed to `window` for the life of a
+  // single drag (pointerdown -> pointerup/cancel), which can span several
+  // re-renders. Reading props/value through this ref (kept current every
+  // render) instead of closing over them directly means the two callbacks
+  // below can have stable identities -- required so the unmount-cleanup
+  // effect further down removes the exact listeners that are actually
+  // attached, rather than a same-render-but-different-instance closure that
+  // was never registered.
+  const latestRef = React.useRef({ value, min, max, onChange, onDragValue });
+  latestRef.current = { value, min, max, onChange, onDragValue };
+
   const valueToY = (v) => {
     const bounds = getPlotBoundsY(containerRef.current);
     const zeroY = bounds ? bounds.zeroY : PLOT_TOP_FALLBACK + PLOT_HEIGHT_FALLBACK;
@@ -2635,8 +2703,9 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
     return zeroY - ((v - min) / (max - min)) * (zeroY - maxY);
   };
 
-  const handlePointerMove = (e) => {
+  const handlePointerMove = React.useCallback((e) => {
     if (!draggingRef.current || !containerRef.current) return;
+    const { min, max, onChange, onDragValue } = latestRef.current;
     const rect = containerRef.current.getBoundingClientRect();
     const relY = e.clientY - rect.top;
     const bounds = getPlotBoundsY(containerRef.current);
@@ -2647,20 +2716,44 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
     setDragValue(raw);
     onDragValue?.(raw);
     onChange(Math.min(max, Math.max(min, snapToHalfOdd(raw))));
-  };
+  }, [containerRef]);
 
-  const startDrag = (e) => {
-    draggingRef.current = true;
-    setDragValue(value);
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", stopDrag);
-  };
-  const stopDrag = () => {
+  const stopDrag = React.useCallback(() => {
     draggingRef.current = false;
     setDragValue(null);
-    onDragValue?.(null);
+    latestRef.current.onDragValue?.(null);
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", stopDrag);
+    window.removeEventListener("pointercancel", stopDrag);
+  }, [handlePointerMove]);
+
+  const startDrag = (e) => {
+    // Stops the chart wrapper's touchAction:"pan-y" from still letting iOS
+    // treat a mostly-vertical drag as a page scroll gesture part-way through,
+    // which previously fired pointercancel and left draggingRef stuck true.
+    e.preventDefault();
+    draggingRef.current = true;
+    setDragValue(latestRef.current.value);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+  };
+
+  // Belt-and-suspenders cleanup: if the handle unmounts mid-drag (player or
+  // market switched while dragging) neither pointerup nor pointercancel ever
+  // fires on this instance, which would otherwise leak the window listeners.
+  React.useEffect(() => () => stopDrag(), [stopDrag]);
+
+  const handleKeyDown = (e) => {
+    const { value, min, max, onChange } = latestRef.current;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") {
+      e.preventDefault();
+      onChange(Math.min(max, value + 0.5));
+    } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      onChange(Math.max(min, value - 0.5));
+    }
   };
 
   const y = valueToY(dragValue !== null ? dragValue : value);
@@ -2668,19 +2761,25 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
   return (
     <div
       onPointerDown={startDrag}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      role="slider"
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
       style={{
         position: "absolute",
-        right: 6,
-        top: y - 13,
-        height: 26,
-        minWidth: 44,
-        padding: "0 8px",
+        left: 8,
+        top: y - 15,
+        height: 30,
+        minWidth: 52,
+        padding: "0 10px",
         background: "var(--amber)",
         borderRadius: 5,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.45)",
+        boxShadow: "var(--shadow-2)",
         cursor: "ns-resize",
         userSelect: "none",
         touchAction: "none",
@@ -2758,8 +2857,8 @@ function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, r
     position: "absolute", left: `${pct(value)}%`, top: "50%",
     transform: "translate(-50%, -50%)",
     width: 18, height: 18, borderRadius: "50%",
-    background: "var(--amber)", border: "2px solid #1a1206",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.45)", cursor: "pointer",
+    background: "var(--amber)", border: "2px solid var(--accent-on)",
+    boxShadow: "var(--shadow-2)", cursor: "pointer",
     touchAction: "none",
   });
 
@@ -2798,17 +2897,94 @@ function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, r
   );
 }
 
-// Tappable teammate pills replacing the old "Add teammate..." select.
-// Each pill cycles neutral -> with -> without -> neutral on click. `chips`
-// is the same {mlbId, name, mode} shape the rest of PropLedger already
-// threads through to the With/Without game-log filter, so this is purely a
-// presentation swap -- it reads/writes the identical state.
-// Pills are horizontal rows (headshot left, name right) stacked vertically
-// in a scrollable column -- easier to scan a full roster than the old fixed
-// set of square tiles in a horizontally-scrolling carousel.
-function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
-  const candidates = roster.filter((p) => p.mlbId !== excludeId && p.pos !== "SP");
+// Teammate chips: a horizontally scrolling row of compact tiles, each
+// carrying a headshot, an availability badge, the player's name, and the
+// difference this player's presence makes to the market being viewed.
+//
+// The row deliberately bleeds past its section's padding (negative inline
+// margin, see TEAMMATE_ROW_BLEED) so the next chip is always clipped
+// mid-tile at the right edge. That half-visible chip *is* the scroll
+// affordance, which is what lets the arrows become floating overlays rather
+// than two more boxes competing for the panel's width -- the previous
+// version reserved ~72px of flow for a pair of chevrons plus a custom drag
+// track, on a panel that had no width to spare.
+//
+// Selection reads as a solid fill across the whole tile rather than a border
+// and a tint: at this size a 1px outline in a row of four is genuinely hard
+// to spot, and "this one is excluded" should be legible at a glance.
+//
+// `chips` is the same {mlbId, name, mode} shape the rest of PropLedger
+// already threads through to the with/without game-log filter.
+// "Gunnar Henderson" -> "G. Henderson". A 92px tile fits roughly one word, so
+// truncating the *first* name keeps the part that actually identifies someone
+// on a roster, rather than ellipsising the surname away.
+function shortenName(name) {
+  const parts = String(name || "").trim().split(/\s+/);
+  if (parts.length < 2) return name || "";
+  return `${parts[0][0]}. ${parts.slice(1).join(" ")}`;
+}
+
+// Sized so roughly four chips sit in the panel's ~598px bleeding row with the
+// fifth clipped, rather than to match the reference's own pixel dimensions --
+// that panel is 235px wide, so copying its 60px tiles into a 620px popover
+// would fit six and lose the "there's more, scroll" read entirely. The count
+// on screen is the thing worth matching, not the tile size.
+const TEAMMATE_CHIP_W = 132;
+const TEAMMATE_CHIP_W_COMPACT = 104;
+const TEAMMATE_CHIP_H = 112;
+const TEAMMATE_CHIP_GAP = 8;
+const TEAMMATE_ROW_BLEED = 16;
+
+// Badge/dot palette by tone, shared by the chip badges and the status dots
+// in the with/without dropdowns so an IL'd player looks the same in both.
+const TEAMMATE_TONES = {
+  out: { bg: "var(--red)", fg: "#ffffff", dot: "var(--red)" },
+  warn: { bg: "#f0a92e", fg: "#1a1205", dot: "#f0a92e" },
+  muted: { bg: "var(--surface-3)", fg: "var(--dim)", dot: "var(--dim)" },
+};
+
+function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact, onHover }) {
+  const scrollRef = React.useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const chipW = compact ? TEAMMATE_CHIP_W_COMPACT : TEAMMATE_CHIP_W;
+
   const modeFor = (mlbId) => (chips.find((c) => c.mlbId === mlbId) || {}).mode || "neutral";
+
+  const updateScrollState = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft < maxScroll - 2);
+  };
+
+  // Measuring straight away reports scrollWidth === clientWidth, because the
+  // chips' headshots haven't laid out yet -- which left the right-hand arrow
+  // permanently hidden on a row that very much did scroll. A rAF catches the
+  // settled layout, and the observer keeps the arrows honest when the panel
+  // is resized or the popover swaps to the bottom sheet.
+  React.useEffect(() => {
+    // Measuring synchronously reports scrollWidth === clientWidth, because the
+    // chips' headshots haven't laid out yet -- which left the right-hand arrow
+    // permanently hidden on a row that very much did scroll. rAF catches the
+    // settled layout in a visible tab; the timer is the fallback for when the
+    // render loop isn't running (a backgrounded or non-compositing tab never
+    // fires rAF or ResizeObserver at all). The observer then keeps the arrows
+    // honest across resizes and the popover/bottom-sheet swap.
+    const raf = requestAnimationFrame(updateScrollState);
+    const timer = setTimeout(updateScrollState, 80);
+    const el = scrollRef.current;
+    const ro = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateScrollState) : null;
+    if (ro) ro.observe(el);
+    return () => { cancelAnimationFrame(raf); clearTimeout(timer); if (ro) ro.disconnect(); };
+  }, [candidates.length, chipW]);
+
+  const scrollBy = (dir) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * (chipW + TEAMMATE_CHIP_GAP) * 2, behavior: "smooth" });
+  };
 
   const cycle = (p) => {
     const current = modeFor(p.mlbId);
@@ -2821,86 +2997,564 @@ function TeammateChipGrid({ roster, excludeId, chips, onChange, loading }) {
     }
   };
 
-  const pillStyle = (mode) => {
-    if (mode === "with") {
-      return {
-        background: "color-mix(in srgb, var(--green) 16%, transparent)",
-        borderColor: "var(--green)",
-        color: "var(--green)",
-      };
-    }
-    if (mode === "without") {
-      return {
-        background: "var(--red-dim)",
-        borderColor: "var(--red)",
-        color: "var(--red)",
-      };
-    }
-    return { background: "var(--panel2)", borderColor: "var(--line)", color: "var(--text)" };
+  // Solid fill when selected, no border at all -- the fill is the signal.
+  // Neutral tiles are transparent rather than panel-coloured so the section
+  // shading behind them shows through and does the grouping work.
+  // Longhand backgroundColor/borderColor rather than the `background` and
+  // `border` shorthands: React diffs inline styles per property, and swapping
+  // a shorthand for a different shorthand between renders leaves the previous
+  // one's expanded longhands behind instead of replacing them cleanly.
+  const chipStyle = (mode) => {
+    if (mode === "with") return { backgroundColor: "var(--green)", color: "#08131c", borderColor: "transparent" };
+    if (mode === "without") return { backgroundColor: "var(--red)", color: "#ffffff", borderColor: "transparent" };
+    return { backgroundColor: "transparent", color: "var(--text)", borderColor: "var(--line)" };
   };
 
+  const arrowStyle = (side, visible) => ({
+    position: "absolute", top: "50%", [side]: 0,
+    transform: "translateY(-50%)",
+    width: 26, height: 26, borderRadius: "50%",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "color-mix(in srgb, var(--surface-1) 82%, transparent)",
+    backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+    border: "1px solid var(--line)", color: "var(--text)",
+    fontSize: 13, lineHeight: 1, userSelect: "none", cursor: "pointer",
+    opacity: visible ? 1 : 0,
+    pointerEvents: visible ? "auto" : "none",
+    transition: "opacity .15s ease",
+    zIndex: 2,
+  });
+
+  const fmtDiff = (d) => `${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d).toFixed(1)}`;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
-      <div className="teammate-pill-list">
+    <div style={{ position: "relative" }}>
+      <div
+        ref={scrollRef}
+        onScroll={updateScrollState}
+        className="teammate-scroll"
+        style={{
+          display: "flex", gap: TEAMMATE_CHIP_GAP, overflowX: "auto",
+          overscrollBehaviorX: "contain",
+          scrollSnapType: "x proximity",
+          scrollPaddingLeft: TEAMMATE_ROW_BLEED,
+          WebkitOverflowScrolling: "touch",
+          paddingInline: TEAMMATE_ROW_BLEED,
+          marginInline: -TEAMMATE_ROW_BLEED,
+        }}
+      >
         {candidates.map((p) => {
           const mode = modeFor(p.mlbId);
-          const style = pillStyle(mode);
+          const selected = mode !== "neutral";
+          const diff = diffs[p.mlbId];
+          const tone = p.badge ? TEAMMATE_TONES[p.badge.tone] : null;
           return (
             <div
               key={p.mlbId}
               role="button"
-              title={mode === "neutral" ? `Tap to require ${p.name} on the field` : mode === "with" ? `Tap to require ${p.name} off the field` : `Tap to clear ${p.name}`}
+              aria-pressed={selected}
+              title={
+                mode === "neutral" ? `Only games ${p.name} played in`
+                  : mode === "with" ? `Only games ${p.name} sat out`
+                  : `Clear ${p.name}`
+              }
               onClick={() => cycle(p)}
+              onMouseEnter={() => onHover && onHover(p.mlbId)}
+              onMouseLeave={() => onHover && onHover(null)}
               style={{
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: "1px solid",
-                cursor: "pointer",
-                userSelect: "none",
-                flexShrink: 0,
-                transition: "box-shadow 0.12s ease",
-                ...style,
+                flex: `0 0 ${chipW}px`, height: TEAMMATE_CHIP_H,
+                display: "flex", flexDirection: "column", alignItems: "center",
+                padding: "10px 6px 8px", borderRadius: 12,
+                cursor: "pointer", userSelect: "none", boxSizing: "border-box",
+                scrollSnapAlign: "start",
+                borderWidth: 1, borderStyle: "solid",
+                transition: "background-color .14s ease, border-color .14s ease",
+                ...chipStyle(mode),
               }}
             >
-              <img
-                src={mlbHeadshot(p.mlbId)}
-                onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
-                alt=""
-                style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover", background: "var(--panel)", flexShrink: 0 }}
-              />
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <img
+                  src={mlbHeadshot(p.mlbId)}
+                  onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
+                  alt=""
+                  style={{
+                    width: 44, height: 44, borderRadius: "50%", objectFit: "cover",
+                    background: "var(--surface-3)", display: "block",
+                    // An unavailable player is still worth showing (you can ask
+                    // "how did he do without this guy?"), just visibly demoted.
+                    filter: p.available ? "none" : "grayscale(0.6)",
+                    opacity: p.available ? 1 : 0.75,
+                  }}
+                />
+                {/* Overlaps the headshot's lower-right rather than sitting in
+                     its own row -- positioned against the image wrapper so it
+                     can't shift the tile's fixed internal rhythm. */}
+                {tone && (
+                  <span
+                    style={{
+                      position: "absolute", bottom: -5, right: -8,
+                      padding: "1px 5px", borderRadius: 4,
+                      fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em",
+                      lineHeight: 1.45, whiteSpace: "nowrap",
+                      background: tone.bg, color: tone.fg,
+                      boxShadow: "0 0 0 1.5px var(--surface-2)",
+                    }}
+                  >
+                    {p.badge.label}
+                  </span>
+                )}
+              </div>
               <span
                 className="oswald"
                 style={{
-                  fontSize: 13, fontWeight: 600, textAlign: "left",
-                  flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  marginTop: 7, fontSize: 12, fontWeight: 700, textAlign: "center",
+                  maxWidth: "100%", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 }}
               >
-                {p.name}
+                {shortenName(p.name)}
               </span>
-              {/* Badge is always in the layout (just invisible when
-                   neutral) so a state change never changes the pill's
-                   height. */}
               <span
+                className="mono"
                 style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: 0.3, lineHeight: 1, flexShrink: 0,
-                  visibility: mode === "neutral" ? "hidden" : "visible",
+                  marginTop: 3, fontSize: selected ? 10.5 : 14, fontWeight: 800, lineHeight: 1.2,
+                  letterSpacing: selected ? "0.06em" : 0,
+                  color: selected
+                    ? "inherit"
+                    : diff === undefined ? "var(--dim)" : diff > 0 ? "var(--green)" : diff < 0 ? "var(--red)" : "var(--dim)",
                 }}
               >
-                {mode === "without" ? "W/O" : "WITH"}
+                {selected
+                  ? (mode === "without" ? "W/O" : "WITH")
+                  : loading ? "···" : diff === undefined ? "—" : fmtDiff(diff)}
               </span>
             </div>
           );
         })}
       </div>
-      {loading && (
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>Loading boxscores…</div>
+      <div role="button" aria-label="Scroll teammates left" onClick={() => scrollBy(-1)} style={arrowStyle("left", canScrollLeft)}>‹</div>
+      <div role="button" aria-label="Scroll teammates right" onClick={() => scrollBy(1)} style={arrowStyle("right", canScrollRight)}>›</div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Filters panel shell.
+//
+// Replaces FiltersSection's single wrapped row of label-above-control columns
+// (see .filter-grid) for the MLB page. The difference is structural, not
+// cosmetic: that layout had exactly one spacing value, one type level and one
+// active state, so a new filter could only ever be another column in the same
+// undifferentiated row. This is a vertical stack of sections whose grouping
+// comes from surface shading and an intentionally uneven spacing rhythm (see
+// the --fp-* scale in index.css), with a sticky header and footer so the
+// count and the reset stay reachable while the body scrolls.
+//
+// FiltersSection stays as-is for the NBA/NFL/WNBA pages until they're ported.
+// ---------------------------------------------------------------------------
+function FilterPanel({ activeCount = 0, onReset, children }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div
+        style={{
+          position: "sticky", top: 0, zIndex: 2,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          gap: "var(--s-2)", height: 48, padding: "0 var(--fp-pad-x)",
+          background: "var(--surface-1)",
+          // A shadow, not a border -- one less hard line in a panel whose
+          // whole grouping story is soft.
+          boxShadow: "0 1px 0 var(--line-subtle)",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span
+            className="oswald"
+            style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: "var(--text)" }}
+          >
+            Filters
+          </span>
+          {activeCount > 0 && <FilterCountBadge count={activeCount} />}
+        </span>
+        {activeCount > 0 && (
+          <span
+            role="button"
+            onClick={onReset}
+            className="oswald"
+            style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+              color: "var(--dim)", cursor: "pointer",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--amber)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--dim)"; }}
+          >
+            Reset all
+          </span>
+        )}
+      </div>
+
+      <div style={{ paddingTop: 4, paddingBottom: 6 }}>{children}</div>
+
+      <div
+        style={{
+          position: "sticky", bottom: 0, zIndex: 2,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          height: 44, padding: "0 var(--fp-pad-x)",
+          background: "var(--surface-1)",
+          boxShadow: "0 -1px 0 var(--line-subtle)",
+        }}
+      >
+        <span className="micro-label" style={{ fontSize: 10 }}>
+          {activeCount > 0 ? `${activeCount} active` : "No filters"}
+        </span>
+        <span
+          role="button"
+          onClick={onReset}
+          className="oswald"
+          style={{
+            fontSize: 11, fontWeight: 800, letterSpacing: "0.10em", textTransform: "uppercase",
+            color: activeCount > 0 ? "var(--text-2)" : "var(--dim)",
+            opacity: activeCount > 0 ? 1 : 0.5,
+            cursor: activeCount > 0 ? "pointer" : "default",
+          }}
+        >
+          Reset all
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Trigger button plus the popover (desktop) / bottom sheet (mobile) it opens,
+// with click-outside, Escape and body-scroll-lock handling. Extracted from
+// the MLB page so all four sports pages get the same chrome and the same
+// dismissal behaviour instead of each hand-rolling it.
+//
+// `anchored` positions the trigger absolutely in the top-right of whatever
+// relatively-positioned card wraps it (MLB's graph card); pages that place
+// the launcher in normal flow pass it false.
+function FilterPanelLauncher({ open, onOpenChange, activeCount = 0, compact, anchored = true, children }) {
+  const panelRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    // The mobile sheet covers the viewport -- stop the page underneath from
+    // scrolling along with it.
+    if (compact) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prevOverflow; };
+    }
+    const handlePointerDown = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onOpenChange(false);
+    };
+    const handleKeyDown = (e) => { if (e.key === "Escape") onOpenChange(false); };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, compact, onOpenChange]);
+
+  const wrapperStyle = anchored
+    ? { position: "absolute", top: compact ? 10 : 14, right: compact ? 10 : 14, zIndex: 6 }
+    : { position: "relative", display: "flex", justifyContent: "flex-end", marginBottom: "var(--s-3)" };
+
+  return (
+    <>
+      <div ref={panelRef} style={wrapperStyle}>
+        <button
+          type="button"
+          className="oswald"
+          onClick={() => onOpenChange(!open)}
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            cursor: "pointer", padding: "6px 10px 6px 12px", borderRadius: 999,
+            fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+            // Border goes accent whenever filters are on, open or not -- the
+            // panel being closed is exactly when you need to be told.
+            border: `1px solid ${open || activeCount ? "var(--amber)" : "var(--line)"}`,
+            background: open ? "var(--amber-dim)" : "var(--panel2)",
+            color: open || activeCount ? "var(--amber)" : "var(--dim)",
+          }}
+        >
+          Filters
+          {activeCount > 0 && <FilterCountBadge count={activeCount} size={16} />}
+        </button>
+        {open && !compact && (
+          <div
+            style={{
+              position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 6,
+              width: "min(620px, 92vw)", maxHeight: "min(78vh, 620px)", overflowY: "auto",
+              background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 14,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+              textAlign: "left",
+            }}
+          >
+            {children}
+          </div>
+        )}
+      </div>
+      {open && compact && (
+        <>
+          <div
+            onClick={() => onOpenChange(false)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 3500 }}
+          />
+          {/* Bottom sheet -- capped and internally scrollable so every filter
+               stays reachable no matter how tall the content gets. */}
+          <div
+            style={{
+              position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 3501,
+              maxHeight: "85vh", overflowY: "auto",
+              background: "var(--surface-1)", border: "1px solid var(--line)", borderBottom: "none",
+              borderRadius: "16px 16px 0 0", boxShadow: "0 -12px 32px rgba(0,0,0,0.5)",
+              paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 2px" }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--line-strong)" }} />
+            </div>
+            {children}
+          </div>
+        </>
       )}
+    </>
+  );
+}
+
+function FilterCountBadge({ count, size = 18 }) {
+  return (
+    <span
+      className="mono"
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        minWidth: size, height: size, padding: "0 5px", borderRadius: 999,
+        background: "var(--amber)", color: "var(--accent-on)",
+        fontSize: 10, fontWeight: 800, lineHeight: 1,
+      }}
+    >
+      {count}
+    </span>
+  );
+}
+
+// The sample-size selector: one equal-width cell per window, each showing its
+// own hit rate. Takes the array from buildHitRateSplits so every page's cells
+// come from the same computation.
+function SampleSizeGrid({ cells }) {
+  return (
+    <div className={`fp-splits${cells.length === 6 ? " fp-splits--6" : ""}`}>
+      {cells.map((s) => (
+        <div
+          key={s.key}
+          role="button"
+          aria-disabled={s.disabled || undefined}
+          title={s.disabled ? "No scheduled game to compare against yet" : undefined}
+          onClick={s.disabled ? undefined : s.onClick}
+          className={`fp-split-cell ${s.active ? "active" : ""}`}
+        >
+          <div
+            className="oswald"
+            style={{
+              fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+              color: s.active ? "var(--accent-on)" : "var(--dim)",
+            }}
+          >
+            {s.label}
+          </div>
+          <div
+            className="mono"
+            style={{
+              fontSize: 14, fontWeight: 700, lineHeight: 1.25, marginTop: 1,
+              color: s.active ? "var(--accent-on)" : hitRateColor(s.rate),
+            }}
+          >
+            {s.rate === null ? "—" : `${Math.round(s.rate * 100)}%`}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The games-count slider that sits under the sample-size grid.
+function SampleSizeSlider({ total, lastN, onSetLastN }) {
+  const cap = Math.max(total, 1);
+  const value = lastN === "all" ? cap : Math.min(lastN, cap);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <ThresholdSlider
+          min={1}
+          max={cap}
+          step={1}
+          lo={value}
+          hi={value}
+          onChangeLo={onSetLastN}
+          rangeEnabled={false}
+          showToggle={false}
+        />
+      </div>
+      <span className="mono" style={{ fontSize: 11.5, color: "var(--dim)", flexShrink: 0 }}>
+        {lastN === "all" ? `All (${cap})` : `${value} games`}
+      </span>
+    </div>
+  );
+}
+
+function FilterSection({ title, action, shaded, children }) {
+  return (
+    <div className={shaded ? "fp-section fp-section--shaded" : "fp-section"}>
+      {(title || action) && (
+        <div className="fp-section-head">
+          {title ? <span className="fp-section-title">{title}</span> : <span />}
+          {action}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// Searchable "Games with player" / "Games without player" list, grouped by
+// teammates vs opponents with a status dot per row (Outlier's pattern). It
+// reads and writes the same teammateChips array the chip row above does, so
+// the two controls are alternate front ends onto one filter rather than two
+// filters that have to agree.
+function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel }) {
+  const [tab, setTab] = useState("with");
+  const [query, setQuery] = useState("");
+
+  const modeFor = (mlbId) => (chips.find((c) => c.mlbId === mlbId) || {}).mode || "neutral";
+
+  const toggle = (p) => {
+    const current = modeFor(p.mlbId);
+    if (current === tab) {
+      onChange((prev) => prev.filter((c) => c.mlbId !== p.mlbId));
+    } else if (current === "neutral") {
+      onChange((prev) => [...prev, { mlbId: p.mlbId, name: p.name, mode: tab }]);
+    } else {
+      onChange((prev) => prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: tab } : c)));
+    }
+  };
+
+  const q = query.trim().toLowerCase();
+  const match = (list) => (q ? list.filter((p) => p.name.toLowerCase().includes(q)) : list);
+  const groups = [
+    { key: "teammates", label: "Teammates", players: match(teammates) },
+    { key: "opponents", label: oppLabel ? `${oppLabel} / Opponents` : "Opponents", players: match(opponents) },
+  ].filter((g) => g.players.length);
+
+  const tabStyle = (key) => ({
+    fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+    color: tab === key ? "var(--text)" : "var(--dim)",
+    paddingBottom: 7, cursor: "pointer", userSelect: "none",
+    boxShadow: tab === key ? "inset 0 -2px 0 var(--amber)" : "none",
+  });
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 18, borderBottom: "1px solid var(--line-subtle)", marginBottom: 12 }}>
+        <span role="button" onClick={() => setTab("with")} style={tabStyle("with")}>With player</span>
+        <span role="button" onClick={() => setTab("without")} style={tabStyle("without")}>Without player</span>
+      </div>
+
+      <div style={{ position: "relative" }}>
+        <span
+          aria-hidden
+          style={{
+            position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+            fontSize: 12, color: "var(--dim)", pointerEvents: "none", lineHeight: 1,
+          }}
+        >
+          ⌕
+        </span>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search players…"
+          style={{
+            width: "100%", height: 32, boxSizing: "border-box",
+            borderRadius: 8, border: "1px solid var(--line)",
+            background: "var(--surface-sunken)", color: "var(--text)",
+            paddingLeft: 30, paddingRight: 10, fontSize: 12, outline: "none",
+            fontFamily: "inherit",
+          }}
+        />
+      </div>
+
+      <div style={{ maxHeight: 220, overflowY: "auto", marginTop: 10 }}>
+        {!groups.length && (
+          <div className="mono" style={{ fontSize: 11, color: "var(--dim)", padding: "10px 4px" }}>
+            No players match “{query}”.
+          </div>
+        )}
+        {groups.map((g) => (
+          <div key={g.key}>
+            {/* Group header runs a hairline out to the right edge rather than
+                 boxing the group -- same job as Outlier's hatched rule. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0 4px" }}>
+              <span
+                className="oswald"
+                style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--dim)" }}
+              >
+                {g.label}
+              </span>
+              <span style={{ flex: 1, height: 1, background: "var(--line-subtle)" }} />
+            </div>
+            {g.players.map((p) => {
+              const mode = modeFor(p.mlbId);
+              const checked = mode === tab;
+              const tone = p.badge ? TEAMMATE_TONES[p.badge.tone] : null;
+              return (
+                <div key={p.mlbId} role="button" aria-pressed={checked} onClick={() => toggle(p)} className="fp-player-row">
+                  <img
+                    src={mlbHeadshot(p.mlbId)}
+                    onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
+                    alt=""
+                    style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", background: "var(--surface-3)" }}
+                  />
+                  <span style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 5 }}>
+                    <span
+                      style={{
+                        fontSize: 12, fontWeight: 600, color: "var(--text)",
+                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                      }}
+                    >
+                      {p.name}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--dim)", flexShrink: 0 }}>{p.pos}</span>
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    {tone && (
+                      <>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone.dot, flexShrink: 0 }} />
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                          {p.badge.label}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span
+                    style={{
+                      width: 16, height: 16, borderRadius: 4, boxSizing: "border-box",
+                      border: `1.5px solid ${checked ? "transparent" : "var(--line)"}`,
+                      background: checked ? "var(--amber)" : "transparent",
+                      color: "var(--accent-on)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, fontWeight: 900, lineHeight: 1,
+                    }}
+                  >
+                    {checked ? "✓" : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -3005,13 +3659,180 @@ function FiltersSection({ children, groups, onReset, defaultOpen = true, evenCol
   );
 }
 
+// Generic disclosure used to hide long-but-secondary content (the game log
+// table today) behind a "▸ Title" header instead of it always taking up
+// space. Open/closed state is persisted to sessionStorage per storageKey so
+// it survives re-renders (player/market switches) but resets on a fresh tab,
+// matching the other session-scoped caches in this file (mlb_day_slate_v1
+// etc.).
+function CollapsibleSection({ title, storageKey, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(() => {
+    if (!storageKey) return defaultOpen;
+    try {
+      const stored = sessionStorage.getItem(storageKey);
+      return stored === null ? defaultOpen : stored === "1";
+    } catch {
+      return defaultOpen;
+    }
+  });
+
+  const toggle = () => {
+    setOpen((v) => {
+      const next = !v;
+      if (storageKey) {
+        try { sessionStorage.setItem(storageKey, next ? "1" : "0"); } catch {}
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div
+        onClick={toggle}
+        className="oswald"
+        role="button"
+        aria-expanded={open}
+        style={{
+          display: "flex", alignItems: "center", gap: "var(--s-2)", cursor: "pointer", userSelect: "none",
+          fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)",
+          padding: "4px 0",
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            color: "var(--amber)", fontSize: 11, display: "inline-block",
+            transform: open ? "rotate(90deg)" : "rotate(0deg)", transition: "transform .15s ease",
+          }}
+        >
+          ▸
+        </span>
+        {title}
+      </div>
+      {open && <div style={{ marginTop: 10 }}>{children}</div>}
+    </div>
+  );
+}
+
+// L5/L10/L15/L20/L25/season/H2H hit-rate splits, doubling as the sample-size
+// selector -- originally two separate controls (a read-only splits
+// scoreboard, plus a plain chip row + slider that actually set the window).
+// Merged into one: every pill already showed a real hit-rate percentage, so
+// there was no reason the *selector* itself couldn't just be that same pill
+// style, extended to cover the two windows (L15/L25) that used to only exist
+// on the plain chip row. Splits are always computed off the player's full
+// game log (not the graph's own side/PA/teammate-filtered `filtered` array),
+// so they read as a fixed, independent scoreboard no matter what the chart
+// above is currently zoomed into. `max` is the largest sample actually
+// available, so the slider (and "All"'s real count) always tracks the
+// player's real game log instead of an arbitrary fixed ceiling.
+// The L5..L25/Season/H2H split math, extracted so the always-visible splits
+// row under the chart and the compact selector inside the Filters panel are
+// two presentations of one computation rather than two mounted copies of the
+// same component (which is what the panel used to do -- a second full
+// HitRateSplits, own slider and all, duplicating the one below the chart).
+// `includeH2h` is opt-out for pages that have no single "next opponent" to
+// compare against -- WNBA picks an opponent from a dropdown instead, so a H2H
+// cell there would be permanently disabled rather than merely unavailable.
+function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels, includeH2h = true }) {
+  const rate = (games) => {
+    if (!games.length) return null;
+    const vals = games.map(statValue);
+    return vals.filter((v) => v > effectiveLine).length / vals.length;
+  };
+  const h2hGames = opponentAbbr ? allGames.filter((g) => g.opp === opponentAbbr) : [];
+  return [
+    ...[5, 10, 15, 20, 25].map((n) => ({
+      key: `l${n}`, label: `L${n}`, active: !h2h && lastN === n,
+      rate: rate(allGames.slice(-n)),
+      onClick: () => { onSetH2h(false); onSetLastN(n); },
+    })),
+    { key: "season", label: shortLabels ? "SZN" : "Season", active: !h2h && lastN === "all", rate: rate(allGames), onClick: () => { onSetH2h(false); onSetLastN("all"); } },
+    ...(includeH2h ? [{
+      key: "h2h",
+      label: !shortLabels && opponentAbbr ? `H2H vs ${opponentAbbr}` : "H2H",
+      active: h2h, rate: rate(h2hGames),
+      onClick: () => opponentAbbr && onSetH2h(true), disabled: !opponentAbbr,
+    }] : []),
+  ];
+}
+
+function hitRateColor(r) {
+  if (r === null) return "var(--dim)";
+  if (r >= 0.6) return "var(--green)";
+  if (r <= 0.4) return "var(--red)";
+  return "var(--text)";
+}
+
+function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, isNarrow, max }) {
+  const splits = buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels: isNarrow });
+  const rateColor = hitRateColor;
+  const cappedMax = Math.max(max, 1);
+  const sliderValue = lastN === "all" ? cappedMax : Math.min(lastN, cappedMax);
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "center", gap: isNarrow ? 8 : 14, flexWrap: "wrap", padding: isNarrow ? "0 12px 10px" : "0 20px 10px" }}>
+        {splits.map((s) => (
+          <div
+            key={s.key}
+            onClick={s.disabled ? undefined : s.onClick}
+            role="button"
+            title={s.disabled ? "No scheduled game to compare against yet" : undefined}
+            style={{
+              textAlign: "center", cursor: s.disabled ? "not-allowed" : "pointer",
+              opacity: s.disabled ? 0.4 : 1,
+              padding: "2px 6px", borderRadius: 6,
+              border: `1px solid ${s.active ? "var(--amber)" : "transparent"}`,
+              background: s.active ? "var(--amber-dim)" : "transparent",
+            }}
+          >
+            <div className="micro-label" style={{ fontSize: isNarrow ? 9.5 : 10.5, color: s.active ? "var(--amber-ink)" : "var(--dim)" }}>
+              {s.label}
+            </div>
+            <div className="mono stat-value" style={{ fontSize: isNarrow ? 13 : 14.5, color: rateColor(s.rate) }}>
+              {s.rate === null ? "—" : `${Math.round(s.rate * 100)}%`}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: isNarrow ? "0 12px 14px" : "0 20px 16px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ThresholdSlider
+            min={1}
+            max={cappedMax}
+            step={1}
+            lo={sliderValue}
+            hi={sliderValue}
+            onChangeLo={(v) => { onSetH2h(false); onSetLastN(v); }}
+            rangeEnabled={false}
+            showToggle={false}
+          />
+        </div>
+        <span className="mono" style={{ fontSize: 11.5, color: "var(--dim)", flexShrink: 0 }}>
+          {lastN === "all" ? `All (${cappedMax})` : `${sliderValue} games`}
+        </span>
+      </div>
+      {/* The percentages above are deliberately computed off the full game
+           log, not the chart's filtered view (see this component's header
+           comment) -- without saying so, an L10 pill reading 60% next to a
+           chart showing three teammate-filtered games looks like a bug. */}
+      <div style={{ textAlign: "center", padding: isNarrow ? "0 12px 10px" : "0 20px 12px" }}>
+        <span className="micro-label" style={{ fontSize: 9, letterSpacing: "0.07em" }}>
+          Hit rates vs full log
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // Bar value label, anchored near the bottom of each bar rather than
 // recharts' default top-of-bar placement — reads as a stamped-in number
 // rather than a floating annotation. Rendered bold white with a dark
 // outline (stroke + paintOrder) rather than a solid fill color so it stays
 // legible against both the green/red bar fills, even when the bar is
 // narrow enough that the digits spill slightly past its edges.
-function BarValueLabel({ x, y, width, height, value, isBinary }) {
+function BarValueLabel({ x, y, width, height, value, isBinary, payload }) {
   // Every bar's label sits at the same height (10px above the shared
   // baseline, not floating above each bar's own peak), so once bars get
   // thin -- a bigger sample size, or a narrow phone -- adjacent numbers
@@ -3035,7 +3856,7 @@ function BarValueLabel({ x, y, width, height, value, isBinary }) {
       strokeWidth={2.5}
       paintOrder="stroke"
     >
-      {isBinary ? "✓" : value}
+      {payload?.isPlaceholder ? "?" : (isBinary ? "✓" : value)}
     </text>
   );
 }
@@ -3081,7 +3902,8 @@ function useElementWidth(ref) {
 // overlapping its neighbors -- used to derive how many ticks actually fit
 // in the measured chart width, instead of a fixed tick-count cap. Compact
 // (narrow-screen) ticks are smaller text/logos, so they pack tighter.
-const TICK_SLOT_WIDTH = { compact: 34, full: 56 };
+// `full` is tuned to TeamAxisTick's 18px desktop logo (see there).
+const TICK_SLOT_WIDTH = { compact: 34, full: 46 };
 
 // Skips ticks so only as many per-game logos render as actually fit the
 // measured chart width -- "All" on a full MLB season can be 80+ games, which
@@ -3091,9 +3913,22 @@ const TICK_SLOT_WIDTH = { compact: 34, full: 56 };
 // is a skip-count, not a target tick count, so it's derived from gameCount
 // here. Falls back to a conservative 20 before the container has been
 // measured (width === 0, e.g. first paint).
+//
+// `containerWidth` is the whole chart box's measured width (its clientWidth,
+// which -- per the CSS box model -- includes that box's own left/right
+// padding), but ticks only ever render across the plot area: the box minus
+// its own horizontal padding, minus the YAxis's own width, minus the
+// chart's left/right margins (see the `padding`/`margin`/`YAxis width`
+// props at each call site, mirrored here). Feeding the raw container width
+// in used to over-count available room by up to ~170px on desktop, which is
+// what let ticks get packed tighter than they actually fit.
 function axisTickInterval(gameCount, isNarrow, containerWidth) {
   const slot = isNarrow ? TICK_SLOT_WIDTH.compact : TICK_SLOT_WIDTH.full;
-  const maxTicks = containerWidth > 0 ? Math.max(1, Math.floor(containerWidth / slot)) : 20;
+  const containerPaddingLR = isNarrow ? 12 : 32; // left+right padding of the chart box itself
+  const yAxisWidth = isNarrow ? 24 : 60;
+  const chartMarginLR = isNarrow ? 30 : 80; // right(30/60) + left(0/20)
+  const plotWidth = containerWidth > 0 ? Math.max(0, containerWidth - containerPaddingLR - yAxisWidth - chartMarginLR) : 0;
+  const maxTicks = plotWidth > 0 ? Math.max(1, Math.floor(plotWidth / slot)) : 20;
   return Math.max(0, Math.ceil(gameCount / maxTicks) - 1);
 }
 
@@ -3117,14 +3952,20 @@ function formatAxisDate(dateStr) {
 // the only lookup that stays correct under any interval.
 function TeamAxisTick({ x, y, payload, logoFn, compact }) {
   const [abbr, dateStr] = payload.value.split("__");
-  const size = compact ? 14 : 28;
+  // Desktop logo shrunk from 28 -> 18px (PropsMadness reference uses a
+  // small ~16px mark): smaller footprint per tick means more ticks fit
+  // before axisTickInterval has to start skipping, and it relieves the
+  // logo/abbreviation/date collision that showed up once the graph's
+  // measured width was smaller than expected (see the ResizeObserver
+  // fix above).
+  const size = compact ? 14 : 18;
   return (
     <g transform={`translate(${x},${y})`}>
       <image href={logoFn(abbr)} x={-size / 2} y={4} width={size} height={size} />
-      <text x={0} y={compact ? 24 : 50} textAnchor="middle" fill="#8b96a5" fontSize={compact ? 8 : 13} fontWeight={600}>
+      <text x={0} y={compact ? 24 : 34} textAnchor="middle" fill="var(--chart-ink)" fontSize={compact ? 8 : 11} fontWeight={600}>
         {abbr}
       </text>
-      <text x={0} y={compact ? 35 : 68} textAnchor="middle" fill="#5c6470" fontSize={compact ? 7 : 11} fontWeight={500}>
+      <text x={0} y={compact ? 35 : 47} textAnchor="middle" fill="var(--chart-ink-dim)" fontSize={compact ? 7 : 10} fontWeight={500}>
         {formatAxisDate(dateStr)}
       </text>
     </g>
@@ -3138,7 +3979,7 @@ function TeamAxisTick({ x, y, payload, logoFn, compact }) {
 function DateAxisTick({ x, y, payload, compact }) {
   return (
     <g transform={`translate(${x},${y})`}>
-      <text x={0} y={compact ? 18 : 20} textAnchor="middle" fill="#8b96a5" fontSize={compact ? 10 : 12} fontWeight={600}>
+      <text x={0} y={compact ? 18 : 20} textAnchor="middle" fill="var(--chart-ink)" fontSize={compact ? 10 : 12} fontWeight={600}>
         {formatAxisDate(payload.value)}
       </text>
     </g>
@@ -3379,11 +4220,16 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   const [side, setSide] = useState("all");
   const [lastN, setLastN] = useState(10);
   const [opponent, setOpponent] = useState("all");
-  const [minSnapPct, setMinSnapPct] = useState(50);
+  // 1 (not 0) is this control's neutral value -- the slider bottoms out at 1
+  // and the preset row below labels 1 as "Any snaps". Defaulting to 50 meant
+  // the page loaded with a real filter already narrowing the sample and
+  // nothing on screen saying so.
+  const [minSnapPct, setMinSnapPct] = useState(1);
   const [maxSnapPct, setMaxSnapPct] = useState(100);
   const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
@@ -3392,7 +4238,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
     setSide("all");
     setLastN(10);
     setOpponent("all");
-    setMinSnapPct(50);
+    setMinSnapPct(1);
     setMaxSnapPct(100);
     setSnapRangeEnabled(false);
     setLine(null);
@@ -3429,17 +4275,32 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
     [allGames]
   );
 
+  // Whether the snap-share control is actually asking anything of the field.
+  // 1-100 is its full range, i.e. "any snap share", so at those bounds the
+  // filter is inert and games with an unknown share shouldn't be penalised.
+  const snapFilterActive = minSnapPct > 1 || maxSnapPct < 100;
+
   const filtered = useMemo(() => {
     let g = allGames.filter((game) => {
       if (side === "home" && !game.home) return false;
       if (side === "away" && game.home) return false;
       if (opponent !== "all" && game.opp !== opponent) return false;
-      if (game.snapPct !== null && (game.snapPct < minSnapPct || game.snapPct > maxSnapPct)) return false;
+      // A game with no recorded snap share can't be shown to satisfy a
+      // non-default snap filter, so it's excluded rather than waved through.
+      // Previously the `snapPct !== null` guard exempted those games
+      // entirely, so "70%+ snaps" quietly kept games whose snap share was
+      // unknown -- inflating the sample with exactly the games least likely
+      // to qualify. While the filter is at its default (1-100) nothing is
+      // being asked of the field, so unknowns still pass.
+      if (snapFilterActive) {
+        if (game.snapPct === null) return false;
+        if (game.snapPct < minSnapPct || game.snapPct > maxSnapPct) return false;
+      }
       return true;
     });
     if (lastN !== "all") g = g.slice(-lastN);
     return g;
-  }, [allGames, side, opponent, minSnapPct, maxSnapPct, lastN]);
+  }, [allGames, side, opponent, minSnapPct, maxSnapPct, snapFilterActive, lastN]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -3479,6 +4340,32 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   const chartTicks = isBinary
     ? [0, 1]
     : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+
+  // Filters-panel wiring, mirroring the MLB/WNBA pages. Opponent is a
+  // dropdown here rather than a single scheduled matchup, so the H2H cell is
+  // dropped and the grid renders six sample-size windows instead of seven.
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (side !== 'all') n += 1;
+    if (opponent !== 'all') n += 1;
+    if (lastN !== 10) n += 1;
+    if (snapFilterActive) n += 1;
+    return n;
+  }, [side, opponent, lastN, snapFilterActive]);
+
+  const splitCells = buildHitRateSplits({
+    allGames,
+    statValue: (g) => statValueNFL(g, market),
+    effectiveLine,
+    lastN,
+    onSetLastN: setLastN,
+    h2h: false,
+    onSetH2h: () => {},
+    opponentAbbr: null,
+    shortLabels: true,
+    includeH2h: false,
+  });
+
   const hits = values.filter((v) => v > effectiveLine).length;
   const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
   const hitRate = values.length ? hits / values.length : 0;
@@ -3662,82 +4549,76 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
              row -- that row's height is set by the taller roster columns
              regardless of alignment, so anything waiting outside the row
              always waited for the rosters' full height first. */}
-        <FiltersSection
-          onReset={resetFilters}
-          groups={[
-            {
-              stack: [
-                {
-                  label: "Opponent",
-                  content: (
-                    <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)} style={{ width: 240 }}>
-                      <option value="all">Any opponent</option>
-                      {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-                    </select>
-                  ),
-                },
-                {
-                  label: "Game location",
-                  content: (
-                    <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                      {["all", "home", "away"].map((s) => (
-                        <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                          {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
-                        </div>
-                      ))}
-                    </div>
-                  ),
-                },
-              ],
-            },
-            {
-              stack: [
-                {
-                  label: "Sample size",
-                  content: (
-                    <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                      {[5, 10, 15, "all"].map((n) => (
-                        <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                          {n === "all" ? "All" : `Last ${n}`}
-                        </div>
-                      ))}
-                    </div>
-                  ),
-                },
-                {
-                  label: "Snap %",
-                  content: (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
-                      <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
-                        {!snapRangeEnabled
-                          ? `${minSnapPct}%+ snaps`
-                          : (minSnapPct === 1 && maxSnapPct === 100 ? "Any snaps" : `${minSnapPct}-${maxSnapPct}% snaps`)}
+        <FilterPanelLauncher
+          open={filtersOpen}
+          onOpenChange={setFiltersOpen}
+          activeCount={activeFilterCount}
+          compact={isNarrow}
+          anchored={false}
+        >
+          <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+            <FilterSection title="Sample size">
+              <SampleSizeGrid cells={splitCells} />
+              <SampleSizeSlider total={allGames.length} lastN={lastN} onSetLastN={setLastN} />
+            </FilterSection>
+
+            <FilterSection shaded>
+              <div className="fp-grid-2">
+                <div>
+                  <div className="micro-label" style={{ fontSize: 10, marginBottom: 7 }}>Game location</div>
+                  <div className="fp-row">
+                    {["all", "home", "away"].map((s) => (
+                      <div key={s} role="button" className={`chip-sm ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                        {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
                       </div>
-                      <ThresholdSlider
-                        min={1}
-                        max={100}
-                        step={1}
-                        lo={minSnapPct}
-                        hi={maxSnapPct}
-                        onChangeLo={setMinSnapPct}
-                        onChangeHi={setMaxSnapPct}
-                        rangeEnabled={snapRangeEnabled}
-                        onToggleRange={() => setSnapRangeEnabled((v) => !v)}
-                      />
-                      <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                        {[1, 50, 70, 85].map((m) => (
-                          <div key={m} className={`chip ${!snapRangeEnabled && minSnapPct === m ? "active" : ""}`} style={{ whiteSpace: "nowrap" }} onClick={() => setMinSnapPct(m)}>
-                            {m === 1 ? "Any snaps" : `${m}%+ snaps`}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ),
-                },
-              ],
-            },
-          ]}
-        />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="micro-label" style={{ fontSize: 10, marginBottom: 7 }}>Opponent</div>
+                  <select className="select-sm" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
+                    <option value="all">Any opponent</option>
+                    {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                  </select>
+                </div>
+              </div>
+            </FilterSection>
+
+            <FilterSection shaded>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+                <span className="micro-label" style={{ fontSize: 10 }}>Snap share</span>
+                <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
+                  {!snapRangeEnabled
+                    ? (minSnapPct === 1 ? "Any" : `${minSnapPct}%+`)
+                    : (minSnapPct === 1 && maxSnapPct === 100 ? "Any" : `${minSnapPct}–${maxSnapPct}%`)}
+                </span>
+              </div>
+              <ThresholdSlider
+                min={1}
+                max={100}
+                step={1}
+                lo={minSnapPct}
+                hi={maxSnapPct}
+                onChangeLo={setMinSnapPct}
+                onChangeHi={setMaxSnapPct}
+                rangeEnabled={snapRangeEnabled}
+                onToggleRange={() => setSnapRangeEnabled((v) => !v)}
+              />
+              <div className="fp-row" style={{ marginTop: 10 }}>
+                {[1, 50, 70, 85].map((m) => (
+                  <div
+                    key={m}
+                    role="button"
+                    className={`chip-sm ${!snapRangeEnabled && minSnapPct === m ? "active" : ""}`}
+                    onClick={() => setMinSnapPct(m)}
+                  >
+                    {m === 1 ? "Any snaps" : `${m}%+`}
+                  </div>
+                ))}
+              </div>
+            </FilterSection>
+          </FilterPanel>
+        </FilterPanelLauncher>
       </div>
     </div>
     <TeamRosterPanel
@@ -3804,7 +4685,8 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
         ref={chartRef}
         style={{
           position: "relative", boxSizing: "border-box", height: isNarrow ? 380 : CHART_HEIGHT,
-          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
+          background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)",
+          boxShadow: "var(--panel-shadow)",
           padding: isNarrow ? "16px 6px" : 16, marginBottom: 16,
         }}
       >
@@ -3824,23 +4706,31 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            {/* Invisible (stroke="transparent"), not removed: rendered fully
+                 open per the PropsMadness reference (no grid lines, just
+                 floating y-tick labels), but LineHandle's drag math
+                 (getPlotBoundsY, above) measures the plot's top/bottom by
+                 querying this component's own rendered .recharts-cartesian-
+                 grid-horizontal line elements -- removing the component
+                 entirely would silently break the drag handle instead of
+                 just hiding a visual grid. */}
+            <CartesianGrid stroke="transparent" vertical={false} />
             <XAxis
               dataKey={manyGames ? "date" : "axisKey"}
               interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nflTeamLogo} compact={isNarrow} />}
-              axisLine={{ stroke: "#343941" }}
+              axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={[0, chartMax]}
               ticks={chartTicks}
-              tick={{ fill: "#8b96a5", fontSize: 11 }}
-              axisLine={{ stroke: "#343941" }}
+              tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
+              axisLine={false}
               tickLine={false}
               allowDecimals={false}
               width={isNarrow ? 24 : 60}
-              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
             />
             <Tooltip
               content={
@@ -3852,10 +4742,10 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
                   logoFn={nflTeamLogo}
                 />
               }
-              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+              cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
             />
             {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+            <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
               {filtered.map((g, i) => {
                 const v = statValueNFL(g, market);
                 const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
@@ -4516,6 +5406,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
@@ -4609,6 +5500,33 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const chartTicks = isBinary
     ? [0, 1]
     : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
+
+  // Filters-panel wiring, mirroring the MLB page. There's no single "next
+  // opponent" here -- the opponent is picked from a dropdown -- so the H2H
+  // cell is dropped rather than rendered permanently disabled, leaving six
+  // sample-size cells instead of seven.
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (side !== 'all') n += 1;
+    if (opponent !== 'all') n += 1;
+    if (lastN !== 10) n += 1;
+    if (minMinutes !== 0 || maxMinutes !== 40) n += 1;
+    return n;
+  }, [side, opponent, lastN, minMinutes, maxMinutes]);
+
+  const splitCells = buildHitRateSplits({
+    allGames,
+    statValue: (g) => statValue(g, market, rebSplit),
+    effectiveLine,
+    lastN,
+    onSetLastN: setLastN,
+    h2h: false,
+    onSetH2h: () => {},
+    opponentAbbr: null,
+    shortLabels: true,
+    includeH2h: false,
+  });
+
   const hits = values.filter((v) => v > effectiveLine).length;
   const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
   const hitRate = values.length ? hits / values.length : 0;
@@ -4784,75 +5702,66 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
            row -- that row's height is set by the taller roster columns
            regardless of alignment, so anything waiting outside the row
            always waited for the rosters' full height first. */}
-      <FiltersSection
-        onReset={resetFilters}
-        groups={[
-          {
-            stack: [
-              {
-                label: "Opponent",
-                content: (
-                  <select className="select" value={opponent} onChange={(e) => setOpponent(e.target.value)} style={{ width: 240 }}>
-                    <option value="all">Any opponent</option>
-                    {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-                  </select>
-                ),
-              },
-              {
-                label: "Game location",
-                content: (
-                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                    {["all", "home", "away"].map((s) => (
-                      <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
-                        {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
-                      </div>
-                    ))}
-                  </div>
-                ),
-              },
-            ],
-          },
-          {
-            stack: [
-              {
-                label: "Sample size",
-                content: (
-                  <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-                    {[5, 10, 15, "all"].map((n) => (
-                      <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                        {n === "all" ? "All" : `Last ${n}`}
-                      </div>
-                    ))}
-                  </div>
-                ),
-              },
-              {
-                label: "Minutes",
-                content: (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
-                    <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
-                      {!minutesRangeEnabled
-                        ? (minMinutes === 0 ? "Any minutes" : `${minMinutes}+ min`)
-                        : (minMinutes === 0 && maxMinutes === 40 ? "Any minutes" : `${minMinutes}-${maxMinutes} min`)}
+      <FilterPanelLauncher
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        activeCount={activeFilterCount}
+        compact={isNarrow}
+        anchored={false}
+      >
+        <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+          {/* Same section order and rhythm as the MLB panel: sample size
+               leads unshaded, then the paired controls in a shaded 2-up. */}
+          <FilterSection title="Sample size">
+            <SampleSizeGrid cells={splitCells} />
+            <SampleSizeSlider total={allGames.length} lastN={lastN} onSetLastN={setLastN} />
+          </FilterSection>
+
+          <FilterSection shaded>
+            <div className="fp-grid-2">
+              <div>
+                <div className="micro-label" style={{ fontSize: 10, marginBottom: 7 }}>Game location</div>
+                <div className="fp-row">
+                  {["all", "home", "away"].map((s) => (
+                    <div key={s} role="button" className={`chip-sm ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                      {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
                     </div>
-                    <ThresholdSlider
-                      min={0}
-                      max={40}
-                      step={1}
-                      lo={minMinutes}
-                      hi={maxMinutes}
-                      onChangeLo={setMinMinutes}
-                      onChangeHi={setMaxMinutes}
-                      rangeEnabled={minutesRangeEnabled}
-                      onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
-                    />
-                  </div>
-                ),
-              },
-            ],
-          },
-        ]}
-      />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="micro-label" style={{ fontSize: 10, marginBottom: 7 }}>Opponent</div>
+                <select className="select-sm" value={opponent} onChange={(e) => setOpponent(e.target.value)}>
+                  <option value="all">Any opponent</option>
+                  {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
+                </select>
+              </div>
+            </div>
+          </FilterSection>
+
+          <FilterSection shaded>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+              <span className="micro-label" style={{ fontSize: 10 }}>Minutes</span>
+              <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
+                {!minutesRangeEnabled
+                  ? (minMinutes === 0 ? "Any" : `${minMinutes}+`)
+                  : (minMinutes === 0 && maxMinutes === 40 ? "Any" : `${minMinutes}–${maxMinutes}`)}
+              </span>
+            </div>
+            <ThresholdSlider
+              min={0}
+              max={40}
+              step={1}
+              lo={minMinutes}
+              hi={maxMinutes}
+              onChangeLo={setMinMinutes}
+              onChangeHi={setMaxMinutes}
+              rangeEnabled={minutesRangeEnabled}
+              onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+            />
+          </FilterSection>
+        </FilterPanel>
+      </FilterPanelLauncher>
     </div>
     <TeamRosterPanel
       teamLabel={matchup.teamB.label}
@@ -4916,7 +5825,8 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
         ref={chartRef}
         style={{
           position: "relative", boxSizing: "border-box", height: isNarrow ? 380 : CHART_HEIGHT,
-          background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6,
+          background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)",
+          boxShadow: "var(--panel-shadow)",
           padding: isNarrow ? "16px 6px" : 16, marginBottom: 16,
         }}
       >
@@ -4935,30 +5845,38 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            {/* Invisible (stroke="transparent"), not removed: rendered fully
+                 open per the PropsMadness reference (no grid lines, just
+                 floating y-tick labels), but LineHandle's drag math
+                 (getPlotBoundsY, above) measures the plot's top/bottom by
+                 querying this component's own rendered .recharts-cartesian-
+                 grid-horizontal line elements -- removing the component
+                 entirely would silently break the drag handle instead of
+                 just hiding a visual grid. */}
+            <CartesianGrid stroke="transparent" vertical={false} />
             <XAxis
               dataKey={manyGames ? "date" : "axisKey"}
               interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={wnbaTeamLogo} compact={isNarrow} />}
-              axisLine={{ stroke: "#343941" }}
+              axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={[0, chartMax]}
               ticks={chartTicks}
-              tick={{ fill: "#8b96a5", fontSize: 11 }}
-              axisLine={{ stroke: "#343941" }}
+              tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
+              axisLine={false}
               tickLine={false}
               allowDecimals={false}
               width={isNarrow ? 24 : 60}
-              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
             />
             <Tooltip
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} />}
-              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+              cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
             />
             {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+            <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
               {filtered.map((g, i) => {
                 const v = statValue(g, market, rebSplit);
                 const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
@@ -6043,6 +6961,76 @@ async function fetchMLBTeamActiveRoster(teamId) {
   return roster;
 }
 
+// Roster status (IL / day-to-day / optioned / DFA'd) for every player on a
+// team's 40-man. /roster/active -- the fetch above -- can't answer this by
+// construction: it only ever returns players who are active, so everyone in
+// it reads the same. The 40-man variant carries a `status` per entry, which
+// is what lets a teammate chip say *why* someone isn't available rather than
+// just quietly vanishing from the roster.
+// Cache shape deliberately mirrors fetchMLBTeamActiveRoster: module Map +
+// sessionStorage, keyed on the MLB "day" so it rolls over with the slate, and
+// a failed fetch is never cached so the next call retries.
+const MLB_ROSTER_STATUS_TTL_MS = 15 * 60 * 1000;
+const mlbRosterStatusCache = new Map();
+
+// statsapi status codes -> the short badge shown on a teammate chip. `tone`
+// drives both the chip badge fill and the status dot in the with/without
+// dropdowns. Anything not listed (chiefly "A", active) gets no badge at all.
+const MLB_STATUS_BADGES = {
+  D7: { label: "IL", tone: "out" },
+  D10: { label: "IL", tone: "out" },
+  D15: { label: "IL", tone: "out" },
+  D60: { label: "IL", tone: "out" },
+  DL: { label: "IL", tone: "out" },
+  BRV: { label: "IL", tone: "out" },
+  DTD: { label: "GTD", tone: "warn" },
+  RM: { label: "AAA", tone: "muted" },
+  MIN: { label: "AAA", tone: "muted" },
+  OPT: { label: "AAA", tone: "muted" },
+  DES: { label: "DFA", tone: "muted" },
+  RES: { label: "Out", tone: "muted" },
+  SU: { label: "Out", tone: "muted" },
+  RE: { label: "Out", tone: "muted" },
+};
+
+async function fetchMLBTeamRosterStatus(teamId) {
+  const dayKey = currentMLBDayKey();
+  const cached = mlbRosterStatusCache.get(teamId);
+  if (cached && cached.dayKey === dayKey && Date.now() - cached.fetchedAt < MLB_ROSTER_STATUS_TTL_MS) return cached.byId;
+
+  const cacheKey = `mlb_roster_status_v1_${teamId}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < MLB_ROSTER_STATUS_TTL_MS) {
+        mlbRosterStatusCache.set(teamId, parsed);
+        return parsed.byId;
+      }
+    }
+  } catch {}
+
+  let byId = null;
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=40Man`);
+    const data = await res.json();
+    byId = {};
+    (data?.roster || []).forEach((r) => {
+      const id = r.person?.id;
+      if (!id) return;
+      byId[id] = { code: r.status?.code || "A", description: r.status?.description || "" };
+    });
+  } catch {
+    byId = null;
+  }
+  if (!byId || !Object.keys(byId).length) return null;
+
+  const record = { dayKey, byId, fetchedAt: Date.now() };
+  mlbRosterStatusCache.set(teamId, record);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return byId;
+}
+
 // Real pitcher-vs-batter head-to-head splits for the Matchup Analyzer, from
 // the MLB Stats API's (undocumented but public) "vsPlayer" stat group --
 // same person/game IDs as everywhere else in this file, so no new ID
@@ -6386,7 +7374,14 @@ function computeMLBGameConditions({ weather, homeAbbr }) {
 // pitcher props (bad for the pitcher's unders), and vice versa for Pitcher
 // Friendly -- same underlying numbers, flipped framing per the `isPitcher`
 // page you're viewing.
-function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
+// `variant="compact"` renders a narrow, left-aligned card meant for the
+// desktop left gutter (see MLBPropsPage's .roster-layout) instead of the
+// original full-width centered bar -- the park narrative/temp/wind
+// sentences collapse behind a "details" disclosure so the card reads as a
+// handful of scannable lines rather than three paragraphs stacked above the
+// lineups. The default (no variant) full-width bar is unchanged, still used
+// on mobile above the graph card.
+function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLabel }) {
   if (!nextGame?.venue) return null;
   const homeAbbr = nextGame.home ? teamAbbr : nextGame.opp;
   const { hrPct, runsPct, singlePct, verdict } = computeMLBGameConditions({ weather: nextGame.weather, homeAbbr });
@@ -6404,6 +7399,68 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
   const tempNarrative = nextGame.weather ? mlbTempNarrative(nextGame.weather.temp) : null;
   const windNarrative = nextGame.weather?.wind ? mlbWindNarrative(nextGame.weather.wind) : null;
 
+  if (variant === "compact") {
+    const venueTitle = `${nextGame.venue}${parkNarrative ? ` — ${parkNarrative}` : ""}`;
+    return (
+      // Full-width single-line strip (PropsMadness reference) instead of a
+      // narrow corner box: date/time/opponent/venue on the left, forecast +
+      // HR/Runs/1B splits + verdict on the right. Sits in normal document
+      // flow at the top of the card (the caller no longer absolutely
+      // positions this), so it can never overlap playerIdentityRow below it
+      // -- it just pushes that row down, which a fixed-width corner overlay
+      // structurally couldn't do. paddingRight clears the Filters button,
+      // which still floats in the card's absolute top-right corner.
+      <div style={{ padding: "12px 110px 12px 20px", borderBottom: "1px solid var(--line)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 10px", minWidth: 0 }}>
+            <span className="micro-label">Game Info</span>
+            <span style={{ color: "var(--text)", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>
+              {new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+              {" · "}
+              <span className="mono tnum" style={{ color: "var(--amber-ink)", fontWeight: 700 }}>
+                {new Date(nextGame.date).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+              </span>
+            </span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span style={{ fontSize: 12.5, color: "var(--text)", whiteSpace: "nowrap" }}>
+              {nextGame.home ? "vs" : "@"} <strong>{opponentLabel || nextGame.opp}</strong>
+            </span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span
+              style={{ fontSize: 12.5, color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}
+              title={venueTitle}
+            >
+              {nextGame.venue}
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 14, flexShrink: 0 }}>
+            {nextGame.weather ? (
+              <span style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                {mlbWeatherEmoji(nextGame.weather.condition)} {nextGame.weather.temp}°F{windNarrative ? ` · 💨 ${nextGame.weather.wind}` : ""}
+              </span>
+            ) : (
+              <span style={{ fontSize: 10.5, color: "var(--dim)", fontStyle: "italic", whiteSpace: "nowrap" }}>Forecast not posted yet</span>
+            )}
+            <span className="mono tnum" style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>
+              <span style={{ color: statColor(hrPct) }}>HR {signed(hrPct)}</span>
+              <span style={{ color: statColor(runsPct) }}>Runs {signed(runsPct)}</span>
+              <span style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
+            </span>
+            <span className="status-pill" style={{ color: verdictColor, whiteSpace: "nowrap" }}>{verdict}</span>
+          </div>
+        </div>
+        {(parkNarrative || tempNarrative) && (
+          <CollapsibleSection title="Details" storageKey="mlb_game_conditions_details_open">
+            <div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
+              {parkNarrative && <div style={{ marginBottom: 4 }}>{MLB_TEAM_ROSTERS[homeAbbr]?.label || homeAbbr} home park — {parkNarrative}</div>}
+              {tempNarrative && <div>{tempNarrative}{windNarrative ? ` — ${windNarrative}` : ""}</div>}
+            </div>
+          </CollapsibleSection>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", justifyContent: "center", marginBottom: "var(--s-4)" }}>
       {/* Everything below stacks in a centered column (rather than a single
@@ -6414,10 +7471,11 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
            the venue line above it. */}
       <div style={{
         display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-        padding: "12px 20px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
+        padding: "12px 20px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)",
+        boxShadow: "var(--panel-shadow)",
         fontSize: 12.5, color: "var(--dim)", maxWidth: "100%", textAlign: "center",
       }}>
-        <span className="oswald" style={{ fontWeight: 700, color: "var(--text)", letterSpacing: "0.04em", fontSize: 11.5, textTransform: "uppercase" }}>
+        <span className="micro-label" style={{ color: "var(--text)", fontSize: 11.5 }}>
           Game Conditions · {nextGame.venue}
         </span>
         {parkNarrative && <span>{MLB_TEAM_ROSTERS[homeAbbr]?.label || homeAbbr} home park — {parkNarrative}</span>}
@@ -6436,12 +7494,12 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher }) {
           // like the feature is broken rather than just not available yet.
           <span style={{ fontStyle: "italic" }}>Forecast not posted yet — check back closer to first pitch</span>
         )}
-        <span style={{ width: "60%", maxWidth: 220, height: 1, background: "var(--line)", margin: "2px 0" }} />
-        <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, fontWeight: 600, flexWrap: "wrap" }}>
+        <span style={{ width: "60%", maxWidth: 220, height: 1, background: "var(--line-subtle)", margin: "2px 0" }} />
+        <span className="tnum" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, fontWeight: 600, flexWrap: "wrap" }}>
           <span className="mono" style={{ color: statColor(hrPct) }}>HR {signed(hrPct)}</span>
           <span className="mono" style={{ color: statColor(runsPct) }}>Runs {signed(runsPct)}</span>
           <span className="mono" style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
-          <span className="oswald" style={{ color: verdictColor, fontSize: 12.5 }}>{verdict}</span>
+          <span className="status-pill" style={{ color: verdictColor }}>{verdict}</span>
         </span>
       </div>
     </div>
@@ -7302,11 +8360,19 @@ function MLBPropsPage({ jumpTo }) {
   // the MLB Stats API (see fetchMLBTeamNextGame) instead of a fixed mock
   // pairing, so switching teams always shows who they're really playing
   // next, and it rolls forward on its own once that game goes final.
+  // Deliberately does NOT reset to null when `teamAbbr` changes (it used to,
+  // via a `setNextGame(null)` at the top of this effect) -- that blanked the
+  // opponent roster panel and the date/time pill on every team switch, then
+  // popped them back in once the fetch resolved, which is what read as a
+  // stutter/glitch when flipping through matchups. The previous team's
+  // nextGame now stays on screen until the new one actually lands; the
+  // `cancelled` guard below still makes sure only the *latest* team's fetch
+  // is ever allowed to win that race, so a slow response from a team the
+  // user has already switched away from can't clobber newer data.
   const [nextGame, setNextGame] = useState(null);
   React.useEffect(() => {
     let cancelled = false;
     const teamId = MLB_ABBR_TEAM_ID[teamAbbr];
-    setNextGame(null);
     const load = () => {
       if (!teamId) return;
       fetchMLBTeamNextGame(teamId).then((g) => { if (!cancelled) setNextGame(g); });
@@ -7324,12 +8390,16 @@ function MLBPropsPage({ jumpTo }) {
   // its own instead of only refreshing once a new calendar day starts. null
   // while loading/unavailable means "don't filter yet" (liveTeamRoster/
   // liveOppRoster below fall back to the static roster rather than showing
-  // nothing); the poll's re-fetch intentionally doesn't reset back to null
-  // first, so the panel doesn't flicker to the unfiltered roster every tick.
+  // nothing). Neither the poll's re-fetch NOR a team switch resets this back
+  // to null first (see the nextGame effect above for why) -- applyActiveRoster
+  // already falls back to the unfiltered static roster whenever the active-
+  // roster ids on hand don't match anyone on the roster being filtered
+  // (exactly what happens for the render or two where this is still the
+  // *previous* team's active roster), so it's safe to just let the stale
+  // value ride out the fetch instead of blanking the panel in the meantime.
   const [teamActiveRoster, setTeamActiveRoster] = useState(null);
   React.useEffect(() => {
     let cancelled = false;
-    setTeamActiveRoster(null);
     const teamId = MLB_ABBR_TEAM_ID[teamAbbr];
     if (!teamId) return;
     const load = () => { fetchMLBTeamActiveRoster(teamId).then((r) => { if (!cancelled) setTeamActiveRoster(r); }); };
@@ -7338,10 +8408,23 @@ function MLBPropsPage({ jumpTo }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, [teamAbbr]);
 
+  // mlbId -> {code, description} for the team's whole 40-man, used to badge
+  // teammate chips. Same polling cadence as the active roster above; null
+  // while loading or unavailable, which every consumer treats as "no badge".
+  const [teamRosterStatus, setTeamRosterStatus] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    const teamId = MLB_ABBR_TEAM_ID[teamAbbr];
+    if (!teamId) return;
+    const load = () => { fetchMLBTeamRosterStatus(teamId).then((r) => { if (!cancelled) setTeamRosterStatus(r); }); };
+    load();
+    const interval = setInterval(load, MLB_ROSTER_STATUS_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [teamAbbr]);
+
   const [oppActiveRoster, setOppActiveRoster] = useState(null);
   React.useEffect(() => {
     let cancelled = false;
-    setOppActiveRoster(null);
     const oppTeamId = nextGame && MLB_ABBR_TEAM_ID[nextGame.opp];
     if (!oppTeamId) return;
     const load = () => { fetchMLBTeamActiveRoster(oppTeamId).then((r) => { if (!cancelled) setOppActiveRoster(r); }); };
@@ -7415,13 +8498,16 @@ function MLBPropsPage({ jumpTo }) {
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(null);
-    setOpponent("all");
+    setH2h(false);
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
   const [lastN, setLastN] = useState(10);
-  const [opponent, setOpponent] = useState("all");
+  // Replaces the old "Any opponent" dropdown -- restricts the sample to
+  // games against the selected team's actual next scheduled opponent
+  // (nextGame.opp) instead of letting the user pick any team from history.
+  const [h2h, setH2h] = useState(false);
   const [minPA, setMinPA] = useState(0);
   const [maxPA, setMaxPA] = useState(6);
   const [paRangeEnabled, setPaRangeEnabled] = useState(false);
@@ -7438,6 +8524,53 @@ function MLBPropsPage({ jumpTo }) {
   // column instead.
   const compact = useIsNarrow(1100);
 
+  // User-resizable chart -- the container below gets CSS `resize: both`
+  // (a native browser drag handle, bottom-right corner) instead of a custom
+  // pointer-drag control, so there's no new hand-rolled drag code to get
+  // wrong. The catch: React re-applies its own `style.height`/`width` on
+  // every render, which would otherwise snap the box back to
+  // MLB_GRAPH_CHART_HEIGHT the instant anything else causes a re-render
+  // (switching market, toggling H2H, etc.), undoing the resize. This
+  // ResizeObserver captures whatever size the user actually dragged it to
+  // and feeds that back in as the height/width React then renders with, so
+  // a resize sticks across re-renders instead of only lasting until the
+  // next one.
+  const [chartSize, setChartSize] = useState(null);
+  React.useEffect(() => {
+    // Reset first so a breakpoint change (mobile <-> desktop, which moves
+    // MLB_GRAPH_CHART_HEIGHT's own default) starts from that new default
+    // rather than carrying over a manually-resized size from the other
+    // breakpoint's layout.
+    setChartSize(null);
+    const el = chartRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      // Read the border box, not contentRect (the content box, padding
+      // excluded) -- the outer resizable element below has zero padding
+      // of its own so the two are numerically equal today, but reading
+      // borderBoxSize keeps that true even if padding is ever added back
+      // to this element, instead of quietly reintroducing the shrink
+      // loop this replaced (writing a content-box read back as this
+      // element's own border-box style shrinks it by the padding every
+      // cycle, which re-fires the observer, which shrinks it again).
+      const box = entries[0].borderBoxSize?.[0];
+      const width = box ? box.inlineSize : entries[0].contentRect.width;
+      const height = box ? box.blockSize : entries[0].contentRect.height;
+      setChartSize((prev) => {
+        const w = Math.round(width), h = Math.round(height);
+        if (prev && prev.w === w && prev.h === h) return prev;
+        return { w, h };
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+    // Both breakpoints matter here: `isNarrow` drives MLB_GRAPH_CHART_HEIGHT's
+    // own default, and `compact` (a different threshold) is what actually
+    // swaps which graphCard() call site mounts the DOM node chartRef points
+    // to -- without it, crossing 1100px while staying above/below 480px
+    // would leave this observing an already-unmounted node.
+  }, [isNarrow, compact]);
+
   // With/Without teammate splits -- each chip is {mlbId, name, mode}, mode
   // "with" requires that teammate to have played (per the real boxscore) in
   // a given game for it to count, "without" requires them to not have. See
@@ -7445,11 +8578,20 @@ function MLBPropsPage({ jumpTo }) {
   const [teammateChips, setTeammateChips] = useState([]);
   const [boxscoreLineups, setBoxscoreLineups] = useState({});
   const [boxscoresLoading, setBoxscoresLoading] = useState(false);
+  // Boxscores used to be fetched only once a chip was already active, which
+  // is fine for filtering but leaves every chip's with/without differential
+  // blank on first open -- the number is the whole point of the chip. Flipped
+  // true the first time the Filters panel is opened (and stays true) so the
+  // fetch is still demand-driven rather than firing on every page load.
+  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
+  // mlbId of the teammate chip currently under the cursor, used to preview
+  // that filter's effect on the chart before it's committed.
+  const [hoverTeammate, setHoverTeammate] = useState(null);
 
   const resetFilters = () => {
     setSide("all");
     setLastN(10);
-    setOpponent("all");
+    setH2h(false);
     setMinPA(0);
     setMaxPA(6);
     setPaRangeEnabled(false);
@@ -7636,28 +8778,41 @@ function MLBPropsPage({ jumpTo }) {
         };
   }, [allGames, isPitcher]);
 
-  const opponentsForPlayer = useMemo(
-    () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
-    [allGames]
-  );
-
-  // Every gamePk within the current side/opponent/PA scope (i.e. everything
+  // Every gamePk within the current side/H2H/PA scope (i.e. everything
   // the teammate predicate below might need to check) -- NOT the full
   // season blind, and computed before the teammate filter itself so adding
   // a chip doesn't change what counts as "in scope." Only populated while
   // at least one teammate chip is active, since boxscore fetches are
   // otherwise unnecessary.
+  // The side/H2H/PA half of the filter predicate, factored out so the
+  // boxscore prefetch below and `filtered` further down can't drift apart --
+  // they were two hand-maintained copies of the same four conditions, and a
+  // change to one silently desynced the prefetch scope from the filter it
+  // exists to serve.
+  const matchesScope = React.useCallback((game) => {
+    if (side === "home" && !game.home) return false;
+    if (side === "away" && game.home) return false;
+    if (h2h && (!nextGame || game.opp !== nextGame.opp)) return false;
+    if (!isPitcher && (game.pa < minPA || game.pa > maxPA)) return false;
+    return true;
+  }, [side, h2h, nextGame && nextGame.opp, minPA, maxPA, isPitcher]);
+
+  const scopeGames = useMemo(() => allGames.filter(matchesScope), [allGames, matchesScope]);
+
   const teammateScopeGamePks = useMemo(() => {
-    if (isPitcher || !teammateChips.length) return [];
-    const scoped = allGames.filter((game) => {
-      if (side === "home" && !game.home) return false;
-      if (side === "away" && game.home) return false;
-      if (opponent !== "all" && game.opp !== opponent) return false;
-      if (game.pa < minPA || game.pa > maxPA) return false;
-      return true;
-    });
-    return Array.from(new Set(scoped.map((g) => g.gamePk).filter(Boolean)));
-  }, [allGames, side, opponent, minPA, maxPA, teammateChips.length, isPitcher]);
+    if (isPitcher) return [];
+    if (!teammateChips.length && !teammateDataWanted) return [];
+    const pks = Array.from(new Set(scopeGames.map((g) => g.gamePk).filter(Boolean)));
+    // Two tiers. With nothing committed yet these boxscores exist only to
+    // compute the differentials printed on the chips, so the most recent 40
+    // is plenty and keeps merely *opening* the panel cheap. Once a chip is
+    // actually filtering the chart, the sample has to be exact -- so every
+    // in-scope game gets fetched, and the readiness gate below waits for all
+    // of them. (Capping both tiers at 40 was a bug: the gate could never be
+    // satisfied for a player with a longer log, so the filter silently never
+    // applied.) Each response is sessionStorage-cached per gamePk.
+    return teammateChips.length ? pks : pks.slice(-40);
+  }, [scopeGames, teammateChips.length, teammateDataWanted, isPitcher]);
 
   React.useEffect(() => {
     if (!teammateScopeGamePks.length) return;
@@ -7676,30 +8831,36 @@ function MLBPropsPage({ jumpTo }) {
     return () => { cancelled = true; };
   }, [teammateScopeGamePks]);
 
+  // True once every in-scope game has a boxscore to check chips against.
+  // Until then the teammate predicate can only produce a partial answer.
+  const teammateDataReady = useMemo(
+    () => !teammateChips.length || scopeGames.every((g) => !g.gamePk || boxscoreLineups[g.gamePk]),
+    [teammateChips.length, scopeGames, boxscoreLineups]
+  );
+
   const filtered = useMemo(() => {
-    let g = allGames.filter((game) => {
-      if (side === "home" && !game.home) return false;
-      if (side === "away" && game.home) return false;
-      if (opponent !== "all" && game.opp !== opponent) return false;
-      if (!isPitcher && (game.pa < minPA || game.pa > maxPA)) return false;
-      if (!isPitcher && teammateChips.length) {
-        if (!game.gamePk) return false;
-        const ids = boxscoreLineups[game.gamePk];
-        // Still loading that game's boxscore -- excluded rather than
-        // counted as a hit until we actually know, so the sample never
-        // silently over-includes while fetches are in flight.
-        if (!ids) return false;
-        for (const chip of teammateChips) {
-          const played = ids.has(chip.mlbId);
-          if (chip.mode === "with" && !played) return false;
-          if (chip.mode === "without" && played) return false;
-        }
+    // Applying the teammate predicate against a half-loaded boxscore map
+    // dropped every not-yet-fetched game, so the chart visibly collapsed to a
+    // couple of bars and then grew back as requests landed. Hold the
+    // pre-teammate result until the data is complete instead -- the chip row
+    // shows its own loading state meanwhile, so nothing is misrepresented as
+    // a finished sample.
+    const applyTeammates = !isPitcher && teammateChips.length > 0 && teammateDataReady;
+    let g = scopeGames.filter((game) => {
+      if (!applyTeammates) return true;
+      if (!game.gamePk) return false;
+      const ids = boxscoreLineups[game.gamePk];
+      if (!ids) return false;
+      for (const chip of teammateChips) {
+        const played = ids.has(chip.mlbId);
+        if (chip.mode === "with" && !played) return false;
+        if (chip.mode === "without" && played) return false;
       }
       return true;
     });
     if (lastN !== "all") g = g.slice(-lastN);
     return g;
-  }, [allGames, side, opponent, minPA, maxPA, lastN, isPitcher, teammateChips, boxscoreLineups]);
+  }, [scopeGames, lastN, isPitcher, teammateChips, boxscoreLineups, teammateDataReady]);
 
   // Batter rate-stat card (PA/Hits/AVG/OBP/BABIP/K%) -- the top value is the
   // rate over whatever the filters above have narrowed "filtered" down to,
@@ -7755,6 +8916,126 @@ function MLBPropsPage({ jumpTo }) {
   const hitRate = values.length ? hits / values.length : 0;
   const edge = avg - effectiveLine;
   const marketLabel = (isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS).find((m) => m.id === market)?.label ?? "";
+
+  // Single place both the metric rail and the hit-rate splits pull the
+  // per-game market value from -- keeps the "same stat, different sample"
+  // framing (season vs. graph vs. L5/L10/L20/H2H) reading off one function
+  // instead of each spot re-picking statValueMLB vs. statValueMLBPitcher.
+  // useCallback so the teammate-differential memo below keeps a stable
+  // identity between renders -- recomputing a with/without split for every
+  // player on the roster on each render would be wasteful.
+  const statValueFn = React.useCallback(
+    (g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)),
+    [isPitcher, market]
+  );
+
+  // Who can appear as a teammate chip, and what badge (if any) each carries.
+  //
+  // liveTeamRoster deliberately drops anyone off the active roster so the
+  // lineup panel only ever shows players who could actually start tonight.
+  // A chip row asks a different question -- "did this guy play in the games
+  // I'm looking at?" is exactly what you want to ask about someone who just
+  // landed on the IL -- so flagged players are added back here, and here
+  // only, sorted behind the available ones.
+  const teammateCandidates = useMemo(() => {
+    if (isPitcher) return [];
+    const statusFor = (mlbId, available) => {
+      if (!teamRosterStatus) return null;
+      const s = teamRosterStatus[mlbId];
+      // On our static roster but no longer on the 40-man at all: traded,
+      // released, or a free agent since that array was last written.
+      if (!s) return available ? null : { label: "Left team", tone: "muted" };
+      return MLB_STATUS_BADGES[s.code] || null;
+    };
+    const lineupIds = new Set((nextGame && nextGame.ourLineupIds) || []);
+    const seen = new Set();
+    const out = [];
+    const push = (p, available) => {
+      if (!p.mlbId || p.mlbId === player.mlbId || p.pos === "SP" || seen.has(p.mlbId)) return;
+      seen.add(p.mlbId);
+      out.push({ ...p, available, badge: statusFor(p.mlbId, available), inLineup: lineupIds.has(p.mlbId) });
+    };
+    liveTeamRoster.players.forEach((p) => push(p, true));
+    teamRoster.players.forEach((p) => push(p, false));
+    return out.sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1));
+  }, [liveTeamRoster, teamRoster, player.mlbId, teamRosterStatus, nextGame, isPitcher]);
+
+  // mlbId -> the player's average in this market when that teammate played,
+  // minus their average when he didn't. Computed over the in-scope games we
+  // actually have boxscores for (see teammateScopeGamePks), so it narrows
+  // with the location/H2H/PA filters the same way the chart does.
+  const teammateDiffs = useMemo(() => {
+    const out = {};
+    if (isPitcher) return out;
+    const known = scopeGames.filter((g) => g.gamePk && boxscoreLineups[g.gamePk]);
+    if (known.length < 6) return out;
+    teammateCandidates.forEach((p) => {
+      let onSum = 0, onN = 0, offSum = 0, offN = 0;
+      known.forEach((g) => {
+        const v = statValueFn(g);
+        if (boxscoreLineups[g.gamePk].has(p.mlbId)) { onSum += v; onN++; }
+        else { offSum += v; offN++; }
+      });
+      // A differential drawn off a one- or two-game split is noise wearing a
+      // decimal point. Withheld entirely rather than shown with a caveat --
+      // the chip renders an em dash and means it.
+      if (onN < 3 || offN < 3) return;
+      out[p.mlbId] = onSum / onN - offSum / offN;
+    });
+    return out;
+  }, [scopeGames, boxscoreLineups, teammateCandidates, statValueFn, isPitcher]);
+
+  // Season-wide average for the *currently selected market* -- distinct from
+  // `avg` above (which is scoped to `filtered`, i.e. whatever the side/PA/
+  // teammate/sample-size filters have narrowed the chart down to) and from
+  // `seasonAvg` (a fixed H/HR/RBI/R or K/ER/BB/H card, not keyed to market).
+  // This is what lets the metric rail show "SEASON AVG" vs. "GRAPH AVG" as
+  // two genuinely different numbers instead of the same value twice.
+  const seasonValues = allGames.map(statValueFn);
+  const seasonAvgForMarket = seasonValues.length ? seasonValues.reduce((a, b) => a + b, 0) / seasonValues.length : 0;
+
+  // Chart data -- the played games in `filtered`, plus (when there's a real
+  // scheduled game to show) one trailing placeholder entry for tonight's
+  // matchup so the chart visibly ends on the game actually being researched
+  // instead of trailing off after the last played one. Its `value` is set to
+  // `effectiveLine` purely so the bar reaches the reference line for the
+  // dashed-outline treatment below (see the Cell/BarValueLabel handling of
+  // `isPlaceholder`) -- it is never treated as a real result.
+  // Hovering a teammate chip previews that filter against the bars currently
+  // on screen: games the player was in the lineup for keep full opacity, the
+  // rest wash out. Once a chip is *committed* the non-matching games are gone
+  // from `filtered` entirely, so highlighting after the click would just mark
+  // every remaining bar -- the useful moment to show the split is before it.
+  const chartData = filtered.map((g, i) => ({
+    idx: i + 1,
+    opp: g.opp,
+    axisKey: `${g.opp}__${g.date}`,
+    value: statValueFn(g),
+    date: g.date,
+    minutes: isPitcher ? formatOuts(g.outs) : g.pa,
+    home: g.home,
+    defRank: MLB_TEAM_DEF[g.opp].rank,
+    // undefined (not false) when there's nothing to preview or no boxscore
+    // for the game, so an unknown lineup is never rendered as "sat out".
+    previewOut:
+      hoverTeammate && g.gamePk && boxscoreLineups[g.gamePk]
+        ? !boxscoreLineups[g.gamePk].has(hoverTeammate)
+        : undefined,
+  }));
+  if (nextGame && MLB_TEAM_DEF[nextGame.opp]) {
+    const nextDate = (nextGame.date || "").slice(0, 10);
+    chartData.push({
+      idx: chartData.length + 1,
+      opp: nextGame.opp,
+      axisKey: `${nextGame.opp}__${nextDate}`,
+      value: effectiveLine,
+      date: nextDate,
+      minutes: null,
+      home: nextGame.home,
+      defRank: MLB_TEAM_DEF[nextGame.opp].rank,
+      isPlaceholder: true,
+    });
+  }
 
   // Bullpen lists shown under each team's lineup (see TeamRosterPanel /
   // LineupDrawer's `bullpen` prop) -- teamBullpen() itself is still the
@@ -7868,15 +9149,15 @@ function MLBPropsPage({ jumpTo }) {
           <div style={{ position: "relative", background: "rgba(0,0,0,0.16)", borderBottom: "1px solid var(--line)" }}>
             <div style={{
               display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
-              padding: compact ? "8px 10px" : "10px 20px",
+              padding: compact ? "6px 10px" : "8px 20px",
             }}>
               {cards.map((c) => (
                 <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
-                  <div style={{ fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
+                  <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5, marginBottom: 2 }}>
                     {c.label}
                   </div>
-                  <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
-                  <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                  <div className="mono stat-value" style={{ fontSize: compact ? 14 : 17, color: "var(--text)" }}>{c.value}</div>
+                  <div className="mono tnum" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
                 </div>
               ))}
               <div
@@ -7953,20 +9234,19 @@ function MLBPropsPage({ jumpTo }) {
           <div style={{ position: "relative", background: "rgba(0,0,0,0.16)", borderBottom: "1px solid var(--line)" }}>
             <div style={{
               display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
-              padding: compact ? "8px 10px" : "10px 20px",
+              padding: compact ? "6px 10px" : "8px 20px",
             }}>
               {cards.map((c) => (
                 <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
-                  <div style={{
-                    fontSize: compact ? 9.5 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em",
-                    marginBottom: 2,
+                  <div className="micro-label" style={{
+                    fontSize: compact ? 9.5 : 10.5, marginBottom: 2,
                     textDecoration: c.key === "k" && market === "p_k" ? "underline var(--amber)" : "none",
                     textUnderlineOffset: 3,
                   }}>
                     {c.label}
                   </div>
-                  <div className="mono" style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: "var(--text)" }}>{c.value}</div>
-                  <div className="mono" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
+                  <div className="mono stat-value" style={{ fontSize: compact ? 14 : 17, color: "var(--text)" }}>{c.value}</div>
+                  <div className="mono tnum" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
                 </div>
               ))}
               <div
@@ -8017,43 +9297,36 @@ function MLBPropsPage({ jumpTo }) {
   // separate 3-box Hit Rate / Average / Edge grid with one inline strip:
   // Hit Rate on the left, the draggable line value centered and large,
   // Average + Edge on the right.
-  const lineHeroRow = (
+  // Metric rail -- replaces the old lineHeroRow's separate 34px hero number
+  // and "drag the tab" caption (dropped entirely: the draggable handle on
+  // the chart itself, now anchored at the plot's left edge, is the only
+  // place the line value reads from). Sits flush on the chart's top edge:
+  // season-wide average for this market vs. the graph's own filtered-sample
+  // average, hit rate against the current line, and edge.
+  const metricRail = (
     <div style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap",
-      gap: 18, padding: compact ? "14px 16px 10px" : "18px 24px 12px",
+      display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap",
+      gap: compact ? 20 : 32, padding: compact ? "10px 12px 6px" : "12px 20px 8px",
     }}>
-      <div style={{ display: "flex", gap: compact ? 16 : 28, flexWrap: "wrap" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Hit Rate</div>
-          <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--text)" }}>{Math.round(hitRate * 100)}%</div>
-          <div style={{ fontSize: 10.5, color: "var(--dim)" }}>{isBinary ? `${hits}/${values.length}` : `${hits}/${values.length}${pushes ? ` · ${pushes} push` : ""}`}</div>
-        </div>
-      </div>
-
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.07em" }}>
-          {isBinary ? `${marketLabel} rate` : `${marketLabel} line`}
-        </div>
-        <div className="mono" style={{ fontSize: 34, color: "var(--amber)", fontWeight: 700, lineHeight: 1.1 }}>
-          {isBinary ? `${Math.round(hitRate * 100)}%` : effectiveLine}
-        </div>
-        <div style={{ fontSize: 10.5, color: "var(--dim)" }}>
-          {isBinary ? `achieved in ${hits} of ${values.length} games` : "drag the tab on the chart to adjust"}
+        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Season Avg</div>
+        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{seasonAvgForMarket.toFixed(1)}</div>
+      </div>
+      <div style={{ textAlign: "center" }}>
+        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Graph Avg</div>
+        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{avg.toFixed(1)}</div>
+      </div>
+      <div style={{ textAlign: "center" }}>
+        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Hit Rate</div>
+        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>
+          {Math.round(hitRate * 100)}%{" "}
+          <span className="tnum" style={{ fontSize: compact ? 10 : 11, color: "var(--dim)", fontWeight: 600 }}>({hits}/{values.length})</span>
         </div>
       </div>
-
-      <div style={{ display: "flex", gap: compact ? 16 : 28, flexWrap: "wrap" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Average</div>
-          <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: "var(--text)" }}>{avg.toFixed(isBinary ? 2 : 1)}</div>
-          <div style={{ fontSize: 10.5, color: "var(--dim)" }}>{isBinary ? "per-game rate" : `median ${med}`}</div>
-        </div>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{isBinary ? "Edge vs 50%" : "Edge vs Line"}</div>
-          <div className="mono" style={{ fontSize: 20, fontWeight: 700, color: edge >= 0 ? "var(--green)" : "var(--red)" }}>
-            {`${edge >= 0 ? "+" : ""}${edge.toFixed(isBinary ? 2 : 1)}`}
-          </div>
-          <div style={{ fontSize: 10.5, color: "var(--dim)" }}>{edge >= 0 ? "trending over" : "trending under"}</div>
+      <div style={{ textAlign: "center" }}>
+        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Edge</div>
+        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: edge >= 0 ? "var(--green)" : "var(--red)" }}>
+          {`${edge >= 0 ? "+" : ""}${edge.toFixed(1)}`}
         </div>
       </div>
     </div>
@@ -8061,10 +9334,12 @@ function MLBPropsPage({ jumpTo }) {
 
   // Local chart height for the blended graph card -- deliberately its own
   // constant rather than the shared CHART_HEIGHT (which other sports' pages
-  // also use), sized taller than the old bare-chart box since the card now
-  // also carries the identity/sample-stat/line-hero rows above the plot and
-  // still wants the bars themselves to read bigger than before.
-  const MLB_GRAPH_CHART_HEIGHT = isNarrow ? 440 : 760;
+  // also use). Sized to leave room for the identity/sample-stat/metric-rail
+  // rows above the plot and the splits/sample-size rows below it, while
+  // still keeping bars legible -- shorter than the original 440/760 now that
+  // the card carries more rows overall, so avatar + rail + chart stay
+  // visible together without scrolling on a phone-height viewport.
+  const MLB_GRAPH_CHART_HEIGHT = isNarrow ? 340 : 600;
 
   // The always-visible graph card: player identity, sample-window stats,
   // and the line-hero row blended into one header directly on top of the
@@ -8076,96 +9351,152 @@ function MLBPropsPage({ jumpTo }) {
   // it's invoked once at the bottom, by which point everything it closes
   // over already exists.
   const graphCard = () => (
-    <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, marginBottom: 16, overflow: "hidden" }}>
+    <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden", position: "relative" }}>
+      {/* Trigger sits in the card top-right; the launcher owns the popover,
+           bottom sheet, click-outside and Escape handling (shared with the
+           other sports pages). Opening it is also what kicks off the
+           teammate boxscore prefetch that backs the chip differentials. */}
+      <FilterPanelLauncher
+        open={filtersOpen}
+        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
+        activeCount={activeFilterCount}
+        compact={compact}
+      >
+        {filtersBody}
+      </FilterPanelLauncher>
+
+      {/* Game Conditions -- desktop only, a full-width strip across the top
+           of the card (PropsMadness reference) instead of sitting above the
+           left TeamRosterPanel, which pushed that lineup panel down out of
+           alignment with the right one. Sits in normal flow, not absolutely
+           positioned, so it pushes playerIdentityRow down rather than ever
+           overlapping it. Mobile still gets its own full-width
+           GameConditionsBar above the card (see the
+           {compact && <GameConditionsBar/>} render above). */}
+      {!compact && (
+        <GameConditionsBar
+          nextGame={nextGame}
+          teamAbbr={teamAbbr}
+          isPitcher={isPitcher}
+          variant="compact"
+          opponentLabel={(liveOppRoster || {}).label}
+        />
+      )}
+
       {playerIdentityRow}
+
+      {/* Market selector lives at the top of the card, directly under player
+           identity and above the chart -- previously stranded below the
+           chart in the desktop-only .roster-layout-center column (and not
+           rendered on mobile at all, since the compact block never included
+           it). graphCard() is called from both the compact and desktop
+           render paths, so putting it here covers both at once. */}
+      <div style={{ padding: compact ? "10px 12px 14px" : "12px 20px 18px" }}>
+        <MarketSectionGrid
+          singleBar
+          sections={
+            isPitcher
+              ? [{ label: "Pitching", markets: MLB_PITCHER_MARKETS }]
+              : [
+                  { label: "Core", markets: [...MLB_MARKETS_ROW_1, ...MLB_MARKETS_ROW_2] },
+                  { label: "Discipline & Speed", markets: MLB_MARKETS_ROW_3 },
+                ]
+          }
+          activeMarket={market}
+          onSelect={(id) => { setMarket(id); setLine(null); }}
+          isNarrow={isNarrow}
+        />
+      </div>
+
       {sampleStatsRow}
-      {lineHeroRow}
+      {metricRail}
 
-      {/* Teammate filter summary -- only shows once a With/Without chip is
-           active, so the graph makes clear which teammates' presence/absence
-           is being required in the game log below rather than leaving that
-           implicit in the (closed-by-default) Filters popover. */}
-      {teammateChips.length > 0 && (() => {
-        const withNames = teammateChips.filter((c) => c.mode === "with").map((c) => c.name);
-        const withoutNames = teammateChips.filter((c) => c.mode === "without").map((c) => c.name);
-        return (
-          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8, padding: "0 16px 14px" }}>
-            {withNames.length > 0 && (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
-                padding: "6px 12px", borderRadius: 999, fontSize: 12,
-                background: "color-mix(in srgb, var(--green) 16%, transparent)",
-                border: "1px solid var(--green)", color: "var(--green)",
-              }}>
-                <span style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>Including</span>
-                <span>{withNames.join(", ")}</span>
-              </div>
-            )}
-            {withoutNames.length > 0 && (
-              <div style={{
-                display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
-                padding: "6px 12px", borderRadius: 999, fontSize: 12,
-                background: "var(--red-dim)", border: "1px solid var(--red)", color: "var(--red)",
-              }}>
-                <span style={{ fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>Excluding</span>
-                <span>{withoutNames.join(", ")}</span>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {/* Chart -- user-resizable via the native browser drag handle (CSS
+           `resize`, bottom-right corner) rather than a custom pointer-drag
+           control; see chartSize/the ResizeObserver above for how a resize
+           survives the next re-render instead of snapping back. Minimum
+           size is enforced by min-height/min-width, which `resize` itself
+           respects, and maxWidth keeps it from being dragged past the
+           card's own edge.
 
-      {/* Chart */}
+           Split into an unpadded outer (the actual resizable/observed
+           element) and a padded inner: the ResizeObserver above reads this
+           outer element's own border-box size and writes it straight back
+           as this same element's width/height style. With padding on this
+           element, that read (content box, padding excluded) written back
+           as the border-box size shrinks the element every cycle, which
+           re-fires the observer -- a feedback loop that converges on the
+           min-width/min-height floor (this is what collapsed the graph to
+           a ~280x240 stub). Zero padding here makes content-box and
+           border-box equal, so the loop can't start; the padding that
+           gives the chart its breathing room moves to the inner div. */}
       <div
         ref={chartRef}
         style={{
-          position: "relative", boxSizing: "border-box", height: MLB_GRAPH_CHART_HEIGHT,
-          padding: isNarrow ? "16px 6px" : "16px 16px 0",
+          position: "relative", boxSizing: "border-box",
+          height: chartSize?.h || MLB_GRAPH_CHART_HEIGHT,
+          width: chartSize?.w || "100%",
+          resize: "both", overflow: "hidden",
+          minHeight: 240, minWidth: 280, maxWidth: "100%",
+          // A nested strip, not a second card: graphCard()'s own wrapper
+          // already supplies the border/shadow for the whole card, so this
+          // only needs a subtle background to read as its own section
+          // without a competing outline.
+          background: "var(--surface-2)", borderRadius: "var(--r-md)",
         }}
       >
-        <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
+        <div style={{
+          height: "100%", width: "100%", boxSizing: "border-box",
+          padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
+          touchAction: "pan-y",
+        }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
-            data={filtered.map((g, i) => ({
-              idx: i + 1,
-              opp: g.opp,
-              axisKey: `${g.opp}__${g.date}`,
-              value: isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market),
-              date: g.date,
-              minutes: isPitcher ? formatOuts(g.outs) : g.pa,
-              home: g.home,
-              defRank: MLB_TEAM_DEF[g.opp].rank,
-            }))}
+            data={chartData}
             margin={{ top: 10, right: isNarrow ? 30 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
             barCategoryGap={isNarrow ? "4%" : "6%"}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#343941" vertical={false} />
+            {/* Invisible (stroke="transparent"), not removed: rendered fully
+                 open per the PropsMadness reference (no grid lines, just
+                 floating y-tick labels), but LineHandle's drag math
+                 (getPlotBoundsY, above) measures the plot's top/bottom by
+                 querying this component's own rendered .recharts-cartesian-
+                 grid-horizontal line elements -- removing the component
+                 entirely would silently break the drag handle instead of
+                 just hiding a visual grid. */}
+            <CartesianGrid stroke="transparent" vertical={false} />
             <XAxis
               dataKey={manyGames ? "date" : "axisKey"}
-              interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
+              interval={manyGames ? Math.max(0, Math.ceil(chartData.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(chartData.length, isNarrow, chartWidth)}
               tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={mlbTeamLogo} compact={isNarrow} />}
-              axisLine={{ stroke: "#343941" }}
+              axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={[0, chartMax]}
               ticks={chartTicks}
-              tick={{ fill: "#8b96a5", fontSize: 11 }}
-              axisLine={{ stroke: "#343941" }}
+              tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
+              axisLine={false}
               tickLine={false}
               allowDecimals={false}
               width={isNarrow ? 24 : 60}
-              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "#8b96a5", fontSize: 11, fontWeight: 600 } }}
+              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
             />
             <Tooltip
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
-              cursor={{ fill: "rgba(255,255,255,0.05)" }}
+              cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
             />
             {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-              {filtered.map((g, i) => {
-                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
-                const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
+            <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
+              {chartData.map((d, i) => {
+                if (d.isPlaceholder) {
+                  return <Cell key={i} fill="transparent" stroke="var(--amber)" strokeWidth={1.5} strokeDasharray="4 3" />;
+                }
+                const fill = isBinary ? (d.value === 1 ? CHART_GREEN : "transparent") : (d.value > effectiveLine ? CHART_GREEN : CHART_RED);
+                // Teammate-chip hover preview: games he sat out wash out,
+                // games he played get an accent outline.
+                if (d.previewOut === true) return <Cell key={i} fill={fill} fillOpacity={0.22} />;
+                if (d.previewOut === false) return <Cell key={i} fill={fill} stroke="var(--amber)" strokeWidth={1.5} />;
                 return <Cell key={i} fill={fill} />;
               })}
               <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
@@ -8185,46 +9516,23 @@ function MLBPropsPage({ jumpTo }) {
         )}
       </div>
 
-      {/* Action row -- Filters popover + Get Odds, relocated out from
-           above the chart (Get Odds) and out from the always-open center
-           column (Filters) into one small row under the chart itself. */}
-      <div style={{ position: "relative", display: "flex", justifyContent: "flex-end", gap: 8, padding: "12px 16px 16px" }}>
-        {filtersOpen && (
-          <div
-            style={{
-              position: "absolute", right: 16, bottom: "calc(100% - 4px)", zIndex: 5,
-              width: "min(760px, calc(100% - 32px))",
-              background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
-              boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
-            }}
-          >
-            <FiltersSection
-              onReset={resetFilters}
-              defaultOpen
-              evenColumns
-              groups={filterGroups}
-            />
-          </div>
-        )}
-        <button
-          type="button"
-          className="oswald"
-          onClick={() => setFiltersOpen((v) => !v)}
-          style={{
-            // Fixed height + min-width so this reads as the exact same
-            // button on every player's page -- a hitter page's Teammates
-            // filter and a pitcher page's shorter filter list used to leave
-            // this sized off its neighbors instead of a stable box.
-            cursor: "pointer", height: 32, minWidth: 84, boxSizing: "border-box",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "0 14px", borderRadius: 6, fontSize: 11.5, fontWeight: 700,
-            border: `1px solid ${filtersOpen ? "var(--amber)" : "var(--line)"}`,
-            background: filtersOpen ? "var(--amber-dim)" : "var(--panel)",
-            color: filtersOpen ? "var(--amber)" : "var(--dim)",
-          }}
-        >
-          Filters
-        </button>
+      <HitRateSplits
+        allGames={allGames}
+        statValue={statValueFn}
+        effectiveLine={effectiveLine}
+        lastN={lastN}
+        onSetLastN={setLastN}
+        h2h={h2h}
+        onSetH2h={setH2h}
+        opponentAbbr={nextGame?.opp}
+        isNarrow={isNarrow}
+        max={allGames.length}
+      />
+
+      {/* Action row -- Get Odds only now; Filters moved to the card's
+           top-right corner (see above) so its panel has room to open
+           downward instead of upward off the top of the screen. */}
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px 16px" }}>
         <SportsbookOddsPanel teamAbbr={teamAbbr} playerName={player.name} market={market} isPitcher={isPitcher} />
       </div>
     </div>
@@ -8232,7 +9540,7 @@ function MLBPropsPage({ jumpTo }) {
 
   // Game-log ledger table -- unchanged, still directly under the graph card.
   const ledgerTable = (
-    <>
+    <CollapsibleSection title={`Game Logs (${filtered.length})`} storageKey="mlb_game_logs_open">
       <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
         <div style={{ overflowX: "auto", overflowY: "hidden" }}>
           <div style={{ minWidth: 580 }}>
@@ -8272,7 +9580,7 @@ function MLBPropsPage({ jumpTo }) {
         {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
         Defensive matchup ranks are real team ERA, refreshed nightly.
       </div>
-    </>
+    </CollapsibleSection>
   );
 
   // Matchup + market selectors -- picking one of today's real games
@@ -8302,10 +9610,18 @@ function MLBPropsPage({ jumpTo }) {
           // team regardless. A fixed side for a given matchup is stable
           // across re-selections.
           const nextTeam = mo.teams[1];
-          setTeamAbbr(nextTeam);
-          setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
-          setLine(null);
-          setOpponent("all");
+          // startTransition marks this whole batch of state (which cascades
+          // into re-fetching nextGame/teamActiveRoster/oppActiveRoster and
+          // re-deriving both roster columns, the chart, and the game log)
+          // as lower priority than, say, the select element's own click
+          // response -- lets React keep the UI responsive through the
+          // switch instead of the whole cascade blocking one big paint.
+          React.startTransition(() => {
+            setTeamAbbr(nextTeam);
+            setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
+            setLine(null);
+            setH2h(false);
+          });
         }}
         style={{
           width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
@@ -8329,7 +9645,16 @@ function MLBPropsPage({ jumpTo }) {
   const playerIdentityRow = (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 10 : 20,
-      flexWrap: "wrap", padding: compact ? "12px 12px" : "16px 20px", borderBottom: "1px solid var(--line)",
+      flexWrap: "wrap", borderBottom: "1px solid var(--line)",
+      // Game Info now renders as its own full-width row above this one (see
+      // the GameConditionsBar render in graphCard()) instead of an
+      // absolutely-positioned corner overlay, so this row no longer needs
+      // left/right clearance to avoid running underneath it -- only the
+      // Filters button (still an absolute top-right overlay) needs a
+      // right-side reservation, and only while this row is short enough to
+      // reach that corner.
+      padding: compact ? "8px 12px" : "12px 20px",
+      paddingRight: compact ? 12 : 110,
     }}>
       <div style={{
         position: "relative", width: compact ? 56 : 84, height: compact ? 56 : 84, borderRadius: "50%", flexShrink: 0,
@@ -8405,62 +9730,83 @@ function MLBPropsPage({ jumpTo }) {
     </div>
   );
 
-  // Same filter fields the old always-open FiltersSection rendered inline in
-  // the center column -- now handed to the Filters popover inside graphCard
-  // instead, so the config lives in one place regardless of where it's used.
-  const filterGroups = [
-    {
-      stack: [
-        {
-          label: "Opponent",
-          content: (
-            <select
-              className="select"
-              value={opponent}
-              onChange={(e) => setOpponent(e.target.value)}
-              style={{ width: "100%", maxWidth: 240 }}
-            >
-              <option value="all">Any opponent</option>
-              {opponentsForPlayer.map((o) => <option key={o} value={o}>vs {o}</option>)}
-            </select>
-          ),
-        },
-        {
-          label: "Game location",
-          content: (
-            <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
+  // How many filters are actually narrowing the sample right now. Drives the
+  // badge on the trigger and in the panel header -- previously nothing on
+  // screen distinguished "no filters" from "four filters", which is how the
+  // NFL page shipped with a 50%-snap default nobody noticed.
+  const activeFilterCount = useMemo(() => {
+    let n = 0;
+    if (side !== "all") n += 1;
+    if (h2h) n += 1;
+    if (lastN !== 10) n += 1;
+    if (!isPitcher && (minPA !== 0 || maxPA !== 6)) n += 1;
+    n += teammateChips.length;
+    return n;
+  }, [side, h2h, lastN, minPA, maxPA, teammateChips.length, isPitcher]);
+
+  const splitCells = buildHitRateSplits({
+    allGames,
+    statValue: statValueFn,
+    effectiveLine,
+    lastN,
+    onSetLastN: setLastN,
+    h2h,
+    onSetH2h: setH2h,
+    opponentAbbr: nextGame?.opp,
+    shortLabels: true,
+  });
+
+  // Opposing-side players for the with/without dropdowns. Same shape the chip
+  // row consumes so PlayerScopeSelect doesn't need to care which side a row
+  // came from.
+  const opponentCandidates = useMemo(() => {
+    if (isPitcher || !liveOppRoster) return [];
+    return liveOppRoster.players
+      .filter((p) => p.mlbId && p.pos !== "SP")
+      .map((p) => ({ ...p, available: true, badge: null }));
+  }, [liveOppRoster, isPitcher]);
+
+  const teammateModeSummary = teammateChips.length
+    ? `${teammateChips.filter((c) => c.mode === "with").length} with · ${teammateChips.filter((c) => c.mode === "without").length} without`
+    : "Tap to cycle";
+
+  const filtersBody = (
+    <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+      {/* Sample size leads and stays unshaded -- it's the filter you reach for
+           first, and letting it sit on the panel's own surface makes the
+           shaded blocks below read as secondary without a heading saying so. */}
+      <FilterSection title="Sample size">
+        <SampleSizeGrid cells={splitCells} />
+        <SampleSizeSlider
+          total={allGames.length}
+          lastN={lastN}
+          onSetLastN={(v) => { setH2h(false); setLastN(v); }}
+        />
+      </FilterSection>
+
+      {/* Location and plate appearances share a row instead of stacking --
+           two short controls that each used to claim a full-width column. */}
+      <FilterSection shaded>
+        <div className="fp-grid-2">
+          <div>
+            <div className="micro-label" style={{ fontSize: 10, marginBottom: 7 }}>Game location</div>
+            <div className="fp-row">
               {["all", "home", "away"].map((s) => (
-                <div key={s} className={`chip ${side === s ? "active" : ""}`} onClick={() => setSide(s)}>
+                <div key={s} className={`chip-sm ${side === s ? "active" : ""}`} role="button" onClick={() => setSide(s)}>
                   {s === "all" ? "All games" : s === "home" ? "Home" : "Away"}
                 </div>
               ))}
             </div>
-          ),
-        },
-      ],
-    },
-    {
-      stack: [
-        {
-          label: "Sample size",
-          content: (
-            <div style={{ display: "flex", gap: "var(--s-1)", flexWrap: "wrap" }}>
-              {[5, 10, 15, 25, "all"].map((n) => (
-                <div key={n} className={`chip ${lastN === n ? "active" : ""}`} onClick={() => setLastN(n)}>
-                  {n === "all" ? "All" : `Last ${n}`}
-                </div>
-              ))}
-            </div>
-          ),
-        },
-        ...(isPitcher ? [] : [{
-          label: "Plate appearances",
-          content: (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "var(--s-2)", width: "100%", maxWidth: 260 }}>
-              <div className="mono" style={{ fontSize: 13, color: "var(--amber)", fontWeight: 700 }}>
-                {!paRangeEnabled
-                  ? (minPA === 0 ? "Any PA" : `${minPA}+ PA`)
-                  : (minPA === 0 && maxPA === 6 ? "Any PA" : `${minPA}-${maxPA} PA`)}
+          </div>
+          {!isPitcher && (
+            <div>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 7 }}>
+                <span className="micro-label" style={{ fontSize: 10 }}>Plate appearances</span>
+                <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
+                  {!paRangeEnabled
+                    ? (minPA === 0 ? "Any" : `${minPA}+`)
+                    : (minPA === 0 && maxPA === 6 ? "Any" : `${minPA}–${maxPA}`)}
+                </span>
               </div>
               <ThresholdSlider
                 min={0}
@@ -8474,23 +9820,45 @@ function MLBPropsPage({ jumpTo }) {
                 onToggleRange={() => setPaRangeEnabled((v) => !v)}
               />
             </div>
-          ),
-        }]),
-      ],
-    },
-    ...(isPitcher ? [] : [{
-      label: "Teammates",
-      content: (
-        <TeammateChipGrid
-          roster={liveTeamRoster.players}
-          excludeId={player.mlbId}
-          chips={teammateChips}
-          onChange={setTeammateChips}
-          loading={boxscoresLoading}
-        />
-      ),
-    }]),
-  ];
+          )}
+        </div>
+      </FilterSection>
+
+      {!isPitcher && (
+        <FilterSection
+          shaded
+          title="Teammates"
+          action={
+            <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>
+              {boxscoresLoading ? "Loading…" : teammateModeSummary}
+            </span>
+          }
+        >
+          <TeammateChipRow
+            candidates={teammateCandidates}
+            diffs={teammateDiffs}
+            chips={teammateChips}
+            onChange={setTeammateChips}
+            loading={boxscoresLoading}
+            compact={compact}
+            onHover={setHoverTeammate}
+          />
+        </FilterSection>
+      )}
+
+      {!isPitcher && (
+        <FilterSection shaded title="Precision">
+          <PlayerScopeSelect
+            teammates={teammateCandidates}
+            opponents={opponentCandidates}
+            chips={teammateChips}
+            onChange={setTeammateChips}
+            oppLabel={nextGame?.opp}
+          />
+        </FilterSection>
+      )}
+    </FilterPanel>
+  );
 
   const tabsBar = (
     <div
@@ -8523,12 +9891,16 @@ function MLBPropsPage({ jumpTo }) {
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    {/* Bullpen no longer passed to MobilePlayerNav below -- it doesn't
+         belong in the Lineup drawer (see LineupDrawer) since it already has
+         its own Bullpen tab (BullpenAnalyzerPanel, fed by
+         teamBullpenList/oppBullpenList directly further down). */}
     <MobilePlayerNav
-      teamA={{ ...liveTeamRoster, bullpen: teamBullpenList }}
-      teamB={liveOppRoster ? { ...liveOppRoster, bullpen: oppBullpenList } : { label: "Loading…", players: [] }}
+      teamA={liveTeamRoster}
+      teamB={liveOppRoster || { label: "Loading…", players: [] }}
       activeId={playerId}
       onSelect={(id) => {
-        setPlayerId(id); setLine(null); setOpponent("all");
+        setPlayerId(id); setLine(null); setH2h(false);
         const side = liveTeamRoster.players.some((p) => p.id === id) ? "team" : "opp";
         setMatchupPick({ side, id, nonce: Date.now() });
       }}
@@ -8537,11 +9909,12 @@ function MLBPropsPage({ jumpTo }) {
       metaLine={(p) => p.pos}
       avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
     />
-    {/* Game Conditions: rendered full-width above the 3-column roster
-         layout (rather than inside its narrow center column) so it's
-         genuinely centered across the whole page, not squeezed between the
-         two roster panels. */}
-    <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />
+    {/* Game Conditions: full-width, mobile only. Desktop (!compact) instead
+         gets the compact variant inside the left roster gutter below -- a
+         full-width bar above the 3-column layout used to leave a tall dead
+         band above the lineups on desktop; folding it into the gutter
+         reclaims that space and lets the lineups/chart start higher. */}
+    {compact && <GameConditionsBar nextGame={nextGame} teamAbbr={teamAbbr} isPitcher={isPitcher} />}
     {/* Date/time + matchup pill sits directly under Game Conditions (both
          are pre-game info about the matchup itself) rather than after the
          player avatar/stat header below -- reads as "here's the game, here's
@@ -8567,53 +9940,50 @@ function MLBPropsPage({ jumpTo }) {
     )}
 
     <div className="roster-layout">
-    <TeamRosterPanel
-      teamLabel={liveTeamRoster.label}
-      players={liveTeamRoster.players}
-      activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); setMatchupPick({ side: "team", id, nonce: Date.now() }); }}
-      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
-      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
-      metaLine={(p) => p.pos}
-      avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
-      confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
-    />
+    {/* Compact Game Conditions used to render here, above the left
+         TeamRosterPanel -- but that pushed the left lineup panel down while
+         the right one (with nothing above it) started higher, leaving the
+         two starting lineups visibly misaligned. It now renders inside
+         graphCard's top-left corner instead (see the "compact" corner
+         placement below, in the !compact branch of the card header), so
+         both TeamRosterPanels start at the same height again. */}
+      <TeamRosterPanel
+        teamLabel={liveTeamRoster.label}
+        players={liveTeamRoster.players}
+        activeId={playerId}
+        onSelect={(id) => { setPlayerId(id); setLine(null); setH2h(false); setMatchupPick({ side: "team", id, nonce: Date.now() }); }}
+        headshotSrc={(p) => mlbHeadshot(p.mlbId)}
+        headshotFallback={(p) => mlbEspnHeadshot(p.id)}
+        metaLine={(p) => p.pos}
+        avatarBg={(p) => (MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+        confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
+      />
     <div className="roster-layout-center">
-      {!compact && nextGamePill}
       {!compact && tabsBar}
       {!compact && matchupSelectorBlock}
 
+      {/* Guarded by !compact -- the compact (<1100px) equivalent of this
+           graph/ledger stack already renders above in the {compact && (...)}
+           block. Without this guard both blocks mount at once below 1100px:
+           two charts sharing the single chartRef ref below, which breaks
+           LineHandle's gridline measurement (it reads whichever chart
+           mounted last) and produces the mobile line-drag jump bug on top of
+           the visibly duplicated chart/ledger. The market selector used to
+           render here too; it's now inside graphCard() itself (see above),
+           which is called from both this block and the compact one. */}
+      {!compact && (
         <div style={{ marginTop: "var(--s-3)" }}>
-          <MarketSectionGrid
-            singleBar
-            sections={
-              isPitcher
-                ? [{ label: "Pitching", markets: MLB_PITCHER_MARKETS }]
-                : [
-                    { label: "Core", markets: [...MLB_MARKETS_ROW_1, ...MLB_MARKETS_ROW_2] },
-                    { label: "Discipline & Speed", markets: MLB_MARKETS_ROW_3 },
-                  ]
-            }
-            activeMarket={market}
-            onSelect={(id) => { setMarket(id); setLine(null); }}
-            isNarrow={isNarrow}
-          />
+          {graphCard()}
+          {ledgerTable}
         </div>
-
-      {/* Filters now live in a popover off the Filters button inside
-           graphCard's action row (see filterGroups above) instead of
-           always-open here in the center column. */}
-      <div style={{ marginTop: "var(--s-3)" }}>
-        {graphCard()}
-        {ledgerTable}
-      </div>
+      )}
       {!compact && activeTabContent}
     </div>
     <TeamRosterPanel
       teamLabel={(liveOppRoster || {}).label || "Loading…"}
       players={(liveOppRoster || {}).players || []}
       activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); setMatchupPick({ side: "opp", id, nonce: Date.now() }); }}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setH2h(false); setMatchupPick({ side: "opp", id, nonce: Date.now() }); }}
       headshotSrc={(p) => mlbHeadshot(p.mlbId)}
       headshotFallback={(p) => mlbEspnHeadshot(p.id)}
       metaLine={(p) => p.pos}
@@ -8771,6 +10141,8 @@ function buildWNBAFeedRows() {
         marketId: m.id,
         category: WNBA_MARKET_CATEGORY[m.id],
         icon: wnbaTeamLogo(player.team),
+        avatar: wnbaHeadshot(player.espnId),
+        teamColor: (WNBA_TEAM_COLORS[player.team] || {}).primary,
         name: player.name,
         team: player.team,
         date: gameDate,
@@ -8804,6 +10176,591 @@ const MLB_MARKET_CATEGORY = {
   p_k: "Pitching", p_outs: "Pitching", p_er: "Pitching", p_h: "Pitching", p_bb: "Pitching",
 };
 const MLB_FEED_CATEGORIES = ["All", "Core", "Power", "Discipline", "Pitching"];
+
+// Groups a sport's full market list under its existing *_FEED_CATEGORIES
+// labels ("All" dropped -- it's not a real group) using the matching
+// *_MARKET_CATEGORY map, so the prop picker's grouped list is derived from
+// data that already exists rather than a second, easy-to-drift copy of it.
+function buildPropGroups(markets, categoryMap, categoryOrder) {
+  return categoryOrder
+    .filter((label) => label !== "All")
+    .map((label) => ({ label, markets: markets.filter((m) => categoryMap[m.id] === label) }))
+    .filter((g) => g.markets.length > 0);
+}
+
+// The prop-type picker's grouped list (see PropTypePicker) for each sport --
+// built once at module load, not per-render. NFL/WNBA rows already filter
+// their applicable markets per-player (position for NFL, DD/TD eligibility
+// for WNBA), so the *unfiltered* full market list here just determines what
+// the picker offers to search/browse; buildNFLFeedRows/buildWNBAFeedRows
+// naturally return zero rows for a market a given player doesn't have.
+const PROP_GROUPS = {
+  nba: buildPropGroups(MARKETS, NBA_MARKET_CATEGORY, NBA_FEED_CATEGORIES),
+  wnba: buildPropGroups(WNBA_MARKETS, WNBA_MARKET_CATEGORY, WNBA_FEED_CATEGORIES),
+  nfl: buildPropGroups(NFL_MARKETS, NFL_MARKET_CATEGORY, NFL_FEED_CATEGORIES),
+  mlb: buildPropGroups([...MLB_MARKETS, ...MLB_PITCHER_MARKETS], MLB_MARKET_CATEGORY, MLB_FEED_CATEGORIES),
+};
+
+// A handful of the most-searched props per sport, pinned as one-tap chips
+// below the picker's trigger so the common case never needs the dropdown.
+const PROP_QUICK_PICKS = {
+  mlb: ["h", "hr", "tb", "r"],
+  nba: ["pts", "reb", "ast", "pra"],
+  wnba: ["pts", "reb", "ast", "pra"],
+  nfl: ["passYds", "rushYds", "recYds", "anytimeTd"],
+};
+
+// Searchable grouped dropdown of every real market for the active sport,
+// plus pinned quick-pick chips underneath -- replaces the old flat category
+// chip row (All/Core/Power/...), which filtered down to a *bucket* of
+// markets rather than letting the user land on one real prop directly.
+function PropTypePicker({ groups, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const deferredSearch = React.useDeferredValue(search);
+  const panelRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKeyDown = (e) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const allMarkets = useMemo(() => groups.flatMap((g) => g.markets), [groups]);
+  const activeMarket = allMarkets.find((m) => m.id === value);
+  const q = deferredSearch.trim().toLowerCase();
+  const visibleGroups = q
+    ? groups
+        .map((g) => ({ ...g, markets: g.markets.filter((m) => m.label.toLowerCase().includes(q)) }))
+        .filter((g) => g.markets.length > 0)
+    : groups;
+  // "All" only makes sense against an empty search -- filtering to "props
+  // matching my search" and also offering "show every prop" in the same
+  // list would be a contradiction.
+  const showAllOption = !q;
+
+  return (
+    <div ref={panelRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        className="oswald"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
+          border: `1px solid ${open ? "var(--amber)" : "var(--line)"}`,
+          background: open ? "var(--amber-dim)" : "var(--panel)",
+          color: open ? "var(--amber)" : "var(--text)",
+          display: "flex", alignItems: "center", gap: 8,
+        }}
+      >
+        {value === "all" ? "All Props" : activeMarket ? activeMarket.label : "Choose a prop"}
+        <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>▾</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 20,
+            width: "min(300px, 88vw)", maxHeight: 360, overflowY: "auto",
+            background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+          }}
+        >
+          <div style={{ padding: 8, position: "sticky", top: 0, background: "var(--panel2)", borderBottom: "1px solid var(--line)" }}>
+            <input
+              className="select"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search props…"
+              autoFocus
+              style={{ width: "100%", boxSizing: "border-box" }}
+            />
+          </div>
+          {showAllOption && (
+            <div
+              role="button"
+              onClick={() => { onChange("all"); setOpen(false); }}
+              style={{
+                padding: "9px 12px", cursor: "pointer", fontSize: 13, fontWeight: 700,
+                color: value === "all" ? "var(--amber)" : "var(--text)",
+                background: value === "all" ? "var(--amber-dim)" : "transparent",
+                borderBottom: "1px solid var(--line)",
+              }}
+            >
+              All Props
+            </div>
+          )}
+          {visibleGroups.map((g) => (
+            <div key={g.label}>
+              <div style={{ padding: "8px 12px 3px", fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                {g.label}
+              </div>
+              {g.markets.map((m) => (
+                <div
+                  key={m.id}
+                  role="button"
+                  onClick={() => { onChange(m.id); setOpen(false); setSearch(""); }}
+                  style={{
+                    padding: "8px 12px", cursor: "pointer", fontSize: 13,
+                    color: m.id === value ? "var(--amber)" : "var(--text)",
+                    background: m.id === value ? "var(--amber-dim)" : "transparent",
+                  }}
+                >
+                  {m.label}
+                </div>
+              ))}
+            </div>
+          ))}
+          {!showAllOption && !visibleGroups.length && (
+            <div style={{ padding: 14, fontSize: 12, color: "var(--dim)", textAlign: "center" }}>No matching props.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Multi-select popover for the day's/week's games -- replaces the old single
+// MATCHUP <select> so a user researching "everyone playing tonight except
+// the early games" isn't limited to one game at a time. An empty `selected`
+// set means "all games", matching the old dropdown's "all" option.
+function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
+  const [open, setOpen] = useState(false);
+  const panelRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  const label = selected.size === 0 ? allLabel : `${selected.size} game${selected.size > 1 ? "s" : ""}`;
+
+  return (
+    <div ref={panelRef} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        className="oswald"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
+          border: `1px solid ${open ? "var(--amber)" : "var(--line)"}`,
+          background: open ? "var(--amber-dim)" : "var(--panel)",
+          color: open ? "var(--amber)" : "var(--text)",
+          display: "flex", alignItems: "center", gap: 8,
+        }}
+      >
+        {label}
+        <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>▾</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 20,
+            width: "min(320px, 88vw)", maxHeight: 400, overflowY: "auto",
+            background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+          }}
+        >
+          <div className="oswald" style={{ padding: "10px 12px 8px", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+            Games
+          </div>
+          <div
+            role="button"
+            onClick={() => onChange(new Set())}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+              padding: "10px 12px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--text)",
+              borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)",
+            }}
+          >
+            {allLabel}
+            {selected.size === 0 && (
+              <span style={{
+                width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                background: "var(--green)", color: "#08131c",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900,
+              }}>
+                ✓
+              </span>
+            )}
+          </div>
+          {options.map((o) => {
+            const checked = selected.has(o.id);
+            return (
+              <div
+                key={o.id}
+                role="button"
+                onClick={() => {
+                  const next = new Set(selected);
+                  if (checked) next.delete(o.id); else next.add(o.id);
+                  onChange(next);
+                }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer" }}
+              >
+                {logoFn && (
+                  <div style={{ display: "flex", flexShrink: 0 }}>
+                    <img src={logoFn(o.teams[0])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)" }} />
+                    <img src={logoFn(o.teams[1])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)", marginLeft: -6, border: "1.5px solid var(--panel2)" }} />
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{o.time}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{o.label}</div>
+                </div>
+                <span style={{
+                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                  border: `1.5px solid ${checked ? "var(--amber)" : "var(--line-strong)"}`,
+                  background: checked ? "var(--amber)" : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {checked && <span style={{ fontSize: 11, color: "var(--accent-on)", fontWeight: 900 }}>✓</span>}
+                </span>
+              </div>
+            );
+          })}
+          <div style={{ padding: "8px 12px", borderTop: "1px solid var(--line)" }}>
+            <div className="chip" style={{ textAlign: "center" }} onClick={() => setOpen(false)}>Close</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// L5/L10/L20/season hit rate, graded green (favorable) to red (unfavorable) --
+// every row already computes all four (see hitRateWindow in each build*FeedRows),
+// this just puts all of them on screen together instead of only whichever one
+// the global sample-size switcher happens to be set to. The currently-selected
+// window is called out in amber so it's still obvious which one is driving the
+// row's displayed odds/hit-rate figure and the list's sort order.
+const FEED_ROW_SPLITS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["SZN", "all"]];
+function FeedSplitsStrip({ r, sampleWindow, size }) {
+  const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--dim)");
+  return (
+    <div style={{ display: "flex", gap: size === "sm" ? 8 : 10, flexWrap: "wrap" }}>
+      {FEED_ROW_SPLITS.map(([label, key]) => {
+        const active = key === sampleWindow;
+        return (
+          <span key={key} className="mono" style={{ fontSize: size === "sm" ? 10 : 10.5, display: "inline-flex", alignItems: "center", gap: 3 }}>
+            <span style={{ color: active ? "var(--amber)" : "var(--dim)", fontWeight: active ? 700 : 500 }}>{label}</span>
+            <b style={{ color: hrColor(r[key]), fontWeight: 700 }}>{Math.round(r[key] * 100)}%</b>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// Shared column template for the desktop table -- header and every row grid
+// against the same string so cells line up exactly. add-button / avatar /
+// proposition / line / odds / L5 / L10 / L20 / season / view-chart.
+const FEED_TABLE_COLUMNS = "40px 40px minmax(180px,2fr) 64px 84px 60px 60px 60px 64px 108px";
+
+// Desktop table header -- Line/Odds/L5/L10/L20/Season are all real sortable
+// columns (see PropFeedPage's columnSort state); Outlier's reference layout
+// this was modeled on also shows IP%/H2H/prior-season columns, which are
+// left out here rather than faked -- there's no real implied-probability
+// price or per-row prior-season game log behind this feed's data today.
+function FeedTableHeader({ columnSort, onSort }) {
+  const col = (label, key, align = "right") => {
+    const active = columnSort?.key === key;
+    const justify = align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start";
+    return (
+      <div
+        role="button"
+        onClick={() => onSort(key)}
+        className="mono"
+        style={{
+          cursor: "pointer", textAlign: align, color: active ? "var(--amber)" : "var(--dim)",
+          fontWeight: active ? 700 : 600, fontSize: 11, display: "flex", alignItems: "center",
+          justifyContent: justify, gap: 3, userSelect: "none",
+        }}
+      >
+        {label}
+        <span style={{ fontSize: 9 }}>{active ? (columnSort.dir === "desc" ? "↓" : "↑") : "↕"}</span>
+      </div>
+    );
+  };
+  return (
+    <div
+      style={{
+        display: "grid", gridTemplateColumns: FEED_TABLE_COLUMNS, gap: 8, alignItems: "center",
+        padding: "8px 16px", borderBottom: "1px solid var(--line)",
+        textTransform: "uppercase", letterSpacing: "0.04em",
+        position: "sticky", top: 0, zIndex: 3, background: "var(--surface-sunken)",
+      }}
+    >
+      <div /><div />
+      <div className="mono" style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600 }}>Proposition</div>
+      {col("Line", "line")}
+      {col("Odds", "odds")}
+      {col("L5", "l5", "center")}
+      {col("L10", "l10", "center")}
+      {col("L20", "l20", "center")}
+      {col("Season", "all", "center")}
+      <div />
+    </div>
+  );
+}
+
+function FeedPctCell({ v }) {
+  const good = v >= 0.55, bad = v <= 0.45;
+  // Tint strength scales with distance from 50% (a 95% hit rate reads
+  // stronger than a 56% one) instead of one fixed alpha for every
+  // "good" cell -- hierarchy comes from the tint itself, not just a
+  // threshold. Mixed off --pos/--neg rather than a fixed rgba() so it
+  // reads correctly on both a near-black and a white row.
+  const strength = Math.min(1, Math.abs(v - 0.5) * 2);
+  const alpha = Math.round(10 + strength * 20);
+  return (
+    <div style={{ textAlign: "center" }}>
+      <span className="mono tnum" style={{
+        display: "inline-block", padding: "3px 7px", borderRadius: "var(--r-sm)", fontSize: 11.5, fontWeight: 800,
+        background: good
+          ? `color-mix(in srgb, var(--pos) ${alpha}%, transparent)`
+          : bad
+          ? `color-mix(in srgb, var(--neg) ${alpha}%, transparent)`
+          : "var(--surface-2)",
+        color: good ? "var(--pos)" : bad ? "var(--neg)" : "var(--dim-strong)",
+      }}>
+        {Math.round(v * 100)}%
+      </span>
+    </div>
+  );
+}
+
+// One feed row -- player avatar (team logo demoted to a corner badge on it,
+// instead of being the only image in the row), name/subtitle/matchup, the
+// L5/L10/L20/season splits strip, odds, and the add-to-picks/view-chart
+// actions. Memoized since sortedRows re-slices/re-sorts on every filter
+// change but most individual row *props* don't change between those
+// re-renders -- skips re-rendering rows whose own data is untouched.
+const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast }) {
+  // Filled pill background for a clear favorable/unfavorable read at a
+  // glance; "mid" stays neutral so it doesn't compete visually with the
+  // amber accent used elsewhere (odds, active toggles) -- but it still
+  // needs its own border, since --panel2 is only a shade off from the
+  // row's --panel background and was nearly invisible without one.
+  const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--neutral-badge-bg)";
+  const tierFg = r.tier === "mid" ? "var(--dim-strong)" : "#08131c";
+  const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
+  const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
+  const odds = probToAmericanOdds(r[sampleWindow]);
+  const pickId = `${sport}-${r.key}`;
+  const avatarSize = isNarrow ? 34 : 40;
+  const badgeSize = Math.round(avatarSize * 0.46);
+
+  const avatarEl = (
+    <div style={{ position: "relative", width: avatarSize, height: avatarSize, flexShrink: 0 }}>
+      <div style={{
+        position: "absolute", inset: 0, borderRadius: "50%", background: "#000",
+        border: `1.5px solid ${r.teamColor || "var(--line)"}`,
+        boxShadow: r.teamColor ? `0 0 6px 0 ${r.teamColor}66` : "none",
+      }} />
+      {r.avatar && (
+        <img
+          src={r.avatar}
+          alt={r.name}
+          width={avatarSize - 4}
+          height={avatarSize - 4}
+          referrerPolicy="no-referrer"
+          style={{ position: "absolute", inset: 2, width: avatarSize - 4, height: avatarSize - 4, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
+          onError={(e) => {
+            if (r.avatarFallback && e.currentTarget.dataset.fallback !== "1") {
+              e.currentTarget.dataset.fallback = "1";
+              e.currentTarget.src = r.avatarFallback;
+            } else {
+              // No usable photo -- fall back to the team-colored ring alone
+              // (still identifies the team) rather than a broken image icon.
+              e.currentTarget.style.display = "none";
+            }
+          }}
+        />
+      )}
+      {/* Team logo corner badge -- was the row's only image before; now a
+           secondary identifier riding on the player avatar instead of the
+           primary one. */}
+      <img
+        src={r.icon}
+        alt={r.team}
+        width={badgeSize}
+        height={badgeSize}
+        style={{
+          position: "absolute", right: -2, bottom: -2, width: badgeSize, height: badgeSize,
+          borderRadius: "50%", background: "var(--panel)", border: "1.5px solid var(--panel)",
+          objectFit: "contain",
+        }}
+      />
+    </div>
+  );
+
+  const addBtn = (
+    <div
+      className="oswald"
+      role="button"
+      onClick={() => onTogglePick({ id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle, opp: r.opp, odds })}
+      title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
+      style={{
+        cursor: "pointer",
+        flexShrink: 0,
+        width: 36, height: 36,
+        borderRadius: "50%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 17, fontWeight: 700,
+        border: `1.5px solid ${isAdded ? "var(--green)" : "var(--amber)"}`,
+        color: isAdded ? "var(--green)" : "var(--amber)",
+        background: isAdded ? "rgba(76,175,125,0.16)" : "var(--amber-dim)",
+        boxShadow: isAdded ? "0 0 0 3px rgba(76,175,125,0.12)" : "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)",
+        transition: "all .15s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-1px) scale(1.06)";
+        if (!isAdded) e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3), 0 0 0 4px var(--amber-dim)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0) scale(1)";
+        if (!isAdded) e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)";
+      }}
+    >
+      {isAdded ? "✓" : "+"}
+    </div>
+  );
+  const chartBtn = r.playerId && (
+    <div
+      className="oswald cta-btn"
+      onClick={() => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team })}
+      title={`Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page`}
+      style={{
+        cursor: "pointer",
+        flexShrink: 0,
+        padding: "8px 12px",
+        borderRadius: 4,
+        fontSize: 12,
+        fontWeight: 600,
+        letterSpacing: "0.02em",
+        border: "1px solid var(--amber)",
+        color: "var(--amber)",
+        background: "var(--amber-dim)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      View Chart →
+    </div>
+  );
+  const oddsBlock = (
+    <div style={{ textAlign: isNarrow ? "left" : "right", flexShrink: 0 }}>
+      <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
+        {formatOdds(odds)}
+      </div>
+      <div
+        className="mono"
+        title={`Hit rate over the trailing ${sampleWindow.slice(1)} games`}
+        style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: hrColor(r[sampleWindow]) }}
+      >
+        {Math.round(r[sampleWindow] * 100)}%
+        <span style={{ color: "var(--dim)", fontWeight: 600, fontSize: 11 }}> ({sampleWindow.toUpperCase()})</span>
+      </div>
+    </div>
+  );
+  const oppRankLine = (
+    <div style={{ fontSize: 10.5, color: "var(--dim-strong)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+      <span>OPP RANK</span>
+      <span
+        className="mono"
+        title={`#${r.rank} in ${r.rankLabel}`}
+        style={{
+          display: "inline-block", padding: "1px 6px", borderRadius: 4,
+          fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
+          background: tierBg, color: tierFg, border: tierBorder,
+        }}
+      >
+        #{r.rank}
+      </span>
+      <span>vs {r.opp}</span>
+    </div>
+  );
+
+  // Narrow screens stack into rows (name/team, opp rank, splits, odds+actions)
+  // instead of squeezing everything into one row -- that forced the player
+  // name to wrap onto 2-3 lines and left the action buttons cramped/overlapping.
+  if (isNarrow) {
+    return (
+      <div
+        className="feed-row"
+        style={{
+          display: "flex", flexDirection: "column", gap: 8, padding: "12px 16px",
+          borderBottom: isLast ? "none" : "1px solid var(--line)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {avatarEl}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="oswald" style={{ fontSize: 14.5, color: "var(--text)" }}>
+              {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
+              {r.subtitle}
+            </div>
+          </div>
+        </div>
+        {oppRankLine}
+        <FeedSplitsStrip r={r} sampleWindow={sampleWindow} size="sm" />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          {oddsBlock}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {addBtn}
+            {chartBtn}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop: a real table row, grid-aligned against FeedTableHeader's exact
+  // column template -- replaces the old flex card (name block + a single
+  // combined odds/hit-rate block) so Line/Odds/L5/L10/L20/Season each get
+  // their own aligned, independently sortable column.
+  return (
+    <div
+      className="feed-row"
+      style={{
+        display: "grid", gridTemplateColumns: FEED_TABLE_COLUMNS, gap: 8, alignItems: "center",
+        padding: "10px 16px",
+        borderBottom: isLast ? "none" : "1px solid var(--line)",
+      }}
+    >
+      {addBtn}
+      {avatarEl}
+      <div style={{ minWidth: 0 }}>
+        <div className="oswald" style={{ fontSize: 14, color: "var(--text)" }}>
+          {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
+          {r.subtitle}
+        </div>
+        <div style={{ marginTop: 3 }}>{oppRankLine}</div>
+      </div>
+      <div className="mono" style={{ textAlign: "right", fontSize: 13, color: "var(--text)" }}>{r.line}</div>
+      <div className="mono" style={{ textAlign: "right", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds)}</div>
+      <FeedPctCell v={r.l5} />
+      <FeedPctCell v={r.l10} />
+      <FeedPctCell v={r.l20} />
+      <FeedPctCell v={r.all} />
+      {chartBtn}
+    </div>
+  );
+});
 
 // Same idea as the NFL feed's per-market defensive ranking, applied to both
 // sides of the ball: for batter props this is the opponent pitching staff's
@@ -8944,6 +10901,9 @@ function buildNBAFeedRows() {
         marketId: m.id,
         category: NBA_MARKET_CATEGORY[m.id],
         icon: nbaTeamLogo(player.team),
+        avatar: espnHeadshot(player.espnId),
+        avatarFallback: nbaHeadshot(player.nbaId),
+        teamColor: (NBA_TEAM_COLORS[player.team] || {}).primary,
         name: player.name,
         team: player.team,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
@@ -8992,6 +10952,8 @@ function buildNFLFeedRows() {
         marketId: m.id,
         category: NFL_MARKET_CATEGORY[m.id],
         icon: nflTeamLogo(player.team),
+        avatar: NFL_HEADSHOTS[player.id],
+        teamColor: (NFL_TEAM_COLORS[player.team] || {}).primary,
         name: player.name,
         team: player.team,
         date: gameDate,
@@ -9036,6 +10998,9 @@ function buildMLBFeedRows(teamsData) {
           marketId: m.id,
           category: MLB_MARKET_CATEGORY[m.id],
           icon: mlbTeamLogo(player.team),
+          avatar: mlbHeadshot(player.mlbId),
+          avatarFallback: mlbEspnHeadshot(player.id),
+          teamColor: (MLB_TEAM_COLORS[player.team] || {}).primary,
           name: player.name,
           team: player.team,
           date: nextGame.date,
@@ -9095,6 +11060,13 @@ function buildMLBPitcherFeedRows(teamsData) {
         marketId: m.id,
         category: MLB_MARKET_CATEGORY[m.id],
         icon: mlbTeamLogo(teamAbbr),
+        // No avatarFallback here -- mlbEspnHeadshot's MLB_ESPN_ID map is
+        // keyed by the static roster's own player id, which a live-announced
+        // probable pitcher (identified only by mlbId) was never assigned.
+        // The primary source (mlbHeadshot, keyed by mlbId directly) doesn't
+        // have that limitation, so it's the only one that applies here.
+        avatar: mlbHeadshot(pitcher.mlbId),
+        teamColor: (MLB_TEAM_COLORS[teamAbbr] || {}).primary,
         name: pitcher.name,
         team: teamAbbr,
         date: nextGame.date,
@@ -9217,13 +11189,29 @@ const FEED_CONTROL_WIDTH = 190;
 
 function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, sport, setSport }) {
   const isNarrow = useIsNarrow(560);
-  const [category, setCategory] = useState("All");
+  // Replaces the old flat category chip row (All/Core/Power/...), which
+  // filtered down to a *bucket* of markets -- this lands on one real prop
+  // directly, matching how Outlier's feed always shows a single market at a
+  // time. See PropTypePicker/PROP_GROUPS/PROP_QUICK_PICKS above.
+  const [selectedMarket, setSelectedMarket] = useState(() => PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null);
   const [sampleWindow, setSampleWindow] = useState("l10");
   const [sortMode, setSortMode] = useState("matchup");
   const [sortDir, setSortDir] = useState("desc");
   const [showSortInfo, setShowSortInfo] = useState(false);
   const [sortInfoHover, setSortInfoHover] = useState(false);
   const [sortDirInfoHover, setSortDirInfoHover] = useState(false);
+  // Secondary filters (Sort By, Odds Range, Defense Rank Range) collapse
+  // behind this Filters disclosure instead of always sitting open in the
+  // page flow -- see feedActiveFilterCount below for the badge shown on its
+  // trigger.
+  const [feedFiltersOpen, setFeedFiltersOpen] = useState(false);
+  // Desktop table column sort -- clicking a FeedTableHeader column overrides
+  // the Sort By dropdown's mode until cleared. null means "use the Sort By/
+  // primary-hit-rate behavior below" (see sortedRows).
+  const [columnSort, setColumnSort] = useState(null);
+  const onSortColumn = (key) => {
+    setColumnSort((prev) => (prev?.key === key ? { key, dir: prev.dir === "desc" ? "asc" : "desc" } : { key, dir: "desc" }));
+  };
 
   // Odds range filter. The slider itself drags a uniform 4-96 "encoded"
   // position (so dragging feels smooth), which is converted to a hit-rate
@@ -9240,18 +11228,31 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const [rankLo, setRankLo] = useState(1);
   const [rankHi, setRankHi] = useState(feedTeamCount("nba"));
 
-  // Team filter -- "all" means no filtering. Resets to "all" whenever the
-  // sport switches since the option list is sport-specific.
+  // Team filter (NBA/WNBA) -- "all" means no filtering. Resets to "all"
+  // whenever the sport switches since the option list is sport-specific.
   const [teamFilter, setTeamFilter] = useState("all");
+  // Games filter (MLB/NFL) -- a multi-select set of matchup ids (see
+  // GamesMultiSelect); empty means "all games", same as the old single
+  // dropdown's "all" option. Resets whenever the sport switches since the
+  // option list is sport-specific.
+  const [selectedGameIds, setSelectedGameIds] = useState(() => new Set());
 
-  const nbaRows = useMemo(() => buildNBAFeedRows(), []);
+  // Each sport's rows only build while it's the *active* sport -- these used
+  // to build unconditionally on mount (and NBA/WNBA/NFL never rebuilt after
+  // that regardless of which sport was showing), which meant switching to
+  // MLB still paid the cost of generating three other sports' full row sets
+  // no one was looking at. Falling back to [] while inactive means flipping
+  // back to a sport rebuilds it fresh rather than caching across switches --
+  // a reasonable trade given these are synchronous, already-in-memory
+  // computations (no network fetch), not the MLB fetch below.
+  const nbaRows = useMemo(() => (sport === "nba" ? buildNBAFeedRows() : []), [sport]);
   // wnbaDataVersion/nflDataVersion bump when their real per-player game logs
   // and defense rankings finish loading (see the effects in PropLedger) --
   // without them in the dependency array, these would compute once on mount
   // against whatever fallback/mock data existed at that instant and never
   // recompute once the real data actually arrives.
-  const wnbaRows = useMemo(() => buildWNBAFeedRows(), [wnbaDataVersion]);
-  const nflRows = useMemo(() => buildNFLFeedRows(), [nflDataVersion]);
+  const wnbaRows = useMemo(() => (sport === "wnba" ? buildWNBAFeedRows() : []), [sport, wnbaDataVersion]);
+  const nflRows = useMemo(() => (sport === "nfl" ? buildNFLFeedRows() : []), [sport, nflDataVersion]);
 
   // This week's real NFL slate (see fetchNFLWeekSlate, one fetch for the
   // whole league) -- used only to build the MATCHUP dropdown/filter below;
@@ -9376,23 +11377,32 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const showMatchupDropdown = sport === "mlb" || sport === "nfl";
 
   const rows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
-  const categories = sport === "nba" ? NBA_FEED_CATEGORIES : sport === "wnba" ? WNBA_FEED_CATEGORIES : sport === "nfl" ? NFL_FEED_CATEGORIES : MLB_FEED_CATEGORIES;
+  const propGroups = PROP_GROUPS[sport] || [];
 
   const maxRank = feedTeamCount(sport);
   React.useEffect(() => {
-    setCategory("All");
+    setSelectedMarket(PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null);
     setRankLo(1);
     setRankHi(feedTeamCount(sport));
     setTeamFilter("all");
-    setMatchupFilter("all");
+    setSelectedGameIds(new Set());
+    setColumnSort(null);
   }, [sport]);
 
   // Option list for the Team dropdown -- built off the full per-sport row
-  // set (not the category-filtered one) so switching category never hides
-  // a team that's still available under "All".
+  // set (not the market-filtered one) so switching prop type never hides a
+  // team that's still available under a different market.
   const teamOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.team))).sort(), [rows]);
 
-  const categoryRows = category === "All" ? rows : rows.filter((r) => r.category === category);
+  // Memoized (rather than a bare .filter recomputed inline in the render
+  // body) so its identity is stable across unrelated re-renders -- sortedRows
+  // below depends on this array, and without a stable reference it would
+  // re-run its own sort on *every* render (a keystroke, a hover, an
+  // unrelated state change) regardless of whether the actual row set changed.
+  const marketRows = useMemo(
+    () => (selectedMarket && selectedMarket !== "all" ? rows.filter((r) => r.marketId === selectedMarket) : rows),
+    [rows, selectedMarket]
+  );
 
   // Odds range: the left handle (oddsMinX) maps to the highest probability
   // in range (most negative/favorite odds bound) and the right handle
@@ -9404,20 +11414,29 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // intentional cutoff, not a bug -- can be loosened again in the future.
   const oddsLoProb = oddsSliderProb(oddsMaxX);
   const oddsHiProb = oddsSliderProb(oddsMinX);
-  const filteredRows = categoryRows.filter((r) => {
+  const filteredRows = useMemo(() => marketRows.filter((r) => {
     const p = r[sampleWindow];
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
     if (r.rank < rankLo || r.rank > rankHi) return false;
     if (showMatchupDropdown) {
-      if (matchupFilter !== "all") {
-        const mo = activeMatchupOptions.find((o) => o.id === matchupFilter);
-        if (mo && !mo.teams.includes(r.team)) return false;
+      if (selectedGameIds.size > 0) {
+        const inSelectedGame = activeMatchupOptions.some((o) => selectedGameIds.has(o.id) && o.teams.includes(r.team));
+        if (!inSelectedGame) return false;
       }
     } else if (teamFilter !== "all" && r.team !== teamFilter) {
       return false;
     }
     return true;
-  });
+  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter]);
+
+  // Badge shown on the Filters trigger -- counts only the controls tucked
+  // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
+  // their default, so the trigger itself communicates whether there's
+  // anything non-default hiding back there before the user opens it.
+  const feedActiveFilterCount =
+    (sortMode !== "matchup" ? 1 : 0) +
+    (oddsMinX !== 4 || oddsMaxX !== 96 ? 1 : 0) +
+    (rankLo !== 1 || rankHi !== maxRank ? 1 : 0);
 
   const activeSortMode = FEED_SORT_MODES.find((mo) => mo.id === sortMode);
 
@@ -9429,6 +11448,19 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the easiest among the 90% hits, and so on, instead of ignoring % entirely.
   const sortedRows = useMemo(() => {
     const copy = [...filteredRows];
+    // A clicked table-column header (see FeedTableHeader/onSortColumn)
+    // overrides the Sort By dropdown entirely -- sorts by exactly that
+    // column's own value, independent of whatever sampleWindow is active,
+    // since l5/l10/l20/all each have their own real number on every row.
+    if (columnSort) {
+      const { key, dir } = columnSort;
+      const val = (r) => (key === "line" ? r.line : key === "odds" ? probToAmericanOdds(r[sampleWindow]) : r[key]);
+      copy.sort((a, b) => {
+        const av = val(a), bv = val(b);
+        return dir === "desc" ? bv - av : av - bv;
+      });
+      return copy;
+    }
     copy.sort((a, b) => {
       const aHit = a[sampleWindow], bHit = b[sampleWindow];
       if (bHit !== aHit) return bHit - aHit;
@@ -9437,7 +11469,21 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return sortDir === "desc" ? bv - av : av - bv;
     });
     return copy;
-  }, [filteredRows, sampleWindow, sortMode, sortDir]);
+  }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort]);
+
+  // Renders a growing slice rather than the full (sometimes 2,000+ row) list
+  // at once -- MLB in particular mounts a DOM row per player x market, and
+  // React.memo on FeedRow only helps re-renders, not the cost of the initial
+  // mount. Resets to the first page whenever the visible set's composition
+  // changes (any filter, or a switch away and back) rather than whenever
+  // sortedRows changes identity, which would also reset it on every sort-only
+  // change and undo "load more" each time.
+  const FEED_PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
+  React.useEffect(() => {
+    setVisibleCount(FEED_PAGE_SIZE);
+  }, [sport, selectedMarket, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
+  const visibleRows = sortedRows.slice(0, visibleCount);
 
   return (
     <div className="page-shell" style={{ maxWidth: 900, margin: "0 auto", boxSizing: "border-box" }}>
@@ -9467,30 +11513,36 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         ))}
       </div>
 
-      {/* Category filter */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
-        {categories.map((c) => (
-          <div key={c} className={`chip ${category === c ? "active" : ""}`} onClick={() => setCategory(c)}>
-            {c}
-          </div>
-        ))}
+      {/* Prop-type picker -- searchable grouped dropdown of every real
+           market for this sport, plus pinned quick-pick chips. Replaces the
+           old flat category chip row (All/Core/Power/...), which filtered
+           down to a bucket of markets rather than landing on one real prop. */}
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+        <PropTypePicker groups={propGroups} value={selectedMarket} onChange={setSelectedMarket} />
       </div>
 
-      {/* Team/matchup filter -- MLB and NFL show a MATCHUP dropdown (one
-           entry per game on the current real slate/week, sorted by kickoff)
-           instead of a flat team list, since picking a team only ever
-           matters in relation to who they're actually playing. NBA/WNBA
-           keep the plain TEAM dropdown. */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 20 }}>
+      {/* Sticky filter rail -- Games/Team, Sample Size always visible;
+           Sort By/Odds Range/Defense Rank Range collapse behind Filters
+           (see feedActiveFilterCount below) since they're reached for less
+           often. MLB and NFL show a multi-select Games popover (any number
+           of today's/this week's games at once) instead of a flat team
+           list, since picking a team only ever matters in relation to who
+           they're actually playing. NBA/WNBA keep the plain TEAM dropdown. */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "flex-end", gap: 16,
+        marginBottom: 10, position: "sticky", top: 0, zIndex: 15, background: "var(--bg)",
+        paddingTop: 8, paddingBottom: 12,
+      }}>
         {showMatchupDropdown ? (
           <div style={FEED_FILTER_ROW_STYLE}>
-            <span className="oswald" style={FEED_LABEL_STYLE}>MATCHUP</span>
-            <select className="select" style={{ width: 260 }} value={matchupFilter} onChange={(e) => setMatchupFilter(e.target.value)}>
-              <option value="all">{sport === "mlb" ? "All of today's games" : "All of this week's games"}</option>
-              {activeMatchupOptions.map((mo) => (
-                <option key={mo.id} value={mo.id}>{mo.label} — {mo.time}</option>
-              ))}
-            </select>
+            <span className="oswald" style={FEED_LABEL_STYLE}>GAMES</span>
+            <GamesMultiSelect
+              options={activeMatchupOptions}
+              selected={selectedGameIds}
+              onChange={setSelectedGameIds}
+              allLabel={sport === "mlb" ? "All of today's games" : "All of this week's games"}
+              logoFn={sport === "mlb" ? mlbTeamLogo : nflTeamLogo}
+            />
           </div>
         ) : (
           <div style={FEED_FILTER_ROW_STYLE}>
@@ -9507,6 +11559,46 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           <span className="oswald" style={FEED_LABEL_STYLE}>SAMPLE SIZE</span>
           <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
         </div>
+        <div style={FEED_FILTER_ROW_STYLE}>
+          <span className="oswald" style={{ ...FEED_LABEL_STYLE, opacity: 0 }}>·</span>
+          <button
+            type="button"
+            className="oswald"
+            onClick={() => setFeedFiltersOpen((v) => !v)}
+            style={{
+              cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
+              border: `1px solid ${feedFiltersOpen ? "var(--amber)" : "var(--line)"}`,
+              background: feedFiltersOpen ? "var(--amber-dim)" : "var(--panel)",
+              color: feedFiltersOpen ? "var(--amber)" : "var(--text)",
+              display: "flex", alignItems: "center", gap: 8,
+            }}
+          >
+            Filters
+            {feedActiveFilterCount > 0 && (
+              <span className="mono" style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8,
+                fontSize: 10, fontWeight: 800, background: "var(--amber)", color: "var(--accent-on)",
+              }}>
+                {feedActiveFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+      {/* Live result count -- tells the user how much the filters above are
+           actually costing them, Outlier-style ("showing N of M props")
+           instead of leaving them to count the list. */}
+      <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--dim)", marginBottom: 16 }}>
+        Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
+        <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{rows.length}</span> props
+      </div>
+
+      {feedFiltersOpen && (
+      <div style={{
+        maxWidth: 480, margin: "0 auto 20px", padding: "16px", background: "var(--panel)",
+        border: "1px solid var(--line)", borderRadius: 8,
+      }}>
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={FEED_LABEL_STYLE}>SORT BY</span>
           {/* The "i" info button sits absolutely positioned just outside the
@@ -9572,7 +11664,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             </div>
           </div>
         </div>
-      </div>
 
       {/* Sort mode explainer -- collapsed by default so it doesn't add
           visual noise for users who already know what each option does.
@@ -9721,6 +11812,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           />
         </div>
       </div>
+      </div>
+      )}
 
       {/* Feed */}
       <div style={{
@@ -9756,186 +11849,38 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         </span>
       </div>
       <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} />}
         {sortedRows.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-            {sport === "mlb" && mlbLoading ? "Loading live MLB matchup data…" : "No props in this category yet."}
+            {sport === "mlb" && mlbLoading ? "Loading live MLB matchup data…" : "No props match these filters yet."}
           </div>
         )}
-        {sortedRows.map((r, i) => {
-          // Filled pill background for a clear favorable/unfavorable read at a
-          // glance; "mid" stays neutral so it doesn't compete visually with
-          // the amber accent used elsewhere (odds, active toggles) -- but it
-          // still needs its own border, since --panel2 is only a shade off
-          // from the row's --panel background and was nearly invisible
-          // without one.
-          const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--neutral-badge-bg)";
-          const tierFg = r.tier === "mid" ? "var(--dim-strong)" : "#08131c";
-          const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
-          const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
-          const odds = probToAmericanOdds(r[sampleWindow]);
-          const pickId = `${sport}-${r.key}`;
-          const isAdded = pickIds.has(pickId);
-          const addBtn = (
-              <div
-                className="oswald"
-                role="button"
-                onClick={() => onTogglePick({ id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle, opp: r.opp, odds })}
-                title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
-                style={{
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  width: 36, height: 36,
-                  borderRadius: "50%",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 17, fontWeight: 700,
-                  border: `1.5px solid ${isAdded ? "var(--green)" : "var(--amber)"}`,
-                  color: isAdded ? "var(--green)" : "var(--amber)",
-                  background: isAdded ? "rgba(76,175,125,0.16)" : "var(--amber-dim)",
-                  boxShadow: isAdded ? "0 0 0 3px rgba(76,175,125,0.12)" : "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)",
-                  transition: "all .15s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1px) scale(1.06)";
-                  if (!isAdded) e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3), 0 0 0 4px var(--amber-dim)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0) scale(1)";
-                  if (!isAdded) e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)";
-                }}
-              >
-                {isAdded ? "✓" : "+"}
-              </div>
-            );
-            const chartBtn = r.playerId && (
-              <div
-                className="oswald cta-btn"
-                onClick={() => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team })}
-                title={`Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page`}
-                style={{
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  padding: "8px 12px",
-                  borderRadius: 4,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  letterSpacing: "0.02em",
-                  border: "1px solid var(--amber)",
-                  color: "var(--amber)",
-                  background: "var(--amber-dim)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                View Chart →
-              </div>
-            );
-            const oddsBlock = (
-              <div style={{ textAlign: isNarrow ? "left" : "right", flexShrink: 0 }}>
-                <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
-                  {formatOdds(odds)}
-                </div>
-                <div
-                  className="mono"
-                  title={`Hit rate over the trailing ${sampleWindow.slice(1)} games`}
-                  style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: hrColor(r[sampleWindow]) }}
-                >
-                  {Math.round(r[sampleWindow] * 100)}%
-                  <span style={{ color: "var(--dim)", fontWeight: 600, fontSize: 11 }}> ({sampleWindow.toUpperCase()})</span>
-                </div>
-              </div>
-            );
-
-            // Narrow screens stack into three rows (name/team, odds+actions,
-            // opp rank sits with the name block) instead of squeezing name,
-            // odds, and two action buttons into a single row -- that forced
-            // the player name to wrap onto 2-3 lines and left the action
-            // buttons cramped/overlapping.
-            if (isNarrow) {
-              return (
-                <div
-                  key={r.key}
-                  className="feed-row"
-                  style={{
-                    display: "flex", flexDirection: "column", gap: 10, padding: "12px 16px",
-                    borderBottom: i === sortedRows.length - 1 ? "none" : "1px solid var(--line)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <img src={r.icon} alt={r.team} width={30} height={30} style={{ objectFit: "contain", flexShrink: 0 }} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="oswald" style={{ fontSize: 14.5, color: "var(--text)" }}>
-                        {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
-                      </div>
-                      <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
-                        {r.subtitle}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "var(--dim-strong)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>OPP RANK</span>
-                    <span
-                      className="mono"
-                      title={`#${r.rank} in ${r.rankLabel}`}
-                      style={{
-                        display: "inline-block", padding: "1px 6px", borderRadius: 4,
-                        fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
-                        background: tierBg, color: tierFg, border: tierBorder,
-                      }}
-                    >
-                      #{r.rank}
-                    </span>
-                    <span>vs {r.opp}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    {oddsBlock}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {addBtn}
-                      {chartBtn}
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div
-                key={r.key}
-                className="feed-row"
-                style={{
-                  display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
-                  borderBottom: i === sortedRows.length - 1 ? "none" : "1px solid var(--line)",
-                }}
-              >
-                <img src={r.icon} alt={r.team} width={34} height={34} style={{ objectFit: "contain", flexShrink: 0 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="oswald" style={{ fontSize: 15, color: "var(--text)" }}>
-                    {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
-                  </div>
-                  <div style={{ fontSize: 13, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
-                    {r.subtitle}
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "var(--dim-strong)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>OPP RANK</span>
-                    <span
-                      className="mono"
-                      title={`#${r.rank} in ${r.rankLabel}`}
-                      style={{
-                        display: "inline-block", padding: "1px 6px", borderRadius: 4,
-                        fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
-                        background: tierBg, color: tierFg, border: tierBorder,
-                      }}
-                    >
-                      #{r.rank}
-                    </span>
-                    <span>vs {r.opp}</span>
-                  </div>
-                </div>
-                {oddsBlock}
-                {addBtn}
-                {chartBtn}
-              </div>
-            );
-          })}
+        {visibleRows.map((r, i) => (
+          <FeedRow
+            key={r.key}
+            r={r}
+            sport={sport}
+            sampleWindow={sampleWindow}
+            isNarrow={isNarrow}
+            isAdded={pickIds.has(`${sport}-${r.key}`)}
+            onTogglePick={onTogglePick}
+            onOpenProp={onOpenProp}
+            isLast={i === visibleRows.length - 1}
+          />
+        ))}
       </div>
+      {sortedRows.length > visibleRows.length && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+          <button
+            type="button"
+            className="oswald cta-btn"
+            onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
+            style={{ cursor: "pointer", padding: "9px 22px", borderRadius: 6, fontSize: 13, fontWeight: 700 }}
+          >
+            Show {Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} more ({visibleRows.length} of {sortedRows.length})
+          </button>
+        </div>
+      )}
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         {sport === "mlb"
@@ -10032,7 +11977,13 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
   if (compact) return null;
 
   return (
-    <div className="roster-panel">
+    // min-height holds this column's height steady across a team switch --
+    // the live active-roster/confirmed-lineup fetches that reshape `players`
+    // now deliberately keep showing the previous team's roster while they're
+    // in flight (see MLBPropsPage's nextGame/teamActiveRoster effects), so
+    // without this the column could still visibly shrink for a moment
+    // between the old roster clearing and the new one's players arriving.
+    <div className="roster-panel" style={{ minHeight: 360 }}>
       <div
         className="oswald"
         style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
@@ -10247,21 +12198,6 @@ function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headsho
               {team.label}
             </div>
             {(team.players || []).map(renderPlayerRow)}
-            {/* Optional -- only MLB's roster objects carry a `bullpen` array
-                 (see MLBPropsPage), so this is a no-op for every other sport. */}
-            {team.bullpen && team.bullpen.length > 0 && (
-              <>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "10px 0 6px", paddingTop: 8, borderTop: "1px solid var(--line)" }}>
-                  Bullpen
-                </div>
-                {team.bullpen.map((p) => (
-                  <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel2)", marginBottom: 6 }}>
-                    <span className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{p.name}</span>
-                    <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{p.throws}</span>
-                  </div>
-                ))}
-              </>
-            )}
           </div>
         ))}
       </div>
@@ -10929,7 +12865,11 @@ export default function PropLedger() {
         aria-label="Toggle Settings panel"
         title="Settings"
         style={{
-          position: "fixed", top: 16, right: 16, zIndex: 2000,
+          // Above every other fixed/high-z-index layer in the app (the
+          // lineup drawer's 3000, its backdrop, and the player-detail
+          // Filters bottom sheet's 3500/3501) so the gear never gets buried
+          // under an open panel -- previously at 2000, below all of them.
+          position: "fixed", top: "max(16px, env(safe-area-inset-top))", right: 16, zIndex: 4000,
           width: 36, height: 36, borderRadius: 8, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center",
           border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 18,
