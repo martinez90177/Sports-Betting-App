@@ -6,7 +6,7 @@ import { Redis } from "@upstash/redis";
 const SPORT_KEY = "baseball_mlb";
 const REGIONS = "us";
 const MARKETS = ["batter_hits", "batter_home_runs"];
-const ODDS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // per-game odds refresh window
+const ODDS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // per-game odds refresh window
 const EVENTS_CACHE_TTL_MS = 60 * 60 * 1000; // events list is free, but cache anyway to cut round-trips
 
 // The Odds API's event.home_team/away_team are full names ("New York
@@ -55,6 +55,17 @@ async function fetchEventOdds(apiKey, eventId) {
 // visitor actually asks about (?team=NYY), cached per-event for
 // ODDS_CACHE_TTL_MS -- cost scales with games people actually look at, not
 // the size of the day's schedule.
+//
+// Nothing here runs on page load: the frontend only calls this from the
+// "Get Odds" button's onClick (see the OddsPanel in src/PropLedger.jsx), so a
+// visitor who never presses it costs nothing. At a 12h TTL a game refreshes at
+// most twice a day = 4 credits/game/day, so even the full ~15-game slate being
+// opened daily lands near 60 credits/day against the 500/month tier.
+//
+// Caveat that comes with the longer TTL: the `stale` flag below is only true
+// when the upstream call FAILED and we fell back to an old copy. A plain cache
+// hit reports stale:false, which the UI labels "live" -- so odds fetched 11
+// hours ago still read as live. Surfacing `fetchedAt` there would fix it.
 export default async function handler(req, res) {
   const team = String(req.query.team || "").trim().toUpperCase();
   if (!team) {
