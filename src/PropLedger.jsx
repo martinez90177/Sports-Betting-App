@@ -6167,7 +6167,9 @@ const PIRATES_PLAYERS = [
   { id: "reynolds", name: "Bryan Reynolds", team: "PIT", pos: "LF", mlbId: 668804 },
   { id: "cook", name: "Billy Cook", team: "PIT", pos: "CF", mlbId: 695257 },
   { id: "ohearn", name: "Ryan O'Hearn", team: "PIT", pos: "RF", mlbId: 656811 },
-  { id: "ozuna", name: "Marcell Ozuna", team: "PIT", pos: "DH", mlbId: 542303 },
+  // Ozuna was released on 2026-08-05 after a career-worst slump; Simon was
+  // promoted from Triple-A Indianapolis and has taken over the DH spot.
+  { id: "rsimon", name: "Ronny Simon", team: "PIT", pos: "DH", mlbId: 682927 },
   { id: "ashcraft", name: "Braxton Ashcraft", team: "PIT", pos: "SP", mlbId: 677952 },
 ];
 const MARINERS_PLAYERS = [
@@ -6243,7 +6245,9 @@ const TIGERS_PLAYERS = [
   { id: "keith", name: "Colt Keith", team: "DET", pos: "3B", mlbId: 690993 },
   { id: "mcgonigle", name: "Kevin McGonigle", team: "DET", pos: "SS", mlbId: 805808 },
   { id: "greene", name: "Riley Greene", team: "DET", pos: "LF", mlbId: 682985 },
-  { id: "vierling", name: "Matt Vierling", team: "DET", pos: "CF", mlbId: 663837 },
+  // Vierling (adductor strain) has been out since 2026-07-30 with no return
+  // date; top prospect Clark was called up and has taken over center field.
+  { id: "mclark", name: "Max Clark", team: "DET", pos: "CF", mlbId: 703601 },
   { id: "carpenter", name: "Kerry Carpenter", team: "DET", pos: "RF", mlbId: 681481 },
   { id: "outman", name: "James Outman", team: "DET", pos: "DH", mlbId: 681546 },
   { id: "valdez", name: "Framber Valdez", team: "DET", pos: "SP", mlbId: 664285 },
@@ -6355,7 +6359,9 @@ const MARLINS_PLAYERS = [
   { id: "junk", name: "Janson Junk", team: "MIA", pos: "SP", mlbId: 676083 },
 ];
 const ATHLETICS_PLAYERS = [
-  { id: "langeliers", name: "Shea Langeliers", team: "ATH", pos: "C", mlbId: 669127 },
+  // Langeliers underwent surgery for a torn meniscus (out for the season);
+  // Heim has taken over as the primary catcher behind the plate.
+  { id: "heim", name: "Jonah Heim", team: "ATH", pos: "C", mlbId: 641680 },
   { id: "kurtz", name: "Nick Kurtz", team: "ATH", pos: "1B", mlbId: 701762 },
   { id: "mcneil", name: "Jeff McNeil", team: "ATH", pos: "2B", mlbId: 643446 },
   { id: "twhite", name: "Tommy White", team: "ATH", pos: "3B", mlbId: 695720 },
