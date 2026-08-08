@@ -930,7 +930,6 @@ function NBAPropsPage({ jumpTo }) {
             content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
             cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
           />
-          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
           <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
             {filtered.map((g, i) => {
               const v = statValue(g, market, rebSplit);
@@ -939,6 +938,10 @@ function NBAPropsPage({ jumpTo }) {
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
+          {/* Rendered after Bar (not before) so the dashed threshold line
+               draws on top of the bars instead of being clipped underneath
+               them -- later JSX = higher SVG paint order in Recharts. */}
+          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
         </BarChart>
       </ResponsiveContainer>
       </div>
@@ -5111,7 +5114,6 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             }
             cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
           />
-          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
           <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
             {filtered.map((g, i) => {
               const v = statValueNFL(g, market);
@@ -5120,6 +5122,10 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
+          {/* Rendered after Bar (not before) so the dashed threshold line
+               draws on top of the bars instead of being clipped underneath
+               them -- later JSX = higher SVG paint order in Recharts. */}
+          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
         </BarChart>
       </ResponsiveContainer>
       </div>
@@ -6373,7 +6379,6 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} />}
             cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
           />
-          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
           <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
             {filtered.map((g, i) => {
               const v = statValue(g, market, rebSplit);
@@ -6382,6 +6387,10 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
+          {/* Rendered after Bar (not before) so the dashed threshold line
+               draws on top of the bars instead of being clipped underneath
+               them -- later JSX = higher SVG paint order in Recharts. */}
+          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
         </BarChart>
       </ResponsiveContainer>
       </div>
@@ -8247,6 +8256,23 @@ function computeMLBGameConditions({ weather, homeAbbr }) {
 // lineups. The default (no variant) full-width bar is unchanged, still used
 // on mobile above the graph card.
 function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLabel }) {
+  // Mobile-only "move it out of the way" toggle -- collapses the compact bar
+  // down to a slim pill. Persisted the same way CollapsibleSection persists
+  // its own "Details" toggle (storageKey="mlb_game_conditions_details_open"),
+  // under a distinct key so the two don't clobber each other. Must run
+  // unconditionally, before the early-return below, since hooks can't be
+  // called conditionally (see SportsbookOddsPanel for the same pattern).
+  const [minimized, setMinimized] = useState(() => {
+    try { return sessionStorage.getItem("mlb_game_conditions_bar_open") === "0"; } catch { return false; }
+  });
+  const toggleMinimized = () => {
+    setMinimized((v) => {
+      const next = !v;
+      try { sessionStorage.setItem("mlb_game_conditions_bar_open", next ? "0" : "1"); } catch {}
+      return next;
+    });
+  };
+
   if (!nextGame?.venue) return null;
   const homeAbbr = nextGame.home ? teamAbbr : nextGame.opp;
   const { hrPct, runsPct, singlePct, verdict } = computeMLBGameConditions({ weather: nextGame.weather, homeAbbr });
@@ -8333,6 +8359,35 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLab
     );
   }
 
+  // This is the branch actually used for the mobile standalone bar (the
+  // `compact`-named variant above is, confusingly, the one embedded in the
+  // desktop card) -- so the "move it out of the way" minimize toggle lives
+  // here. Tapping the title row collapses everything below it down to just
+  // the venue line, using the same `minimized` state as the other branch
+  // (same sessionStorage key either way, since only one branch renders per
+  // viewport at a time).
+  if (minimized) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: "var(--s-4)" }}>
+        <div
+          onClick={toggleMinimized}
+          role="button"
+          aria-expanded={false}
+          title="Show game conditions"
+          style={{
+            display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+            padding: "8px 16px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)",
+            boxShadow: "var(--panel-shadow)", fontSize: 12, color: "var(--dim)", maxWidth: "100%",
+          }}
+        >
+          <span className="micro-label" style={{ color: "var(--text)", fontSize: 11 }}>Game Conditions</span>
+          <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{nextGame.venue}</span>
+          <span className="mono" style={{ color: "var(--amber)", fontSize: 10, flexShrink: 0 }}>▸</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", justifyContent: "center", marginBottom: "var(--s-4)" }}>
       {/* Everything below stacks in a centered column (rather than a single
@@ -8347,9 +8402,18 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLab
         boxShadow: "var(--panel-shadow)",
         fontSize: 12.5, color: "var(--dim)", maxWidth: "100%", textAlign: "center",
       }}>
-        <span className="micro-label" style={{ color: "var(--text)", fontSize: 11.5 }}>
-          Game Conditions · {nextGame.venue}
-        </span>
+        <div
+          onClick={toggleMinimized}
+          role="button"
+          aria-expanded={true}
+          title="Minimize game conditions"
+          style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+        >
+          <span className="micro-label" style={{ color: "var(--text)", fontSize: 11.5 }}>
+            Game Conditions · {nextGame.venue}
+          </span>
+          <span className="mono" style={{ color: "var(--dim)", fontSize: 10 }}>▾</span>
+        </div>
         {parkNarrative && <span>{MLB_TEAM_ROSTERS[homeAbbr]?.label || homeAbbr} home park — {parkNarrative}</span>}
         {nextGame.weather ? (
           <>
@@ -9246,6 +9310,47 @@ function ExpectedLineupPanel({ battingRoster, lineupRows, teamSplitRow, splitLab
   );
 }
 
+// Catches a render-time crash anywhere in MLBPropsPage (e.g. a player object
+// shape the graph/ledger code doesn't expect) and shows a recoverable message
+// instead of letting the whole page go blank. Only a class component can be
+// an error boundary -- React has no hook equivalent.
+class MLBPageErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ maxWidth: 480, margin: "60px auto", textAlign: "center", padding: "24px 16px" }}>
+          <div className="oswald" style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>
+            Something went wrong loading this player
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--dim)", marginBottom: 16 }}>
+            Try selecting a different player from the roster or the strip below.
+          </div>
+          <div
+            onClick={() => this.setState({ error: null })}
+            role="button"
+            className="oswald"
+            style={{
+              display: "inline-block", cursor: "pointer", padding: "8px 18px", borderRadius: 8,
+              border: "1px solid var(--amber)", color: "var(--amber)", background: "var(--amber-dim)",
+              fontSize: 12.5, fontWeight: 700,
+            }}
+          >
+            Try Again
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function MLBPropsPage({ jumpTo }) {
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -9749,7 +9854,17 @@ function MLBPropsPage({ jumpTo }) {
   const manyGames = isNarrow && filtered.length > 10;
 
   const isBinary = false;
-  const values = filtered.map((g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)));
+  // Filtered to finite numbers -- for one render right after switching
+  // between a batter and the starting pitcher, `allGames`/`market` can still
+  // be the previous player's (the game-log fetch and the market-reset effect
+  // below both resolve a render after playerId changes), so statValueMLB/
+  // statValueMLBPitcher can momentarily be asked for a field the other
+  // player's game-log shape doesn't have. Letting an undefined value reach
+  // `avg`/`topValue` below turned them into NaN, which crashed Recharts'
+  // <Bar minPointSize> invariant and blanked the whole page.
+  const values = filtered
+    .map((g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)))
+    .filter((v) => Number.isFinite(v));
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   const med = median(values);
   const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
@@ -9880,7 +9995,7 @@ function MLBPropsPage({ jumpTo }) {
     date: g.date,
     minutes: isPitcher ? formatOuts(g.outs) : g.pa,
     home: g.home,
-    defRank: MLB_TEAM_DEF[g.opp].rank,
+    defRank: MLB_TEAM_DEF[g.opp]?.rank ?? null,
     // undefined (not false) when there's nothing to preview or no boxscore
     // for the game, so an unknown lineup is never rendered as "sat out".
     previewOut:
@@ -10426,7 +10541,6 @@ function MLBPropsPage({ jumpTo }) {
               content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
               cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
             />
-            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
             <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
               {chartData.map((d, i) => {
                 if (d.isPlaceholder) {
@@ -10441,6 +10555,10 @@ function MLBPropsPage({ jumpTo }) {
               })}
               <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
             </Bar>
+            {/* Rendered after Bar (not before) so the dashed threshold line
+                 draws on top of the bars instead of being clipped underneath
+                 them -- later JSX = higher SVG paint order in Recharts. */}
+            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
           </BarChart>
         </ResponsiveContainer>
         </div>
@@ -10493,13 +10611,13 @@ function MLBPropsPage({ jumpTo }) {
                 const over = v > effectiveLine;
                 const push = !isBinary && v === effectiveLine;
                 const def = MLB_TEAM_DEF[g.opp];
-                const tier = mlbDefTier(def.rank);
+                const tier = mlbDefTier(def?.rank);
                 return (
                   <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
                     <div>{g.date}</div>
                     <div>{g.opp}</div>
-                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>#{def.rank}</div>
+                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
                     <div>{isPitcher ? formatOuts(g.outs) : g.pa}</div>
                     <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
@@ -10852,6 +10970,8 @@ function MLBPropsPage({ jumpTo }) {
       headshotFallback={(p) => mlbEspnHeadshot(p.id)}
       metaLine={(p) => p.pos}
       avatarBg={(p) => teamAvatarBackground(MLB_TEAM_COLORS, p.team)}
+      chipRole={(p) => p.pos === "SP"}
+      chipRoleLabel={() => "P"}
     />
     {/* Game Conditions: full-width, mobile only. Desktop (!compact) instead
          gets the compact variant inside the left roster gutter below -- a
@@ -13101,7 +13221,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
 // action via the drawer, not something you scroll or swipe into by
 // accident), plus a "Lineup" entry point into LineupDrawer for the full
 // two-team matchup. Replaces TeamRosterPanel's old per-side bottom sheet.
-function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg }) {
+function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, chipRole, chipRoleLabel }) {
   const compact = useIsNarrow(1100);
   const [drawerOpen, setDrawerOpen] = useState(false);
   if (!compact) return null;
@@ -13112,8 +13232,18 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
   // (see MLBPropsPage's nextGame effect) -- nothing to show yet.
   if (!stripPlayers.length) return null;
 
+  // chipRole is optional (only MLB passes it, to flag the starting pitcher) --
+  // when present, pull those players to the front of the strip so they read
+  // as a distinct group, the same "pitcher first" ordering TeamRosterPanel
+  // already uses for the desktop Starting Pitcher / Starting Lineup split.
+  const orderedPlayers = chipRole
+    ? [...stripPlayers.filter(chipRole), ...stripPlayers.filter((p) => !chipRole(p))]
+    : stripPlayers;
+  const firstNonRoleIdx = chipRole ? orderedPlayers.findIndex((p) => !chipRole(p)) : -1;
+
   const renderChip = (p) => {
     const active = p.id === activeId;
+    const isRole = chipRole && chipRole(p);
     return (
       <div
         key={p.id}
@@ -13122,7 +13252,7 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
         style={{
           display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0,
           width: 56, padding: "6px 4px 5px", borderRadius: 10, cursor: "pointer",
-          border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
+          border: `1px solid ${active ? "var(--amber)" : isRole ? "var(--amber-dim)" : "var(--line)"}`,
           background: active ? "var(--amber-dim)" : "var(--panel)",
         }}
       >
@@ -13146,6 +13276,19 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
               }
             }}
           />
+          {isRole && (
+            <span
+              className="mono"
+              style={{
+                position: "absolute", top: -4, right: -4, width: 15, height: 15, borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 9, fontWeight: 700, lineHeight: 1,
+                color: "#000", background: "var(--amber)", border: "1.5px solid var(--panel)",
+              }}
+            >
+              {(chipRoleLabel && chipRoleLabel(p)) || "P"}
+            </span>
+          )}
         </div>
         <div
           className="oswald"
@@ -13176,7 +13319,12 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
           Lineup
         </div>
         <div className="mobile-player-strip-scroll">
-          {stripPlayers.map(renderChip)}
+          {orderedPlayers.map((p, i) => (
+            <React.Fragment key={p.id}>
+              {i === firstNonRoleIdx && firstNonRoleIdx > 0 && <div className="mobile-player-strip-divider" />}
+              {renderChip(p)}
+            </React.Fragment>
+          ))}
         </div>
       </div>
       <LineupDrawer
@@ -14030,7 +14178,9 @@ export default function PropLedger() {
       )}
 
       {page === "mlb" && (
-        <MLBPropsPage jumpTo={jumpTo && jumpTo.sport === "mlb" ? jumpTo : null} />
+        <MLBPageErrorBoundary>
+          <MLBPropsPage jumpTo={jumpTo && jumpTo.sport === "mlb" ? jumpTo : null} />
+        </MLBPageErrorBoundary>
       )}
 
       {page === "feed" && (

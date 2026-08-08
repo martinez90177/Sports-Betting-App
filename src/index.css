@@ -723,6 +723,10 @@ select.select-sm:focus, select.select-sm:focus-visible {
   scrollbar-width: none;
 }
 .mobile-player-strip-scroll::-webkit-scrollbar { display: none; }
+.mobile-player-strip-divider {
+  flex-shrink: 0; align-self: stretch; width: 1px; margin: 4px 2px;
+  background: var(--line);
+}
 
 /* Backdrop is always mounted (not conditionally rendered) so the panel's
    transform transition has something to animate from on open, instead of
