@@ -6799,8 +6799,15 @@ const YANKEES_TEAM_ID = 147;
 const MLB_SCHEDULE_TTL_MS = 60 * 60 * 1000;
 const mlbScheduleCache = new Map();
 
-async function fetchMLBTeamNextGame(teamId) {
-  const cached = mlbScheduleCache.get(teamId);
+// `gamePk` pins the result to one specific game instead of "the team's next
+// non-final one". It only ever matters for a doubleheader, where those two
+// answers differ: without it, picking Gm 2 in the matchup dropdown would
+// still show Gm 1's probable starter and first pitch, since Gm 1 is the next
+// non-final game right up until it ends. Cached per (team, game) for the
+// same reason -- one team can now have two live answers on the same day.
+async function fetchMLBTeamNextGame(teamId, gamePk) {
+  const cacheId = gamePk ? `${teamId}_${gamePk}` : teamId;
+  const cached = mlbScheduleCache.get(cacheId);
   if (cached && Date.now() - cached.fetchedAt < MLB_SCHEDULE_TTL_MS) {
     return cached.game;
   }
@@ -6808,13 +6815,13 @@ async function fetchMLBTeamNextGame(teamId) {
   // weather is only meaningful once MLB has posted it for the game, and
   // lineups are usually posted 1-2 hours before first pitch, so both are
   // simply absent/empty until MLB actually publishes them.
-  const cacheKey = `mlb_next_game_${teamId}_v3`;
+  const cacheKey = `mlb_next_game_${cacheId}_v3`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Date.now() - parsed.fetchedAt < MLB_SCHEDULE_TTL_MS) {
-        mlbScheduleCache.set(teamId, parsed);
+        mlbScheduleCache.set(cacheId, parsed);
         return parsed.game;
       }
     }
@@ -6838,7 +6845,11 @@ async function fetchMLBTeamNextGame(teamId) {
   );
   const data = await res.json();
   const games = (data?.dates || []).flatMap((d) => d.games || []);
-  const upcoming = games.find((g) => g.status?.abstractGameState !== "Final") || games[0] || null;
+  const upcoming =
+    (gamePk && games.find((g) => g.gamePk === gamePk)) ||
+    games.find((g) => g.status?.abstractGameState !== "Final") ||
+    games[0] ||
+    null;
 
   let game = null;
   if (upcoming) {
@@ -6867,7 +6878,7 @@ async function fetchMLBTeamNextGame(teamId) {
   }
 
   const record = { game, fetchedAt: Date.now() };
-  mlbScheduleCache.set(teamId, record);
+  mlbScheduleCache.set(cacheId, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
   return game;
 }
@@ -7147,10 +7158,43 @@ function currentMLBDayKey() {
 const MLB_SLATE_TTL_MS = 15 * 60 * 1000;
 let mlbSlateCache = null;
 
+// MLB schedules a doubleheader as two separate games between the same two
+// teams on the same day, so a team legitimately appears twice on one slate.
+// Both are kept -- each half has its own probable starter, its own first
+// pitch and its own separately-bettable props -- and this is what tells them
+// apart: it returns 1 or 2 for a game that shares its pairing with another
+// on the slate, and null for every game on an ordinary single-game day.
+//
+// That null matters beyond cosmetics. Feed row keys only get a game suffix
+// when this returns a number, so on a normal day they stay byte-identical to
+// what they were before doubleheaders were handled -- and since a row key
+// becomes a My Picks id (`${sport}-${r.key}`, persisted to localStorage),
+// suffixing unconditionally would have orphaned every already-saved pick.
+//
+// The pairing is keyed on the sorted abbr pair rather than away/home as
+// listed, so the grouping survives a split doubleheader that swaps which
+// side is nominally home. Falls back to slate order (already sorted by first
+// pitch) if the API ever omits gameNumber.
+function mlbGameNumber(slate, game) {
+  const pairKey = (g) => [g.awayAbbr, g.homeAbbr].slice().sort().join("@");
+  const key = pairKey(game);
+  const siblings = slate.filter((g) => pairKey(g) === key);
+  if (siblings.length < 2) return null;
+  return game.gameNumber || siblings.indexOf(game) + 1;
+}
+
+// "Gm 2" for the second half of a doubleheader, "" otherwise -- so callers
+// can append it unconditionally without a ternary at every site.
+function mlbGameSuffix(slate, game) {
+  const n = mlbGameNumber(slate, game);
+  return n ? ` · Gm ${n}` : "";
+}
+
 // Every real MLB game scheduled "today" (per currentMLBDayKey), one fetch
 // for the whole league instead of one per team -- this is what lets the
 // Prop Feed's MATCHUP dropdown show only the teams actually playing, sorted
 // by first pitch, and why it only ever needs a single refetch a day.
+
 async function fetchMLBDaySlate() {
   const dayKey = currentMLBDayKey();
   if (mlbSlateCache && mlbSlateCache.dayKey === dayKey && Date.now() - mlbSlateCache.fetchedAt < MLB_SLATE_TTL_MS) {
@@ -7159,7 +7203,10 @@ async function fetchMLBDaySlate() {
   // v2: the cached shape gained home/awayLineupIds below, so a v1 payload
   // left over in sessionStorage would silently skip the confirmed-lineup
   // narrowing for the rest of the day.
-  const cacheKey = "mlb_day_slate_v2";
+  // v3: gained gamePk/gameNumber for doubleheaders (see mlbGameNumber) --
+  // a leftover v2 payload would leave both halves of a doubleheader
+  // indistinguishable, which is the exact case that used to collide.
+  const cacheKey = "mlb_day_slate_v3";
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -7181,6 +7228,11 @@ async function fetchMLBDaySlate() {
     .map((g) => ({
       date: g.gameDate,
       status: g.status?.detailedState || "Scheduled",
+      // Both halves of a doubleheader are kept (see mlbGameNumber) -- gamePk
+      // is the only field guaranteed to differ between them, and gameNumber
+      // is MLB's own 1/2 rather than one inferred from slate order.
+      gamePk: g.gamePk,
+      gameNumber: g.gameNumber,
       awayAbbr: MLB_TEAM_ID_ABBR[g.teams?.away?.team?.id] || "???",
       homeAbbr: MLB_TEAM_ID_ABBR[g.teams?.home?.team?.id] || "???",
       awayLineupIds: (g.lineups?.awayPlayers || []).map((p) => p.id),
@@ -8452,18 +8504,25 @@ function MLBPropsPage({ jumpTo }) {
   // `cancelled` guard below still makes sure only the *latest* team's fetch
   // is ever allowed to win that race, so a slow response from a team the
   // user has already switched away from can't clobber newer data.
+  // Which half of a doubleheader the matchup dropdown is pinned to, as a
+  // gamePk. Null (the normal case, and the state after any jump in from the
+  // Prop Feed) means "whatever this team's next non-final game is", which is
+  // the only sensible answer when the team plays once that day. A pk left
+  // over from a different team is harmless: that team's schedule won't
+  // contain it, so fetchMLBTeamNextGame falls back to the same default.
+  const [pickedGamePk, setPickedGamePk] = useState(null);
   const [nextGame, setNextGame] = useState(null);
   React.useEffect(() => {
     let cancelled = false;
     const teamId = MLB_ABBR_TEAM_ID[teamAbbr];
     const load = () => {
       if (!teamId) return;
-      fetchMLBTeamNextGame(teamId).then((g) => { if (!cancelled) setNextGame(g); });
+      fetchMLBTeamNextGame(teamId, pickedGamePk).then((g) => { if (!cancelled) setNextGame(g); });
     };
     load();
     const interval = setInterval(load, MLB_SCHEDULE_TTL_MS);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [teamAbbr]);
+  }, [teamAbbr, pickedGamePk]);
   const oppRoster = (nextGame && MLB_TEAM_ROSTERS[nextGame.opp]) || null;
 
   // Live active-roster safety filter (see fetchMLBTeamActiveRoster) -- keyed
@@ -8536,11 +8595,20 @@ function MLBPropsPage({ jumpTo }) {
     return mlbSlate.map((g, i) => ({
       id: `${g.awayAbbr}-${g.homeAbbr}-${i}`,
       teams: [g.awayAbbr, g.homeAbbr],
+      gamePk: g.gamePk,
       label: `${(MLB_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(MLB_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
-      time: matchupTimeLabel(g.date),
+      time: `${matchupTimeLabel(g.date)}${mlbGameSuffix(mlbSlate, g)}`,
     }));
   }, [mlbSlate]);
-  const activeMatchupId = matchupOptions.find((m) => m.teams.includes(teamAbbr))?.id || "";
+  // An explicit doubleheader pick wins, but only while it still belongs to
+  // the team on screen -- otherwise the team lookup, which is the only thing
+  // that can answer this after a jump in from the Prop Feed (that sets the
+  // team, never the game). Both halves share a team, so without the first
+  // clause the select would snap back to Gm 1 the moment you chose Gm 2.
+  const activeMatchupId =
+    matchupOptions.find((m) => m.gamePk === pickedGamePk && m.teams.includes(teamAbbr))?.id ||
+    matchupOptions.find((m) => m.teams.includes(teamAbbr))?.id ||
+    "";
 
   // Once the slate loads, snap the selection to the day's first scheduled
   // game (matchupOptions is already sorted by start time -- see
@@ -8589,6 +8657,10 @@ function MLBPropsPage({ jumpTo }) {
     setMarket(jumpTo.market);
     setLine(null);
     setH2h(false);
+    // A jump names a player, not a game -- drop any doubleheader pin so the
+    // page lands on that team's next game rather than a half of someone
+    // else's the dropdown happened to be pinned to.
+    setPickedGamePk(null);
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
@@ -9710,6 +9782,7 @@ function MLBPropsPage({ jumpTo }) {
           // switch instead of the whole cascade blocking one big paint.
           React.startTransition(() => {
             setTeamAbbr(nextTeam);
+            setPickedGamePk(mo.gamePk);
             setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
             setLine(null);
             setH2h(false);
@@ -9722,8 +9795,11 @@ function MLBPropsPage({ jumpTo }) {
         }}
       >
         {!matchupOptions.length && <option value="">Loading today's games…</option>}
+        {/* First pitch trails the teams (a native <option> can't stack it on
+             its own dim line the way the Prop Feed's MatchupPicker does), so
+             the matchup still reads first in the closed select. */}
         {matchupOptions.map((mo) => (
-          <option key={mo.id} value={mo.id}>{mo.label}</option>
+          <option key={mo.id} value={mo.id}>{mo.label} · {mo.time}</option>
         ))}
       </select>
     </div>
@@ -10708,7 +10784,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
     <div
       className="oswald"
       role="button"
-      onClick={() => onTogglePick({ id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle, opp: r.opp, odds })}
+      onClick={() => onTogglePick({ id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle, opp: r.gameLabel ? `${r.opp} · ${r.gameLabel}` : r.opp, odds })}
       title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
       style={{
         cursor: "pointer",
@@ -10792,7 +10868,9 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
       >
         #{r.rank}
       </span>
-      <span>vs {r.opp}</span>
+      {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
+           otherwise produce two visually identical rows per prop. */}
+      <span>vs {r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}</span>
     </div>
   );
 
@@ -11085,8 +11163,13 @@ function buildNFLFeedRows() {
 // teamsData: one entry per MLB team -- { players, gameLogsById, nextGame }.
 function buildMLBFeedRows(teamsData) {
   const rows = [];
-  teamsData.forEach(({ players, gameLogsById, nextGame }) => {
+  teamsData.forEach(({ players, gameLogsById, gameId, nextGame }) => {
     if (!nextGame) return;
+    // Empty on an ordinary day, so both the row key (and therefore the
+    // persisted My Picks id built from it) and the displayed opponent stay
+    // exactly as they were -- see mlbGameNumber.
+    const gameKeySuffix = nextGame.gameNumber ? `_g${nextGame.gameNumber}` : "";
+    const gameLabel = nextGame.gameNumber ? `Gm ${nextGame.gameNumber}` : null;
     players.forEach((player) => {
       const games = gameLogsById[player.id] || [];
       if (!games.length) return;
@@ -11100,7 +11183,9 @@ function buildMLBFeedRows(teamsData) {
         const hit = (v) => v > line;
         const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
         rows.push({
-          key: `mlb_${player.id}_${m.id}`,
+          key: `mlb_${player.id}_${m.id}${gameKeySuffix}`,
+          gameId,
+          gameLabel,
           playerId: player.id,
           marketId: m.id,
           category: MLB_MARKET_CATEGORY[m.id],
@@ -11165,9 +11250,14 @@ function parseMlbLiveBatterId(id) {
 // teamsData: one entry per MLB team -- { teamAbbr, pitcherGames, nextGame }.
 function buildMLBPitcherFeedRows(teamsData) {
   const rows = [];
-  teamsData.forEach(({ teamAbbr, pitcherGames, nextGame }) => {
+  teamsData.forEach(({ teamAbbr, pitcherGames, gameId, nextGame }) => {
     const pitcher = nextGame?.probablePitcher;
     if (!pitcher || !pitcherGames || !pitcherGames.length) return;
+    // A doubleheader's two halves normally have different starters, so these
+    // keys wouldn't collide on mlbId alone -- but they do before MLB names
+    // the second starter, when both halves can still report the same one.
+    const gameKeySuffix = nextGame.gameNumber ? `_g${nextGame.gameNumber}` : "";
+    const gameLabel = nextGame.gameNumber ? `Gm ${nextGame.gameNumber}` : null;
     MLB_PITCHER_MARKETS.forEach((m) => {
       const def = getMLBDefRank(m.id, nextGame.opp);
       const rank = def.rank;
@@ -11178,7 +11268,9 @@ function buildMLBPitcherFeedRows(teamsData) {
       const hit = (v) => v > line;
       const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
       rows.push({
-        key: `mlb_pitcher_${pitcher.mlbId}_${m.id}`,
+        key: `mlb_pitcher_${pitcher.mlbId}_${m.id}${gameKeySuffix}`,
+        gameId,
+        gameLabel,
         playerId: mlbLivePitcherId(teamAbbr, pitcher.mlbId),
         marketId: m.id,
         category: MLB_MARKET_CATEGORY[m.id],
@@ -11425,7 +11517,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           if (cancelled) return null;
           setMlbSlate(slate);
           const teamEntries = [];
-          slate.forEach((game) => {
+          slate.forEach((game, gameIndex) => {
+            // A doubleheader puts the same team on the slate twice, so this
+            // pushes two entries for it -- one per game, each with that
+            // game's own probable starter and first pitch. gameNumber is what
+            // keeps the two sets of rows distinct downstream; it's null on an
+            // ordinary day (see mlbGameNumber).
+            const gameNumber = mlbGameNumber(slate, game);
             [
               { abbr: game.awayAbbr, isHome: false },
               { abbr: game.homeAbbr, isHome: true },
@@ -11436,11 +11534,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 abbr,
                 roster,
                 lineupIds: isHome ? game.homeLineupIds : game.awayLineupIds,
+                // Same id the MATCHUP dropdown builds its options with (see
+                // mlbMatchupOptions), so the game filter can narrow to one
+                // half of a doubleheader instead of matching on team alone
+                // and catching both.
+                gameId: `${game.awayAbbr}-${game.homeAbbr}-${gameIndex}`,
                 nextGame: {
                   date: game.date,
                   opp: isHome ? game.awayAbbr : game.homeAbbr,
                   home: isHome,
                   status: game.status,
+                  gameNumber,
                   probablePitcher: isHome ? game.homeProbablePitcher : game.awayProbablePitcher,
                 },
               });
@@ -11459,7 +11563,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           // fewer game-log requests, not more, since a trimmed nine is never
           // larger than the static one.
           return Promise.all(
-            teamEntries.map(({ abbr, roster, lineupIds, nextGame }) =>
+            teamEntries.map(({ abbr, roster, lineupIds, gameId, nextGame }) =>
               fetchMLBTeamActiveRoster(MLB_ABBR_TEAM_ID[abbr])
                 .then((activeRoster) => reconcileMlbLineup(roster, { activeRoster, lineupIds, abbr }))
                 .then((liveRoster) =>
@@ -11471,6 +11575,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                     players: liveRoster.players,
                     gameLogsById: Object.fromEntries(entries),
                     pitcherGames,
+                    gameId,
                     nextGame,
                   }))
                 )
@@ -11505,7 +11610,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       id: `${g.awayAbbr}-${g.homeAbbr}-${i}`,
       teams: [g.awayAbbr, g.homeAbbr],
       label: `${(MLB_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(MLB_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
-      time: matchupTimeLabel(g.date),
+      time: `${matchupTimeLabel(g.date)}${mlbGameSuffix(mlbSlate, g)}`,
     }));
   }, [mlbSlate]);
 
@@ -11569,7 +11674,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     if (r.rank < rankLo || r.rank > rankHi) return false;
     if (showMatchupDropdown) {
       if (selectedGameIds.size > 0) {
-        const inSelectedGame = activeMatchupOptions.some((o) => selectedGameIds.has(o.id) && o.teams.includes(r.team));
+        // MLB rows carry the id of the exact game they were built from, so
+        // picking one half of a doubleheader narrows to that half. Matching
+        // on team alone (still the path for NFL, whose rows have no gameId)
+        // would catch both halves, since they share both teams.
+        const inSelectedGame = activeMatchupOptions.some((o) =>
+          selectedGameIds.has(o.id) && (r.gameId ? r.gameId === o.id : o.teams.includes(r.team))
+        );
         if (!inSelectedGame) return false;
       }
     } else if (teamFilter !== "all" && r.team !== teamFilter) {
