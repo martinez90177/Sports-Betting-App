@@ -89,6 +89,11 @@
   --green: #3ecf8e;
   --red: #ef5b5b;
   --red-dim: rgba(239,91,91,0.14);
+  /* Caution, distinct from both --red (something failed) and --amber (which
+     is the *accent*, and is whatever hue the user picked in Settings -- so it
+     can't carry a warning meaning). Used for data that loaded fine but is old
+     enough to distrust, e.g. the sportsbook odds age label. */
+  --warn: #e0a33e;
   --pos: var(--green);
   --neg: var(--red);
   --pos-dim: color-mix(in srgb, var(--pos) 14%, transparent);
@@ -167,6 +172,9 @@
   --green: #1f9d68;
   --red: #d6453f;
   --red-dim: rgba(214,69,63,0.12);
+  /* Darker than dark mode's #e0a33e -- that yellow is illegible as text on a
+     white panel. */
+  --warn: #9a6410;
   --pos: var(--green);
   --neg: var(--red);
   --pos-dim: color-mix(in srgb, var(--pos) 10%, transparent);

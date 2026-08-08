@@ -8383,6 +8383,25 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLab
 // other market shows a "not tracked" note instead of a dead button.
 const MLB_ODDS_MARKET_KEY = { h: "batter_hits", hr: "batter_home_runs" };
 
+// api/odds.js caches each game's lines for up to 12h, and its `stale` flag is
+// only set when the upstream call FAILED -- an ordinary cache hit comes back
+// stale:false. Labelling that "live" meant an 11-hour-old line could read as
+// current, which on a props app is the kind of thing someone acts on. Show the
+// actual age instead of a live/cached binary.
+function oddsAgeLabel(fetchedAt, stale) {
+  if (!fetchedAt) return { text: "age unknown", color: "var(--amber)" };
+  const mins = Math.max(0, Math.round((Date.now() - fetchedAt) / 60000));
+  const text =
+    mins < 2 ? "just now" : mins < 60 ? `${mins}m ago` : `${Math.round(mins / 60)}h ago`;
+  // --warn past 3h: loaded fine, but old enough that a line may have moved.
+  // --red when this is only on screen because the fetch failed -- then it
+  // isn't merely old, it's all we have. Deliberately not --amber: that is the
+  // user-picked accent, so it carries no warning meaning and is blue by
+  // default.
+  const color = stale ? "var(--red)" : mins >= 180 ? "var(--warn)" : "var(--dim)";
+  return { text: stale ? `cached · ${text}` : text, color };
+}
+
 // Sportsbook odds only ever fetch on a button press, never automatically.
 // The Odds API's free tier is a small shared monthly credit budget (see
 // api/odds.js), so switching markets/players shouldn't silently spend
@@ -8418,6 +8437,19 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
     }
     return out;
   }, [state.data, oddsMarketKey, playerName]);
+
+  // Re-render once a minute while a card is on screen so the age label keeps
+  // counting up -- otherwise a line fetched 40 minutes ago still reads "just
+  // now" until some unrelated interaction re-renders. setInterval rather than
+  // requestAnimationFrame: rAF never fires in a backgrounded tab, which is
+  // precisely when a left-open card would drift furthest from the truth. Must
+  // sit above the early return below, like the hooks it follows.
+  const [, tickAgeLabel] = useState(0);
+  React.useEffect(() => {
+    if (state.status !== "loaded") return undefined;
+    const id = setInterval(() => tickAgeLabel((n) => n + 1), 60000);
+    return () => clearInterval(id);
+  }, [state.status]);
 
   if (!oddsMarketKey) {
     return (
@@ -8487,7 +8519,10 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
             textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", justifyContent: "space-between",
           }}>
             <span>Sportsbook Odds</span>
-            <span>{state.data.stale ? "cached (stale)" : "live"}</span>
+            {(() => {
+              const age = oddsAgeLabel(state.data.fetchedAt, state.data.stale);
+              return <span style={{ color: age.color }}>{age.text}</span>;
+            })()}
           </div>
           {rows.map((r, i) => (
             <div
