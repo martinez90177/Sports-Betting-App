@@ -11212,7 +11212,6 @@ function buildWNBAFeedRows() {
         category: WNBA_MARKET_CATEGORY[m.id],
         icon: wnbaTeamLogo(player.team),
         avatar: wnbaHeadshot(player.espnId),
-        teamColor: (WNBA_TEAM_COLORS[player.team] || {}).primary,
         name: player.name,
         team: player.team,
         date: gameDate,
@@ -11617,6 +11616,11 @@ function FeedPctCell({ v }) {
   );
 }
 
+// Resolves the right team-colors map for teamAvatarBackground() from a
+// FeedRow's `sport` prop, so the prop-feed avatar ring uses the same
+// gradient treatment as the lineup panel across all four sports.
+const FEED_TEAM_COLORS = { nba: NBA_TEAM_COLORS, wnba: WNBA_TEAM_COLORS, nfl: NFL_TEAM_COLORS, mlb: MLB_TEAM_COLORS };
+
 // One feed row -- player avatar (team logo demoted to a corner badge on it,
 // instead of being the only image in the row), name/subtitle/matchup, the
 // L5/L10/L20/season splits strip, odds, and the add-to-picks/view-chart
@@ -11641,9 +11645,19 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
   const avatarEl = (
     <div style={{ position: "relative", width: avatarSize, height: avatarSize, flexShrink: 0 }}>
       <div style={{
-        position: "absolute", inset: 0, borderRadius: "50%", background: "#000",
-        border: `1.5px solid ${r.teamColor || "var(--line)"}`,
-        boxShadow: r.teamColor ? `0 0 6px 0 ${r.teamColor}66` : "none",
+        position: "absolute", inset: 0, borderRadius: "50%",
+        background: teamAvatarBackground(FEED_TEAM_COLORS[sport] || {}, r.team),
+        boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+      }} />
+      {/* Flat team-color disc behind the photo, inset to the same depth as
+           the <img> below -- keeps the gradient confined to the thin outer
+           ring instead of showing through wherever a headshot has
+           transparent padding (common on NFL/NBA/WNBA cutout photos), which
+           otherwise reads as a big flat blob instead of a crisp ring. Same
+           two-layer treatment as the player-card header avatar. */}
+      <div style={{
+        position: "absolute", inset: 2, borderRadius: "50%",
+        background: (FEED_TEAM_COLORS[sport] && (FEED_TEAM_COLORS[sport][r.team] || {}).primary) || "#000",
       }} />
       {r.avatar && (
         <img
@@ -11990,7 +12004,6 @@ function buildNBAFeedRows() {
         icon: nbaTeamLogo(player.team),
         avatar: espnHeadshot(player.espnId),
         avatarFallback: nbaHeadshot(player.nbaId),
-        teamColor: (NBA_TEAM_COLORS[player.team] || {}).primary,
         name: player.name,
         team: player.team,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
@@ -12040,7 +12053,6 @@ function buildNFLFeedRows() {
         category: NFL_MARKET_CATEGORY[m.id],
         icon: nflTeamLogo(player.team),
         avatar: NFL_HEADSHOTS[player.id],
-        teamColor: (NFL_TEAM_COLORS[player.team] || {}).primary,
         name: player.name,
         team: player.team,
         date: gameDate,
@@ -12094,7 +12106,6 @@ function buildMLBFeedRows(teamsData) {
           icon: mlbTeamLogo(player.team),
           avatar: mlbHeadshot(player.mlbId),
           avatarFallback: mlbEspnHeadshot(player.id),
-          teamColor: (MLB_TEAM_COLORS[player.team] || {}).primary,
           name: player.name,
           team: player.team,
           date: nextGame.date,
@@ -12183,7 +12194,6 @@ function buildMLBPitcherFeedRows(teamsData) {
         // The primary source (mlbHeadshot, keyed by mlbId directly) doesn't
         // have that limitation, so it's the only one that applies here.
         avatar: mlbHeadshot(pitcher.mlbId),
-        teamColor: (MLB_TEAM_COLORS[teamAbbr] || {}).primary,
         name: pitcher.name,
         team: teamAbbr,
         date: nextGame.date,
