@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
 } from "recharts";
 import NewsPage from "./NewsPage.jsx";
+import GamesPage from "./GamesPage.jsx";
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
 import ColorWheel from "./ColorWheel.jsx";
 
@@ -182,6 +183,33 @@ function groupMatchupsByDate(matchups) {
 // select closed.
 function matchupTimeLabel(dateStr) {
   return new Date(dateStr).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+// Every slate time on this page is rendered in the *viewer's* local zone, not
+// Eastern -- so a bare "7:10 PM" is already correct for whoever is reading it,
+// and a hardcoded "ET" would be an outright lie on the west coast. The zone
+// suffix is therefore only worth the pixels when the viewer isn't on Eastern
+// (where baseball schedules are quoted), which is the one case where the local
+// time won't match the time they saw quoted somewhere else.
+//
+// Read from the browser rather than an IP lookup: this is the OS setting, so it
+// stays right behind a VPN and while travelling, costs no network round trip,
+// and sends nothing to a third party.
+const VIEWER_ZONE = (() => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+})();
+const VIEWER_IS_EASTERN = VIEWER_ZONE === "America/New_York";
+
+function slateTimeLabel(dateStr) {
+  return new Date(dateStr).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    ...(VIEWER_IS_EASTERN ? {} : { timeZoneName: "short" }),
+  });
 }
 
 // New York Knicks starting five from the 2026 NBA Finals, so matchups can be
@@ -11539,6 +11567,168 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
   );
 }
 
+// The slate, spelled out. Without this the only way to see which games the feed
+// is drawn from is to open the GAMES dropdown, which means the answer to "what's
+// on today" costs a click and hides the table while you read it.
+//
+// Takes the same `options` array the dropdown does (see mlbMatchupOptions) and
+// writes back through the same setSelectedGameIds -- there is deliberately no
+// second slate source and no second filtering path, so the two controls can't
+// drift apart. Sport-agnostic on purpose: NFL/NBA/WNBA only need another call
+// site with a different logoFn.
+function TodaysGamesStrip({ options, selected, onChange, logoFn }) {
+  const scrollRef = React.useRef(null);
+  const activeRef = React.useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(el.scrollLeft < maxScroll - 2);
+  };
+
+  // Same rAF-plus-timer dance as TeammateChipRow: measuring synchronously
+  // reports scrollWidth === clientWidth because the team logos haven't laid out
+  // yet, which would leave the right arrow hidden on a row that very much does
+  // scroll. The timer covers tabs that aren't compositing (no rAF fires there
+  // at all), and the observer keeps the arrows honest across resizes.
+  React.useEffect(() => {
+    const raf = requestAnimationFrame(updateScrollState);
+    const timer = setTimeout(updateScrollState, 80);
+    const el = scrollRef.current;
+    const ro = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateScrollState) : null;
+    if (ro) ro.observe(el);
+    return () => { cancelAnimationFrame(raf); clearTimeout(timer); if (ro) ro.disconnect(); };
+  }, [options.length]);
+
+  // Where a smooth scroll is currently headed, so a second click chains onto the
+  // first instead of re-measuring a scrollLeft that is still mid-animation --
+  // otherwise an impatient double-click computes the same destination twice and
+  // the rail moves one step for two clicks. Cleared once the animation lands (or
+  // shortly after, if it was interrupted by a drag or the wheel).
+  const pendingScrollRef = React.useRef(null);
+  const pendingTimerRef = React.useRef(null);
+
+  React.useEffect(() => () => clearTimeout(pendingTimerRef.current), []);
+
+  // Roughly two cards a click -- far enough to feel like progress, short enough
+  // that you can still see where you came from. Anything landing within a card's
+  // width of either end goes the whole way instead: stopping a few pixels short
+  // leaves the arrow lit for one more click that visibly does nothing.
+  const scrollBy = (dir) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const from = pendingScrollRef.current == null ? el.scrollLeft : pendingScrollRef.current;
+    let target = from + dir * Math.max(240, el.clientWidth * 0.6);
+    if (target > maxScroll - 48) target = maxScroll;
+    if (target < 48) target = 0;
+    pendingScrollRef.current = target;
+    clearTimeout(pendingTimerRef.current);
+    pendingTimerRef.current = setTimeout(() => { pendingScrollRef.current = null; }, 500);
+    el.scrollTo({ left: target, behavior: "smooth" });
+  };
+
+  // Only one game selected means the user narrowed to it -- probably from the
+  // dropdown, where the card in question can easily be off-screen. Two or more
+  // is a multi-game view with no single card to favour, so leave the scroll
+  // position alone. block:"nearest" keeps this from yanking the page vertically.
+  const soleSelectedId = selected.size === 1 ? [...selected][0] : null;
+  React.useEffect(() => {
+    if (!soleSelectedId || !activeRef.current || !scrollRef.current) return;
+    activeRef.current.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+  }, [soleSelectedId]);
+
+  if (options.length === 0) return null;
+
+  // Arrows sit in their own gutters beside the rail rather than floating over
+  // the cards -- an arrow parked on top of a game card both hides the matchup
+  // and steals the click that was meant for it.
+  //
+  // Both gutters stay mounted whatever the scroll position, fading rather than
+  // unmounting. Two reasons: the cards don't reflow out from under the cursor
+  // mid-scroll, and the scroller's clientWidth stays constant, so the overflow
+  // measurement can't feed back into its own result (mounting an arrow narrows
+  // the rail, which can create the very overflow that mounted the arrow).
+  // Box, colours and layout live on .slate-arrow in index.css -- only the
+  // enabled/disabled state is inline. Keeping `display` out of here is what lets
+  // the phone media query drop the arrows at all; an inline display would
+  // outrank the class and the gutters would survive on a 375px screen.
+  const arrowStyle = (enabled) => ({
+    cursor: enabled ? "pointer" : "default",
+    opacity: enabled ? 1 : 0,
+    pointerEvents: enabled ? "auto" : "none",
+  });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+    <div className="slate-arrow" role="button" aria-label="Scroll games left" aria-hidden={!canScrollLeft} onClick={() => scrollBy(-1)} style={arrowStyle(canScrollLeft)}>‹</div>
+    <div
+      ref={scrollRef}
+      onScroll={updateScrollState}
+      className="slate-scroll"
+      style={{ flex: 1, minWidth: 0, gap: 8, paddingBottom: 6 }}
+    >
+      {options.map((o) => {
+        const isSelected = selected.has(o.id);
+        // Exclusive jump rather than the dropdown's additive toggle: a one-tap
+        // strip reads as "show me this game", and clicking the game you're
+        // already on is the obvious way back to the full slate. Stacking games
+        // is still available in the dropdown.
+        const activate = () => onChange(isSelected && selected.size === 1 ? new Set() : new Set([o.id]));
+        return (
+          <div
+            key={o.id}
+            ref={isSelected && o.id === soleSelectedId ? activeRef : null}
+            role="button"
+            tabIndex={0}
+            aria-pressed={isSelected}
+            aria-label={`${o.label}${o.note ? `, ${o.note}` : ""}, ${slateTimeLabel(o.startsAt)}`}
+            onClick={activate}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                activate();
+              }
+            }}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer",
+              padding: "7px 12px", borderRadius: "var(--r-md)",
+              transition: "background 0.12s ease, border-color 0.12s ease",
+              border: `1px solid ${isSelected ? "var(--amber)" : "var(--line)"}`,
+              background: isSelected ? "var(--amber-dim)" : "var(--panel)",
+            }}
+          >
+            {logoFn && (
+              <div style={{ display: "flex", flexShrink: 0 }}>
+                <img src={logoFn(o.teams[0])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)" }} />
+                <img src={logoFn(o.teams[1])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)", marginLeft: -6, border: "1.5px solid var(--panel2)" }} />
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+              <div className="oswald" style={{
+                fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap",
+                color: isSelected ? "var(--amber)" : "var(--text)",
+              }}>
+                {o.teams[0]} @ {o.teams[1]}
+              </div>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                {slateTimeLabel(o.startsAt)}
+                {o.note && ` · ${o.note}`}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+    <div className="slate-arrow" role="button" aria-label="Scroll games right" aria-hidden={!canScrollRight} onClick={() => scrollBy(1)} style={arrowStyle(canScrollRight)}>›</div>
+    </div>
+  );
+}
+
 // L5/L10/L20/season hit rate, graded green (favorable) to red (unfavorable) --
 // every row already computes all four (see hitRateWindow in each build*FeedRows),
 // this just puts all of them on screen together instead of only whichever one
@@ -12550,12 +12740,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // order), labeled "Away @ Home" so picking one shows just those two teams.
   const mlbMatchupOptions = useMemo(() => {
     if (!mlbSlate) return [];
-    return mlbSlate.map((g, i) => ({
-      id: `${g.awayAbbr}-${g.homeAbbr}-${i}`,
-      teams: [g.awayAbbr, g.homeAbbr],
-      label: `${(MLB_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(MLB_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
-      time: `${matchupTimeLabel(g.date)}${mlbGameSuffix(mlbSlate, g)}`,
-    }));
+    return mlbSlate.map((g, i) => {
+      const gameNumber = mlbGameNumber(mlbSlate, g);
+      return {
+        id: `${g.awayAbbr}-${g.homeAbbr}-${i}`,
+        teams: [g.awayAbbr, g.homeAbbr],
+        label: `${(MLB_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(MLB_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
+        time: `${matchupTimeLabel(g.date)}${mlbGameSuffix(mlbSlate, g)}`,
+        // `time` bakes the doubleheader suffix into one string, which is right
+        // for the dropdown but leaves nowhere to hang a timezone on. The strip
+        // formats its own label, so it gets the raw ISO and the tag separately.
+        startsAt: g.date,
+        note: gameNumber ? `Gm ${gameNumber}` : "",
+      };
+    });
   }, [mlbSlate]);
 
   // Matchup dropdown options for NFL -- one per game in the current week's
@@ -12568,6 +12766,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       teams: [g.awayAbbr, g.homeAbbr],
       label: `${(NFL_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(NFL_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
       time: matchupTimeLabel(g.date),
+      startsAt: g.date,
+      note: "",
     }));
   }, [nflSlate]);
 
@@ -13068,6 +13268,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           Tough matchup
         </span>
       </div>
+      {/* MLB only for now -- the component is sport-agnostic, but NFL's week
+          slate is 16 games deep and wants its own look at mobile before it
+          gets turned on there. */}
+      {sport === "mlb" && (
+        <TodaysGamesStrip
+          options={activeMatchupOptions}
+          selected={selectedGameIds}
+          onChange={setSelectedGameIds}
+          logoFn={mlbTeamLogo}
+        />
+      )}
       {/* .feed-table-wrap replaces the old inline overflow:hidden -- see
           index.css for why the horizontal overflow mode has to change with
           the viewport (it decides whether the sticky header below can pin
@@ -14081,6 +14292,17 @@ export default function PropLedger() {
     setPage(targetSport);
   };
 
+  // "View Props for this Game" on the Matchup Overview. The Prop Feed's own
+  // matchup filter (see GamesMultiSelect) is internal state keyed off the
+  // feed's own matchup list, so this lands on the right sport's feed rather
+  // than pre-filtering to the one game -- narrowing further would mean
+  // threading initial-filter state through PropFeedPage and reconciling two
+  // different game-id shapes.
+  const goToGameProps = (game) => {
+    setFeedSport(game.sport);
+    setPage("feed");
+  };
+
   // Live availability filter for the MLB half of the search index below.
   // Loaded lazily the first time the search box is focused rather than on
   // mount -- it fans out to 30 team-roster requests, and a session that never
@@ -14193,6 +14415,7 @@ export default function PropLedger() {
             setPage={setPage}
             options={[
               { id: "feed", label: "Prop Feed" },
+              { id: "games", label: "Games" },
               { id: "nfl", label: "NFL Props" },
               { id: "mlb", label: "MLB Props" },
               { id: "nba", label: "NBA Props" },
@@ -14228,6 +14451,8 @@ export default function PropLedger() {
       {page === "feed" && (
         <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} sport={feedSport} setSport={setFeedSport} />
       )}
+
+      {page === "games" && <GamesPage onViewProps={goToGameProps} />}
 
       {page === "news" && <NewsPage />}
 

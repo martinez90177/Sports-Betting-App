@@ -522,6 +522,51 @@ select.select:focus, select.select:focus-visible {
 .teammate-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 .teammate-scroll::-webkit-scrollbar { display: none; }
 
+/* The Today's Games strip takes the opposite call to .teammate-scroll above and
+   keeps a real scrollbar. It has to: a full MLB slate is 15 cards / ~2000px
+   against a ~1300px rail, so six games sat entirely offscreen with nothing on
+   the page hinting they existed -- and unlike the chip row, this one is the
+   page's answer to "what's on today", so a silently truncated list is a wrong
+   answer rather than a hidden extra. The step arrows in TodaysGamesStrip cover
+   pointer users who never think to drag a bar; this covers everyone else and,
+   more importantly, makes the overflow *visible* at rest. */
+.slate-scroll {
+  display: flex; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.slate-scroll::-webkit-scrollbar { height: 8px; }
+.slate-scroll::-webkit-scrollbar-track { background: transparent; }
+.slate-scroll::-webkit-scrollbar-thumb {
+  background: var(--line-strong); border-radius: var(--r-pill);
+}
+.slate-scroll::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+
+/* Step arrows flanking the slate rail. They sit in their own gutters rather
+   than floating over the cards -- an arrow parked on a game card hides the
+   matchup and swallows the click meant for it. TodaysGamesStrip only sets
+   opacity/pointer-events inline, so the media query below can still win. */
+.slate-arrow {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 14px; line-height: 1;
+  user-select: none;
+  transition: opacity 0.15s ease;
+}
+
+/* Phones swipe the rail directly, so the two arrow gutters buy nothing there --
+   and they are not cheap: 76px of a 375px screen is 22% of the rail, enough to
+   drop a whole game card off the visible run. Pointer users, who have no swipe
+   gesture, keep them. */
+@media (max-width: 639px) {
+  .slate-arrow { display: none; }
+}
+
 /* ---------- filters panel ----------
    A local spacing scale, deliberately not the global --s-N ramp. The panel's
    whole problem was that every gap in it was the same 16-20px, so nothing
@@ -745,3 +790,58 @@ select.select-sm:focus, select.select-sm:focus-visible {
   box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
 }
 .lineup-drawer-backdrop.open .lineup-drawer-panel { transform: translateX(0); }
+
+/* ------------------------------------------------------------------ Games
+   Hover/transition states for GamesPage + MatchupPage. Everything colour-y
+   stays inline in the components (same as the rest of the app); only the
+   things a style attribute genuinely can't express live here -- :hover,
+   scrollbar hiding, and the sticky date row. */
+
+.gm-card {
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease, transform 0.14s ease;
+}
+/* Accent rail that wipes in from the left edge on hover. The reference card
+   has no hover affordance beyond a faint border change; this is the page's
+   signature interaction and it follows the user's accent. */
+.gm-card::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--amber);
+  transform: scaleY(0); transform-origin: center;
+  transition: transform 0.16s ease;
+}
+.gm-card:hover::before,
+.gm-card:focus-visible::before { transform: scaleY(1); }
+.gm-card:hover { border-color: var(--amber-ring); background: var(--surface-2); }
+.gm-card:active { transform: scale(0.997); }
+.gm-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Sport pills and date items both dim when idle and come up to full text
+   colour on hover -- matching the reference, where only the active tab is
+   ever at full brightness at rest. */
+.gm-tab { transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease; }
+.gm-tab:hover { color: var(--text) !important; }
+
+/* Horizontal pill row: scrollable on mobile, no visible scrollbar. The
+   reference's iOS tab row runs off the right edge the same way. */
+.gm-scroll-x {
+  display: flex; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.gm-scroll-x::-webkit-scrollbar { display: none; }
+
+/* Desktop: only the date row pins (the hero, title, sport tabs and search
+   all scroll away -- see dfull/D00121). Mobile pins the whole header, so
+   the component raises this element's top offset instead. */
+.gm-sticky { position: sticky; top: 0; z-index: 20; }
+
+.gm-back { transition: color 0.12s ease; cursor: pointer; }
+.gm-back:hover { color: var(--text) !important; }
+
+.gm-cta { transition: filter 0.12s ease, transform 0.12s ease; cursor: pointer; }
+.gm-cta:hover { filter: brightness(1.08); }
+.gm-cta:active { transform: translateY(1px); }
+
+/* Zebra striping on the two-sided recent-form log, matching .feed-row. */
+.gm-form-row:nth-child(odd) { background: var(--row-stripe); }
