@@ -880,6 +880,21 @@ function NBAPropsPage({ jumpTo }) {
         padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
       }}
     >
+      {/* The launcher owns the popover, bottom sheet, click-outside and
+           Escape handling (shared with the other sports pages). Lives inside
+           the chart's own container (not the identity/header card) so it
+           reads as part of the chart -- anchored to this div's top-right
+           corner, in the empty space above the bars, on both mobile and
+           desktop alike. */}
+      <FilterPanelLauncher
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        activeCount={activeFilterCount}
+        compact={compact}
+        anchored
+      >
+        {filtersBody}
+      </FilterPanelLauncher>
       <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
@@ -1100,23 +1115,6 @@ function NBAPropsPage({ jumpTo }) {
            the separately-bordered boxes this page used to stack. Mirrors the
            MLB page's graphCard(). */}
       <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden", position: "relative" }}>
-        {/* Anchored (absolute card top-right) only above the roster
-             breakpoint, where GameInfoBar and playerIdentityRow both reserve
-             110px of right-side clearance for it. Below it the button drops
-             into normal flow as its own right-aligned row, where it cannot
-             overlap the season stats. */}
-        <div style={compact ? { padding: "10px 12px 0" } : undefined}>
-          <FilterPanelLauncher
-            open={filtersOpen}
-            onOpenChange={setFiltersOpen}
-            activeCount={activeFilterCount}
-            compact={compact}
-            anchored={!compact}
-          >
-            {filtersBody}
-          </FilterPanelLauncher>
-        </div>
-
         {!compact && (
           <GameInfoBar
             dateISO={matchup.date}
@@ -3525,6 +3523,20 @@ function FilterPanel({ activeCount = 0, onReset, children }) {
 // the launcher in normal flow pass it false.
 function FilterPanelLauncher({ open, onOpenChange, activeCount = 0, compact, anchored = true, children }) {
   const panelRef = React.useRef(null);
+  // Tracks whether we're the one who pushed the dummy history entry below,
+  // so requestClose() and the cleanup in the history effect never both try
+  // to consume it.
+  const pushedHistoryRef = React.useRef(false);
+
+  // Every explicit close path (button re-tap, backdrop tap, outside click,
+  // Escape) routes through here instead of calling onOpenChange(false)
+  // directly, so it also consumes the history entry the effect below pushed
+  // -- keeping the browser's back stack and filtersOpen in sync no matter
+  // which path closed it. See that effect for why this exists at all.
+  const requestClose = () => {
+    if (pushedHistoryRef.current) window.history.back();
+    else onOpenChange(false);
+  };
 
   React.useEffect(() => {
     if (!open) return;
@@ -3536,16 +3548,51 @@ function FilterPanelLauncher({ open, onOpenChange, activeCount = 0, compact, anc
       return () => { document.body.style.overflow = prevOverflow; };
     }
     const handlePointerDown = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) onOpenChange(false);
+      if (panelRef.current && !panelRef.current.contains(e.target)) requestClose();
     };
-    const handleKeyDown = (e) => { if (e.key === "Escape") onOpenChange(false); };
+    const handleKeyDown = (e) => { if (e.key === "Escape") requestClose(); };
     window.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, compact, onOpenChange]);
+  }, [open, compact]);
+
+  // Claims one same-document history entry for as long as the panel is
+  // open, so a native back gesture (hardware back button, edge-swipe) closes
+  // just the panel instead of falling through to the browser/webview --
+  // which, since this app never otherwise touches history, would navigate
+  // away from the whole SPA and reload it back to its default ("Prop Feed")
+  // state, losing whatever player/tab the user had open.
+  React.useEffect(() => {
+    if (!open) return;
+    // Idempotent on purpose: React (StrictMode in dev) can run this setup,
+    // its cleanup, and this setup again for a single logical open, and
+    // pushing twice would leave an orphaned entry neither requestClose nor a
+    // real back gesture would ever consume. Skipping the push when we're
+    // already sitting on our own dummy entry keeps exactly one on the stack
+    // no matter how many times setup re-runs.
+    if (!(window.history.state && window.history.state.filterPanel)) {
+      window.history.pushState({ filterPanel: true }, "");
+    }
+    pushedHistoryRef.current = true;
+    const handlePopState = () => {
+      pushedHistoryRef.current = false;
+      onOpenChange(false);
+    };
+    window.addEventListener("popstate", handlePopState);
+    // Deliberately does NOT call history.back() here: cleanup must stay a
+    // pure "undo the listener" step. Calling back() (an async, real
+    // navigation) from a cleanup breaks under StrictMode's double-invoke --
+    // the practice teardown would fire a real popstate that closes the panel
+    // right after it opens. Consuming the dummy entry only happens through
+    // requestClose (explicit close) or an actual user back gesture.
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      pushedHistoryRef.current = false;
+    };
+  }, [open, onOpenChange]);
 
   const wrapperStyle = anchored
     ? { position: "absolute", top: compact ? 10 : 14, right: compact ? 10 : 14, zIndex: 6 }
@@ -3557,7 +3604,7 @@ function FilterPanelLauncher({ open, onOpenChange, activeCount = 0, compact, anc
         <button
           type="button"
           className="oswald"
-          onClick={() => onOpenChange(!open)}
+          onClick={() => (open ? requestClose() : onOpenChange(true))}
           style={{
             display: "flex", alignItems: "center", gap: 6,
             cursor: "pointer", padding: "6px 10px 6px 12px", borderRadius: 999,
@@ -3589,7 +3636,7 @@ function FilterPanelLauncher({ open, onOpenChange, activeCount = 0, compact, anc
       {open && compact && (
         <>
           <div
-            onClick={() => onOpenChange(false)}
+            onClick={requestClose}
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 3500 }}
           />
           {/* Bottom sheet -- capped and internally scrollable so every filter
@@ -5056,6 +5103,21 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
         padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
       }}
     >
+      {/* The launcher owns the popover, bottom sheet, click-outside and
+           Escape handling (shared with the other sports pages). Lives inside
+           the chart's own container (not the identity/header card) so it
+           reads as part of the chart -- anchored to this div's top-right
+           corner, in the empty space above the bars, on both mobile and
+           desktop alike. */}
+      <FilterPanelLauncher
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        activeCount={activeFilterCount}
+        compact={compact}
+        anchored
+      >
+        {filtersBody}
+      </FilterPanelLauncher>
       <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
@@ -5284,25 +5346,6 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
            the separately-bordered boxes this page used to stack. Mirrors the
            MLB page's graphCard(). */}
       <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden", position: "relative" }}>
-        {/* Anchored (absolute card top-right) only above the roster
-             breakpoint, where GameInfoBar and playerIdentityRow both reserve
-             110px of right-side clearance for it. Below it the button drops
-             into normal flow as its own right-aligned row, where it can't
-             overlap the season stats. The panel itself is unaffected either
-             way: compact already renders it as a fixed bottom sheet that
-             doesn't care where the trigger sits. */}
-        <div style={compact ? { padding: "10px 12px 0" } : undefined}>
-          <FilterPanelLauncher
-            open={filtersOpen}
-            onOpenChange={setFiltersOpen}
-            activeCount={activeFilterCount}
-            compact={compact}
-            anchored={!compact}
-          >
-            {filtersBody}
-          </FilterPanelLauncher>
-        </div>
-
         {!compact && (
           <GameInfoBar
             dateISO={matchup.date}
@@ -6330,6 +6373,21 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
         padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
       }}
     >
+      {/* The launcher owns the popover, bottom sheet, click-outside and
+           Escape handling (shared with the other sports pages). Lives inside
+           the chart's own container (not the identity/header card) so it
+           reads as part of the chart -- anchored to this div's top-right
+           corner, in the empty space above the bars, on both mobile and
+           desktop alike. */}
+      <FilterPanelLauncher
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        activeCount={activeFilterCount}
+        compact={compact}
+        anchored
+      >
+        {filtersBody}
+      </FilterPanelLauncher>
       <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
@@ -6549,23 +6607,6 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
            the separately-bordered boxes this page used to stack. Mirrors the
            MLB page's graphCard(). */}
       <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden", position: "relative" }}>
-        {/* Anchored (absolute card top-right) only above the roster
-             breakpoint, where GameInfoBar and playerIdentityRow both reserve
-             110px of right-side clearance for it. Below it the button drops
-             into normal flow as its own right-aligned row, where it cannot
-             overlap the season stats. */}
-        <div style={compact ? { padding: "10px 12px 0" } : undefined}>
-          <FilterPanelLauncher
-            open={filtersOpen}
-            onOpenChange={setFiltersOpen}
-            activeCount={activeFilterCount}
-            compact={compact}
-            anchored={!compact}
-          >
-            {filtersBody}
-          </FilterPanelLauncher>
-        </div>
-
         {!compact && (
           <GameInfoBar
             dateISO={matchup.date}
@@ -10333,33 +10374,6 @@ function MLBPropsPage({ jumpTo }) {
   // over already exists.
   const graphCard = () => (
     <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r-lg)", marginBottom: 16, overflow: "hidden", position: "relative" }}>
-      {/* The launcher owns the popover, bottom sheet, click-outside and
-           Escape handling (shared with the other sports pages). Opening it
-           is also what kicks off the teammate boxscore prefetch that backs
-           the chip differentials.
-
-           Anchored (absolute card top-right) only on desktop, where
-           playerIdentityRow and GameConditionsBar both reserve 110px of
-           right-side clearance for it. In compact mode that reservation
-           drops to 12px while the button stayed pinned at top/right: 10,
-           which is what put it on top of the H/HR/RBI/R season stats. Going
-           unanchored below 1100px drops it into normal flow as its own
-           right-aligned row above the identity row, where it cannot overlap
-           anything at any width. The panel itself is unaffected either way:
-           compact already renders it as a position:fixed bottom sheet that
-           doesn't care where the trigger sits. */}
-      <div style={compact ? { padding: "10px 12px 0" } : undefined}>
-        <FilterPanelLauncher
-          open={filtersOpen}
-          onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
-          activeCount={activeFilterCount}
-          compact={compact}
-          anchored={!compact}
-        >
-          {filtersBody}
-        </FilterPanelLauncher>
-      </div>
-
       {/* Game Conditions -- desktop only, a full-width strip across the top
            of the card (PropsMadness reference) instead of sitting above the
            left TeamRosterPanel, which pushed that lineup panel down out of
@@ -10496,6 +10510,24 @@ function MLBPropsPage({ jumpTo }) {
           background: "var(--surface-2)", borderRadius: "var(--r-md)",
         }}
       >
+        {/* The launcher owns the popover, bottom sheet, click-outside and
+             Escape handling (shared with the other sports pages). Opening it
+             is also what kicks off the teammate boxscore prefetch that backs
+             the chip differentials.
+
+             Lives inside the chart's own container (not the identity/header
+             card) so it reads as part of the chart -- anchored to this div's
+             top-right corner, in the empty space above the bars, on both
+             mobile and desktop alike. */}
+        <FilterPanelLauncher
+          open={filtersOpen}
+          onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
+          activeCount={activeFilterCount}
+          compact={compact}
+          anchored
+        >
+          {filtersBody}
+        </FilterPanelLauncher>
         <div style={{
           height: "100%", width: "100%", boxSizing: "border-box",
           padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
