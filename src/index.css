@@ -845,3 +845,10 @@ select.select-sm:focus, select.select-sm:focus-visible {
 
 /* Zebra striping on the two-sided recent-form log, matching .feed-row. */
 .gm-form-row:nth-child(odd) { background: var(--row-stripe); }
+
+/* Live game pulse — subtle, not flashy */
+@keyframes gm-live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45); opacity: 1; }
+  70%  { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); opacity: 0.85; }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); opacity: 1; }
+}
