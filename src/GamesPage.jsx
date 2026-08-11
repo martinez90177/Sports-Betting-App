@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import MatchupPage from "./MatchupPage.jsx";
 import {
   SPORTS, teamLogo, dayKey, dayLabel, timeLabel, buildDateTabs,
   mockGames, mockNflWeekOne, fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate,
+  GAME_STATUS, statusSortKey, isActiveStatus,
 } from "./lib/gamesData.js";
 
 // Games page -- a recreation of Outlier's Games screen, minus everything
@@ -193,34 +194,48 @@ function GamesSearchBar({ value, onChange, isMobile }) {
   );
 }
 
-function TeamSide({ game, side, isMobile, align }) {
+function TeamSide({ game, side, isMobile, align, showScore }) {
   const t = game[side];
+  const muted = game.isFinal;
   const logo = (
     <img
       src={teamLogo(game.sport, t.abbr)}
       alt=""
       width={isMobile ? 26 : 28}
       height={isMobile ? 26 : 28}
-      style={{ objectFit: "contain", flexShrink: 0 }}
+      style={{
+        objectFit: "contain", flexShrink: 0,
+        opacity: muted ? 0.55 : 1,
+      }}
       onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
     />
   );
   const text = (
     <div style={{ minWidth: 0, textAlign: align }}>
       <div className="oswald" style={{
-        fontSize: isMobile ? 15.5 : 15, fontWeight: 700, color: "var(--text)",
+        fontSize: isMobile ? 15.5 : 15, fontWeight: 700,
+        color: muted ? "var(--dim)" : "var(--text)",
         lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
       }}>
-        {/* Desktop shows the full "Cincinnati Reds"; the iOS reference shows
-            just "Reds", which is also what keeps three columns fitting on a
-            390px screen. */}
         {isMobile ? t.name : t.full}
       </div>
-      {/* Records in the mono/tabular face the rest of PropPalace uses for
-          figures -- the reference sets them in the same sans as the name. */}
-      <div className="mono tnum" style={{ fontSize: isMobile ? 12 : 11.5, color: "var(--dim)", marginTop: 4, letterSpacing: "0.02em" }}>
-        {t.record}
-      </div>
+      {showScore && t.score != null ? (
+        <div className="mono tnum" style={{
+          fontSize: isMobile ? 20 : 22, fontWeight: 700,
+          color: muted ? "var(--dim-strong)" : "var(--text)",
+          marginTop: 3, letterSpacing: "-0.02em", lineHeight: 1.1,
+        }}>
+          {t.score}
+        </div>
+      ) : (
+        <div className="mono tnum" style={{
+          fontSize: isMobile ? 12 : 11.5,
+          color: muted ? "rgba(255,255,255,0.28)" : "var(--dim)",
+          marginTop: 4, letterSpacing: "0.02em",
+        }}>
+          {t.record}
+        </div>
+      )}
     </div>
   );
   return (
@@ -233,52 +248,130 @@ function TeamSide({ game, side, isMobile, align }) {
   );
 }
 
+function statusCenterContent(game, isMobile) {
+  const status = game.status || GAME_STATUS.UPCOMING;
+
+  if (status === GAME_STATUS.FINAL) {
+    return {
+      primary: "FINAL",
+      secondary: null,
+      live: false,
+      final: true,
+    };
+  }
+  if (status === GAME_STATUS.LIVE || status === GAME_STATUS.HALFTIME || status === GAME_STATUS.INTERMISSION) {
+    return {
+      primary: status === GAME_STATUS.HALFTIME ? "HALFTIME"
+        : status === GAME_STATUS.INTERMISSION ? "INTERMISSION"
+        : "LIVE",
+      secondary: game.periodLabel || null,
+      live: true,
+      final: false,
+    };
+  }
+  if (status === GAME_STATUS.STARTING_SOON) {
+    return {
+      primary: timeLabel(game.startsAt),
+      secondary: "STARTING SOON",
+      live: false,
+      final: false,
+    };
+  }
+  if (status === GAME_STATUS.DELAYED) {
+    return { primary: "DELAYED", secondary: null, live: false, final: false };
+  }
+  if (status === GAME_STATUS.POSTPONED) {
+    return { primary: "POSTPONED", secondary: null, live: false, final: false };
+  }
+  if (status === GAME_STATUS.SUSPENDED) {
+    return { primary: "SUSPENDED", secondary: null, live: false, final: false };
+  }
+  // UPCOMING
+  return {
+    primary: timeLabel(game.startsAt),
+    secondary: dayLabel(game.startsAt),
+    live: false,
+    final: false,
+  };
+}
+
 function GameCard({ game, isMobile, onSelect }) {
   const open = () => onSelect(game);
+  const status = game.status || GAME_STATUS.UPCOMING;
+  const showScore = (game.isLive || game.isFinal) && (game.away.score != null || game.home.score != null);
+  const center = statusCenterContent(game, isMobile);
+  const muted = game.isFinal;
+
   return (
     <div
       className="gm-card"
       role="button"
       tabIndex={0}
-      aria-label={`${game.away.full} at ${game.home.full}, ${dayLabel(game.startsAt)} ${timeLabel(game.startsAt)}`}
+      aria-label={`${game.away.full} at ${game.home.full}, ${center.primary}${center.secondary ? ` ${center.secondary}` : ""}`}
       onClick={open}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
       style={{
         position: "relative", overflow: "hidden",
-        background: "var(--panel)", border: "1px solid var(--line)",
+        background: muted ? "rgba(255,255,255,0.02)" : "var(--panel)",
+        border: `1px solid ${center.live ? "rgba(59, 130, 246, 0.35)" : muted ? "rgba(255,255,255,0.04)" : "var(--line)"}`,
         borderRadius: isMobile ? 14 : "var(--r-lg)",
-        padding: isMobile ? "14px 12px" : "16px 22px",
-        minHeight: isMobile ? 84 : 96,
+        padding: isMobile
+          ? (muted ? "11px 12px" : "14px 12px")
+          : (muted ? "13px 22px" : "16px 22px"),
+        minHeight: isMobile ? (muted ? 72 : 84) : (muted ? 80 : 96),
         display: "flex", flexDirection: "column", justifyContent: "center",
         boxSizing: "border-box",
+        opacity: muted ? 0.72 : 1,
+        transition: "opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease",
       }}
     >
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: isMobile ? 8 : 18 }}>
-        <TeamSide game={game} side="away" isMobile={isMobile} align="left" />
-        {/* Both reference layouts state the time as loose text (top-left on
-            desktop, stacked in the middle on mobile). Boxing it into a
-            medallion gives the row a real centre of gravity and is the most
-            recognisably different thing about this card. */}
-        {/* Kept narrow on phones: every px here comes straight out of the two
-            team-name columns either side, and "Blue Jays" has to fit. */}
+        <TeamSide game={game} side="away" isMobile={isMobile} align="left" showScore={showScore} />
+
         <div style={{
-          flexShrink: 0, textAlign: "center", minWidth: isMobile ? 64 : 92,
+          flexShrink: 0, textAlign: "center", minWidth: isMobile ? 68 : 96,
           padding: isMobile ? "6px 7px" : "7px 12px",
-          background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 8,
+          background: center.live
+            ? "rgba(59, 130, 246, 0.12)"
+            : muted
+              ? "rgba(255,255,255,0.03)"
+              : "var(--surface-2)",
+          border: `1px solid ${center.live ? "rgba(59, 130, 246, 0.3)" : muted ? "rgba(255,255,255,0.05)" : "var(--line)"}`,
+          borderRadius: 8,
         }}>
-          <div className="mono tnum" style={{
-            fontSize: isMobile ? 11.5 : 13, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap",
-          }}>
-            {timeLabel(game.startsAt)}
-          </div>
           <div style={{
-            fontSize: isMobile ? 9.5 : 9.5, marginTop: 3, color: "var(--dim)",
-            textTransform: "uppercase", letterSpacing: "0.09em", fontWeight: 600, whiteSpace: "nowrap",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
           }}>
-            {dayLabel(game.startsAt)}
+            {center.live && (
+              <span style={{
+                width: 6, height: 6, borderRadius: "50%",
+                background: "var(--amber)",
+                boxShadow: "0 0 0 0 rgba(59, 130, 246, 0.5)",
+                animation: "gm-live-pulse 1.6s ease-out infinite",
+              }} />
+            )}
+            <div className="mono tnum" style={{
+              fontSize: isMobile ? 11.5 : 13, fontWeight: 700,
+              color: center.live ? "var(--amber)" : muted ? "var(--dim)" : "var(--text)",
+              whiteSpace: "nowrap",
+              letterSpacing: center.live || center.final ? "0.04em" : 0,
+            }}>
+              {center.primary}
+            </div>
           </div>
+          {center.secondary && (
+            <div style={{
+              fontSize: isMobile ? 9.5 : 9.5, marginTop: 3,
+              color: center.live ? "rgba(147, 197, 253, 0.85)" : "var(--dim)",
+              textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600,
+              whiteSpace: "pre-line", lineHeight: 1.25,
+            }}>
+              {center.secondary}
+            </div>
+          )}
         </div>
-        <TeamSide game={game} side="home" isMobile={isMobile} align="right" />
+
+        <TeamSide game={game} side="home" isMobile={isMobile} align="right" showScore={showScore} />
       </div>
     </div>
   );
@@ -295,6 +388,7 @@ export default function GamesPage({ onViewProps }) {
   const [nflWeek, setNflWeek] = useState(() => mockNflWeekOne());
   const [dayGames, setDayGames] = useState([]);
   const [pickedKey, setPickedKey] = useState(null);
+  const pollRef = useRef(null);
 
   const tabs = useMemo(() => buildDateTabs(sport, nflWeek), [sport, nflWeek]);
 
@@ -304,6 +398,29 @@ export default function GamesPage({ onViewProps }) {
     if (pickedKey && tabs.some((t) => t.key === pickedKey)) return pickedKey;
     return sport === "nfl" ? tabs[0]?.key : dayKey(new Date());
   }, [pickedKey, tabs, sport]);
+
+  // Centralized slate loader. Used on mount/date change and by the live poller.
+  const loadSlate = React.useCallback((s, key, { silent = false } = {}) => {
+    const opts = { force: silent }; // polling always bypasses short TTL
+    if (s === "nfl") {
+      return fetchNflWeekOneSlate(opts).then((live) => {
+        if (live) setNflWeek(live);
+        return live;
+      });
+    }
+    if (!key) return Promise.resolve(null);
+    if (!silent) {
+      const offset = Math.round(
+        (new Date(`${key}T12:00:00`) - new Date(`${dayKey(new Date())}T12:00:00`)) / 86400000
+      );
+      setDayGames(mockGames(s, offset));
+    }
+    const load = s === "mlb" ? fetchMlbSlate(key, opts) : fetchWnbaSlate(key, opts);
+    return load.then((live) => {
+      if (live) setDayGames(live);
+      return live;
+    });
+  }, []);
 
   useEffect(() => {
     if (sport !== "nfl") return undefined;
@@ -324,16 +441,53 @@ export default function GamesPage({ onViewProps }) {
     return () => { cancelled = true; };
   }, [sport, activeKey]);
 
+  // Light live polling only for the currently viewed day when any game is
+  // still active. Pauses when the tab is hidden. Stops once everything is FINAL.
+  useEffect(() => {
+    const clearPoll = () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      loadSlate(sport, activeKey, { silent: true });
+    };
+
+    const base = sport === "nfl"
+      ? nflWeek.filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
+      : dayGames;
+    const needsPoll = base.some((g) => isActiveStatus(g.status));
+
+    clearPoll();
+    if (needsPoll) {
+      // 20s is a reasonable balance for scoreboard data without hammering.
+      pollRef.current = setInterval(tick, 20_000);
+    }
+    return clearPoll;
+  }, [sport, activeKey, dayGames, nflWeek, loadSlate]);
+
   const games = useMemo(() => {
     const base = sport === "nfl"
       ? nflWeek.filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
       : dayGames;
     const q = query.trim().toLowerCase();
-    if (!q) return base;
-    return base.filter((g) =>
-      [g.away.full, g.home.full, g.away.abbr, g.home.abbr, g.away.name, g.home.name]
-        .some((s) => String(s).toLowerCase().includes(q))
-    );
+    let list = base;
+    if (q) {
+      list = base.filter((g) =>
+        [g.away.full, g.home.full, g.away.abbr, g.home.abbr, g.away.name, g.home.name]
+          .some((s) => String(s).toLowerCase().includes(q))
+      );
+    }
+    // Phase B: dynamic ordering by live state, then start time within each group.
+    return [...list].sort((a, b) => {
+      const sa = statusSortKey(a.status || GAME_STATUS.UPCOMING);
+      const sb = statusSortKey(b.status || GAME_STATUS.UPCOMING);
+      if (sa !== sb) return sa - sb;
+      return new Date(a.startsAt) - new Date(b.startsAt);
+    });
   }, [sport, nflWeek, dayGames, activeKey, query]);
 
   // Slate summary shown under the title. Reads off the same list the cards
