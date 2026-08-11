@@ -219,13 +219,22 @@ const NFL_WEEK1 = [
 function makeGame(sport, awayAbbr, homeAbbr, iso, records) {
   const away = teamInfo(sport, awayAbbr);
   const home = teamInfo(sport, homeAbbr);
+  const start = new Date(iso).getTime();
+  let status = GAME_STATUS.UPCOMING;
+  if (start - Date.now() <= STARTING_SOON_MS && start > Date.now()) {
+    status = GAME_STATUS.STARTING_SOON;
+  }
   return {
     id: `${sport}-${awayAbbr}-${homeAbbr}-${iso}`,
     sport,
     startsAt: iso,
-    away: { ...away, record: records ? records[awayAbbr] || "" : "0-0" },
-    home: { ...home, record: records ? records[homeAbbr] || "" : "0-0" },
+    away: { ...away, record: records ? records[awayAbbr] || "" : "0-0", score: null },
+    home: { ...home, record: records ? records[homeAbbr] || "" : "0-0", score: null },
     probables: null,
+    status,
+    periodLabel: null,
+    isLive: false,
+    isFinal: false,
   };
 }
 
@@ -290,11 +299,15 @@ export function buildDateTabs(sport, nflGames) {
 // null on any failure so the caller can simply keep the mock.
 
 const SLATE_TTL_MS = 15 * 60 * 1000;
+// Live days need much fresher data; the poller also bypasses cache.
+const LIVE_TTL_MS = 18 * 1000;
 const slateCache = new Map();
 
-function cached(key) {
+function cached(key, { live = false } = {}) {
   const hit = slateCache.get(key);
-  if (hit && Date.now() - hit.at < SLATE_TTL_MS) return hit.value;
+  if (!hit) return undefined;
+  const ttl = live ? LIVE_TTL_MS : SLATE_TTL_MS;
+  if (Date.now() - hit.at < ttl) return hit.value;
   return undefined;
 }
 function store(key, value) {
@@ -309,15 +322,155 @@ const MLB_ID_ABBR = {
   137: "SF", 138: "STL", 139: "TB", 140: "TEX", 141: "TOR", 120: "WSH",
 };
 
+// ---------------------------------------------------------------- status
+//
+// Normalize provider-specific status into a small set the UI can sort and
+// style against. We never invent LIVE/FINAL from wall-clock time — only
+// from what the API reports.
+
+export const GAME_STATUS = {
+  UPCOMING: "UPCOMING",
+  STARTING_SOON: "STARTING_SOON",
+  LIVE: "LIVE",
+  HALFTIME: "HALFTIME",
+  INTERMISSION: "INTERMISSION",
+  DELAYED: "DELAYED",
+  POSTPONED: "POSTPONED",
+  SUSPENDED: "SUSPENDED",
+  FINAL: "FINAL",
+};
+
+const STARTING_SOON_MS = 30 * 60 * 1000; // 30 minutes before first pitch/tip
+
+function mlbStatus(g) {
+  const abs = g?.status?.abstractGameState || "";
+  const detailed = (g?.status?.detailedState || "").toLowerCase();
+  if (abs === "Final" || detailed.includes("final")) return GAME_STATUS.FINAL;
+  if (detailed.includes("postponed")) return GAME_STATUS.POSTPONED;
+  if (detailed.includes("suspended")) return GAME_STATUS.SUSPENDED;
+  if (detailed.includes("delay") || detailed.includes("delayed")) return GAME_STATUS.DELAYED;
+  if (abs === "Live") return GAME_STATUS.LIVE;
+  // Preview / Warmup / etc.
+  const start = new Date(g.gameDate).getTime();
+  if (start - Date.now() <= STARTING_SOON_MS && start > Date.now()) return GAME_STATUS.STARTING_SOON;
+  return GAME_STATUS.UPCOMING;
+}
+
+function mlbPeriodLabel(g) {
+  const ls = g?.linescore;
+  if (!ls) return null;
+  const inn = ls.currentInningOrdinal || (ls.currentInning ? `${ls.currentInning}` : null);
+  const half = ls.inningState || ls.inningHalf || "";
+  const outs = ls.outs;
+  if (!inn) return null;
+  const halfPart = half ? half.toUpperCase() : "";
+  const outPart = typeof outs === "number" ? ` • ${outs} OUT${outs === 1 ? "" : "S"}` : "";
+  return `${halfPart} ${inn}${outPart}`.trim();
+}
+
+function espnStatus(comp) {
+  const t = comp?.status?.type || {};
+  const name = (t.name || "").toUpperCase();
+  const state = (t.state || "").toLowerCase();
+  const desc = (t.description || t.detail || "").toLowerCase();
+
+  if (t.completed || state === "post" || name.includes("FINAL") || desc.includes("final")) {
+    return GAME_STATUS.FINAL;
+  }
+  if (name.includes("HALFTIME") || desc.includes("halftime")) return GAME_STATUS.HALFTIME;
+  if (name.includes("END OF") || name.includes("INTERMISSION") || desc.includes("intermission")) {
+    return GAME_STATUS.INTERMISSION;
+  }
+  if (name.includes("DELAY") || desc.includes("delay")) return GAME_STATUS.DELAYED;
+  if (name.includes("POSTPONED") || desc.includes("postponed")) return GAME_STATUS.POSTPONED;
+  if (name.includes("SUSPENDED") || desc.includes("suspended")) return GAME_STATUS.SUSPENDED;
+  if (state === "in" || name.includes("IN_PROGRESS") || name.includes("STATUS_IN_PROGRESS")) {
+    return GAME_STATUS.LIVE;
+  }
+  // pre
+  const start = new Date(comp?.date || 0).getTime();
+  if (start - Date.now() <= STARTING_SOON_MS && start > Date.now()) return GAME_STATUS.STARTING_SOON;
+  return GAME_STATUS.UPCOMING;
+}
+
+function espnPeriodLabel(comp, sport) {
+  const st = comp?.status || {};
+  const t = st.type || {};
+  if (t.completed) return "FINAL";
+  if ((t.name || "").toUpperCase().includes("HALFTIME")) return "HALFTIME";
+
+  const period = st.period;
+  const clock = st.displayClock || (typeof st.clock === "number" ? formatClock(st.clock) : null);
+
+  if (sport === "nfl") {
+    const situation = comp?.situation;
+    const down = situation?.downDistanceText || situation?.shortDownDistanceText;
+    const poss = situation?.possessionText;
+    const parts = [];
+    if (period) parts.push(ordinal(period));
+    if (clock && clock !== "0.0") parts.push(clock);
+    let label = parts.join(" • ");
+    if (down) label = label ? `${label}\n${down}` : down;
+    return label || t.shortDetail || null;
+  }
+
+  // WNBA / basketball
+  if (period) {
+    const q = period <= 4 ? `${ordinal(period)}` : `OT${period - 4}`;
+    return clock && clock !== "0.0" ? `${q} • ${clock}` : q;
+  }
+  return t.shortDetail || t.detail || null;
+}
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function formatClock(seconds) {
+  if (typeof seconds !== "number" || Number.isNaN(seconds)) return null;
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// Sort priority for the Games list. Lower number = higher on the page.
+export function statusSortKey(status) {
+  switch (status) {
+    case GAME_STATUS.LIVE:
+    case GAME_STATUS.HALFTIME:
+    case GAME_STATUS.INTERMISSION: return 0;
+    case GAME_STATUS.STARTING_SOON: return 1;
+    case GAME_STATUS.UPCOMING: return 2;
+    case GAME_STATUS.DELAYED:
+    case GAME_STATUS.SUSPENDED: return 3;
+    case GAME_STATUS.POSTPONED: return 4;
+    case GAME_STATUS.FINAL: return 5;
+    default: return 6;
+  }
+}
+
+export function isActiveStatus(status) {
+  return status === GAME_STATUS.LIVE
+    || status === GAME_STATUS.HALFTIME
+    || status === GAME_STATUS.INTERMISSION
+    || status === GAME_STATUS.STARTING_SOON;
+}
+
 // One request covers both surfaces: the card list needs teams/records/time,
 // and the Matchup Overview needs the probable starters -- hydrate=probablePitcher
-// returns them together, so opening a matchup costs no extra round trip.
-export async function fetchMlbSlate(key) {
+// + linescore returns them together, so opening a matchup costs no extra round trip.
+export async function fetchMlbSlate(key, { force = false } = {}) {
   const ck = `mlb:${key}`;
-  const hit = cached(ck);
-  if (hit !== undefined) return hit;
+  if (!force) {
+    const hit = cached(ck, { live: true });
+    if (hit !== undefined) return hit;
+  }
   try {
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${key}&hydrate=probablePitcher`);
+    const res = await fetch(
+      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${key}&hydrate=probablePitcher,linescore`
+    );
     const data = await res.json();
     const games = (data?.dates || []).flatMap((d) => d.games || []).map((g) => {
       const awayAbbr = MLB_ID_ABBR[g.teams?.away?.team?.id];
@@ -331,13 +484,38 @@ export async function fetchMlbSlate(key) {
         const p = g.teams?.[side]?.probablePitcher;
         return p ? { name: p.fullName, id: p.id } : null;
       };
+      const status = mlbStatus(g);
+      const isLive = status === GAME_STATUS.LIVE
+        || status === GAME_STATUS.HALFTIME
+        || status === GAME_STATUS.INTERMISSION;
+      const isFinal = status === GAME_STATUS.FINAL;
+      // Only surface scores once the game has actually started (or finished).
+      // Preview games often come back with score:0 from the API.
+      const awayScore = (isLive || isFinal) && typeof g.teams?.away?.score === "number"
+        ? g.teams.away.score : null;
+      const homeScore = (isLive || isFinal) && typeof g.teams?.home?.score === "number"
+        ? g.teams.home.score : null;
       return {
         id: `mlb-${g.gamePk}`,
+        gamePk: g.gamePk,
         sport: "mlb",
         startsAt: g.gameDate,
-        away: { ...teamInfo("mlb", awayAbbr), record: rec("away") },
-        home: { ...teamInfo("mlb", homeAbbr), record: rec("home") },
+        away: {
+          ...teamInfo("mlb", awayAbbr),
+          record: rec("away"),
+          score: awayScore,
+        },
+        home: {
+          ...teamInfo("mlb", homeAbbr),
+          record: rec("home"),
+          score: homeScore,
+        },
         probables: { away: pitcher("away"), home: pitcher("home") },
+        status,
+        // For finished games the center already says FINAL; period detail is noise.
+        periodLabel: isLive ? mlbPeriodLabel(g) : null,
+        isLive,
+        isFinal,
       };
     }).filter(Boolean).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
     return store(ck, games.length ? games : null);
@@ -356,21 +534,49 @@ function espnSlate(sport, events) {
     const awayAbbr = away?.team?.abbreviation;
     const homeAbbr = home?.team?.abbreviation;
     if (!awayAbbr || !homeAbbr) return null;
+
+    const status = espnStatus(comp);
+    const isLive = status === GAME_STATUS.LIVE
+      || status === GAME_STATUS.HALFTIME
+      || status === GAME_STATUS.INTERMISSION;
+    const isFinal = status === GAME_STATUS.FINAL;
+    const awayScoreRaw = away?.score;
+    const homeScoreRaw = home?.score;
+    const awayNum = awayScoreRaw != null && awayScoreRaw !== "" ? Number(awayScoreRaw) : null;
+    const homeNum = homeScoreRaw != null && homeScoreRaw !== "" ? Number(homeScoreRaw) : null;
+    // Only surface scores once the game has started or finished.
+    const awayScore = (isLive || isFinal) && Number.isFinite(awayNum) ? awayNum : null;
+    const homeScore = (isLive || isFinal) && Number.isFinite(homeNum) ? homeNum : null;
+
     return {
       id: `${sport}-${ev.id}`,
       sport,
       startsAt: ev.date,
-      away: { ...teamInfo(sport, awayAbbr), record: away?.records?.[0]?.summary || "" },
-      home: { ...teamInfo(sport, homeAbbr), record: home?.records?.[0]?.summary || "" },
+      away: {
+        ...teamInfo(sport, awayAbbr),
+        record: away?.records?.[0]?.summary || "",
+        score: awayScore,
+      },
+      home: {
+        ...teamInfo(sport, homeAbbr),
+        record: home?.records?.[0]?.summary || "",
+        score: homeScore,
+      },
       probables: null,
+      status,
+      periodLabel: isLive ? espnPeriodLabel(comp, sport) : null,
+      isLive,
+      isFinal,
     };
   }).filter(Boolean).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
 }
 
-export async function fetchWnbaSlate(key) {
+export async function fetchWnbaSlate(key, { force = false } = {}) {
   const ck = `wnba:${key}`;
-  const hit = cached(ck);
-  if (hit !== undefined) return hit;
+  if (!force) {
+    const hit = cached(ck, { live: true });
+    if (hit !== undefined) return hit;
+  }
   try {
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.wnba}/scoreboard?dates=${key.replace(/-/g, "")}`);
     const data = await res.json();
@@ -383,10 +589,12 @@ export async function fetchWnbaSlate(key) {
 
 // Pinned to week=1 on purpose -- PropLedger's own fetchNFLWeekSlate derives
 // the *current* week, but this page was asked for Week 1 specifically.
-export async function fetchNflWeekOneSlate() {
+export async function fetchNflWeekOneSlate({ force = false } = {}) {
   const ck = "nfl:week1";
-  const hit = cached(ck);
-  if (hit !== undefined) return hit;
+  if (!force) {
+    const hit = cached(ck, { live: true });
+    if (hit !== undefined) return hit;
+  }
   try {
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nfl}/scoreboard?seasontype=2&week=1&dates=2026`);
     const data = await res.json();
