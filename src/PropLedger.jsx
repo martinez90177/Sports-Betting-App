@@ -6911,7 +6911,9 @@ const DODGERS_PLAYERS = [
   { id: "hernandez", name: "Teoscar Hernández", team: "LAD", pos: "LF", mlbId: 606192 },
   { id: "muncy", name: "Max Muncy", team: "LAD", pos: "3B", mlbId: 571970 },
   { id: "pages", name: "Andy Pages", team: "LAD", pos: "CF", mlbId: 681624 },
-  { id: "rushing", name: "Dalton Rushing", team: "LAD", pos: "C", mlbId: 687221 },
+  // Rushing has a partial UCL tear and won't catch again in 2026; Rortvedt
+  // (acquired from the Mets at the deadline) is getting the lion's share of starts.
+  { id: "rortvedt", name: "Ben Rortvedt", team: "LAD", pos: "C", mlbId: 666163 },
   { id: "rojas", name: "Miguel Rojas", team: "LAD", pos: "2B", mlbId: 500743 },
   { id: "sheehan", name: "Emmet Sheehan", team: "LAD", pos: "SP", mlbId: 686218 },
 ];
@@ -6943,7 +6945,9 @@ const BRAVES_PLAYERS = [
   { id: "yastrzemski", name: "Mike Yastrzemski", team: "ATL", pos: "LF", mlbId: 573262 },
   // Acquired from Kansas City at the deadline (White went back the other way).
   { id: "lthomas", name: "Lane Thomas", team: "ATL", pos: "RF", mlbId: 657041 },
-  { id: "mateo", name: "Jorge Mateo", team: "ATL", pos: "SS", mlbId: 622761 },
+  // Mateo was designated for assignment 8/3 as Ha-Seong Kim returned from the
+  // IL; rookie Jarvis has held down the everyday shortstop job since May.
+  { id: "jarvis", name: "Jim Jarvis", team: "ATL", pos: "SS", mlbId: 805347 },
   { id: "lopez", name: "Reynaldo López", team: "ATL", pos: "SP", mlbId: 625643 },
 ];
 
@@ -7129,7 +7133,9 @@ const ANGELS_PLAYERS = [
   { id: "jlowe", name: "Josh Lowe", team: "LAA", pos: "LF", mlbId: 666139 },
   { id: "trout", name: "Mike Trout", team: "LAA", pos: "CF", mlbId: 545361 },
   { id: "adell", name: "Jo Adell", team: "LAA", pos: "RF", mlbId: 666176 },
-  { id: "soler", name: "Jorge Soler", team: "LAA", pos: "DH", mlbId: 624585 },
+  // Soler was designated for assignment 8/4; Ballesteros (acquired from the
+  // Cubs at the deadline) has taken over as the everyday DH.
+  { id: "ballesteros", name: "Moisés Ballesteros", team: "LAA", pos: "DH", mlbId: 694208 },
   // Soriano was traded to Toronto at the deadline; Kikuchi slots back in
   // as the rotation's veteran arm.
   { id: "kikuchi", name: "Yusei Kikuchi", team: "LAA", pos: "SP", mlbId: 579328 },
@@ -7172,7 +7178,9 @@ const NATIONALS_PLAYERS = [
   { id: "abrams", name: "CJ Abrams", team: "WSH", pos: "SS", mlbId: 682928 },
   { id: "lile", name: "Daylen Lile", team: "WSH", pos: "LF", mlbId: 695734 },
   { id: "jyoung", name: "Jacob Young", team: "WSH", pos: "CF", mlbId: 696285 },
-  { id: "wood", name: "James Wood", team: "WSH", pos: "RF", mlbId: 695578 },
+  // Wood strained his oblique 8/4 (10-day IL); Pinckney was called up for his
+  // MLB debut and has taken over the everyday right field job since.
+  { id: "pinckney", name: "Andrew Pinckney", team: "WSH", pos: "RF", mlbId: 687605 },
   { id: "tena", name: "José Tena", team: "WSH", pos: "DH", mlbId: 677588 },
   { id: "mikolas", name: "Miles Mikolas", team: "WSH", pos: "SP", mlbId: 571945 },
 ];
