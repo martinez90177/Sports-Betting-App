@@ -8808,7 +8808,26 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher, values }
         </div>
       )}
 
-      {state.status === "loaded" && !state.data?.odds && (
+      {/* Budget exhausted is a different situation from a failure, and it
+          gets its own message: retrying can't help, nothing is broken, and
+          the odds come back on their own next month. Offering a Retry link
+          here would invite someone to hammer an endpoint that is deliberately
+          refusing to spend. */}
+      {state.status === "loaded" && !state.data?.odds && state.data?.budgetExhausted && (
+        <div style={{
+          textAlign: "center", fontSize: 12.5, color: "var(--dim)", lineHeight: 1.5,
+          border: "1px solid var(--line)", borderRadius: 6, padding: "12px 14px",
+        }}>
+          <div style={{ color: "var(--warn)", fontWeight: 700, marginBottom: 4 }}>
+            Monthly odds budget reached
+          </div>
+          Live sportsbook odds run on a free tier of {state.data.creditCap} lookups
+          a month, and this month's are used up. Everything else on this page —
+          the hit rates and game logs — is unaffected. Resets on the 1st.
+        </div>
+      )}
+
+      {state.status === "loaded" && !state.data?.odds && !state.data?.budgetExhausted && (
         <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--dim)" }}>
           {state.data?.note || state.data?.error || "No sportsbook odds found for this game."}
           <span style={{ marginLeft: 8, color: "var(--amber)", cursor: "pointer", textDecoration: "underline" }} onClick={fetchOdds}>Retry</span>
@@ -8830,7 +8849,10 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher, values }
             <span>Sportsbook Odds</span>
             {(() => {
               const age = oddsAgeLabel(state.data.fetchedAt, state.data.stale);
-              return <span style={{ color: age.color }}>{age.text}</span>;
+              // Out of budget but with an old copy to show: say why it can't
+              // refresh, rather than letting it read as an ordinary stale card.
+              const text = state.data.budgetExhausted ? `${age.text} · budget reached` : age.text;
+              return <span style={{ color: age.color }}>{text}</span>;
             })()}
           </div>
           {rows.map((r, i) => (
@@ -9766,7 +9788,19 @@ function MLBPropsPage({ jumpTo }) {
       gamePk: g.gamePk,
       label: `${(MLB_TEAM_ROSTERS[g.awayAbbr] || {}).label || g.awayAbbr} @ ${(MLB_TEAM_ROSTERS[g.homeAbbr] || {}).label || g.homeAbbr}`,
       time: `${matchupTimeLabel(g.date)}${mlbGameSuffix(mlbSlate, g)}`,
+      date: g.date,
     }));
+  }, [mlbSlate]);
+
+  // Heading for the dropdown's single group, in the same format
+  // groupMatchupsByDate produces for the other sports ("Friday, August 14")
+  // so the two look identical. Taken from the slate's own first game rather
+  // than from today's date: the day rolls over at midnight UTC upstream, and
+  // the games are what the heading is actually describing.
+  const mlbSlateDayLabel = useMemo(() => {
+    const first = mlbSlate && mlbSlate[0];
+    if (!first) return "Today's games";
+    return new Date(first.date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   }, [mlbSlate]);
   // An explicit doubleheader pick wins, but only while it still belongs to
   // the team on screen -- otherwise the team lookup, which is the only thing
@@ -10945,29 +10979,34 @@ function MLBPropsPage({ jumpTo }) {
   // so it can render as a compact top header on mobile instead of after
   // the whole tab content, where it used to land at the bottom of the page.
   const matchupSelectorBlock = (
-    <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20 }}>
-      <select
-        className="select"
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20, width: compact ? "100%" : "auto" }}>
+      {/* GameSelect rather than a native <select>: this was the only sport
+          page still on the plain control, so it was the only one whose game
+          dropdown showed no team logos. Grouped under a single day heading
+          because this slate is always exactly one day (fetchMLBDaySlate), as
+          opposed to NFL/WNBA which span a week. */}
+      <GameSelect
+        groups={matchupOptions.length ? [{ label: mlbSlateDayLabel, matchups: matchupOptions }] : []}
         value={activeMatchupId}
-        onChange={(e) => {
-          const mo = matchupOptions.find((m) => m.id === e.target.value);
-          if (!mo) return;
-          // Always the home team (teams[1], not the away team at
-          // teams[0]) -- picking a *different* matchup only fires this
-          // once, but selecting this same option again later (e.g.
-          // after clicking away to another game and back) re-fires it
-          // too, and defaulting to teams[0] every time meant that
-          // second pick flipped left/right from whichever side you'd
-          // actually been viewing, since it always landed on the away
-          // team regardless. A fixed side for a given matchup is stable
-          // across re-selections.
+        logoFn={mlbTeamLogo}
+        compact={compact}
+        emptyLabel={mlbSlate ? "No games today" : "Loading today's games…"}
+        onChange={(mo) => {
+          // Always the home team (teams[1], not the away team at teams[0])
+          // -- picking a *different* matchup only fires this once, but
+          // selecting this same option again later (e.g. after clicking away
+          // to another game and back) re-fires it too, and defaulting to
+          // teams[0] every time meant that second pick flipped left/right
+          // from whichever side you'd actually been viewing, since it always
+          // landed on the away team regardless. A fixed side for a given
+          // matchup is stable across re-selections.
           const nextTeam = mo.teams[1];
           // startTransition marks this whole batch of state (which cascades
           // into re-fetching nextGame/teamActiveRoster/oppActiveRoster and
           // re-deriving both roster columns, the chart, and the game log)
-          // as lower priority than, say, the select element's own click
-          // response -- lets React keep the UI responsive through the
-          // switch instead of the whole cascade blocking one big paint.
+          // as lower priority than the dropdown's own click response -- lets
+          // React keep the UI responsive through the switch instead of the
+          // whole cascade blocking one big paint.
           React.startTransition(() => {
             setTeamAbbr(nextTeam);
             setPickedGamePk(mo.gamePk);
@@ -10976,20 +11015,7 @@ function MLBPropsPage({ jumpTo }) {
             setH2h(false);
           });
         }}
-        style={{
-          width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          textAlign: "center", textAlignLast: "center",
-        }}
-      >
-        {!matchupOptions.length && <option value="">Loading today's games…</option>}
-        {/* First pitch trails the teams (a native <option> can't stack it on
-             its own dim line the way the Prop Feed's MatchupPicker does), so
-             the matchup still reads first in the closed select. */}
-        {matchupOptions.map((mo) => (
-          <option key={mo.id} value={mo.id}>{mo.label} · {mo.time}</option>
-        ))}
-      </select>
+      />
     </div>
   );
 
@@ -11806,7 +11832,10 @@ function GameOptionRow({ logoFn, teams, time, label, onClick, indicator, highlig
 // reads clearly in the Prop Feed's GAMES popover was reduced to bare matchup
 // names here. Takes the grouped shape groupMatchupsByDate returns, so the
 // date headings survive the switch.
-function GameSelect({ groups, value, onChange, logoFn, compact }) {
+// `emptyLabel` covers the case where the slate hasn't arrived yet -- MLB's
+// games are fetched live, so its dropdown has a real loading state that the
+// static NFL/WNBA/NBA slates don't.
+function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel }) {
   const [open, setOpen] = useState(false);
   const wrapRef = React.useRef(null);
   const { floatRef, anchorStyle } = useCenteredPanel(open);
@@ -11827,11 +11856,23 @@ function GameSelect({ groups, value, onChange, logoFn, compact }) {
   // empty side. That used to surface only when you picked that game; here it
   // runs for every row, so an unguarded read would take the whole panel down
   // rather than just dropping one row's logos.
+  //
+  // MLB is the exception and gets the first branch: its slate is built live
+  // from the day's schedule (see matchupOptions in MLBPropsPage) and already
+  // carries the [away, home] pair directly, with no teamA/teamB rosters to
+  // read through. Supporting that shape here is what lets MLB use this
+  // component instead of the plain <select> it had, which was the only sport
+  // page without team logos in its dropdown.
   const teamsOf = (m) => {
+    if (Array.isArray(m.teams) && m.teams.length === 2 && m.teams.every(Boolean)) return m.teams;
     const abbr = (side) => side?.players?.[0]?.team;
     const pair = [abbr(m.teamA), abbr(m.teamB)];
     return pair.every(Boolean) ? pair : null;
   };
+  // Same idea for the start time: MLB pre-formats it (it has to, because a
+  // doubleheader needs a "Gm 1"/"Gm 2" suffix that a raw date can't express),
+  // while the other sports carry a date for this to format.
+  const timeOf = (m) => m.time || matchupTimeLabel(m.date);
   const current = groups.flatMap((g) => g.matchups).find((m) => m.id === value);
   const currentTeams = current ? teamsOf(current) : null;
 
@@ -11859,7 +11900,7 @@ function GameSelect({ groups, value, onChange, logoFn, compact }) {
           </span>
         )}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-          {current ? current.label : "Select a game"}
+          {current ? current.label : emptyLabel || "Select a game"}
         </span>
         <span className="mono" style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>▾</span>
       </button>
@@ -11873,7 +11914,7 @@ function GameSelect({ groups, value, onChange, logoFn, compact }) {
                   key={m.id}
                   logoFn={logoFn}
                   teams={teamsOf(m)}
-                  time={matchupTimeLabel(m.date)}
+                  time={timeOf(m)}
                   label={m.label}
                   highlight={m.id === value}
                   indicator={m.id === value ? <SelectedCheck /> : null}

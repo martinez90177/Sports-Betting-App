@@ -9,6 +9,26 @@ const MARKETS = ["batter_hits", "batter_home_runs"];
 const ODDS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // per-game odds refresh window
 const EVENTS_CACHE_TTL_MS = 60 * 60 * 1000; // events list is free, but cache anyway to cut round-trips
 
+// The free tier is 500 credits/month and there was previously nothing stopping
+// this endpoint from spending all of them. The budget note further down works
+// out that a fully-used day costs ~60 credits -- about eight days of the
+// month's entire allowance -- so the ceiling is genuinely reachable, and
+// hitting it means the Odds API starts refusing calls and the only real-odds
+// feature in the app breaks silently on the live site.
+//
+// The cap is set below 500 on purpose: the remainder is headroom to notice and
+// react before the account is actually dry.
+const ODDS_MONTHLY_CREDIT_CAP = 450;
+const CREDITS_PER_EVENT_FETCH = MARKETS.length; // x1 region ("us")
+
+// Counter resets by rolling the month into the key rather than by scheduling
+// anything -- a new month is simply a key that doesn't exist yet. UTC so the
+// rollover can't happen twice in different deployment regions.
+function creditKey(now = new Date()) {
+  return `odds-credits:${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+const CREDIT_KEY_TTL_S = 45 * 24 * 60 * 60; // outlives its month, then self-cleans
+
 // The Odds API's event.home_team/away_team are full names ("New York
 // Yankees"), but the frontend only knows team abbreviations -- match on each
 // team's nickname (unique enough across all 30 clubs) rather than requiring
@@ -45,7 +65,32 @@ async function fetchEventOdds(apiKey, eventId) {
   const url = `https://api.the-odds-api.com/v4/sports/${SPORT_KEY}/events/${eventId}/odds?apiKey=${apiKey}&regions=${REGIONS}&markets=${MARKETS.join(",")}&oddsFormat=american`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Odds API responded ${res.status}`);
-  return res.json();
+  // The API reports the account's real usage on every response. That's the
+  // authoritative number -- our own counter can drift (a failed request that
+  // still counted upstream, or spending from another deployment sharing the
+  // key) -- so when the header is present we trust it over our tally.
+  const remaining = Number(res.headers.get("x-requests-remaining"));
+  const used = Number(res.headers.get("x-requests-used"));
+  return {
+    data: await res.json(),
+    remaining: Number.isFinite(remaining) ? remaining : null,
+    used: Number.isFinite(used) ? used : null,
+  };
+}
+
+// Reads the month's spend, preferring the figure the API itself last reported.
+async function readCreditState(redis) {
+  const [spent, reported] = await Promise.all([
+    redis.get(creditKey()).catch(() => null),
+    redis.get("odds-credits:reported").catch(() => null),
+  ]);
+  const counted = Number(spent) || 0;
+  // `used` from the API counts the whole billing month across every key user,
+  // so it's the safer of the two whenever it's higher than our own tally.
+  const authoritative = reported && Number.isFinite(Number(reported.used))
+    ? Math.max(counted, Number(reported.used))
+    : counted;
+  return { counted, authoritative, reported };
 }
 
 // Cost per live event fetch = MARKETS.length x regions = 2 credits. Unlike
@@ -62,10 +107,11 @@ async function fetchEventOdds(apiKey, eventId) {
 // most twice a day = 4 credits/game/day, so even the full ~15-game slate being
 // opened daily lands near 60 credits/day against the 500/month tier.
 //
-// Caveat that comes with the longer TTL: the `stale` flag below is only true
-// when the upstream call FAILED and we fell back to an old copy. A plain cache
-// hit reports stale:false, which the UI labels "live" -- so odds fetched 11
-// hours ago still read as live. Surfacing `fetchedAt` there would fix it.
+// `stale` means one specific thing: the upstream call FAILED and this is a
+// fallback copy. It is deliberately NOT a freshness signal -- a plain cache hit
+// is a successful response that happens to be up to ODDS_CACHE_TTL_MS old. Age
+// is carried by `fetchedAt` instead, and the UI reads that to say how old the
+// price is rather than calling everything "live" (see SportsbookOddsPanel).
 export default async function handler(req, res) {
   const team = String(req.query.team || "").trim().toUpperCase();
   if (!team) {
@@ -100,8 +146,46 @@ export default async function handler(req, res) {
       return res.status(200).json({ ...cached, stale: false });
     }
 
-    const odds = await fetchEventOdds(apiKey, match.id);
-    const record = { odds, fetchedAt: Date.now(), sport: SPORT_KEY, eventId: match.id };
+    // Everything above this line is free. Past here we spend, so the budget is
+    // checked first -- refusing to spend is the whole point, and checking
+    // afterwards would be checking after the damage.
+    const credits = await readCreditState(redis);
+    if (credits.authoritative + CREDITS_PER_EVENT_FETCH > ODDS_MONTHLY_CREDIT_CAP) {
+      const budget = {
+        budgetExhausted: true,
+        creditsUsed: credits.authoritative,
+        creditCap: ODDS_MONTHLY_CREDIT_CAP,
+      };
+      // An expired cache copy still beats nothing here: the alternative is an
+      // empty panel, and old odds clearly labelled as old are more useful than
+      // no odds at all.
+      const old = await redis.get(cacheKey).catch(() => null);
+      if (old) return res.status(200).json({ ...old, stale: true, ...budget });
+      return res.status(200).json({
+        odds: null, fetchedAt: null, stale: false, ...budget,
+        note: "Monthly odds budget reached — resets on the 1st",
+      });
+    }
+
+    const { data: odds, remaining, used } = await fetchEventOdds(apiKey, match.id);
+    // Recorded after the call succeeds, so a failed request doesn't count
+    // against a budget it never actually spent.
+    try {
+      await redis.incrby(creditKey(), CREDITS_PER_EVENT_FETCH);
+      await redis.expire(creditKey(), CREDIT_KEY_TTL_S);
+      if (used != null || remaining != null) {
+        await redis.set("odds-credits:reported", { used, remaining, at: Date.now() });
+      }
+    } catch {
+      // Never fail the request over bookkeeping -- the odds were fetched and
+      // paid for either way, so the caller should still get them.
+    }
+    const record = {
+      odds, fetchedAt: Date.now(), sport: SPORT_KEY, eventId: match.id,
+      creditsUsed: used ?? credits.authoritative + CREDITS_PER_EVENT_FETCH,
+      creditsRemaining: remaining,
+      creditCap: ODDS_MONTHLY_CREDIT_CAP,
+    };
     await redis.set(cacheKey, record);
     res.status(200).json({ ...record, stale: false });
   } catch (err) {
