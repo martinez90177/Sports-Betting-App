@@ -9097,6 +9097,171 @@ const MLB_DETAIL_TABS = [
   { id: "bullpen", label: "Bullpen" },
 ];
 
+// The overlay those tabs open into. These panels used to render inline at the
+// bottom of the center column -- a full screen below the tab row that controls
+// them, under the whole graph card and the game logs -- so clicking a tab
+// looked like it did nothing until you scrolled way down to find the result.
+// As a fixed overlay the panel lands in view immediately and the page
+// underneath keeps its scroll position, so closing it puts you back exactly
+// where you were instead of stranded at the bottom of the page.
+//
+// Dismissal (Escape / backdrop / body scroll lock / back-gesture history entry)
+// deliberately mirrors FilterPanelLauncher above -- see the long comments there
+// for why the history effect is shaped the way it is. It's a separate copy
+// rather than a shared hook because FilterPanelLauncher is wired into all four
+// sport pages and applies these behaviours per-breakpoint (scroll lock only on
+// mobile, outside-click/Escape only on desktop) where this applies all of them
+// unconditionally; factoring the two together is worth doing on its own, not as
+// a side effect of an MLB layout fix.
+function MLBDetailModal({ open, onClose, title, isNarrow, children }) {
+  const panelRef = React.useRef(null);
+  const restoreFocusRef = React.useRef(null);
+  // Tracks whether we're the one who pushed the dummy history entry below, so
+  // requestClose() and the history effect's cleanup never both try to consume it.
+  const pushedHistoryRef = React.useRef(false);
+
+  // Every explicit close path (tab re-tap, backdrop tap, × button, Escape)
+  // routes through here rather than calling onClose() directly, so it also
+  // consumes the history entry the effect below pushed.
+  const requestClose = () => {
+    if (pushedHistoryRef.current) window.history.back();
+    else onClose();
+  };
+
+  // Escape + body scroll lock. The overlay covers the viewport at every width,
+  // so unlike FilterPanelLauncher both of these apply at every breakpoint.
+  React.useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (e) => { if (e.key === "Escape") requestClose(); };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  // Move focus into the dialog on open and hand it back to whatever opened it
+  // (the tab pill) on close, so keyboard users aren't dropped back at the top
+  // of the document every time they look at a panel.
+  React.useEffect(() => {
+    if (!open) return;
+    restoreFocusRef.current = document.activeElement;
+    panelRef.current?.focus();
+    return () => {
+      const el = restoreFocusRef.current;
+      if (el && typeof el.focus === "function") el.focus();
+    };
+  }, [open]);
+
+  // Claims one same-document history entry for as long as the panel is open, so
+  // a native back gesture (hardware back button, edge-swipe) closes just the
+  // panel instead of falling through to the browser/webview -- which, since
+  // this app never otherwise touches history, would navigate away from the
+  // whole SPA and reload it back to its default ("Prop Feed") state.
+  React.useEffect(() => {
+    if (!open) return;
+    // Idempotent on purpose: React (StrictMode in dev) can run this setup, its
+    // cleanup, and this setup again for a single logical open, and pushing
+    // twice would leave an orphaned entry neither requestClose nor a real back
+    // gesture would ever consume.
+    if (!(window.history.state && window.history.state.mlbDetailPanel)) {
+      window.history.pushState({ mlbDetailPanel: true }, "");
+    }
+    pushedHistoryRef.current = true;
+    const handlePopState = () => {
+      pushedHistoryRef.current = false;
+      onClose();
+    };
+    window.addEventListener("popstate", handlePopState);
+    // Deliberately does NOT call history.back() here: cleanup must stay a pure
+    // "undo the listener" step. Calling back() (an async, real navigation) from
+    // a cleanup breaks under StrictMode's double-invoke -- the practice
+    // teardown would fire a real popstate that closes the panel right after it
+    // opens. Consuming the dummy entry only happens through requestClose (an
+    // explicit close) or an actual user back gesture.
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      pushedHistoryRef.current = false;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  // Centered dialog on anything with room for it; bottom sheet on phones, same
+  // shape as FilterPanelLauncher's mobile sheet.
+  const placement = isNarrow
+    ? {
+        left: 0, right: 0, bottom: 0,
+        maxHeight: "92vh", borderRadius: "16px 16px 0 0",
+        // Flush against the bottom edge, so no hairline along it.
+        borderBottom: "none",
+        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+      }
+    : {
+        top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+        width: "min(1040px, 94vw)", maxHeight: "88vh", borderRadius: 16,
+        borderBottom: "1px solid var(--line)",
+      };
+
+  return (
+    <>
+      {/* 3400/3401 rather than the My Picks drawer's 2090/2100: the mobile
+           player strip is z-index 2500 (.mobile-player-strip), so at the
+           drawer's level it painted over the bottom of the sheet *and* stayed
+           tappable through the backdrop -- you could switch players behind an
+           open panel. Same reason FilterPanelLauncher's mobile sheet sits at
+           3500/3501; this stays just under that. */}
+      <div
+        onClick={requestClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 3400,
+          background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+        }}
+      />
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        style={{
+          position: "fixed", zIndex: 3401,
+          display: "flex", flexDirection: "column", textAlign: "left", outline: "none",
+          background: "var(--surface-1)",
+          // Sides spelled out rather than the `border` shorthand: the bottom
+          // sheet drops its bottom edge, and React warns (and can mis-apply
+          // the style) when a shorthand and a longhand for the same property
+          // fight over one element across re-renders. Both branches of
+          // `placement` therefore always set borderBottom explicitly.
+          borderTop: "1px solid var(--line)",
+          borderLeft: "1px solid var(--line)",
+          borderRight: "1px solid var(--line)",
+          boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+          ...placement,
+        }}
+      >
+        {isNarrow && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 2px" }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--line-strong)" }} />
+          </div>
+        )}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 12px", borderBottom: "1px solid var(--line)" }}>
+          <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase" }}>{title}</span>
+          <div onClick={requestClose} role="button" aria-label={`Close ${title} panel`} style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
+        </div>
+        {/* minHeight:0 so this flex child is allowed to shrink below its content
+             height -- without it the panel grows past maxHeight instead of
+             scrolling, and the analyzer is tall enough to hit that every time. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 18px" }}>
+          {children}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // Simple pitcher-vs-batter H2H card -- pitcher defaults to the selected
 // team's day starter, batter defaults to the first bat in whichever roster
 // is on the other side of that pitcher (so switching pitchers between the
@@ -10401,23 +10566,26 @@ function MLBPropsPage({ jumpTo }) {
     </div>
   );
 
-  // Matchup / Lineup / Bullpen -- an optional single side panel, shown
-  // underneath the always-visible graph card below (see graphCard). At most
-  // one of the three is open at a time; view is null when none are.
+  // Matchup / Lineup / Bullpen -- an optional single panel, opened as an
+  // overlay over the page by the tab row (see tabsBar). At most one of the
+  // three is open at a time; view is null when none are. It used to render
+  // inline at the bottom of the center column, which put it a screenful below
+  // the tabs that control it -- see MLBDetailModal for that story.
   const activeTabContent = (
-    <>
+    <MLBDetailModal
+      open={view !== null}
+      onClose={() => setView(null)}
+      title={(MLB_DETAIL_TABS.find((t) => t.id === view) || {}).label || ""}
+      isNarrow={isNarrow}
+    >
       {(view === "matchup" || view === "lineup") && (
-        <div style={{ marginTop: "var(--s-3)" }}>
-          <MLBMatchupAnalyzer teamRoster={liveTeamRoster} oppRoster={liveOppRoster} nextGame={nextGame} pick={matchupPick} section={view} />
-        </div>
+        <MLBMatchupAnalyzer teamRoster={liveTeamRoster} oppRoster={liveOppRoster} nextGame={nextGame} pick={matchupPick} section={view} />
       )}
 
       {view === "bullpen" && (
-        <div style={{ marginTop: "var(--s-3)" }}>
-          <BullpenAnalyzerPanel teamLabel={opposingBullpenLabel} bullpen={opposingBullpenList} />
-        </div>
+        <BullpenAnalyzerPanel teamLabel={opposingBullpenLabel} bullpen={opposingBullpenList} />
       )}
-    </>
+    </MLBDetailModal>
   );
 
   // Sample-window rate-stat bar (batter PA/Hits/AVG/OBP/BABIP/K%, or pitcher
@@ -11242,9 +11410,11 @@ function MLBPropsPage({ jumpTo }) {
     </FilterPanel>
   );
 
+  // Styled as tabs, but each one opens the same overlay dialog rather than
+  // swapping an inline panel, so they carry button/dialog semantics instead of
+  // tab/tablist ones.
   const tabsBar = (
     <div
-      role="tablist"
       style={{
         display: "flex", justifyContent: "center", gap: 6, marginBottom: 14,
         overflowX: isNarrow ? "auto" : "visible", WebkitOverflowScrolling: "touch",
@@ -11254,8 +11424,9 @@ function MLBPropsPage({ jumpTo }) {
         <div
           key={v.id}
           onClick={() => setView((cur) => (cur === v.id ? null : v.id))}
-          role="tab"
-          aria-selected={view === v.id}
+          role="button"
+          aria-haspopup="dialog"
+          aria-expanded={view === v.id}
           className="oswald"
           style={{
             cursor: "pointer", padding: "6px 16px", borderRadius: 999, fontSize: 12, fontWeight: 700,
@@ -11306,20 +11477,20 @@ function MLBPropsPage({ jumpTo }) {
     {compact && nextGamePill}
 
     {/* Below the `compact` breakpoint (roster columns already stacked into
-         one column -- see .roster-layout in index.css), the tabs and their
-         content render here, full-width and immediately under the game info,
-         instead of waiting at the bottom of the matchup selector/stat
-         card/market grid/filters column below. Above that breakpoint the
-         3-column layout has room for all of it, so this stays out of the
-         way and the tabs/content render in their original spot inside the
-         center column instead (see further down). */}
+         one column -- see .roster-layout in index.css), the tabs render here,
+         full-width and immediately under the game info, instead of waiting at
+         the bottom of the matchup selector/stat card/market grid/filters
+         column below. Above that breakpoint the 3-column layout has room for
+         all of it, so this stays out of the way and the tabs render in their
+         original spot inside the center column instead (see further down).
+         The tabs' panel is no longer part of either branch -- it's an overlay
+         now, mounted once at the end of the shell below. */}
     {compact && (
       <>
         {matchupSelectorBlock}
         {tabsBar}
         {graphCard()}
         {ledgerTable}
-        {activeTabContent}
       </>
     )}
 
@@ -11361,7 +11532,6 @@ function MLBPropsPage({ jumpTo }) {
           {ledgerTable}
         </div>
       )}
-      {!compact && activeTabContent}
     </div>
     <TeamRosterPanel
       teamLabel={(liveOppRoster || {}).label || "Loading…"}
@@ -11377,6 +11547,11 @@ function MLBPropsPage({ jumpTo }) {
     </div>
 
       <PlayerNewsModule playerName={player.name} headshotSrc={mlbHeadshot(player.mlbId)} />
+
+      {/* Mounted once, unguarded, and last: it's a position:fixed overlay, so
+           where it sits in the tree doesn't affect where it paints, but two
+           copies (the old compact/!compact pair) would stack two backdrops. */}
+      {activeTabContent}
     </div>
   );
 }
