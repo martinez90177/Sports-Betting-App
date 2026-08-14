@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import MatchupPage from "./MatchupPage.jsx";
+import GamecastPage from "./GamecastPage.jsx";
 import {
   SPORTS, teamLogo, dayKey, dayLabel, timeLabel, buildDateTabs,
   mockGames, mockNflWeekOne, fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate,
-  GAME_STATUS, statusSortKey, isActiveStatus,
+  GAME_STATUS, statusSortKey, isActiveStatus, opensGamecast,
 } from "./lib/gamesData.js";
 
 // Games page -- a recreation of Outlier's Games screen, minus everything
@@ -381,7 +382,14 @@ export default function GamesPage({ onViewProps }) {
   const isMobile = useIsNarrow(720);
   const [sport, setSport] = useState("mlb");
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState(null);
+  // The open game is tracked by id, not by the object captured at click time:
+  // the live poller replaces the slate objects every 20s, and holding a
+  // snapshot meant an open Gamecast kept showing the score from the moment it
+  // was opened. `selectedSnap` is the fallback for the case where the game is
+  // no longer in the loaded slate at all (a poll returning a short list, or a
+  // date switch), so the page can never blank out mid-view.
+  const [selectedId, setSelectedId] = useState(null);
+  const selectedSnap = useRef(null);
 
   // NFL is a week competition, so its whole Week 1 slate is loaded once and
   // the date tabs are derived from the kickoff days it actually contains.
@@ -496,6 +504,17 @@ export default function GamesPage({ onViewProps }) {
   // unrun the moment a game is selected, which React treats as a changed
   // hook count and throws on.
   const gameCount = games.length;
+
+  // Re-resolved from the slate on every render, so the open page tracks the
+  // poller's fresh status/score/periodLabel with no extra fetch of its own.
+  // Searched against the unfiltered slate: typing in the search box must not
+  // pull the game out from under an open page.
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    const base = sport === "nfl" ? nflWeek : dayGames;
+    return base.find((g) => g.id === selectedId) || selectedSnap.current;
+  }, [selectedId, sport, nflWeek, dayGames]);
+
   const subtitle = useMemo(() => {
     if (sport === "nfl") return "NFL Week 1";
     const d = activeKey ? new Date(`${activeKey}T12:00:00`) : new Date();
@@ -503,11 +522,15 @@ export default function GamesPage({ onViewProps }) {
   }, [sport, activeKey]);
 
   if (selected) {
+    // A game that goes live while its Matchup Overview is open swaps to the
+    // Gamecast on the next poll, which is the intent -- the pre-game view has
+    // nothing left to say once the first pitch is thrown.
+    const Page = opensGamecast(selected.status) ? GamecastPage : MatchupPage;
     return (
-      <MatchupPage
+      <Page
         game={selected}
         isMobile={isMobile}
-        onBack={() => setSelected(null)}
+        onBack={() => { selectedSnap.current = null; setSelectedId(null); }}
         onViewProps={onViewProps}
       />
     );
@@ -592,7 +615,12 @@ export default function GamesPage({ onViewProps }) {
         padding: isMobile ? "12px 8px 28px" : "12px 12px 14px",
       }}>
         {games.map((g) => (
-          <GameCard key={g.id} game={g} isMobile={isMobile} onSelect={setSelected} />
+          <GameCard
+            key={g.id}
+            game={g}
+            isMobile={isMobile}
+            onSelect={(picked) => { selectedSnap.current = picked; setSelectedId(picked.id); }}
+          />
         ))}
         {games.length === 0 && (
           <div style={{ padding: 28, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>

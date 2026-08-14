@@ -342,15 +342,31 @@ export const GAME_STATUS = {
 
 const STARTING_SOON_MS = 30 * 60 * 1000; // 30 minutes before first pitch/tip
 
+// abstractGameState is NOT a reliable live signal: MLB reports "Live" for the
+// whole warmup window too (detailedState "Warmup", codedGameState "P"), which
+// had games claiming to be underway ~30 minutes before first pitch while ESPN
+// still showed the start time. Only codedGameState "I" / "In Progress" means
+// the game has actually started; everything earlier is pre-game.
 function mlbStatus(g) {
   const abs = g?.status?.abstractGameState || "";
+  const coded = g?.status?.codedGameState || "";
   const detailed = (g?.status?.detailedState || "").toLowerCase();
+  const inProgress = coded === "I" || detailed === "in progress";
+
   if (abs === "Final" || detailed.includes("final")) return GAME_STATUS.FINAL;
   if (detailed.includes("postponed")) return GAME_STATUS.POSTPONED;
   if (detailed.includes("suspended")) return GAME_STATUS.SUSPENDED;
-  if (detailed.includes("delay") || detailed.includes("delayed")) return GAME_STATUS.DELAYED;
-  if (abs === "Live") return GAME_STATUS.LIVE;
-  // Preview / Warmup / etc.
+  if (detailed.includes("delay")) return GAME_STATUS.DELAYED;
+  if (inProgress) return GAME_STATUS.LIVE;
+
+  // Warmup is the state this fix exists for: MLB reports it under
+  // abstractGameState "Live", and it is always within about half an hour of
+  // first pitch, so it is STARTING SOON outright. Not gated on the clock --
+  // that would bounce a warming-up game back to UPCOMING the moment its
+  // scheduled first pitch slipped past. Pre-Game deliberately falls through to
+  // the clock check below instead: MLB can set it well over an hour out.
+  if (detailed.includes("warmup")) return GAME_STATUS.STARTING_SOON;
+
   const start = new Date(g.gameDate).getTime();
   if (start - Date.now() <= STARTING_SOON_MS && start > Date.now()) return GAME_STATUS.STARTING_SOON;
   return GAME_STATUS.UPCOMING;
@@ -458,6 +474,20 @@ export function isActiveStatus(status) {
     || status === GAME_STATUS.STARTING_SOON;
 }
 
+// Which screen a GameCard opens. Once the ball is in play the pre-game
+// Matchup Overview (probables, recent form, H2H) stops being the useful view,
+// so anything that has started -- or finished -- gets the Gamecast instead.
+// STARTING_SOON deliberately stays on the Matchup Overview: there is no
+// linescore or box score to show yet.
+export function opensGamecast(status) {
+  return status === GAME_STATUS.LIVE
+    || status === GAME_STATUS.HALFTIME
+    || status === GAME_STATUS.INTERMISSION
+    || status === GAME_STATUS.DELAYED
+    || status === GAME_STATUS.SUSPENDED
+    || status === GAME_STATUS.FINAL;
+}
+
 // One request covers both surfaces: the card list needs teams/records/time,
 // and the Matchup Overview needs the probable starters -- hydrate=probablePitcher
 // + linescore returns them together, so opening a matchup costs no extra round trip.
@@ -491,9 +521,15 @@ export async function fetchMlbSlate(key, { force = false } = {}) {
       const isFinal = status === GAME_STATUS.FINAL;
       // Only surface scores once the game has actually started (or finished).
       // Preview games often come back with score:0 from the API.
-      const awayScore = (isLive || isFinal) && typeof g.teams?.away?.score === "number"
+      // A suspended game, or one delayed mid-innings, has a real score the
+      // Gamecast needs. A *pre-game* delay ("Delayed Start: Rain") does not --
+      // codedGameState still reads "P" there, so it stays scoreless.
+      const started = isLive || isFinal
+        || status === GAME_STATUS.SUSPENDED
+        || (status === GAME_STATUS.DELAYED && g?.status?.codedGameState === "I");
+      const awayScore = started && typeof g.teams?.away?.score === "number"
         ? g.teams.away.score : null;
-      const homeScore = (isLive || isFinal) && typeof g.teams?.home?.score === "number"
+      const homeScore = started && typeof g.teams?.home?.score === "number"
         ? g.teams.home.score : null;
       return {
         id: `mlb-${g.gamePk}`,
@@ -544,12 +580,20 @@ function espnSlate(sport, events) {
     const homeScoreRaw = home?.score;
     const awayNum = awayScoreRaw != null && awayScoreRaw !== "" ? Number(awayScoreRaw) : null;
     const homeNum = homeScoreRaw != null && homeScoreRaw !== "" ? Number(homeScoreRaw) : null;
-    // Only surface scores once the game has started or finished.
-    const awayScore = (isLive || isFinal) && Number.isFinite(awayNum) ? awayNum : null;
-    const homeScore = (isLive || isFinal) && Number.isFinite(homeNum) ? homeNum : null;
+    // Only surface scores once the game has started or finished. A delayed or
+    // suspended game counts only when ESPN says play is underway -- unlike MLB,
+    // ESPN also reports DELAYED for a start that has not happened yet.
+    const inPlay = (comp?.status?.type?.state || "").toLowerCase() === "in";
+    const started = isLive || isFinal
+      || (inPlay && (status === GAME_STATUS.DELAYED || status === GAME_STATUS.SUSPENDED));
+    const awayScore = started && Number.isFinite(awayNum) ? awayNum : null;
+    const homeScore = started && Number.isFinite(homeNum) ? homeNum : null;
 
     return {
       id: `${sport}-${ev.id}`,
+      // Kept explicitly rather than parsed back off `id` -- the Gamecast's
+      // ESPN summary lookup needs the raw event id.
+      espnEventId: ev.id,
       sport,
       startsAt: ev.date,
       away: {
@@ -600,6 +644,178 @@ export async function fetchNflWeekOneSlate({ force = false } = {}) {
     const data = await res.json();
     const games = espnSlate("nfl", data?.events);
     return store(ck, games.length ? games : null);
+  } catch {
+    return store(ck, null);
+  }
+}
+
+// -------------------------------------------------------------- gamecast
+//
+// Detail behind a live/final game: the linescore and the statistical leaders.
+// There is no mock fallback anywhere in here on purpose -- a Gamecast that
+// invented an inning line or a leader would be indistinguishable from a real
+// one. Every value below is read straight off MLB Stats API or ESPN, and any
+// gap resolves to null so the page can render an honest empty state.
+//
+// Both providers are normalized into one shape so GamecastPage stays generic:
+//
+//   columns  [{ key, label }]        innings/quarters, then the total columns
+//   rows     [{ abbr, cells: [] }]   away first, aligned 1:1 with `columns`
+//   leaders  [{ teamAbbr, items }]   items: { category, name, statLine, headshot }
+
+// MLB's own headshot CDN, keyed by the same person id the boxscore returns.
+const mlbHeadshot = (id) => `https://midfield.mlbstatic.com/v1/people/${id}/spots/120`;
+
+function mlbGamecast(feed) {
+  const live = feed?.liveData;
+  const ls = live?.linescore;
+  const innings = ls?.innings || [];
+  if (!innings.length) return null;
+
+  const columns = innings.map((inn) => ({
+    key: `i${inn.num}`,
+    label: inn.ordinalNum ? String(inn.num) : String(inn.num),
+  }));
+  columns.push({ key: "R", label: "R", total: true });
+  columns.push({ key: "H", label: "H", total: true });
+  columns.push({ key: "E", label: "E", total: true });
+
+  const side = (which) => {
+    const abbr = feed?.gameData?.teams?.[which]?.abbreviation;
+    const cells = innings.map((inn) => {
+      const r = inn?.[which]?.runs;
+      // A half-inning that hasn't been played yet has no `runs` key at all --
+      // that must stay blank rather than becoming a 0 the team never scored.
+      return typeof r === "number" ? String(r) : "";
+    });
+    const t = ls?.teams?.[which] || {};
+    cells.push(typeof t.runs === "number" ? String(t.runs) : "");
+    cells.push(typeof t.hits === "number" ? String(t.hits) : "");
+    cells.push(typeof t.errors === "number" ? String(t.errors) : "");
+    return { abbr, cells };
+  };
+
+  // Leaders: the side's best bat by hits (RBI, then HR, break ties) plus the
+  // starter, who is always first in `pitchers`. MLB pre-formats both stat
+  // lines as `summary`, so nothing is recomputed here.
+  const boxSide = (which) => {
+    const team = live?.boxscore?.teams?.[which];
+    if (!team) return null;
+    const abbr = feed?.gameData?.teams?.[which]?.abbreviation;
+    const player = (id) => team.players?.[`ID${id}`];
+    const items = [];
+
+    const bats = (team.batters || []).map(player).filter((p) => p?.stats?.batting?.summary);
+    if (bats.length) {
+      const best = bats.slice().sort((a, b) => {
+        const s = (p, k) => p.stats.batting[k] || 0;
+        return (s(b, "hits") - s(a, "hits")) || (s(b, "rbi") - s(a, "rbi"))
+          || (s(b, "homeRuns") - s(a, "homeRuns"));
+      })[0];
+      if ((best.stats.batting.atBats || 0) > 0) {
+        items.push({
+          category: "Batting",
+          name: best.person?.fullName,
+          statLine: best.stats.batting.summary,
+          headshot: best.person?.id ? mlbHeadshot(best.person.id) : null,
+        });
+      }
+    }
+
+    const starter = (team.pitchers || []).map(player).find((p) => p?.stats?.pitching?.summary);
+    if (starter) {
+      items.push({
+        category: "Pitching",
+        name: starter.person?.fullName,
+        statLine: starter.stats.pitching.summary,
+        headshot: starter.person?.id ? mlbHeadshot(starter.person.id) : null,
+      });
+    }
+    return items.length ? { teamAbbr: abbr, items } : null;
+  };
+
+  const decisions = Object.entries(live?.decisions || {})
+    .map(([role, p]) => (p?.fullName ? { role, name: p.fullName } : null))
+    .filter(Boolean);
+
+  return {
+    columns,
+    rows: [side("away"), side("home")],
+    leaders: [boxSide("away"), boxSide("home")].filter(Boolean),
+    decisions: decisions.length ? decisions : null,
+  };
+}
+
+function espnGamecast(summary) {
+  const comp = summary?.header?.competitions?.[0];
+  const competitors = comp?.competitors || [];
+  const away = competitors.find((c) => c.homeAway === "away");
+  const home = competitors.find((c) => c.homeAway === "home");
+  if (!away || !home) return null;
+
+  const periodCount = Math.max(away.linescores?.length || 0, home.linescores?.length || 0);
+  if (!periodCount) return null;
+
+  const columns = [];
+  for (let i = 0; i < periodCount; i += 1) {
+    // Anything past regulation is overtime; WNBA and NFL both run 4 quarters.
+    columns.push({ key: `p${i + 1}`, label: i < 4 ? String(i + 1) : `OT${i - 3}` });
+  }
+  columns.push({ key: "T", label: "T", total: true });
+
+  const side = (c) => {
+    const cells = [];
+    for (let i = 0; i < periodCount; i += 1) {
+      const v = c.linescores?.[i]?.displayValue;
+      cells.push(v != null ? String(v) : "");
+    }
+    cells.push(c.score != null && c.score !== "" ? String(c.score) : "");
+    return { abbr: c.team?.abbreviation, cells };
+  };
+
+  const leaders = (summary?.leaders || []).map((t) => {
+    const items = (t.leaders || []).map((cat) => {
+      // ESPN emits categories with an empty leader list (a game with no sacks,
+      // for instance) -- those are dropped rather than rendered blank.
+      const top = cat.leaders?.[0];
+      if (!top?.athlete?.displayName || !top.displayValue) return null;
+      return {
+        category: cat.displayName || cat.name,
+        name: top.athlete.displayName,
+        statLine: top.displayValue,
+        headshot: top.athlete.headshot?.href || null,
+      };
+    }).filter(Boolean);
+    return items.length ? { teamAbbr: t.team?.abbreviation, items } : null;
+  }).filter(Boolean);
+
+  return { columns, rows: [side(away), side(home)], leaders, decisions: null };
+}
+
+// Detail for one opened game. Returns null whenever the provider has nothing
+// usable yet (a game in a rain delay before the first pitch has no linescore),
+// which the page renders as an empty state.
+export async function fetchGamecastDetail(game, { force = false } = {}) {
+  if (!game) return null;
+  const ck = `gamecast:${game.id}`;
+  if (!force) {
+    const hit = cached(ck, { live: true });
+    if (hit !== undefined) return hit;
+  }
+  try {
+    if (game.sport === "mlb") {
+      if (!game.gamePk) return store(ck, null);
+      const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${game.gamePk}/feed/live`);
+      const data = await res.json();
+      return store(ck, mlbGamecast(data));
+    }
+    const path = ESPN_PATH[game.sport];
+    if (!path || !game.espnEventId) return store(ck, null);
+    const res = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/${path}/summary?event=${game.espnEventId}`
+    );
+    const data = await res.json();
+    return store(ck, espnGamecast(data));
   } catch {
     return store(ck, null);
   }
