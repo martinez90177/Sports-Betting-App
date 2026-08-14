@@ -419,18 +419,27 @@ select.select:focus, select.select:focus-visible {
    `clip` is the way out: it clips overflow (so the rounded corners still
    cut the header and last row cleanly) without establishing a scroll
    container, leaving sticky to resolve against the viewport. It's only
-   safe above 900px, where the .feed-grid minimums fit and there's nothing
-   to scroll to; below that the columns genuinely overflow and reaching
-   View Chart needs a real scrollbar, so `auto` wins and the header gives
-   up sticking. Browsers without `overflow: clip` drop the declaration and
-   inherit `auto` -- a non-sticky header, i.e. exactly today's behaviour. */
+   safe above the breakpoint below, where the .feed-grid minimums fit and
+   there's nothing to scroll to; under it the columns genuinely overflow and
+   reaching View Chart needs a real scrollbar, so `auto` wins and the header
+   gives up sticking. Browsers without `overflow: clip` drop the declaration
+   and inherit `auto` -- a non-sticky header, i.e. exactly today's behaviour.
+
+   960px, not the 900px this started at: `clip` hides overflow *without a
+   scrollbar*, so the breakpoint has to sit above the width where the table
+   genuinely fits or the last column is silently amputated with no way to
+   reach it. Adding the Form column pushed the content to 868px inside an
+   811px container at a 900px viewport -- 57px of View Chart cut off and
+   unclickable. The table needs a 957px viewport (page-shell padding
+   included); 960 is the next round number above that. Any future column
+   has to move this in step. */
 .feed-table-wrap {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow-x: auto;
 }
-@media (min-width: 900px) {
+@media (min-width: 960px) {
   .feed-table-wrap { overflow-x: clip; }
 }
 
@@ -445,17 +454,22 @@ select.select:focus, select.select:focus-visible {
 
    Track minimums are what each column actually needs -- notably 128px for
    View Chart, whose button measures ~107px (80px of text + 12px padding
-   either side + border) and used to be given a 108px track. Above those
-   minimums the fr weights hand the extra width to every column rather
-   than letting the Proposition column swallow it. The minimums sum to
-   ~806px including gaps and padding, which is what lets the full table
-   still fit a ~900px window; below that the wrapper scrolls (the card
+   either side + border) and used to be given a 108px track, and 64px for
+   Form, whose strip measures 58px (ten 4px bars + nine 2px gaps; see
+   FeedFormStrip's defaults, which are what this track is sized against --
+   widening those bars without widening this track will clip the strip).
+   Above those minimums the fr weights hand the extra width to every column
+   rather than letting the Proposition column swallow it. The minimums sum to
+   ~868px including gaps and padding, so the full table needs a ~960px window
+   (see .feed-table-wrap, whose clip/auto breakpoint is pinned to exactly
+   that); below it the wrapper scrolls (the card
    layout takes over under 560 -- see FeedRow's isNarrow branch). */
 .feed-grid {
   display: grid;
   align-items: center;
   grid-template-columns:
     40px 40px minmax(130px, 2fr)
+    minmax(64px, 0.6fr)
     minmax(56px, 0.6fr) minmax(70px, 0.75fr)
     minmax(56px, 0.5fr) minmax(56px, 0.5fr) minmax(56px, 0.5fr)
     minmax(60px, 0.55fr)
@@ -487,17 +501,22 @@ select.select:focus, select.select:focus-visible {
 ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
 
 /* ---------- market tab bar ----------
-   One row of markets instead of a stacked heading per category. The category
-   names are dropped in favour of a hairline rule where two groups meet, which
-   keeps the grouping legible while recovering the vertical space the headings
-   and their own tab rows were taking. Tabs are smaller and tighter here than
-   the page-level .tab default, since there are many of them in one line. */
+   One row of markets instead of a stacked heading per category, recovering the
+   vertical space the headings and their own tab rows were taking. Tabs are
+   smaller and tighter here than the page-level .tab default, since there are
+   many of them in one line.
+
+   Category boundaries used to be marked with a hairline rule, but a divider is
+   just another flex item: once the row wrapped (eight NFL markets on a phone)
+   the rules wrapped too, ending up at the start or end of a line with nothing
+   to divide. The grouping now lives only in each tab's `title` tooltip, and the
+   row gap below does the work of keeping wrapped lines legible. */
 .market-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: var(--s-1) var(--s-2);
+  gap: var(--s-2) var(--s-3);
 }
 .market-bar .tab {
   flex: 0 0 auto;
@@ -505,15 +524,8 @@ select.select:focus, select.select:focus-visible {
   font-size: 15px;
   padding: 10px 12px;
 }
-.market-bar .market-divider {
-  width: 1px;
-  align-self: stretch;
-  margin: 6px var(--s-3);
-  background: var(--line);
-}
 @media (max-width: 480px) {
   .market-bar .tab { font-size: 13px; padding: 8px 8px; }
-  .market-bar .market-divider { margin: 4px var(--s-1); }
 }
 
 /* Native scrollbar hidden on the teammate chip row -- a reserved scrollbar

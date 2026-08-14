@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
 } from "recharts";
 import NewsPage from "./NewsPage.jsx";
 import GamesPage from "./GamesPage.jsx";
@@ -461,7 +461,102 @@ function genOpponentHistory(player, seedOffset, opp) {
   return { priorSeasons, playoffs };
 }
 
+// ---------- chart context-stat overlay ----------
+// The bars answer "did he clear the line". They can't answer "did he get the
+// chances to" -- a 12-point night on 14 minutes of foul trouble looks
+// identical to a 12-point night on 34 minutes, and only one of those is a
+// reason to fade the next game. Overlaying the volume stat on its own right-
+// hand axis separates them. (PropsMadness draws the same minutes line over
+// its bars; the data was already in every chart's row here, just never drawn.)
+//
+// Off by default -- the bars are the point, this is context on demand.
+const CONTEXT_STAT_COLOR = "#4c8dff";
+
+// Each sport's volume stat -- the one already carried in that chart's data
+// rows, so switching it on costs no new field and no new fetch.
+//
+// NFL uses snap share rather than a per-position attempt count (dropbacks for
+// a QB, carries for a back, targets for a receiver): snap% is the one number
+// that means the same thing for every position, and the tooltip already
+// reports it. MLB's chart rows reuse the `minutes` key for plate appearances
+// (batters) and innings pitched (pitchers) -- see its ChartTooltip
+// footerLabel -- so that page builds its stat inline to get the right label.
+const NBA_CONTEXT_STAT = { key: "minutes", label: "MIN" };
+const NFL_CONTEXT_STAT = { key: "snapPct", label: "SNAP%" };
+const MLB_BATTER_CONTEXT_STAT = { key: "minutes", label: "PA" };
+const MLB_PITCHER_CONTEXT_STAT = { key: "minutes", label: "IP", decimals: true };
+
+// Small toggle chip, anchored to the chart container's top-left (the filter
+// launcher owns the top-right corner on every page).
+function ContextStatToggle({ stat, value, onChange, compact }) {
+  if (!stat) return null;
+  return (
+    <div
+      role="button"
+      className="mono"
+      onClick={() => onChange(!value)}
+      title={value ? `Hide the ${stat.label} overlay` : `Overlay ${stat.label} per game on its own axis`}
+      style={{
+        position: "absolute", top: compact ? 8 : 10, left: compact ? 8 : 12, zIndex: 4,
+        cursor: "pointer", userSelect: "none",
+        display: "inline-flex", alignItems: "center", gap: 5,
+        padding: compact ? "3px 7px" : "4px 9px", borderRadius: "var(--r-pill)",
+        fontSize: compact ? 9.5 : 10.5, fontWeight: 700, letterSpacing: "0.03em",
+        border: `1px solid ${value ? CONTEXT_STAT_COLOR : "var(--line)"}`,
+        background: value ? `color-mix(in srgb, ${CONTEXT_STAT_COLOR} 18%, transparent)` : "var(--surface-1)",
+        color: value ? CONTEXT_STAT_COLOR : "var(--dim)",
+        transition: "background .15s ease, color .15s ease, border-color .15s ease",
+      }}
+    >
+      <span style={{
+        width: 10, height: 2, borderRadius: 1,
+        background: value ? CONTEXT_STAT_COLOR : "var(--line-strong)",
+      }} />
+      {stat.label}
+    </div>
+  );
+}
+
+// The overlay's own axis and line. Returned as an array rather than a
+// fragment because Recharts reads its children's component types directly to
+// decide what to render -- a Fragment wrapper makes both elements invisible
+// to it. `key`s are only here to satisfy React's array-child warning.
+function contextStatChartParts(stat, show, isNarrow) {
+  if (!stat || !show) return null;
+  return [
+    <YAxis
+      key="ctx-axis"
+      yAxisId="ctx"
+      orientation="right"
+      dataKey={stat.key}
+      tick={{ fill: CONTEXT_STAT_COLOR, fontSize: 10 }}
+      axisLine={false}
+      tickLine={false}
+      width={isNarrow ? 26 : 34}
+      allowDecimals={!!stat.decimals}
+    />,
+    // Callers place this array *after* <Bar>: later JSX paints later in
+    // Recharts, so the line stays legible where it crosses a tall bar
+    // instead of disappearing behind it.
+    <Line
+      key="ctx-line"
+      yAxisId="ctx"
+      type="monotone"
+      dataKey={stat.key}
+      stroke={CONTEXT_STAT_COLOR}
+      strokeWidth={2}
+      dot={{ r: 2.5, fill: CONTEXT_STAT_COLOR, strokeWidth: 0 }}
+      isAnimationActive={false}
+      // The threshold handle reads bar values, not this -- keeping the line
+      // out of the tooltip's payload would drop it from the hover card, so
+      // it stays in and ChartTooltip filters on dataKey instead.
+      connectNulls
+    />,
+  ];
+}
+
 function NBAPropsPage({ jumpTo }) {
+  const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NBA_MATCHUPS[0].id);
   const matchup = NBA_MATCHUPS.find((m) => m.id === matchupId);
   const [playerId, setPlayerId] = useState(NBA_MATCHUPS[0].teamA.players[0].id);
@@ -923,9 +1018,10 @@ function NBAPropsPage({ jumpTo }) {
       >
         {filtersBody}
       </FilterPanelLauncher>
+      <ContextStatToggle stat={NBA_CONTEXT_STAT} value={showContext} onChange={setShowContext} compact={isNarrow} />
       <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart
+        <ComposedChart
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
@@ -966,7 +1062,7 @@ function NBAPropsPage({ jumpTo }) {
             axisLine={false}
             tickLine={false}
             allowDecimals={false}
-            width={isNarrow ? 24 : 60}
+            width={isNarrow ? 32 : 60}
             label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
           />
           <Tooltip
@@ -981,11 +1077,12 @@ function NBAPropsPage({ jumpTo }) {
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
+          {contextStatChartParts(NBA_CONTEXT_STAT, showContext, isNarrow)}
           {/* Rendered after Bar (not before) so the dashed threshold line
                draws on top of the bars instead of being clipped underneath
                them -- later JSX = higher SVG paint order in Recharts. */}
           {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-        </BarChart>
+        </ComposedChart>
       </ResponsiveContainer>
       </div>
       {!isBinary && (
@@ -1110,32 +1207,19 @@ function NBAPropsPage({ jumpTo }) {
            sport page now picks the matchup here and the player by clicking
            their row in either roster panel, which this page already supported
            -- the dropdown was a second way to do the same thing. */}
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20 }}>
-        <select
-          className="select"
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20, width: compact ? "100%" : "auto" }}>
+        <GameSelect
+          groups={NBA_MATCHUPS_BY_DATE}
           value={matchupId}
-          onChange={(e) => {
-            const next = NBA_MATCHUPS.find((m) => m.id === e.target.value);
-            if (!next) return;
+          logoFn={nbaTeamLogo}
+          compact={compact}
+          onChange={(next) => {
             setMatchupId(next.id);
             setPlayerId(next.teamA.players[0].id);
             setLine(null);
             setOpponent("all");
           }}
-          style={{
-            width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            textAlign: "center", textAlignLast: "center",
-          }}
-        >
-          {NBA_MATCHUPS_BY_DATE.map((group) => (
-            <optgroup label={group.label} key={group.label}>
-              {group.matchups.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        />
       </div>
 
       {/* The graph card: game info, player identity, market tabs, both stat
@@ -4121,13 +4205,22 @@ function BarValueLabel({ x, y, width, height, value, isBinary, payload }) {
   // Every bar's label sits at the same height (10px above the shared
   // baseline, not floating above each bar's own peak), so once bars get
   // thin -- a bigger sample size, or a narrow phone -- adjacent numbers
-  // would run into each other. Scaling the font down as the bar narrows
-  // (instead of one fixed size) keeps digits from overlapping their
-  // neighbors on any width, and skipping the label below that keeps it
-  // self-correcting instead of needing a device-specific breakpoint.
+  // would run into each other. Sizing off bar width alone wasn't enough:
+  // a 17-game NFL season on a phone leaves ~16px bars, which cleared the
+  // old 10px floor even though three monospace digits need ~18px there,
+  // so the numbers ran together. Measuring the actual text instead --
+  // digit count against available width -- picks the largest size that
+  // genuinely fits and drops the label when even the smallest won't,
+  // which stays correct at any sample size or screen width. Hidden values
+  // are still readable by tapping the bar (see ChartTooltip).
   if (value == null || height < 14 || width < 9) return null;
   if (isBinary && value !== 1) return null;
-  const fontSize = width >= 26 ? 14 : width >= 18 ? 12 : 10;
+  const text = payload?.isPlaceholder ? "?" : (isBinary ? "✓" : String(value));
+  // JetBrains Mono advances ~0.6em per glyph; the 2px slack keeps adjacent
+  // labels from touching rather than merely not overlapping.
+  const fits = (size) => text.length * size * 0.6 <= width - 2;
+  const fontSize = [14, 12, 10, 9].find(fits);
+  if (fontSize === undefined) return null;
   return (
     <text
       x={x + width / 2}
@@ -4141,7 +4234,7 @@ function BarValueLabel({ x, y, width, height, value, isBinary, payload }) {
       strokeWidth={2.5}
       paintOrder="stroke"
     >
-      {payload?.isPlaceholder ? "?" : (isBinary ? "✓" : value)}
+      {text}
     </text>
   );
 }
@@ -4441,9 +4534,13 @@ function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleB
   if (singleBar) {
     return (
       <div className="market-bar">
-        {visible.map((section, si) => (
+        {visible.map((section) => (
           <React.Fragment key={section.label}>
-            {si > 0 && <div className="market-divider" aria-hidden="true" />}
+            {/* No section divider here on purpose. A divider is just another
+                 flex item, so in this wrapping row it wrapped like one --
+                 landing at the end of a line, or leading one, with no tab
+                 beside it to separate. The grouping it signalled isn't worth
+                 the arbitrary marks; `title` below still carries it. */}
             {section.markets.map((m) => (
               <div
                 key={m.id}
@@ -4470,10 +4567,9 @@ function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleB
             {section.label}
           </div>
           {section.pills ? (
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
-              {section.markets.map((m, mi) => (
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 18, flexWrap: "nowrap" }}>
+              {section.markets.map((m) => (
                 <React.Fragment key={m.id}>
-                  {mi > 0 && <span style={{ color: "var(--line)", fontSize: 18 }}>|</span>}
                   <div
                     className="oswald"
                     style={{
@@ -4489,19 +4585,15 @@ function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleB
             </div>
           ) : (
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexWrap: "wrap", gap: 28 }}>
-              {section.markets.map((m, mi) => (
-                <React.Fragment key={m.id}>
-                  {mi > 0 && (
-                    <span style={{ display: "flex", alignItems: "center", color: "var(--line)", fontSize: 18 }}>|</span>
-                  )}
-                  <div
-                    className={`tab ${si === 0 ? "no-underline" : ""} ${activeMarket === m.id ? "active" : ""}`}
-                    style={{ flex: "0 0 auto", width: "auto" }}
-                    onClick={() => onSelect(m.id)}
-                  >
-                    {m.label}
-                  </div>
-                </React.Fragment>
+              {section.markets.map((m) => (
+                <div
+                  key={m.id}
+                  className={`tab ${si === 0 ? "no-underline" : ""} ${activeMarket === m.id ? "active" : ""}`}
+                  style={{ flex: "0 0 auto", width: "auto" }}
+                  onClick={() => onSelect(m.id)}
+                >
+                  {m.label}
+                </div>
               ))}
             </div>
           )}
@@ -4708,6 +4800,7 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
 }
 
 function NFLPropsPage({ jumpTo, dataVersion }) {
+  const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
   const teamRoster = matchup.teamA;
@@ -5146,9 +5239,10 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       >
         {filtersBody}
       </FilterPanelLauncher>
+      <ContextStatToggle stat={NFL_CONTEXT_STAT} value={showContext} onChange={setShowContext} compact={isNarrow} />
       <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart
+        <ComposedChart
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
@@ -5182,6 +5276,10 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             axisLine={false}
             tickLine={false}
           />
+          {/* The narrow width is 32 rather than 24 because a 3-digit tick
+               ("400") at fontSize 11 plus recharts' default 5px tickMargin
+               needs ~30px -- at 24 the axis band clipped the leading digit,
+               so passing yardage totals rendered as "!00" on a phone. */}
           <YAxis
             domain={[0, chartMax]}
             ticks={chartTicks}
@@ -5189,7 +5287,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             axisLine={false}
             tickLine={false}
             allowDecimals={false}
-            width={isNarrow ? 24 : 60}
+            width={isNarrow ? 32 : 60}
             label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
           />
           <Tooltip
@@ -5212,11 +5310,12 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
+          {contextStatChartParts(NFL_CONTEXT_STAT, showContext, isNarrow)}
           {/* Rendered after Bar (not before) so the dashed threshold line
                draws on top of the bars instead of being clipped underneath
                them -- later JSX = higher SVG paint order in Recharts. */}
           {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-        </BarChart>
+        </ComposedChart>
       </ResponsiveContainer>
       </div>
       {!isBinary && (
@@ -5341,32 +5440,19 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
            left/right sidebars. Picking an individual player happens by
            clicking their row in either roster panel, which is the one-dropdown
            pattern every sport page now uses. */}
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20 }}>
-        <select
-          className="select"
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20, width: compact ? "100%" : "auto" }}>
+        <GameSelect
+          groups={NFL_MATCHUPS_BY_DATE}
           value={matchupId}
-          onChange={(e) => {
-            const next = NFL_MATCHUPS.find((m) => m.id === e.target.value);
-            if (!next) return;
+          logoFn={nflTeamLogo}
+          compact={compact}
+          onChange={(next) => {
             setMatchupId(next.id);
             setPlayerId(next.teamA.players[0].id);
             setLine(null);
             setOpponent("all");
           }}
-          style={{
-            width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            textAlign: "center", textAlignLast: "center",
-          }}
-        >
-          {NFL_MATCHUPS_BY_DATE.map((group) => (
-            <optgroup label={group.label} key={group.label}>
-              {group.matchups.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        />
       </div>
 
       {/* The graph card: game info, player identity, market tabs, both stat
@@ -5998,6 +6084,9 @@ function wnbaPlayerMarkets(player) {
 }
 
 function WNBAPropsPage({ jumpTo, dataVersion }) {
+  // Same volume stat as the NBA page -- minutes are the input almost every
+  // basketball prop scales with, so the two pages share NBA_CONTEXT_STAT.
+  const [showContext, setShowContext] = useState(false);
   // Starts from the static fallback slate, then swaps to ESPN's live
   // scoreboard once it resolves (see fetchWNBALiveSlate) -- keeps the page
   // usable immediately and offline-safe if the fetch ever fails, while still
@@ -6416,9 +6505,10 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       >
         {filtersBody}
       </FilterPanelLauncher>
+      <ContextStatToggle stat={NBA_CONTEXT_STAT} value={showContext} onChange={setShowContext} compact={isNarrow} />
       <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart
+        <ComposedChart
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
@@ -6458,7 +6548,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             axisLine={false}
             tickLine={false}
             allowDecimals={false}
-            width={isNarrow ? 24 : 60}
+            width={isNarrow ? 32 : 60}
             label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
           />
           <Tooltip
@@ -6473,11 +6563,12 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
+          {contextStatChartParts(NBA_CONTEXT_STAT, showContext, isNarrow)}
           {/* Rendered after Bar (not before) so the dashed threshold line
                draws on top of the bars instead of being clipped underneath
                them -- later JSX = higher SVG paint order in Recharts. */}
           {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-        </BarChart>
+        </ComposedChart>
       </ResponsiveContainer>
       </div>
       {!isBinary && (
@@ -6602,32 +6693,19 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
            left/right sidebars. Picking an individual player happens by
            clicking their row in either roster panel, which is the one-dropdown
            pattern every sport page now uses. */}
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20 }}>
-        <select
-          className="select"
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20, width: compact ? "100%" : "auto" }}>
+        <GameSelect
+          groups={matchupsByDate}
           value={matchupId}
-          onChange={(e) => {
-            const next = matchups.find((m) => m.id === e.target.value);
-            if (!next) return;
+          logoFn={wnbaTeamLogo}
+          compact={compact}
+          onChange={(next) => {
             setMatchupId(next.id);
             setPlayerId(next.teamA.players[0].id);
             setLine(null);
             setOpponent("all");
           }}
-          style={{
-            width: compact ? "100%" : "auto", maxWidth: "100%", minWidth: 0,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            textAlign: "center", textAlignLast: "center",
-          }}
-        >
-          {matchupsByDate.map((group) => (
-            <optgroup label={group.label} key={group.label}>
-              {group.matchups.map((m) => (
-                <option key={m.id} value={m.id}>{m.label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        />
       </div>
 
       {/* The graph card: game info, player identity, market tabs, both stat
@@ -8539,7 +8617,26 @@ function oddsAgeLabel(fetchedAt, stale) {
 // The Odds API's free tier is a small shared monthly credit budget (see
 // api/odds.js), so switching markets/players shouldn't silently spend
 // credits in the background -- the user has to explicitly ask for a line.
-function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
+// Strips the bookmaker's margin out of a two-sided price. A book prices Over
+// and Under so their implied probabilities sum to more than 100% -- that
+// excess is the vig, and it's their fee, not an opinion about the player.
+// Normalising the pair back to 100% leaves the book's actual estimate of how
+// often this hits, which is the only number worth comparing a hit rate to.
+//
+// Returns null unless both sides are posted: with one price alone there's no
+// way to separate the opinion from the fee, and quoting the raw implied
+// probability as though it were the book's estimate would overstate it by
+// several points in the app's own favour.
+function noVigProbability(overOdds, underOdds) {
+  if (overOdds == null || underOdds == null) return null;
+  const pOver = 1 / americanToDecimal(overOdds);
+  const pUnder = 1 / americanToDecimal(underOdds);
+  const total = pOver + pUnder;
+  if (!total) return null;
+  return pOver / total;
+}
+
+function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher, values }) {
   const [state, setState] = useState({ status: "idle", data: null });
   const oddsMarketKey = isPitcher ? null : MLB_ODDS_MARKET_KEY[market];
 
@@ -8566,10 +8663,24 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
       if (!playerOutcomes?.length) continue;
       const over = playerOutcomes.find((o) => o.name === "Over");
       const under = playerOutcomes.find((o) => o.name === "Under");
-      out.push({ book: bm.title, point: over?.point ?? under?.point, over: over?.price, under: under?.price });
+      const point = over?.point ?? under?.point;
+      // This is the one place in the app where an "edge" number is honest.
+      // The Prop Feed's odds are derived from its own hit rates, so comparing
+      // the two there is circular by construction -- here the price comes
+      // from a real book and the hit rate from the player's real game log,
+      // so the gap between them means something.
+      const fair = noVigProbability(over?.price, under?.price);
+      const hitRate = point != null && values && values.length
+        ? values.filter((v) => v > point).length / values.length
+        : null;
+      out.push({
+        book: bm.title, point, over: over?.price, under: under?.price,
+        fair, hitRate,
+        edge: fair != null && hitRate != null ? hitRate - fair : null,
+      });
     }
     return out;
-  }, [state.data, oddsMarketKey, playerName]);
+  }, [state.data, oddsMarketKey, playerName, values]);
 
   // Re-render once a minute while a card is on screen so the age label keeps
   // counting up -- otherwise a line fetched 40 minutes ago still reads "just
@@ -8661,18 +8772,59 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher }) {
             <div
               key={r.book}
               style={{
-                display: "flex", justifyContent: "space-between", padding: "8px 16px",
+                padding: "8px 16px",
                 borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--line)", fontSize: 13,
               }}
             >
-              <span style={{ color: "var(--text)" }}>{r.book}</span>
-              <span className="mono" style={{ color: "var(--dim)" }}>
-                {r.point != null ? `O/U ${r.point}` : ""}
-                {r.over != null && <span style={{ marginLeft: 10, color: "var(--green)" }}>O {r.over > 0 ? "+" : ""}{r.over}</span>}
-                {r.under != null && <span style={{ marginLeft: 10, color: "var(--red)" }}>U {r.under > 0 ? "+" : ""}{r.under}</span>}
-              </span>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "var(--text)" }}>{r.book}</span>
+                <span className="mono" style={{ color: "var(--dim)" }}>
+                  {r.point != null ? `O/U ${r.point}` : ""}
+                  {r.over != null && <span style={{ marginLeft: 10, color: "var(--green)" }}>O {r.over > 0 ? "+" : ""}{r.over}</span>}
+                  {r.under != null && <span style={{ marginLeft: 10, color: "var(--red)" }}>U {r.under > 0 ? "+" : ""}{r.under}</span>}
+                </span>
+              </div>
+              {/* The comparison, not just the price: how often he has actually
+                   cleared *this book's* line, against what this book's own
+                   two-sided price implies once the vig is taken back out.
+                   Only rendered when both sides are posted -- see
+                   noVigProbability. */}
+              {r.edge != null && (
+                <div
+                  className="mono"
+                  title={`Cleared ${r.point} in ${Math.round(r.hitRate * values.length)} of the ${values.length} games shown; this book's two-sided price implies ${(r.fair * 100).toFixed(1)}% once the vig is removed`}
+                  style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4, fontSize: 10.5 }}
+                >
+                  <span style={{ color: "var(--dim)" }}>
+                    HIT <b style={{ color: "var(--text)" }}>{Math.round(r.hitRate * 100)}%</b>
+                    <span style={{ opacity: 0.7 }}> ({values.length})</span>
+                  </span>
+                  <span style={{ color: "var(--dim)" }}>
+                    FAIR <b style={{ color: "var(--text)" }}>{Math.round(r.fair * 100)}%</b>
+                  </span>
+                  <span style={{ color: r.edge >= 0 ? "var(--pos)" : "var(--neg)", fontWeight: 800 }}>
+                    {r.edge >= 0 ? "+" : "−"}{Math.abs(Math.round(r.edge * 100))}%
+                  </span>
+                </div>
+              )}
             </div>
           ))}
+          {/* Said plainly rather than left implied. A hit rate over a couple
+               dozen games is a small, noisy sample, and the book is pricing
+               things this page has no data for at all -- today's pitcher,
+               park, weather, whether he's even in the lineup. A gap here is a
+               reason to go look, not a proven edge, and labelling it that way
+               is the difference between a research tool and a tout. */}
+          {rows.some((r) => r.edge != null) && (
+            <div style={{
+              padding: "7px 16px", borderTop: "1px solid var(--line)",
+              fontSize: 10.5, color: "var(--dim)", lineHeight: 1.5,
+            }}>
+              FAIR is this book’s own price with the vig removed. A gap against HIT is a
+              starting point for research, not an edge — {values.length} games is a small
+              sample, and the book is also pricing today’s matchup, park and lineup.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -9421,6 +9573,7 @@ class MLBPageErrorBoundary extends React.Component {
 }
 
 function MLBPropsPage({ jumpTo }) {
+  const [showContext, setShowContext] = useState(false);
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
   const [playerId, setPlayerId] = useState(teamRoster.players[0].id);
@@ -9751,6 +9904,10 @@ function MLBPropsPage({ jumpTo }) {
     ALL_MLB_PLAYERS.find((p) => p.id === playerId) ||
     liveTeamRoster.players[0];
   const isPitcher = player.pos === "SP";
+  // Same chart field either way (see the MLB chartData mapper), but it means
+  // plate appearances for a batter and innings for a starter, so the axis
+  // label and its decimal handling follow whoever is mounted.
+  const mlbContextStat = isPitcher ? MLB_PITCHER_CONTEXT_STAT : MLB_BATTER_CONTEXT_STAT;
 
   // Which side of the matchup the currently selected player is on -- lets
   // the Bullpen tab below pick the correct "opposing" bullpen regardless of
@@ -10556,13 +10713,14 @@ function MLBPropsPage({ jumpTo }) {
         >
           {filtersBody}
         </FilterPanelLauncher>
+        <ContextStatToggle stat={mlbContextStat} value={showContext} onChange={setShowContext} compact={isNarrow} />
         <div style={{
           height: "100%", width: "100%", boxSizing: "border-box",
           padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
           touchAction: "pan-y",
         }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
+          <ComposedChart
             data={chartData}
             // right clears LineHandle, which anchors to the container's right
             // edge: it needs right:8 + its 52px minimum, less the 6px the
@@ -10594,7 +10752,7 @@ function MLBPropsPage({ jumpTo }) {
               axisLine={false}
               tickLine={false}
               allowDecimals={false}
-              width={isNarrow ? 24 : 60}
+              width={isNarrow ? 32 : 60}
               label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
             />
             <Tooltip
@@ -10615,11 +10773,12 @@ function MLBPropsPage({ jumpTo }) {
               })}
               <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
             </Bar>
+            {contextStatChartParts(mlbContextStat, showContext, isNarrow)}
             {/* Rendered after Bar (not before) so the dashed threshold line
                  draws on top of the bars instead of being clipped underneath
                  them -- later JSX = higher SVG paint order in Recharts. */}
             {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-          </BarChart>
+          </ComposedChart>
         </ResponsiveContainer>
         </div>
         {!isBinary && (
@@ -10651,7 +10810,17 @@ function MLBPropsPage({ jumpTo }) {
            top-right corner (see above) so its panel has room to open
            downward instead of upward off the top of the screen. */}
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px 16px" }}>
-        <SportsbookOddsPanel teamAbbr={teamAbbr} playerName={player.name} market={market} isPitcher={isPitcher} />
+        {/* Values from the same sample the chart is drawing (placeholder bar
+             for tonight's unplayed game excluded), so the hit rate this panel
+             compares against the book's price is the one already on screen
+             rather than a second, differently-filtered number. */}
+        <SportsbookOddsPanel
+          teamAbbr={teamAbbr}
+          playerName={player.name}
+          market={market}
+          isPitcher={isPitcher}
+          values={chartData.filter((d) => !d.isPlaceholder).map((d) => d.value)}
+        />
       </div>
     </div>
   );
@@ -11275,6 +11444,7 @@ function buildWNBAFeedRows() {
         name: player.name,
         team: player.team,
         date: gameDate,
+        marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
         rank, tier, rankLabel: wnbaDefCategoryLabel(m.id),
@@ -11283,6 +11453,11 @@ function buildWNBAFeedRows() {
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
         values, line, isBinary, variance,
+        direction: "over", matchupScore: rank,
+        recent: feedRecentGames(games, values),
+        // How a saved pick off this row gets settled later -- see gradePick.
+        // Real ESPN game logs on the live 2026 season, so these are gradable.
+        gradeKind: "wnba", gradeId: player.espnId,
       });
     });
   });
@@ -11456,6 +11631,195 @@ function PropTypePicker({ groups, value, onChange }) {
   );
 }
 
+// Shared chrome for the app's floating game pickers. Both the single-select
+// (GameSelect) and the multi-select (GamesMultiSelect) render into it, so the
+// two controls can't drift into looking like unrelated widgets.
+const DROPDOWN_PANEL_STYLE = {
+  position: "absolute", top: "calc(100% + 6px)", zIndex: 20,
+  width: "min(320px, 88vw)", maxHeight: 400, overflowY: "auto",
+  background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
+  boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+};
+
+// Sticky group heading inside a picker panel ("Sunday, September 13"), so the
+// date a game belongs to stays on screen while its group is scrolled through.
+const DROPDOWN_GROUP_STYLE = {
+  position: "sticky", top: 0, zIndex: 1,
+  padding: "8px 12px", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em",
+  textTransform: "uppercase", color: "var(--dim)", background: "var(--panel2)",
+  borderBottom: "1px solid var(--line)",
+};
+
+// Centers a dropdown panel under its trigger, then nudges it back inside the
+// viewport when centering alone would push an edge off-screen. These panels
+// used to anchor at `left: 0`, which is fine under a left-aligned trigger but
+// not under the centered ones these pages use -- a 320px panel hanging off a
+// mid-screen trigger ran past the right edge of a phone, clipping the
+// checkmarks off every row.
+function useCenteredPanel(open) {
+  const floatRef = React.useRef(null);
+  const [shift, setShift] = useState(0);
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setShift(0);
+      return;
+    }
+    const measure = () => {
+      const el = floatRef.current;
+      if (!el) return;
+      // Measured with any previous nudge removed, so each correction is
+      // computed from the true centered position rather than compounding on
+      // top of the last one as the viewport changes.
+      const prev = el.style.transform;
+      el.style.transform = "translateX(-50%)";
+      const rect = el.getBoundingClientRect();
+      el.style.transform = prev;
+      const gutter = 8;
+      if (rect.left < gutter) setShift(gutter - rect.left);
+      else if (rect.right > window.innerWidth - gutter) setShift(window.innerWidth - gutter - rect.right);
+      else setShift(0);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [open]);
+
+  return { floatRef, anchorStyle: { left: "50%", transform: `translateX(calc(-50% + ${shift}px))` } };
+}
+
+// The green circled tick marking a chosen row.
+function SelectedCheck() {
+  return (
+    <span style={{
+      width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+      background: "var(--green)", color: "#08131c",
+      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900,
+    }}>
+      ✓
+    </span>
+  );
+}
+
+// One game in a picker panel: both teams' logos overlapped into a single mark,
+// the start time, and the matchup name. Shared so the single- and multi-select
+// panels list a game identically.
+function GameOptionRow({ logoFn, teams, time, label, onClick, indicator, highlight }) {
+  return (
+    <div
+      role="button"
+      onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer",
+        background: highlight ? "var(--amber-dim)" : "transparent",
+      }}
+    >
+      {logoFn && teams && (
+        <div style={{ display: "flex", flexShrink: 0 }}>
+          <img src={logoFn(teams[0])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)" }} />
+          <img src={logoFn(teams[1])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)", marginLeft: -6, border: "1.5px solid var(--panel2)" }} />
+        </div>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {time && <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{time}</div>}
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{label}</div>
+      </div>
+      {indicator}
+    </div>
+  );
+}
+
+// Single-game picker for the sport pages, in place of the native <select> with
+// <optgroup>s they used to render. A native select can't show logos or kickoff
+// times -- mobile Safari draws it as a plain text list -- so the same slate that
+// reads clearly in the Prop Feed's GAMES popover was reduced to bare matchup
+// names here. Takes the grouped shape groupMatchupsByDate returns, so the
+// date headings survive the switch.
+function GameSelect({ groups, value, onChange, logoFn, compact }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = React.useRef(null);
+  const { floatRef, anchorStyle } = useCenteredPanel(open);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  // Each side's abbreviation lives on its roster's first player, the same way
+  // NFL_TEAM_ROSTERS is keyed. Guarded because the WNBA slate is built live
+  // from ESPN and looks its rosters up by abbreviation
+  // (WNBA_TEAM_PLAYERS_BY_ABBR), so a team we have no roster for yields an
+  // empty side. That used to surface only when you picked that game; here it
+  // runs for every row, so an unguarded read would take the whole panel down
+  // rather than just dropping one row's logos.
+  const teamsOf = (m) => {
+    const abbr = (side) => side?.players?.[0]?.team;
+    const pair = [abbr(m.teamA), abbr(m.teamB)];
+    return pair.every(Boolean) ? pair : null;
+  };
+  const current = groups.flatMap((g) => g.matchups).find((m) => m.id === value);
+  const currentTeams = current ? teamsOf(current) : null;
+
+  return (
+    <div
+      ref={wrapRef}
+      style={{ position: "relative", display: compact ? "block" : "inline-block", width: compact ? "100%" : "auto" }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          cursor: "pointer", padding: "7px 12px", borderRadius: 6, fontSize: 15, width: "100%",
+          fontFamily: "'Inter', sans-serif",
+          border: `1px solid ${open ? "var(--amber)" : "var(--line)"}`,
+          background: open ? "var(--amber-dim)" : "var(--panel)",
+          color: "var(--text)",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}
+      >
+        {currentTeams && logoFn && (
+          <span style={{ display: "flex", flexShrink: 0 }}>
+            <img src={logoFn(currentTeams[0])} alt="" width={18} height={18} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)" }} />
+            <img src={logoFn(currentTeams[1])} alt="" width={18} height={18} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)", marginLeft: -5, border: "1.5px solid var(--panel)" }} />
+          </span>
+        )}
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+          {current ? current.label : "Select a game"}
+        </span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>▾</span>
+      </button>
+      {open && (
+        <div ref={floatRef} style={{ ...DROPDOWN_PANEL_STYLE, ...anchorStyle }}>
+          {groups.map((group) => (
+            <div key={group.label}>
+              <div className="oswald" style={DROPDOWN_GROUP_STYLE}>{group.label}</div>
+              {group.matchups.map((m) => (
+                <GameOptionRow
+                  key={m.id}
+                  logoFn={logoFn}
+                  teams={teamsOf(m)}
+                  time={matchupTimeLabel(m.date)}
+                  label={m.label}
+                  highlight={m.id === value}
+                  indicator={m.id === value ? <SelectedCheck /> : null}
+                  onClick={() => {
+                    onChange(m);
+                    setOpen(false);
+                  }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Multi-select popover for the day's/week's games -- replaces the old single
 // MATCHUP <select> so a user researching "everyone playing tonight except
 // the early games" isn't limited to one game at a time. An empty `selected`
@@ -11463,6 +11827,7 @@ function PropTypePicker({ groups, value, onChange }) {
 function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
   const [open, setOpen] = useState(false);
   const panelRef = React.useRef(null);
+  const { floatRef, anchorStyle } = useCenteredPanel(open);
 
   React.useEffect(() => {
     if (!open) return;
@@ -11493,14 +11858,7 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
         <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>▾</span>
       </button>
       {open && (
-        <div
-          style={{
-            position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 20,
-            width: "min(320px, 88vw)", maxHeight: 400, overflowY: "auto",
-            background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
-            boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
-          }}
-        >
+        <div ref={floatRef} style={{ ...DROPDOWN_PANEL_STYLE, ...anchorStyle }}>
           <div className="oswald" style={{ padding: "10px 12px 8px", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
             Games
           </div>
@@ -11514,48 +11872,34 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
             }}
           >
             {allLabel}
-            {selected.size === 0 && (
-              <span style={{
-                width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
-                background: "var(--green)", color: "#08131c",
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900,
-              }}>
-                ✓
-              </span>
-            )}
+            {selected.size === 0 && <SelectedCheck />}
           </div>
           {options.map((o) => {
             const checked = selected.has(o.id);
             return (
-              <div
+              <GameOptionRow
                 key={o.id}
-                role="button"
+                logoFn={logoFn}
+                teams={o.teams}
+                time={o.time}
+                label={o.label}
+                highlight={checked}
                 onClick={() => {
                   const next = new Set(selected);
                   if (checked) next.delete(o.id); else next.add(o.id);
                   onChange(next);
                 }}
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer" }}
-              >
-                {logoFn && (
-                  <div style={{ display: "flex", flexShrink: 0 }}>
-                    <img src={logoFn(o.teams[0])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)" }} />
-                    <img src={logoFn(o.teams[1])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)", marginLeft: -6, border: "1.5px solid var(--panel2)" }} />
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{o.time}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{o.label}</div>
-                </div>
-                <span style={{
-                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                  border: `1.5px solid ${checked ? "var(--amber)" : "var(--line-strong)"}`,
-                  background: checked ? "var(--amber)" : "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  {checked && <span style={{ fontSize: 11, color: "var(--accent-on)", fontWeight: 900 }}>✓</span>}
-                </span>
-              </div>
+                indicator={
+                  <span style={{
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                    border: `1.5px solid ${checked ? "var(--amber)" : "var(--line-strong)"}`,
+                    background: checked ? "var(--amber)" : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {checked && <span style={{ fontSize: 11, color: "var(--accent-on)", fontWeight: 900 }}>✓</span>}
+                  </span>
+                }
+              />
             );
           })}
           <div style={{ padding: "8px 12px", borderTop: "1px solid var(--line)" }}>
@@ -11801,6 +12145,9 @@ function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
     >
       <div /><div />
       <div className="mono" style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600 }}>Proposition</div>
+      {/* Not sortable: the strip is ten discrete results, not one value to
+           order by -- L5/L10 already sort the same information. */}
+      <div className="mono" style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600, textAlign: "center" }}>Form</div>
       {col("Line", "line", "center")}
       {col("Odds", "odds", "center")}
       {col("L5", "l5", "center")}
@@ -11810,6 +12157,132 @@ function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
       <div />
     </div>
   );
+}
+
+// The row's last ten games as a strip of slim bars, oldest to newest --
+// Outlier's reference table puts a flat tick under each percentage for the
+// same purpose. This encodes one thing more than a tick does: bar height is
+// the game's distance from the line, normalised against the row's own biggest
+// margin. So "hit 7 of 10" and "hit 7 of 10, but three of them by a mile"
+// stop looking identical, which is exactly what a raw percentage hides.
+// Binary markets have no distance to measure, so their bars are full height.
+function FeedFormStrip({ r, direction, streak = 0, height = 22, barWidth = 4, gap = 2 }) {
+  const recent = r.recent;
+  if (!recent || !recent.length) return null;
+  const margins = recent.map((g) => Math.abs(g.v - r.line));
+  const maxMargin = Math.max(...margins, 1e-6);
+
+  // A streak isn't separate information from this strip -- it *is* the
+  // trailing run of same-colored bars. It used to be restated beside the
+  // player's name as an "H6" pill, which meant a second chip to decode and a
+  // number with no visible connection to the bars it came from. Underlining
+  // the run in place and labelling it in words says the same thing where the
+  // evidence already is. Clamped to the strip's width: the streak is counted
+  // over the full log, so a 14-game run can exceed the ten bars drawn.
+  const runLength = Math.min(Math.abs(streak), recent.length);
+  const showRun = Math.abs(streak) >= 3;
+  const runColor = streak > 0 ? "var(--pos)" : "var(--neg)";
+  const stripWidth = recent.length * barWidth + (recent.length - 1) * gap;
+  const runWidth = runLength * barWidth + Math.max(0, runLength - 1) * gap;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap, height }}>
+        {recent.map((g, i) => {
+          const isHit = feedIsHit(g.v, r.line, r.isBinary, direction);
+          // Floor of 30% so a game that only just missed the line is still a
+          // visible bar rather than a hairline that reads as missing data.
+          const frac = r.isBinary ? 1 : 0.3 + 0.7 * (margins[i] / maxMargin);
+          return (
+            <div
+              key={i}
+              style={{
+                width: barWidth,
+                height: Math.max(3, Math.round(height * frac)),
+                borderRadius: 1.5,
+                background: isHit ? "var(--pos)" : "var(--neg)",
+                opacity: 0.45 + 0.55 * ((i + 1) / recent.length),
+              }}
+            />
+          );
+        })}
+      </div>
+      {showRun && (
+        <>
+          {/* Sits under the trailing bars only, right-aligned like the run
+               itself -- the rule is what ties the words below to the games
+               above, so it has to line up with them exactly. */}
+          <div style={{ width: stripWidth, display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ width: runWidth, height: 2, borderRadius: 1, background: runColor }} />
+          </div>
+          {/* Words, not a code. "6 straight" needs no key; the green/red is
+               already taught by the bars directly above it. */}
+          <div className="mono" style={{ fontSize: 9, fontWeight: 700, color: runColor, whiteSpace: "nowrap", lineHeight: 1 }}>
+            {Math.abs(streak)} straight
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Hover/tap breakdown behind the form strip -- the ten games it draws, with
+// the opponent and date the bars alone can't carry.
+//
+// Positioned `fixed` against a measured anchor rect rather than `absolute`
+// inside the row. Below 900px .feed-table-wrap is `overflow-x: auto`, and
+// `auto` on one axis forces the other to `auto` too -- an absolutely
+// positioned popover would be clipped by the wrapper at exactly the widths
+// where the table layout is most cramped. (Above 900px the wrapper switches
+// to `overflow-x: clip`, which doesn't have that side effect.)
+function FeedFormPopover({ r, direction, anchor }) {
+  const recent = r.recent || [];
+  const width = 190;
+  // Clamped so a strip near either edge of the viewport doesn't push the
+  // panel half off-screen.
+  const left = anchor
+    ? Math.min(Math.max(8, anchor.left + anchor.width / 2 - width / 2), Math.max(8, window.innerWidth - width - 8))
+    : 0;
+  // Flips above the strip when there isn't room below it.
+  const estHeight = 30 + recent.length * 16;
+  const below = !anchor || anchor.bottom + 6 + estHeight < window.innerHeight;
+  return (
+    <div
+      className="panel"
+      style={{
+        position: "fixed", zIndex: 60,
+        left, width,
+        ...(below ? { top: (anchor?.bottom || 0) + 6 } : { bottom: window.innerHeight - (anchor?.top || 0) + 6 }),
+        padding: "8px 10px",
+        boxShadow: "var(--shadow-2)", pointerEvents: "none",
+      }}
+    >
+      <div className="mono" style={{ fontSize: 9.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        Last {recent.length} · {r.subtitle}
+      </div>
+      {recent.slice().reverse().map((g, i) => {
+        const isHit = feedIsHit(g.v, r.line, r.isBinary, direction);
+        return (
+          <div key={i} className="mono" style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 10.5, padding: "2px 0" }}>
+            <span style={{ color: "var(--dim)" }}>{feedShortDate(g.date)}</span>
+            <span style={{ color: "var(--dim-strong)", flex: 1 }}>{g.opp ? `vs ${g.opp}` : ""}</span>
+            <span style={{ color: isHit ? "var(--pos)" : "var(--neg)", fontWeight: 800 }}>{g.v}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// "2026-08-11" -> "Aug 11". Parsed as a plain date rather than through the
+// Date constructor's UTC handling of bare ISO dates, which would shift the
+// label back a day for anyone west of UTC.
+const FEED_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function feedShortDate(date) {
+  if (!date) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(date));
+  if (!m) return String(date).slice(0, 6);
+  return `${FEED_MONTHS[Number(m[2]) - 1] || ""} ${Number(m[3])}`;
 }
 
 function FeedPctCell({ v }) {
@@ -11860,9 +12333,22 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
   const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
   const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
   const odds = probToAmericanOdds(r[sampleWindow]);
-  const pickId = `${sport}-${r.key}`;
+  // Overs keep the original `${sport}-${key}` id so picks saved to
+  // localStorage before the Over/Under switcher existed still match; Unders
+  // get their own suffix so both sides of the same prop can sit on the slip
+  // at once without one masking the other's added state.
+  // The game date is part of the id so the same player/market on a later
+  // date is a genuinely different pick. Without it, yesterday's settled
+  // Judge Over 0.5 Hits would make today's identical row read as already
+  // added, and re-adding it would overwrite the graded one.
+  const pickId = `${sport}-${r.key}${r.direction === "under" ? "-u" : ""}${r.date ? `@${String(r.date).slice(0, 10)}` : ""}`;
+  const direction = r.direction || "over";
+  const streak = feedStreak(r.values, r.line, r.isBinary, direction);
+  const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
+  const [formAnchor, setFormAnchor] = useState(null);
   const avatarSize = isNarrow ? 34 : 40;
   const badgeSize = Math.round(avatarSize * 0.46);
+  const dotSize = Math.round(avatarSize * 0.3);
 
   const avatarEl = (
     <div style={{ position: "relative", width: avatarSize, height: avatarSize, flexShrink: 0 }}>
@@ -11915,6 +12401,34 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
           objectFit: "contain",
         }}
       />
+      {/* Lineup status, attached to the player it describes rather than
+           spelled out as a "LINEUP"/"PROJ" chip beside his name. It's a
+           binary state on one person -- a presence dot on the avatar is the
+           conventional way to show that, and it costs the row no horizontal
+           space next to OPP RANK. Filled = in the posted batting order,
+           hollow = still our projection; both are keyed in the legend above
+           the table so neither has to be guessed at.
+
+           MLB batters only: `lineupConfirmed` is undefined on the other
+           three sports and on pitcher rows (a *probable* starter is a weaker
+           claim), and those render no dot at all. */}
+      {typeof r.lineupConfirmed === "boolean" && (
+        <span
+          title={r.lineupConfirmed
+            ? "In today's posted batting order"
+            : "Batting order not posted yet — projected lineup"}
+          style={{
+            position: "absolute", right: -1, top: -1,
+            width: dotSize, height: dotSize, borderRadius: "50%",
+            boxSizing: "border-box",
+            background: r.lineupConfirmed ? "var(--pos)" : "var(--panel)",
+            border: r.lineupConfirmed
+              ? "1.5px solid var(--panel)"
+              : "1.5px solid var(--line-strong)",
+            boxShadow: r.lineupConfirmed ? "0 0 0 1px var(--panel)" : "none",
+          }}
+        />
+      )}
     </div>
   );
 
@@ -11922,7 +12436,22 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
     <div
       className="oswald"
       role="button"
-      onClick={() => onTogglePick({ id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle, opp: r.gameLabel ? `${r.opp} · ${r.gameLabel}` : r.opp, odds })}
+      onClick={() => onTogglePick({
+        id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle,
+        opp: r.gameLabel ? `${r.opp} · ${r.gameLabel}` : r.opp, odds,
+        // Everything below is what the Ledger needs to settle this pick
+        // later against the player's own game log (see gradePick). None of
+        // it is recoverable from `subtitle`, so it has to be written here
+        // -- this is the only place a pick is ever created.
+        playerId: r.playerId || null,
+        marketId: r.marketId || null,
+        line: r.line, isBinary: !!r.isBinary, direction,
+        gameDate: r.date || null,
+        gameId: r.gameId || null,
+        gradeKind: r.gradeKind || null,
+        gradeId: r.gradeId || null,
+        addedAt: Date.now(),
+      })}
       title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
       style={{
         cursor: "pointer",
@@ -11993,8 +12522,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
     </div>
   );
   const oppRankLine = (
-    <div style={{ fontSize: 10.5, color: "var(--dim-strong)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
-      <span>OPP RANK</span>
+    // Wraps as whole chips rather than mid-label: the Form column narrowed
+    // the Proposition track enough that "OPP RANK" itself was breaking across
+    // two lines once the streak and lineup badges joined the row.
+    <div style={{ fontSize: 10.5, color: "var(--dim-strong)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 6px" }}>
+      <span style={{ whiteSpace: "nowrap" }}>OPP RANK</span>
       <span
         className="mono"
         title={`#${r.rank} in ${r.rankLabel}`}
@@ -12008,7 +12540,24 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
       </span>
       {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
            otherwise produce two visually identical rows per prop. */}
-      <span>vs {r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}</span>
+      <span style={{ whiteSpace: "nowrap" }}>vs {r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}</span>
+    </div>
+  );
+
+  // The popover is `fixed`, so it needs the strip's viewport rect rather than
+  // a positioned ancestor -- measured on open (and cleared on close) instead
+  // of tracked continuously, since it only lives as long as the hover does.
+  const openForm = (e) => setFormAnchor(e.currentTarget.getBoundingClientRect());
+  const formCell = r.recent && r.recent.length > 0 && (
+    <div
+      style={{ display: "flex", justifyContent: "center" }}
+      onMouseEnter={openForm}
+      onMouseLeave={() => setFormAnchor(null)}
+      onClick={(e) => setFormAnchor((a) => (a ? null : e.currentTarget.getBoundingClientRect()))}
+      title={`Last ${r.recent.length} games — bar height is the margin against the line`}
+    >
+      <FeedFormStrip r={r} direction={direction} streak={streak} />
+      {formAnchor && <FeedFormPopover r={r} direction={direction} anchor={formAnchor} />}
     </div>
   );
 
@@ -12036,7 +12585,12 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
           </div>
         </div>
         {oppRankLine}
-        <FeedSplitsStrip r={r} sampleWindow={sampleWindow} size="sm" />
+        {/* No Form column to slot into on a phone, so the strip rides
+             alongside the splits instead of getting its own stacked row. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <FeedSplitsStrip r={r} sampleWindow={sampleWindow} size="sm" />
+          {formCell}
+        </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           {oddsBlock}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -12071,10 +12625,22 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
         </div>
         <div style={{ marginTop: 3 }}>{oppRankLine}</div>
       </div>
+      {formCell || <div />}
       {/* Centered, like the four percentage cells that follow -- see
            FeedTableHeader for why mixing center and right alignment across
            these six columns is what made the gaps read as uneven. */}
-      <div className="mono" style={{ textAlign: "center", fontSize: 13, color: "var(--text)" }}>{r.line}</div>
+      <div style={{ textAlign: "center" }}>
+        <div className="mono" style={{ fontSize: 13, color: "var(--text)" }}>{r.line}</div>
+        {cushion !== null && (
+          <div
+            className="mono"
+            title={`Averages ${cushion >= 0 ? "clear" : "short of"} the line by ${Math.abs(cushion).toFixed(1)} over the ${sampleWindow.toUpperCase()} sample`}
+            style={{ fontSize: 10, fontWeight: 700, marginTop: 2, color: cushion >= 0 ? "var(--pos)" : "var(--neg)" }}
+          >
+            {cushion >= 0 ? "+" : "−"}{Math.abs(cushion).toFixed(1)}
+          </div>
+        )}
+      </div>
       <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds)}</div>
       <FeedPctCell v={r.l5} />
       <FeedPctCell v={r.l10} />
@@ -12128,6 +12694,84 @@ function hitRateWindow(values, n, hit) {
   return w.filter(hit).length / w.length;
 }
 
+// The last n games as {v, opp, date}, for the row's recent-form strip and its
+// hover breakdown. Deliberately capped rather than carrying the whole log:
+// MLB builds a row per player x market (thousands of rows), and the strip only
+// ever draws ten. `values` is index-aligned with `games` in every builder.
+const FEED_FORM_GAMES = 10;
+function feedRecentGames(games, values, n = FEED_FORM_GAMES) {
+  const start = Math.max(0, values.length - n);
+  return values.slice(start).map((v, i) => {
+    const g = games[start + i] || {};
+    return { v, opp: g.opp, date: g.date };
+  });
+}
+
+// True when a game's value wins the bet, for whichever side is displayed.
+// Binary markets (double-double/triple-double) have no line to clear -- the
+// stat is already 1/0 -- so "Under" on one of those means it didn't happen.
+function feedIsHit(v, line, isBinary, direction) {
+  const over = isBinary ? v === 1 : v > line;
+  return direction === "under" ? !over : over;
+}
+
+// The current run of consecutive hits (positive) or misses (negative) ending
+// at the most recent game. Computed off the row's full `values`, not the
+// ten-game `recent` strip, so a 14-game run reports 14 rather than capping
+// silently at the strip's width.
+function feedStreak(values, line, isBinary, direction) {
+  if (!values || !values.length) return 0;
+  const first = feedIsHit(values[values.length - 1], line, isBinary, direction);
+  let n = 0;
+  for (let i = values.length - 1; i >= 0 && feedIsHit(values[i], line, isBinary, direction) === first; i--) n++;
+  return first ? n : -n;
+}
+
+// Signed average margin against the line over the active sample window --
+// "cushion". Two rows can share a 60% hit rate while one clears the line by
+// 0.2 and the other by 4; only this separates them. Negative for the losing
+// side of the line, and sign-flipped for Unders so positive always means
+// "the sample is on this bet's side". Meaningless for binary markets, which
+// have no distance-to-line to measure.
+function feedCushion(values, line, isBinary, window, direction) {
+  if (isBinary || !values || !values.length) return null;
+  const n = window === "all" ? values.length : Math.min(values.length, Number(window.slice(1)) || values.length);
+  const w = values.slice(-n);
+  const avg = w.reduce((a, v) => a + v, 0) / w.length;
+  return direction === "under" ? line - avg : avg - line;
+}
+
+// Rewrites a feed row to price the *other* side of its line. Rows are built
+// Over-only, which hides half the feed: a prop that goes Over 22% of the time
+// is an 78% Under, and there was no way to see it.
+//
+// Flipping the four hit rates is exact rather than approximate. fairFeedLine
+// returns `median - 0.5` and binary markets sit at 0.5, so no logged value can
+// ever land exactly *on* a line -- there are no pushes, and every game falls
+// on one side or the other. That makes `1 - rate` the true Under rate.
+//
+// Two fields need more than an arithmetic flip:
+//  - `tier` drives the OPP RANK badge's green/red. It's inverted here so the
+//    color keeps meaning "favorable for the side you're looking at" -- a
+//    soft defense is good news for an Over and bad news for an Under.
+//  - `rank` itself is left alone: it's a fact about the opponent, and the
+//    Defense Rank Range filter reads it. Sorting instead goes through
+//    `matchupScore`, negated so "Easiest Matchup" surfaces the toughest
+//    defenses first when you're betting Unders.
+function flipFeedRowToUnder(r) {
+  return {
+    ...r,
+    direction: "under",
+    l5: 1 - r.l5,
+    l10: 1 - r.l10,
+    l20: 1 - r.l20,
+    all: 1 - r.all,
+    tier: r.tier === "soft" ? "tough" : r.tier === "tough" ? "soft" : "mid",
+    matchupScore: -r.rank,
+    subtitle: r.isBinary ? `No ${r.marketLabel}` : `Under ${r.line} ${r.marketLabel}`,
+  };
+}
+
 // A fair line for the feed's odds column, distinct from the single-player
 // pages' default line (ceilToHalfOdd(avg), which rounds up to/above the mean
 // on purpose so a dragged-in-place threshold starts just above a player's
@@ -12171,6 +12815,156 @@ function combineParlayOdds(americanOddsList) {
   const combinedDecimal = americanOddsList.reduce((acc, o) => acc * americanToDecimal(o), 1);
   return decimalToAmerican(combinedDecimal);
 }
+
+// --------------------------------------------------------------------------
+// The Ledger: settling saved picks
+// --------------------------------------------------------------------------
+// Grading needs no new data source. Every pick names a player, a market, a
+// line and a direction, so the day after the game its result is a lookup in
+// that player's own game log -- the same logs the charts already fetch and
+// cache, run through the same statValue* functions the charts already use.
+//
+// A pick's `gradeKind` decides which log to read; rows that have no real log
+// behind them (synthetic NBA, an NFL player with no ESPN id) carry no
+// gradeKind at all and are reported as unsettleable rather than guessed at.
+const PICK_GRADE_SOURCES = {
+  mlb_batter: { fetchLog: fetchMLBGameLog, value: statValueMLB },
+  mlb_pitcher: { fetchLog: fetchMLBPitcherGameLog, value: statValueMLBPitcher },
+  nfl: { fetchLog: fetchNFLPlayerGameLog, value: statValueNFL },
+  wnba: { fetchLog: fetchWNBAPlayerGameLog, value: statValue },
+};
+
+// Picks saved before the Ledger existed carry only {id, sport, name, team,
+// subtitle, opp, odds} -- no marketId, no line, no direction. None of that is
+// reliably recoverable from `subtitle`, so rather than drop those picks (or,
+// worse, guess a result for them) they're kept and shown as legacy.
+function pickIsLegacy(p) {
+  return !p || !p.marketId || p.line == null || !p.direction;
+}
+
+// MLB's game log carries a split for a game that is still *in progress*, so
+// grading the moment first pitch is in the past would settle a pick off a
+// half-finished box score -- a 1-for-2 night graded as a loss in the third
+// inning. No sport here runs anywhere near six hours, so waiting that long
+// after the scheduled start means the line being read is a final one.
+const PICK_SETTLE_DELAY_MS = 6 * 60 * 60 * 1000;
+function pickGameIsFinal(p) {
+  const start = Date.parse(p?.gameDate);
+  return Number.isFinite(start) && Date.now() - start > PICK_SETTLE_DELAY_MS;
+}
+
+// Game logs date a game by its *local* start, while a pick stores the
+// schedule's UTC timestamp -- a 10pm ET first pitch is already tomorrow in
+// UTC. So the match is "same calendar day give or take one", taking the
+// closest candidate, rather than a string equality that would silently miss
+// every late West-coast game.
+function findLoggedGame(games, isoDate) {
+  if (!games || !games.length || !isoDate) return null;
+  const target = Date.parse(isoDate.slice(0, 10) + "T00:00:00Z");
+  if (!Number.isFinite(target)) return null;
+  let best = null;
+  let bestGap = Infinity;
+  games.forEach((g) => {
+    const t = Date.parse(String(g.date || "").slice(0, 10) + "T00:00:00Z");
+    if (!Number.isFinite(t)) return;
+    const gap = Math.abs(t - target);
+    if (gap <= 36 * 3600 * 1000 && gap < bestGap) { best = g; bestGap = gap; }
+  });
+  return best;
+}
+
+// Resolves one pick to { status, value } where status is:
+//   "won" / "lost"     -- settled against a real logged game
+//   "pending"          -- game hasn't been played, or its log hasn't posted
+//   "unsettleable"     -- no real game log exists for this sport/player
+//   "legacy"           -- saved before picks carried enough data to grade
+// Never throws and never invents a result; a failed fetch reads as pending.
+async function gradePick(p) {
+  if (pickIsLegacy(p)) return { status: "legacy" };
+  const source = p.gradeKind ? PICK_GRADE_SOURCES[p.gradeKind] : null;
+  if (!source || !p.gradeId) return { status: "unsettleable" };
+  if (!p.gameDate) return { status: "unsettleable" };
+  if (!pickGameIsFinal(p)) return { status: "pending" };
+
+  let games = null;
+  try {
+    games = await source.fetchLog(p.gradeId);
+  } catch {
+    return { status: "pending" };
+  }
+  const game = findLoggedGame(games, p.gameDate);
+  if (!game) return { status: "pending" };
+
+  const value = source.value(game, p.marketId);
+  if (!Number.isFinite(value)) return { status: "pending" };
+  return {
+    status: feedIsHit(value, p.line, p.isBinary, p.direction) ? "won" : "lost",
+    value,
+  };
+}
+
+// A flat 1 unit per pick, so the record reads the same for everyone and
+// nobody has to enter a bankroll. Profit on a win is the American odds'
+// decimal payout minus the stake; a loss is -1u.
+function pickUnitProfit(p) {
+  if (p.result === "won") return americanToDecimal(p.odds) - 1;
+  if (p.result === "lost") return -1;
+  return 0;
+}
+
+function ledgerSummary(picks) {
+  const settled = picks.filter((p) => p.result === "won" || p.result === "lost");
+  const won = settled.filter((p) => p.result === "won").length;
+  const lost = settled.length - won;
+  const units = settled.reduce((a, p) => a + pickUnitProfit(p), 0);
+  return {
+    settled: settled.length,
+    won, lost,
+    hitRate: settled.length ? won / settled.length : null,
+    units,
+    // Flat staking, so risk is exactly one unit per settled pick.
+    roi: settled.length ? units / settled.length : null,
+  };
+}
+
+// --------------------------------------------------------------------------
+// Parlay correlation
+// --------------------------------------------------------------------------
+// combineParlayOdds multiplies legs as if they were independent, which is how
+// books quote a parlay -- but two markets on the same player, or two players
+// in the same game, move together. The combined price shown is therefore
+// optimistic for those slips. This flags the overlap so the panel can say so
+// plainly; it is a heuristic and is labelled as one, not a corrected price.
+function parlayCorrelationGroups(picks) {
+  const groups = [];
+  const byPlayer = new Map();
+  const byGame = new Map();
+  picks.forEach((p) => {
+    if (p.playerId) {
+      const k = `${p.sport}:${p.playerId}`;
+      byPlayer.set(k, [...(byPlayer.get(k) || []), p]);
+    }
+  });
+  const playerLegIds = new Set();
+  byPlayer.forEach((ps) => {
+    if (ps.length < 2) return;
+    ps.forEach((p) => playerLegIds.add(p.id));
+    groups.push({ kind: "player", label: ps[0].name, picks: ps });
+  });
+  picks.forEach((p) => {
+    // A same-player group already says everything a same-game group would,
+    // so those legs don't get counted twice.
+    if (!p.gameId || playerLegIds.has(p.id)) return;
+    const k = `${p.sport}:${p.gameId}`;
+    byGame.set(k, [...(byGame.get(k) || []), p]);
+  });
+  byGame.forEach((ps) => {
+    if (ps.length < 2) return;
+    groups.push({ kind: "game", label: `${ps[0].team} vs ${String(ps[0].opp || "").split(" · ")[0]}`, picks: ps });
+  });
+  return groups;
+}
+
 // Deep-links go to each book's sportsbook landing page rather than a
 // prefilled bet slip -- none of these books expose a public API for
 // injecting picks into a slip, so "add to sportsbook" means "open the
@@ -12228,6 +13022,7 @@ function buildNBAFeedRows() {
         avatarFallback: nbaHeadshot(player.nbaId),
         name: player.name,
         team: player.team,
+        marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
         rank, tier, rankLabel: nbaDefCategoryLabel(m.id),
@@ -12236,6 +13031,12 @@ function buildNBAFeedRows() {
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
         values, line, isBinary, variance,
+        direction: "over", matchupScore: rank,
+        recent: feedRecentGames(games, values),
+        // Deliberately no gradeKind/gradeId: these games come from genGames,
+        // a seeded RNG, so there is no real result to settle a pick against.
+        // The Ledger surfaces NBA picks as unsettleable rather than inventing
+        // one -- see gradePick.
       });
     });
   });
@@ -12278,6 +13079,7 @@ function buildNFLFeedRows() {
         name: player.name,
         team: player.team,
         date: gameDate,
+        marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
         rank: def.rank, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
@@ -12286,6 +13088,11 @@ function buildNFLFeedRows() {
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
         values, line, isBinary, variance,
+        direction: "over", matchupScore: def.rank,
+        recent: feedRecentGames(games, values),
+        // See gradePick. Null for anyone with no ESPN id mapped -- those
+        // rows fall back to synthetic logs, which must never be graded.
+        gradeKind: "nfl", gradeId: NFL_ESPN_ID[player.id] || null,
       });
     });
   });
@@ -12299,7 +13106,7 @@ function buildNFLFeedRows() {
 // teamsData: one entry per MLB team -- { players, gameLogsById, nextGame }.
 function buildMLBFeedRows(teamsData) {
   const rows = [];
-  teamsData.forEach(({ players, gameLogsById, gameId, nextGame }) => {
+  teamsData.forEach(({ players, gameLogsById, gameId, nextGame, lineupConfirmed }) => {
     if (!nextGame) return;
     // Empty on an ordinary day, so both the row key (and therefore the
     // persisted My Picks id built from it) and the displayed opponent stay
@@ -12331,6 +13138,7 @@ function buildMLBFeedRows(teamsData) {
           name: player.name,
           team: player.team,
           date: nextGame.date,
+          marketLabel: m.label,
           subtitle: `Over ${line} ${m.label}`,
           opp: nextGame.opp,
           rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
@@ -12339,6 +13147,15 @@ function buildMLBFeedRows(teamsData) {
           l20: hitRateWindow(values, 20, hit),
           all: hitRateWindow(values, "all", hit),
           values, line, isBinary: false, variance,
+          direction: "over", matchupScore: rank,
+          recent: feedRecentGames(games, values),
+          // Whether MLB has actually posted this team's batting order yet, so
+          // the row can say "LINEUP" instead of "PROJ". Already fetched (see
+          // fetchMLBDaySlate's lineups hydration) -- no extra request.
+          lineupConfirmed: !!lineupConfirmed,
+          // See gradePick -- fetchMLBGameLog is keyed by mlbId, not by our
+          // own roster id, so the pick has to carry it.
+          gradeKind: "mlb_batter", gradeId: player.mlbId,
         });
       });
     });
@@ -12419,6 +13236,7 @@ function buildMLBPitcherFeedRows(teamsData) {
         name: pitcher.name,
         team: teamAbbr,
         date: nextGame.date,
+        marketLabel: m.label,
         subtitle: `Over ${line} ${m.label}`,
         opp: nextGame.opp,
         rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
@@ -12427,6 +13245,15 @@ function buildMLBPitcherFeedRows(teamsData) {
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
         values, line, isBinary: false, variance,
+        direction: "over", matchupScore: rank,
+        recent: feedRecentGames(pitcherGames, values),
+        // Intentionally no `lineupConfirmed`: these rows are built off MLB's
+        // *probable* starter, which is a weaker claim than a posted batting
+        // order. Leaving it undefined means FeedRow renders no chip at all,
+        // rather than a "LINEUP" badge overstating what's actually known.
+
+        // See gradePick.
+        gradeKind: "mlb_pitcher", gradeId: pitcher.mlbId,
       });
     });
   });
@@ -12465,7 +13292,10 @@ function feedTeamCount(sport) {
 // whenever the user switches modes, then the direction chip can flip it.
 const FEED_SORT_MODES = [
   {
-    id: "matchup", label: "Easiest Matchup", metric: (r) => r.rank, defaultDir: "desc",
+    // matchupScore, not rank: it's negated on Under rows (see
+    // flipFeedRowToUnder) so "easiest" keeps meaning "best for the side
+    // you're looking at" -- a soft defense helps an Over and hurts an Under.
+    id: "matchup", label: "Easiest Matchup", metric: (r) => (r.matchupScore ?? r.rank), defaultDir: "desc",
     description: "Ranks by how vulnerable the opponent is in that specific stat (not their overall record) -- e.g. a team can be a bottom-5 defense vs. 3PM but still be tough against rebounds. #1 is the toughest matchup for this stat, higher numbers are easier.",
   },
   {
@@ -12492,18 +13322,22 @@ const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["ALL", "all
 // Label is rendered by the caller (see the FEED_LABEL_STYLE row layout in
 // PropFeedPage) so this lines up in the same label/control column as the
 // other feed filter rows instead of carrying its own separately-styled label.
-function WindowSwitcher({ value, onChange }) {
+// Shared chrome for the filter rail's segmented controls (sample size, and
+// the Over/Under side switcher below), so the two read as the same control
+// type rather than two separately-styled lookalikes.
+function FeedSegmented({ options, value, onChange, titleFor, padding = "6px 16px" }) {
   return (
     <div style={{ display: "flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-      {FEED_WINDOWS.map(([label, key], idx) => (
+      {options.map(([label, key], idx) => (
         <div
           key={key}
           className="mono"
+          role="button"
           onClick={() => onChange(key)}
-          title={`Show ${label} hit rate everywhere`}
+          title={titleFor ? titleFor(label, key) : undefined}
           style={{
             cursor: "pointer",
-            padding: "6px 16px",
+            padding,
             fontSize: 12.5,
             fontWeight: 700,
             borderLeft: idx === 0 ? "none" : "1px solid var(--line)",
@@ -12517,6 +13351,37 @@ function WindowSwitcher({ value, onChange }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function WindowSwitcher({ value, onChange }) {
+  return (
+    <FeedSegmented
+      options={FEED_WINDOWS}
+      value={value}
+      onChange={onChange}
+      titleFor={(label) => `Show ${label} hit rate everywhere`}
+    />
+  );
+}
+
+// Over/Under side switcher. Every row is built as an Over, which quietly hid
+// half the feed -- a prop that only goes Over 20% of the time is an 80%
+// Under, and there was no way to look at it that way. See flipFeedRowToUnder.
+const FEED_DIRECTIONS = [["OVER", "over"], ["UNDER", "under"]];
+function DirectionSwitcher({ value, onChange }) {
+  return (
+    <FeedSegmented
+      options={FEED_DIRECTIONS}
+      value={value}
+      onChange={onChange}
+      padding="6px 20px"
+      titleFor={(label) =>
+        label === "OVER"
+          ? "Price every prop as an Over"
+          : "Price every prop as an Under -- hit rates, odds and matchup colors all flip to that side"
+      }
+    />
   );
 }
 
@@ -12544,6 +13409,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // time. See PropTypePicker/PROP_GROUPS/PROP_QUICK_PICKS above.
   const [selectedMarket, setSelectedMarket] = useState(() => PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null);
   const [sampleWindow, setSampleWindow] = useState("l10");
+  // Which side of the line the whole feed is priced from. Rows are built
+  // Over-only; "under" runs them through flipFeedRowToUnder so the hit rates,
+  // odds, sorting and filtering all describe the side actually on screen.
+  const [direction, setDirection] = useState("over");
   const [sortMode, setSortMode] = useState("matchup");
   const [sortDir, setSortDir] = useState("desc");
   const [showSortInfo, setShowSortInfo] = useState(false);
@@ -12558,17 +13427,28 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the Sort By dropdown's mode until cleared. null means "use the Sort By/
   // primary-hit-rate behavior below" (see sortedRows).
   const [columnSort, setColumnSort] = useState(null);
-  // Three-state cycle per column: neutral -> ascending -> descending ->
-  // neutral. This used to be a two-state asc/desc flip with no branch back
-  // to null, so once you'd sorted a column there was no way to get the
-  // list back to its default order short of a reload. Nothing else was
-  // needed to restore it -- the sortedRows memo below already falls through
+  // Three-state cycle per column: neutral -> strongest-first -> weakest-first
+  // -> neutral. There's a branch back to null because otherwise, once you'd
+  // sorted a column, there was no way to get the list back to its default
+  // order short of a reload; the sortedRows memo below already falls through
   // to the Sort By dropdown's ordering whenever columnSort is null, so
   // neutral doesn't require snapshotting the pre-sort array.
+  //
+  // The *first* click used to always sort ascending, which on a hit-rate
+  // column meant it opened on the worst props on the board -- a screen of
+  // red, when the reason to click L10 is to see who hits it most. First click
+  // now surfaces the strongest end of whichever column it is, and that
+  // direction is per-column rather than a blanket "desc": these odds are
+  // derived from the hit rate itself (see probToAmericanOdds), so the biggest
+  // *number* (+1000) is the least likely prop. Sorting odds ascending puts
+  // -1000 first, which is the same props the hit-rate columns lead with --
+  // clicking Odds and clicking Season now agree instead of contradicting.
+  const FEED_COLUMN_STRONGEST_DIR = { odds: "asc" };
   const onSortColumn = (key) => {
     setColumnSort((prev) => {
-      if (prev?.key !== key) return { key, dir: "asc" };
-      if (prev.dir === "asc") return { key, dir: "desc" };
+      const strongest = FEED_COLUMN_STRONGEST_DIR[key] || "desc";
+      if (prev?.key !== key) return { key, dir: strongest };
+      if (prev.dir === strongest) return { key, dir: strongest === "desc" ? "asc" : "desc" };
       return null;
     });
   };
@@ -12711,6 +13591,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                     pitcherGames,
                     gameId,
                     nextGame,
+                    // Already hydrated by fetchMLBDaySlate -- carried through
+                    // so feed rows can distinguish a posted batting order from
+                    // our projected one without any additional request.
+                    lineupConfirmed: (lineupIds?.length || 0) > 0,
                   }))
                 )
             )
@@ -12774,7 +13658,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const activeMatchupOptions = sport === "mlb" ? mlbMatchupOptions : sport === "nfl" ? nflMatchupOptions : [];
   const showMatchupDropdown = sport === "mlb" || sport === "nfl";
 
-  const rows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
+  const baseRows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
+  // Flipping here rather than at each display site means every downstream
+  // consumer -- the odds-range filter, the sort comparators, FeedPctCell,
+  // the splits strip, the odds column, the My Picks payload -- keeps reading
+  // plain r.l5/r.l10/r.all and is automatically direction-correct.
+  const rows = useMemo(
+    () => (direction === "under" ? baseRows.map(flipFeedRowToUnder) : baseRows),
+    [baseRows, direction]
+  );
   const propGroups = PROP_GROUPS[sport] || [];
 
   const maxRank = feedTeamCount(sport);
@@ -12886,7 +13778,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
   React.useEffect(() => {
     setVisibleCount(FEED_PAGE_SIZE);
-  }, [sport, selectedMarket, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
+  }, [sport, selectedMarket, sampleWindow, direction, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
   const visibleRows = sortedRows.slice(0, visibleCount);
 
   // Measured live rather than hardcoded -- the rail wraps onto more lines
@@ -12975,6 +13867,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             </select>
           </div>
         )}
+        <div style={FEED_FILTER_ROW_STYLE}>
+          <span className="oswald" style={FEED_LABEL_STYLE}>SIDE</span>
+          <DirectionSwitcher value={direction} onChange={setDirection} />
+        </div>
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={FEED_LABEL_STYLE}>SAMPLE SIZE</span>
           <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
@@ -13267,6 +14163,23 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--red)", color: "#08131c" }}>#</span>
           Tough matchup
         </span>
+        {/* Key for the avatar's lineup dot. A bare dot is only better than
+             the "LINEUP"/"PROJ" chip it replaced if its meaning is stated
+             somewhere other than a tooltip -- a hover is not discoverable on
+             a phone, and this is the row's one piece of same-day news.
+             MLB only, since it's the only sport whose rows carry the flag. */}
+        {sport === "mlb" && (
+          <>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--pos)", boxSizing: "border-box" }} />
+              In posted lineup
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--panel)", border: "1.5px solid var(--line-strong)", boxSizing: "border-box" }} />
+              Projected lineup
+            </span>
+          </>
+        )}
       </div>
       {/* MLB only for now -- the component is sport-agnostic, but NFL's week
           slate is 16 games deep and wants its own look at mobile before it
@@ -13881,9 +14794,77 @@ function SearchBar({ index, onSelect, onOpen }) {
 // Floating "My Picks" launcher + slide-in betslip panel. Lives at the root
 // level (rendered by PropLedger, not any one page) so picks persist and stay
 // visible while switching between Prop Feed / NBA / NFL / MLB / WNBA tabs.
-function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook, onOpenSettings }) {
-  const combined = picks.length > 0 ? combineParlayOdds(picks.map((p) => p.odds)) : null;
+// Result badge shared by the Ledger's settled rows and the slip's status
+// notes. `unsettleable` and `legacy` are deliberately neutral-coloured: they
+// are not a bad outcome, they are "this one never had a real result behind
+// it," and colouring them red would read as a loss in the record.
+const PICK_RESULT_STYLES = {
+  won: { label: "WON", color: "var(--pos)", bg: "rgba(76,175,125,0.16)" },
+  lost: { label: "LOST", color: "var(--neg)", bg: "rgba(214,84,84,0.16)" },
+  unsettleable: { label: "NO RESULT", color: "var(--dim)", bg: "transparent" },
+  legacy: { label: "NOT TRACKED", color: "var(--dim)", bg: "transparent" },
+};
+
+function PickResultBadge({ result }) {
+  const s = PICK_RESULT_STYLES[result];
+  if (!s) return null;
+  return (
+    <span
+      className="oswald"
+      style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+        padding: "2px 7px", borderRadius: 3, whiteSpace: "nowrap",
+        color: s.color, background: s.bg,
+        border: s.bg === "transparent" ? "1px solid var(--line-strong)" : "none",
+      }}
+    >
+      {s.label}
+    </span>
+  );
+}
+
+function LedgerStat({ label, value, color }) {
+  return (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="oswald" style={{ fontSize: 9.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.06em" }}>
+        {label}
+      </div>
+      <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: color || "var(--text)", marginTop: 2 }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, sportsbook, onOpenSettings }) {
+  const [tab, setTab] = useState("slip");
+
+  // A pick moves from the slip to the Ledger the moment it has any resolved
+  // status -- including "no result", which is still a finished story for that
+  // pick and shouldn't sit in the slip pretending to be live.
+  const openPicks = picks.filter((p) => !p.result);
+  const settledPicks = picks.filter((p) => p.result);
+  const summary = ledgerSummary(settledPicks);
+  const correlations = parlayCorrelationGroups(openPicks);
+
+  const combined = openPicks.length > 0 ? combineParlayOdds(openPicks.map((p) => p.odds)) : null;
   const book = SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0];
+
+  const tabBtn = (id, label, count) => (
+    <div
+      onClick={() => setTab(id)}
+      role="button"
+      className="oswald"
+      style={{
+        flex: 1, textAlign: "center", cursor: "pointer",
+        padding: "9px 0", fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+        color: tab === id ? "var(--amber)" : "var(--dim)",
+        borderBottom: `2px solid ${tab === id ? "var(--amber)" : "transparent"}`,
+      }}
+    >
+      {label}{count > 0 ? ` (${count})` : ""}
+    </div>
+  );
 
   return (
     <>
@@ -13908,9 +14889,9 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
         }}
       >
         My Picks
-        {picks.length > 0 && (
+        {openPicks.length > 0 && (
           <span className="mono" style={{ background: "var(--amber)", color: "var(--accent-on)", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
-            {picks.length}
+            {openPicks.length}
           </span>
         )}
       </div>
@@ -13934,99 +14915,235 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, sportsbook
             display: "flex", flexDirection: "column",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid var(--line)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 12px", borderBottom: "1px solid var(--line)" }}>
             <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>MY PICKS</span>
             <div onClick={onToggleOpen} role="button" aria-label="Close My Picks panel" style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: "8px 18px" }}>
-            {picks.length === 0 ? (
-              <div style={{ color: "var(--dim)", fontSize: 13, padding: "24px 0", textAlign: "center" }}>
-                Tap the + on any prop in the Prop Feed to add it here.
-              </div>
-            ) : (
-              picks.map((p) => (
-                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="oswald" style={{ fontSize: 13.5, color: "var(--text)" }}>
-                      {p.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({p.team})</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>{p.subtitle}</div>
-                    <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>vs {p.opp}</div>
-                  </div>
-                  <div className="mono" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>
-                    {formatOdds(p.odds)}
-                  </div>
-                  <div
-                    onClick={() => onRemove(p.id)}
-                    role="button"
-                    aria-label={`Remove ${p.name} from My Picks`}
-                    style={{ cursor: "pointer", color: "var(--dim)", fontSize: 16, flexShrink: 0, padding: "0 2px" }}
-                  >
-                    ×
-                  </div>
-                </div>
-              ))
-            )}
+          <div style={{ display: "flex", borderBottom: "1px solid var(--line)" }}>
+            {tabBtn("slip", "SLIP", openPicks.length)}
+            {tabBtn("ledger", "LEDGER", settledPicks.length)}
           </div>
 
-          {picks.length > 0 && (
-            <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em" }}>
-                  {picks.length > 1 ? "COMBINED PARLAY ODDS" : "ODDS"}
-                </span>
-                <span className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--amber)" }}>
-                  {formatOdds(combined)}
-                </span>
+          {tab === "slip" ? (
+            <>
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 18px" }}>
+                {openPicks.length === 0 ? (
+                  <div style={{ color: "var(--dim)", fontSize: 13, padding: "24px 0", textAlign: "center" }}>
+                    Tap the + on any prop in the Prop Feed to add it here.
+                  </div>
+                ) : (
+                  openPicks.map((p) => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="oswald" style={{ fontSize: 13.5, color: "var(--text)" }}>
+                          {p.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({p.team})</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>{p.subtitle}</div>
+                        <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>vs {p.opp}</div>
+                        {/* Says up front which picks will never reach the
+                            Ledger, rather than letting them sit in the slip
+                            looking live forever. */}
+                        {pickIsLegacy(p) ? (
+                          <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 3, fontStyle: "italic" }}>
+                            Saved before results were tracked — won't be graded.
+                          </div>
+                        ) : !p.gradeKind || !p.gradeId ? (
+                          <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 3, fontStyle: "italic" }}>
+                            {p.sport === "nba"
+                              ? "NBA data here is simulated — can't be graded."
+                              : "No real game log for this player — can't be graded."}
+                          </div>
+                        ) : pickGameIsFinal(p) ? (
+                          <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 3, fontStyle: "italic" }}>
+                            Waiting on the box score.
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="mono" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>
+                        {formatOdds(p.odds)}
+                      </div>
+                      <div
+                        onClick={() => onRemove(p.id)}
+                        role="button"
+                        aria-label={`Remove ${p.name} from My Picks`}
+                        style={{ cursor: "pointer", color: "var(--dim)", fontSize: 16, flexShrink: 0, padding: "0 2px" }}
+                      >
+                        ×
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
-                <span style={{ color: "var(--dim)" }}>Sportsbook: <span style={{ color: "var(--text)", fontWeight: 600 }}>{book.label}</span></span>
-                <span
-                  onClick={onOpenSettings}
-                  role="button"
-                  style={{ color: "var(--amber)", cursor: "pointer", fontWeight: 600 }}
-                >
-                  Change in Settings ⚙
-                </span>
+              {openPicks.length > 0 && (
+                <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em" }}>
+                      {openPicks.length > 1 ? "COMBINED PARLAY ODDS" : "ODDS"}
+                    </span>
+                    <span className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--amber)" }}>
+                      {formatOdds(combined)}
+                    </span>
+                  </div>
+
+                  {/* Correlation warning. The combined price above is the legs
+                      multiplied together, which is only right if the legs are
+                      independent -- and two markets on one player, or two
+                      players in one game, plainly aren't. Rather than quote a
+                      "corrected" number the app has no way to compute, this
+                      names the overlapping legs and says which way the error
+                      runs. See parlayCorrelationGroups. */}
+                  {correlations.length > 0 && (
+                    <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
+                      <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--amber)", marginBottom: 4 }}>
+                        ⚠ CORRELATED LEGS
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
+                        {correlations.map((g, i) => (
+                          <div key={i} style={{ color: "var(--text)", marginBottom: 2 }}>
+                            {g.picks.length} legs on {g.kind === "player" ? g.label : `${g.label}`}
+                          </div>
+                        ))}
+                        These move together, so the price above — which assumes
+                        every leg is independent — is optimistic. Treat it as a
+                        ceiling, not the real number.
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
+                    <span style={{ color: "var(--dim)" }}>Sportsbook: <span style={{ color: "var(--text)", fontWeight: 600 }}>{book.label}</span></span>
+                    <span
+                      onClick={onOpenSettings}
+                      role="button"
+                      style={{ color: "var(--amber)", cursor: "pointer", fontWeight: 600 }}
+                    >
+                      Change in Settings ⚙
+                    </span>
+                  </div>
+
+                  <div
+                    onClick={() => window.open(book.url, "_blank", "noopener,noreferrer")}
+                    role="button"
+                    className="oswald cta-btn"
+                    style={{
+                      cursor: "pointer", textAlign: "center", padding: "10px 0", borderRadius: 4,
+                      background: "var(--amber)", color: "var(--accent-on)", fontSize: 13.5, fontWeight: 700, letterSpacing: "0.02em",
+                      boxShadow: "0 2px 10px color-mix(in srgb, var(--amber) 18%, transparent)",
+                    }}
+                  >
+                    Open in {book.label} →
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.4 }}>
+                    Opens {book.label} in a new tab -- sportsbooks don't offer a public way to prefill a bet slip, so you'll still need to search and add these picks there yourself.
+                  </div>
+
+                  <div
+                    onClick={onClear}
+                    role="button"
+                    className="oswald danger-btn"
+                    style={{
+                      cursor: "pointer", textAlign: "center", padding: "8px 0", borderRadius: 4,
+                      fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
+                    }}
+                  >
+                    Clear slip
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {summary.settled > 0 && (
+                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)", display: "flex", gap: 10 }}>
+                  <LedgerStat label="RECORD" value={`${summary.won}-${summary.lost}`} />
+                  <LedgerStat label="HIT RATE" value={`${Math.round(summary.hitRate * 100)}%`} />
+                  <LedgerStat
+                    label="UNITS"
+                    value={`${summary.units >= 0 ? "+" : "−"}${Math.abs(summary.units).toFixed(2)}u`}
+                    color={summary.units >= 0 ? "var(--pos)" : "var(--neg)"}
+                  />
+                  <LedgerStat
+                    label="ROI"
+                    value={`${summary.roi >= 0 ? "+" : "−"}${Math.abs(summary.roi * 100).toFixed(1)}%`}
+                    color={summary.roi >= 0 ? "var(--pos)" : "var(--neg)"}
+                  />
+                </div>
+              )}
+
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 18px" }}>
+                {settledPicks.length === 0 ? (
+                  <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "24px 0", textAlign: "center", lineHeight: 1.5 }}>
+                    Nothing settled yet. Picks land here automatically once the
+                    game is played and the box score posts — no need to grade
+                    anything yourself.
+                  </div>
+                ) : (
+                  settledPicks.map((p) => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="oswald" style={{ fontSize: 13.5, color: "var(--text)" }}>
+                          {p.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({p.team})</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 600, marginTop: 1 }}>{p.subtitle}</div>
+                        <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 3 }}>
+                          {p.resultValue != null
+                            ? `Actual ${p.resultValue} · ${formatOdds(p.odds)}`
+                            : p.result === "unsettleable"
+                              ? "No real game log for this player"
+                              : formatOdds(p.odds)}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+                        <PickResultBadge result={p.result} />
+                        {(p.result === "won" || p.result === "lost") && (
+                          <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: p.result === "won" ? "var(--pos)" : "var(--neg)" }}>
+                            {pickUnitProfit(p) >= 0 ? "+" : "−"}{Math.abs(pickUnitProfit(p)).toFixed(2)}u
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        onClick={() => onRemove(p.id)}
+                        role="button"
+                        aria-label={`Remove ${p.name} from the Ledger`}
+                        style={{ cursor: "pointer", color: "var(--dim)", fontSize: 16, flexShrink: 0, padding: "0 2px" }}
+                      >
+                        ×
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
-              <div
-                onClick={() => window.open(book.url, "_blank", "noopener,noreferrer")}
-                role="button"
-                className="oswald cta-btn"
-                style={{
-                  cursor: "pointer", textAlign: "center", padding: "10px 0", borderRadius: 4,
-                  background: "var(--amber)", color: "var(--accent-on)", fontSize: 13.5, fontWeight: 700, letterSpacing: "0.02em",
-                  boxShadow: "0 2px 10px color-mix(in srgb, var(--amber) 18%, transparent)",
-                }}
-              >
-                Open in {book.label} →
+              <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
+                  Graded from each player's own game log, at a flat 1 unit per
+                  pick — no bankroll, no dollars. Picks with no real log behind
+                  them (NBA is simulated data) stay in the slip marked as
+                  ungradable and never enter this record.
+                </div>
+                {settledPicks.length > 0 && (
+                  <div
+                    onClick={onClearSettled}
+                    role="button"
+                    className="oswald danger-btn"
+                    style={{
+                      cursor: "pointer", textAlign: "center", padding: "8px 0", borderRadius: 4,
+                      fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
+                    }}
+                  >
+                    Clear history
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.4 }}>
-                Opens {book.label} in a new tab -- sportsbooks don't offer a public way to prefill a bet slip, so you'll still need to search and add these picks there yourself.
-              </div>
-
-              <div
-                onClick={onClear}
-                role="button"
-                className="oswald danger-btn"
-                style={{
-                  cursor: "pointer", textAlign: "center", padding: "8px 0", borderRadius: 4,
-                  fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
-                }}
-              >
-                Clear all
-              </div>
-            </div>
+            </>
           )}
         </div>
       )}
     </>
   );
 }
-
 function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, theme, onThemeChange, accentColor, onAccentColorChange }) {
   const book = SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0];
 
@@ -14203,7 +15320,51 @@ export default function PropLedger() {
     setMyPicks((cur) => (cur.some((p) => p.id === pick.id) ? cur.filter((p) => p.id !== pick.id) : [...cur, pick]));
   };
   const removePick = (id) => setMyPicks((cur) => cur.filter((p) => p.id !== id));
-  const clearPicks = () => setMyPicks([]);
+  // "Clear slip" and "Clear history" are separate on purpose -- emptying the
+  // slip must not wipe a settled record, and vice versa.
+  const clearPicks = () => setMyPicks((cur) => cur.filter((p) => p.result));
+  const clearSettledPicks = () => setMyPicks((cur) => cur.filter((p) => !p.result));
+
+  // Settles saved picks against the game logs the app already fetches and
+  // caches. Runs when the app mounts and whenever the panel is opened, only
+  // for picks that are still ungraded and whose game has already started --
+  // so on the common path it costs no network requests at all, just cache
+  // reads. `gradeAttempted` stops a pick whose box score hasn't posted yet
+  // from being re-requested every time the picks array changes; it clears
+  // itself on reload, which is when it's worth trying again.
+  const gradeAttempted = React.useRef(new Set());
+  React.useEffect(() => {
+    const todo = myPicks.filter(
+      (p) => !p.result && !gradeAttempted.current.has(p.id) && !pickIsLegacy(p) && pickGameIsFinal(p)
+    );
+    if (!todo.length) return;
+    todo.forEach((p) => gradeAttempted.current.add(p.id));
+
+    let cancelled = false;
+    Promise.all(todo.map((p) => gradePick(p).then((g) => [p.id, g]).catch(() => [p.id, { status: "pending" }])))
+      .then((entries) => {
+        if (cancelled) return;
+        const settled = entries.filter(([, g]) => g.status !== "pending");
+        if (!settled.length) return;
+        const byId = new Map(settled);
+        setMyPicks((cur) => cur.map((p) => {
+          const g = byId.get(p.id);
+          // Never re-grade a pick that already has a result -- a settled
+          // record shouldn't move under the user.
+          if (!g || p.result) return p;
+          return { ...p, result: g.status, resultValue: g.value ?? null, gradedAt: Date.now() };
+        }));
+      });
+    // Releasing the claim on cancel matters: a cancelled pass throws its
+    // results away, so leaving those ids marked as attempted would mean
+    // nothing ever grades them. StrictMode's dev double-invoke hits exactly
+    // this path -- the first pass claims every id and is then cancelled, and
+    // without the release the second pass finds nothing to do.
+    return () => {
+      cancelled = true;
+      todo.forEach((p) => gradeAttempted.current.delete(p.id));
+    };
+  }, [myPicks, picksOpen]);
 
   // MLB_TEAM_DEF starts out as mock data (see its definition above) so the
   // page never has to show a loading state -- this swaps in the real,
@@ -14462,6 +15623,7 @@ export default function PropLedger() {
         onToggleOpen={() => setPicksOpen((v) => !v)}
         onRemove={removePick}
         onClear={clearPicks}
+        onClearSettled={clearSettledPicks}
         sportsbook={sportsbook}
         onOpenSettings={() => { setPicksOpen(false); setSettingsOpen(true); }}
       />
