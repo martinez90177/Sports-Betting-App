@@ -281,6 +281,28 @@ a:focus-visible, div[role="button"]:focus-visible, button:focus-visible,
    FilterPanel header/footer, the prop-picker search box) resolve against
    those panels either way and are unaffected. */
 html, body { max-width: 100%; overflow-x: clip; }
+
+/* ---------- UI scale (Settings > Display > Display size) ----------
+   `zoom` rather than a font-size change because virtually all sizing in this
+   app is inline pixel values rather than var(--fs-*)/var(--s-*) -- a token
+   change would only have moved the newest code. zoom scales layout, type and
+   fixed-position overlays together, and unlike a transform it doesn't take
+   elements out of flow or create a containing block for position:fixed. */
+:root[data-ui-scale="small"] { zoom: 0.9; }
+:root[data-ui-scale="large"] { zoom: 1.15; }
+
+/* ---------- reduced motion ----------
+   Set from the OS preference by default, but overridable in Settings: some
+   people want the animations off on a phone without changing a system-wide
+   setting, and some want them on despite it. */
+:root[data-reduce-motion] *,
+:root[data-reduce-motion] *::before,
+:root[data-reduce-motion] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
 body {
   background:
     radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--amber) 7%, transparent), transparent 60%),
@@ -477,6 +499,25 @@ select.select:focus, select.select:focus-visible {
   column-gap: 10px;
   padding-left: 12px;
   padding-right: 12px;
+}
+
+/* FeedTableHeader's sticky behaviour, gated to the same 960px breakpoint as
+   .feed-table-wrap's clip/auto switch above -- the two have to move together.
+
+   Below it the wrapper is `overflow-x: auto`, which makes it a scroll
+   container, and a sticky offset resolves against the nearest ancestor
+   scroll container rather than the viewport. The header therefore pinned
+   `top` pixels down from the top of the *card*, landing in the middle of the
+   first row and cutting it in half at every scroll position -- the player's
+   name above the header, the rest of the row below it.
+
+   `position` has to be decided here rather than inline in FeedTableHeader:
+   an inline style beats a media query, so a JS-set `position: sticky` could
+   never be turned back off at a breakpoint. The inline `top` is harmless
+   while this is static, since `top` does nothing on a static element. */
+.feed-thead { position: static; }
+@media (min-width: 960px) {
+  .feed-thead { position: sticky; }
 }
 
 /* Line and Odds used to be right-aligned while L5/L10/L20/Season were

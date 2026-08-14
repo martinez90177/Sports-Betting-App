@@ -4,6 +4,12 @@ import {
 } from "recharts";
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
+import { useSettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits } from "./settings.jsx";
+import { useOverlay } from "./useOverlay.js";
+import { formatOdds, americanToDecimal, decimalToAmerican } from "./odds.js";
+import SettingsModal from "./SettingsModal.jsx";
+import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
+import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 
 // Loaded on demand rather than up front. The app opens on the Prop Feed, and
 // these three are never on screen until the user navigates to them -- but
@@ -149,27 +155,6 @@ function neonizeColor(hex) {
   let [r2, g2, b2] = h < 60 ? [c2, x, 0] : h < 120 ? [x, c2, 0] : h < 180 ? [0, c2, x] : h < 240 ? [0, x, c2] : h < 300 ? [x, 0, c2] : [c2, 0, x];
   const toHex = (v) => Math.round((v + m2) * 255).toString(16).padStart(2, "0");
   return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`;
-}
-
-// Foreground colour for text sitting on a solid --amber background. The
-// accent is user-pickable from a full colour wheel (see ColorWheel.jsx), so
-// it can land anywhere from near-black to near-white -- a fixed label colour
-// is unreadable at one end or the other. Picks whichever of near-black or
-// white has the higher WCAG contrast against the given accent.
-const ACCENT_ON_DARK = "#08131c";
-const ACCENT_ON_LIGHT = "#ffffff";
-function accentForeground(hex) {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec((hex || "").trim());
-  if (!m) return ACCENT_ON_DARK;
-  const channel = (c) => {
-    const v = parseInt(c, 16) / 255;
-    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-  };
-  const lum = 0.2126 * channel(m[1]) + 0.7152 * channel(m[2]) + 0.0722 * channel(m[3]);
-  // Relative luminance of ACCENT_ON_DARK is ~0.0057; 1.0 for white.
-  const contrastWithDark = (lum + 0.05) / (0.0057 + 0.05);
-  const contrastWithWhite = (1.0 + 0.05) / (lum + 0.05);
-  return contrastWithDark >= contrastWithWhite ? ACCENT_ON_DARK : ACCENT_ON_LIGHT;
 }
 
 const teamAvatarBackground = (colorMap, teamAbbr) => {
@@ -12424,11 +12409,14 @@ function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
   };
   return (
     <div
-      className="feed-grid"
+      className="feed-grid feed-thead"
       style={{
         paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--line)",
         textTransform: "uppercase", letterSpacing: "0.04em",
-        position: "sticky", top: stickyTop, zIndex: 3, background: "var(--surface-sunken)",
+        // `position` is deliberately not set here -- see .feed-thead in
+        // index.css. It has to come from a media query, and an inline style
+        // would win over one.
+        top: stickyTop, zIndex: 3, background: "var(--surface-sunken)",
       }}
     >
       <div /><div />
@@ -12628,6 +12616,11 @@ function feedPickId(sport, r) {
 }
 
 const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast }) {
+  // Read from context rather than passed down: this component is memo'd, and
+  // a context read still re-renders it when the format changes (memo only
+  // short-circuits prop changes), so the whole feed reformats without adding
+  // a prop to every row.
+  const oddsFormat = useOddsFormat();
   // Filled pill background for a clear favorable/unfavorable read at a
   // glance; "mid" stays neutral so it doesn't compete visually with the
   // amber accent used elsewhere (odds, active toggles) -- but it still
@@ -12861,7 +12854,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
   const oddsBlock = (
     <div style={{ textAlign: isNarrow ? "left" : "right", flexShrink: 0 }}>
       <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
-        {formatOdds(odds)}
+        {formatOdds(odds, oddsFormat)}
       </div>
       <div
         className="mono"
@@ -12986,7 +12979,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
           </div>
         )}
       </div>
-      <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds)}</div>
+      <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds, oddsFormat)}</div>
       <FeedPctCell v={r.l5} />
       <FeedPctCell v={r.l10} />
       <FeedPctCell v={r.l20} />
@@ -13144,15 +13137,11 @@ function probToAmericanOdds(p) {
     ? Math.round((-100 * prob) / (1 - prob))
     : Math.round((100 * (1 - prob)) / prob);
 }
-function formatOdds(o) {
-  return o > 0 ? `+${o}` : String(o);
-}
-function americanToDecimal(o) {
-  return o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o);
-}
-function decimalToAmerican(d) {
-  return d >= 2 ? Math.round((d - 1) * 100) : Math.round(-100 / (d - 1));
-}
+// formatOdds/americanToDecimal/decimalToAmerican now live in odds.js -- see
+// the imports at the top of this file. Only formatOdds is format-aware; the
+// two converters stay pure American<->decimal maths and are unaffected by the
+// display preference.
+
 // Multiplies each leg's decimal odds together for the combined parlay price
 // -- the standard way sportsbooks combine independent legs into one payout.
 function combineParlayOdds(americanOddsList) {
@@ -13897,21 +13886,27 @@ const FEED_CONTROL_WIDTH = 190;
 
 function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, sport, setSport }) {
   const isNarrow = useIsNarrow(560);
+  // Settings > Betting seeds the two controls below. Read once as an initial
+  // value, for the same reason feedSport is: changing a default should decide
+  // where the next visit starts, not move the controls under someone who is
+  // already reading the board.
+  const bettingDefaults = useBettingSettings();
   // Replaces the old flat category chip row (All/Core/Power/...), which
   // filtered down to a *bucket* of markets -- this lands on one real prop
   // directly, matching how Outlier's feed always shows a single market at a
   // time. See PropTypePicker/PROP_GROUPS/PROP_QUICK_PICKS above.
   const [selectedMarket, setSelectedMarket] = useState(() => PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null);
-  const [sampleWindow, setSampleWindow] = useState("l10");
+  const [sampleWindow, setSampleWindow] = useState(() => bettingDefaults.sampleWindow);
   // Which side of the line the whole feed is priced from. Rows are built
   // Over-only; "under" runs them through flipFeedRowToUnder so the hit rates,
   // odds, sorting and filtering all describe the side actually on screen.
-  const [direction, setDirection] = useState("over");
+  const [direction, setDirection] = useState(() => bettingDefaults.lean);
   const [sortMode, setSortMode] = useState("matchup");
   const [sortDir, setSortDir] = useState("desc");
   const [showSortInfo, setShowSortInfo] = useState(false);
   const [sortInfoHover, setSortInfoHover] = useState(false);
   const [sortDirInfoHover, setSortDirInfoHover] = useState(false);
+  const oddsFormat = useOddsFormat();
   // Secondary filters (Sort By, Odds Range, Defense Rank Range) collapse
   // behind this Filters disclosure instead of always sitting open in the
   // page flow -- see feedActiveFilterCount below for the badge shown on its
@@ -14162,6 +14157,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     [baseRows, direction]
   );
   const propGroups = PROP_GROUPS[sport] || [];
+  // Display name of the selected prop, for the preset chip summary -- the
+  // stored value is a market id ("pts_reb_ast"), which is not what someone
+  // wants to read on a saved-screen card.
+  const activeMarketLabel = useMemo(
+    () => propGroups.flatMap((g) => g.markets).find((m) => m.id === selectedMarket)?.label || null,
+    [propGroups, selectedMarket]
+  );
 
   const maxRank = feedTeamCount(sport);
   React.useEffect(() => {
@@ -14172,6 +14174,138 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setSelectedGameIds(new Set());
     setColumnSort(null);
   }, [sport]);
+
+  // ---- saved screens (see FeedPresets.jsx) ----
+
+  // The snapshot a preset stores. Game selections are converted to the *teams*
+  // playing in those games rather than kept as matchup ids: ids identify one
+  // specific scheduled game, so a preset saved today would match nothing
+  // tomorrow. Teams are what someone naming a screen "Yankees" actually
+  // means, and they still resolve to whatever those teams are playing next.
+  const feedFilters = useMemo(
+    () => ({
+      sport,
+      market: selectedMarket,
+      sampleWindow,
+      direction,
+      sortMode,
+      sortDir,
+      oddsMinX,
+      oddsMaxX,
+      rankLo,
+      rankHi,
+      teamFilter,
+      gameTeams: [
+        ...new Set(
+          activeMatchupOptions.filter((o) => selectedGameIds.has(o.id)).flatMap((o) => o.teams)
+        ),
+      ],
+    }),
+    [sport, selectedMarket, sampleWindow, direction, sortMode, sortDir, oddsMinX, oddsMaxX,
+     rankLo, rankHi, teamFilter, activeMatchupOptions, selectedGameIds]
+  );
+
+  const applyFeedFiltersNow = React.useCallback((f) => {
+    if (f.market !== undefined) setSelectedMarket(f.market);
+    if (f.sampleWindow) setSampleWindow(f.sampleWindow);
+    if (f.direction) setDirection(f.direction);
+    if (f.sortMode) setSortMode(f.sortMode);
+    if (f.sortDir) setSortDir(f.sortDir);
+    if (Number.isFinite(f.oddsMinX)) setOddsMinX(f.oddsMinX);
+    if (Number.isFinite(f.oddsMaxX)) setOddsMaxX(f.oddsMaxX);
+    // Clamped to the sport actually being applied. The decoder can only bound
+    // these generously (it doesn't know the sport's team count), and a shared
+    // link carrying rankHi=40 would otherwise put the Defense Rank slider
+    // past the end of its own track on a 30-team board.
+    const rankCeil = feedTeamCount(f.sport || sport);
+    if (Number.isFinite(f.rankLo)) setRankLo(Math.min(Math.max(1, f.rankLo), rankCeil));
+    if (Number.isFinite(f.rankHi)) setRankHi(Math.min(Math.max(1, f.rankHi), rankCeil));
+    if (f.teamFilter) setTeamFilter(f.teamFilter);
+    setColumnSort(null);
+    // Teams back to whatever matchup ids those teams appear in today.
+    const teams = f.gameTeams || [];
+    setSelectedGameIds(
+      teams.length
+        ? new Set(activeMatchupOptions.filter((o) => o.teams.some((t) => teams.includes(t))).map((o) => o.id))
+        : new Set()
+    );
+  }, [activeMatchupOptions, sport]);
+
+  // Applying a preset for a *different* sport can't happen in one pass: the
+  // effect above resets every filter whenever the sport changes, so anything
+  // set in the same tick is immediately overwritten. The preset is parked
+  // here instead and applied once the new sport's rows and matchup options
+  // are the live ones. This effect must stay declared *after* that reset
+  // effect -- React runs effects in declaration order, and the reverse order
+  // would apply the preset and then wipe it.
+  const [pendingPreset, setPendingPreset] = useState(null);
+  React.useEffect(() => {
+    if (!pendingPreset || pendingPreset.sport !== sport) return;
+    applyFeedFiltersNow(pendingPreset);
+    setPendingPreset(null);
+  }, [sport, pendingPreset, applyFeedFiltersNow]);
+
+  const applyFeedFilters = React.useCallback((f) => {
+    if (f.sport && f.sport !== sport) {
+      setSport(f.sport);
+      setPendingPreset(f);
+      return;
+    }
+    applyFeedFiltersNow(f);
+  }, [sport, setSport, applyFeedFiltersNow]);
+
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const [presets, setPresets] = useState(loadPresets);
+  const [defaultPresetId, setDefaultPresetId] = useState(
+    () => localStorage.getItem("propPalaceDefaultPreset") || null
+  );
+  React.useEffect(() => { savePresets(presets); }, [presets]);
+  React.useEffect(() => {
+    if (defaultPresetId) localStorage.setItem("propPalaceDefaultPreset", defaultPresetId);
+    else localStorage.removeItem("propPalaceDefaultPreset");
+  }, [defaultPresetId]);
+
+  // A screen shared via a #screen= link. Parked in state and offered through
+  // a banner rather than applied on arrival -- see SharedScreenBanner.
+  const [sharedScreen, setSharedScreen] = useState(() => decodeShareLink(window.location.hash));
+
+  // A share link doesn't always arrive as a cold load. Following one while
+  // the app is already open is a same-document navigation -- the page never
+  // reloads, so the initial read above never re-runs and the link would
+  // silently do nothing. replaceState (used below to clear the hash) does not
+  // fire hashchange, so this can't loop.
+  React.useEffect(() => {
+    const onHashChange = () => {
+      const s = decodeShareLink(window.location.hash);
+      if (s) setSharedScreen(s);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  React.useEffect(() => {
+    if (!sharedScreen) return;
+    // Clear the hash once it's been read so a reload (or a bookmark) doesn't
+    // re-offer the same screen forever.
+    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  }, [sharedScreen]);
+
+  // The default screen, applied once on the first mount. A shared link takes
+  // precedence by suppressing this -- someone who followed a link is here for
+  // that board, not their own default.
+  const appliedDefault = React.useRef(false);
+  React.useEffect(() => {
+    if (appliedDefault.current) return;
+    appliedDefault.current = true;
+    if (sharedScreen || !defaultPresetId) return;
+    const p = presets.find((x) => x.id === defaultPresetId);
+    if (p) applyFeedFilters(p.filters);
+  }, [defaultPresetId, presets, sharedScreen, applyFeedFilters]);
+
+  const appliedPresetName = useMemo(
+    () => presets.find((p) => filtersEqual(p.filters, feedFilters))?.name ?? null,
+    [presets, feedFilters]
+  );
 
   // Option list for the Team dropdown -- built off the full per-sport row
   // set (not the market-filtered one) so switching prop type never hides a
@@ -14314,6 +14448,39 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     </button>
   );
 
+  // Sits beside Filters rather than in Settings: a saved screen is a property
+  // of the board you're looking at, and the point is to save what's on screen
+  // without leaving it.
+  const screensButton = (
+    <button
+      type="button"
+      className="oswald"
+      onClick={() => setPresetsOpen(true)}
+      title="Saved screens"
+      style={{
+        cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
+        border: `1px solid ${appliedPresetName ? "var(--amber)" : "var(--line)"}`,
+        background: appliedPresetName ? "var(--amber-dim)" : "var(--panel)",
+        color: appliedPresetName ? "var(--amber)" : "var(--text)",
+        display: "flex", alignItems: "center", gap: 8, flexShrink: 0, whiteSpace: "nowrap",
+        maxWidth: 200,
+      }}
+    >
+      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+        {appliedPresetName || "Screens"}
+      </span>
+      {presets.length > 0 && !appliedPresetName && (
+        <span className="mono" style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8,
+          fontSize: 10, fontWeight: 800, background: "var(--surface-3, var(--panel2))", color: "var(--dim)",
+        }}>
+          {presets.length}
+        </span>
+      )}
+    </button>
+  );
+
   // The games strip is itself a game picker, so on a phone the Games dropdown
   // beside it would be a second control for the same job -- MLB gets the strip
   // and drops the dropdown.
@@ -14333,6 +14500,28 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // the single-player pages (1920 there; 1600 here keeps the rows from
     // stretching past the point where scanning a row is comfortable).
     <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", boxSizing: "border-box" }}>
+      <SharedScreenBanner
+        shared={sharedScreen}
+        onApply={() => { applyFeedFilters(sharedScreen.filters); setSharedScreen(null); }}
+        onDismiss={() => setSharedScreen(null)}
+      />
+      <FeedPresets
+        open={presetsOpen}
+        onClose={() => setPresetsOpen(false)}
+        isNarrow={isNarrow}
+        currentFilters={feedFilters}
+        onApply={applyFeedFilters}
+        resultCount={filteredRows.length}
+        describeArgs={{
+          maxRank,
+          marketLabel: activeMarketLabel,
+          sortLabel: activeSortMode?.label,
+        }}
+        presets={presets}
+        setPresets={setPresets}
+        defaultPresetId={defaultPresetId}
+        setDefaultPresetId={setDefaultPresetId}
+      />
       {/* Phone control block. The desktop layout below stacks each control
           under its own centered uppercase label, which on a 375px screen came
           to roughly 600px of filters -- you scrolled past a screen and a half
@@ -14354,6 +14543,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             </div>
             {filtersButton}
           </div>
+          <div style={{ display: "flex", gap: 8 }}>{screensButton}</div>
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <DirectionSwitcher value={direction} onChange={setDirection} fill />
@@ -14479,6 +14669,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={{ ...FEED_LABEL_STYLE, opacity: 0 }}>·</span>
           {filtersButton}
+        </div>
+        <div style={FEED_FILTER_ROW_STYLE}>
+          <span className="oswald" style={{ ...FEED_LABEL_STYLE, opacity: 0 }}>·</span>
+          {screensButton}
         </div>
       </div>
       {/* Live result count -- tells the user how much the filters above are
@@ -14652,7 +14846,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             ODDS RANGE
           </span>
           <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
-            {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMinX)))} to {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMaxX)))}
+            {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMinX)), oddsFormat)} to {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMaxX)), oddsFormat)}
           </span>
           {(oddsMinX !== 4 || oddsMaxX !== 96) && (
             <span className="chip" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => { setOddsMinX(4); setOddsMaxX(96); }}>
@@ -15418,7 +15612,7 @@ function PickResultBadge({ result }) {
   );
 }
 
-function LedgerStat({ label, value, color }) {
+function LedgerStat({ label, value, color, sub }) {
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div className="oswald" style={{ fontSize: 9.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.06em" }}>
@@ -15427,6 +15621,14 @@ function LedgerStat({ label, value, color }) {
       <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: color || "var(--text)", marginTop: 2 }}>
         {value}
       </div>
+      {/* Dollars go on their own line rather than inline with the units
+          figure: these four tiles share one row at 340px wide, and appending
+          "($123.45)" to the value wrapped the tile at any realistic total. */}
+      {sub && (
+        <div className="mono" style={{ fontSize: 10.5, fontWeight: 600, color: "var(--dim)", marginTop: 1 }}>
+          {sub}
+        </div>
+      )}
     </div>
   );
 }
@@ -15467,6 +15669,7 @@ function ReportBreakdownRows({ rows }) {
 // generated from a numeric test over data already on the device -- see the
 // Report section above for why there's no model behind it.
 function PickReportTab({ openPicks, settledPicks, correlations }) {
+  const dollarsPerUnit = useUnitValue();
   const findings = useMemo(() => reportSlipFindings(openPicks), [openPicks]);
   const verdict = useMemo(() => reportSlipVerdict(openPicks, findings, correlations), [openPicks, findings, correlations]);
   const history = useMemo(() => reportHistory(settledPicks), [settledPicks]);
@@ -15523,7 +15726,7 @@ function PickReportTab({ openPicks, settledPicks, correlations }) {
             <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
               {history.summary.won}-{history.summary.lost} on settled picks,{" "}
               <span style={{ color: history.summary.units >= 0 ? "var(--pos)" : "var(--neg)", fontWeight: 700 }}>
-                {history.summary.units >= 0 ? "+" : "−"}{Math.abs(history.summary.units).toFixed(2)}u
+                {formatUnits(history.summary.units, dollarsPerUnit)}
               </span>{" "}
               at a flat 1u a pick.
             </div>
@@ -15565,6 +15768,13 @@ function PickReportTab({ openPicks, settledPicks, correlations }) {
 
 function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, sportsbook, onOpenSettings }) {
   const [tab, setTab] = useState("slip");
+  const oddsFormat = useOddsFormat();
+  const dollarsPerUnit = useUnitValue();
+  // Escape, scroll lock, focus restore and the back-gesture history entry --
+  // none of which this drawer had before. The FAB below still calls
+  // onToggleOpen directly to *open*; every close path goes through
+  // requestClose so the pushed history entry is consumed rather than orphaned.
+  const { panelRef, requestClose } = useOverlay({ open, onClose: onToggleOpen, historyKey: "myPicksPanel" });
 
   // A pick moves from the slip to the Ledger the moment it has any resolved
   // status -- including "no result", which is still a finished story for that
@@ -15625,7 +15835,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
 
       {open && (
         <div
-          onClick={onToggleOpen}
+          onClick={requestClose}
           style={{
             position: "fixed", inset: 0, zIndex: 2090,
             background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
@@ -15634,17 +15844,23 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
       )}
       {open && (
         <div
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label="My Picks"
           style={{
             position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 2100,
             width: 340, maxWidth: "92vw",
             background: "var(--panel)", borderLeft: "1px solid var(--line)",
             boxShadow: "-6px 0 24px rgba(0,0,0,0.45)",
             display: "flex", flexDirection: "column",
+            outline: "none",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 12px", borderBottom: "1px solid var(--line)" }}>
             <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>MY PICKS</span>
-            <div onClick={onToggleOpen} role="button" aria-label="Close My Picks panel" style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
+            <div onClick={requestClose} role="button" aria-label="Close My Picks panel" style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
           </div>
 
           <div style={{ display: "flex", borderBottom: "1px solid var(--line)" }}>
@@ -15691,7 +15907,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                         ) : null}
                       </div>
                       <div className="mono" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>
-                        {formatOdds(p.odds)}
+                        {formatOdds(p.odds, oddsFormat)}
                       </div>
                       <div
                         onClick={() => onRemove(p.id)}
@@ -15713,7 +15929,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                       {openPicks.length > 1 ? "COMBINED PARLAY ODDS" : "ODDS"}
                     </span>
                     <span className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--amber)" }}>
-                      {formatOdds(combined)}
+                      {formatOdds(combined, oddsFormat)}
                     </span>
                   </div>
 
@@ -15790,8 +16006,9 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                   <LedgerStat label="RECORD" value={`${summary.won}-${summary.lost}`} />
                   <LedgerStat label="HIT RATE" value={`${Math.round(summary.hitRate * 100)}%`} />
                   <LedgerStat
-                    label="UNITS"
-                    value={`${summary.units >= 0 ? "+" : "−"}${Math.abs(summary.units).toFixed(2)}u`}
+                    label={dollarsPerUnit ? "PROFIT" : "UNITS"}
+                    value={formatUnits(summary.units, null)}
+                    sub={dollarsPerUnit ? formatUnits(summary.units, dollarsPerUnit, { parens: false }) : null}
                     color={summary.units >= 0 ? "var(--pos)" : "var(--neg)"}
                   />
                   <LedgerStat
@@ -15819,17 +16036,17 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                         <div style={{ fontSize: 12, color: "var(--dim)", fontWeight: 600, marginTop: 1 }}>{p.subtitle}</div>
                         <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 3 }}>
                           {p.resultValue != null
-                            ? `Actual ${p.resultValue} · ${formatOdds(p.odds)}`
+                            ? `Actual ${p.resultValue} · ${formatOdds(p.odds, oddsFormat)}`
                             : p.result === "unsettleable"
                               ? "No real game log for this player"
-                              : formatOdds(p.odds)}
+                              : formatOdds(p.odds, oddsFormat)}
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
                         <PickResultBadge result={p.result} />
                         {(p.result === "won" || p.result === "lost") && (
                           <span className="mono" style={{ fontSize: 11.5, fontWeight: 700, color: p.result === "won" ? "var(--pos)" : "var(--neg)" }}>
-                            {pickUnitProfit(p) >= 0 ? "+" : "−"}{Math.abs(pickUnitProfit(p)).toFixed(2)}u
+                            {formatUnits(pickUnitProfit(p), dollarsPerUnit)}
                           </span>
                         )}
                       </div>
@@ -15849,9 +16066,13 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
               <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
                   Graded from each player's own game log, at a flat 1 unit per
-                  pick — no bankroll, no dollars. Picks with no real log behind
-                  them (NBA is simulated data) stay in the slip marked as
-                  ungradable and never enter this record.
+                  pick.{" "}
+                  {dollarsPerUnit
+                    ? `Dollar figures use the unit size in Settings (1u = $${dollarsPerUnit.toFixed(2)}) and are worked out from the units on the fly, so changing it never rewrites a settled result.`
+                    : "Set a bankroll in Settings to see this in dollars as well."}{" "}
+                  Picks with no real log behind them (NBA is simulated data)
+                  stay in the slip marked as ungradable and never enter this
+                  record.
                 </div>
                 {settledPicks.length > 0 && (
                   <div
@@ -15874,176 +16095,45 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
     </>
   );
 }
-function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, theme, onThemeChange, accentColor, onAccentColorChange }) {
-  const book = SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0];
-
-  return (
-    <>
-      {open && (
-        <div
-          onClick={onToggleOpen}
-          style={{
-            position: "fixed", inset: 0, zIndex: 2090,
-            background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
-          }}
-        />
-      )}
-      {open && (
-        <div
-          style={{
-            position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 2100,
-            width: 340, maxWidth: "92vw",
-            background: "var(--panel)", borderLeft: "1px solid var(--line)",
-            boxShadow: "-6px 0 24px rgba(0,0,0,0.45)",
-            display: "flex", flexDirection: "column",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", borderBottom: "1px solid var(--line)" }}>
-            <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>SETTINGS</span>
-            <div onClick={onToggleOpen} role="button" aria-label="Close Settings panel" style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
-          </div>
-
-          <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-            <div style={{ marginBottom: 20 }}>
-              <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
-                THEME
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }].map((t) => (
-                  <div
-                    key={t.id}
-                    onClick={() => onThemeChange(t.id)}
-                    role="button"
-                    className={`chip${theme === t.id ? " active" : ""}`}
-                    style={{ flex: 1, textAlign: "center" }}
-                  >
-                    {t.label}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
-                DEFAULT SPORTSBOOK
-              </div>
-              <select
-                className="select"
-                value={sportsbook}
-                onChange={(e) => onSportsbookChange(e.target.value)}
-                style={{ width: "100%" }}
-              >
-                {SPORTSBOOKS.map((b) => (
-                  <option key={b.id} value={b.id}>{b.label}</option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 6, lineHeight: 1.4 }}>
-                Used for the "Open in {book.label} →" button in My Picks.
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
-                ACCENT COLOR
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 12, lineHeight: 1.4 }}>
-                Used for active tabs, buttons, and chart highlights.
-              </div>
-              <LazyPane minHeight={180}><ColorWheel value={accentColor} onChange={onAccentColorChange} /></LazyPane>
-              {/* Passing null clears --accent-color entirely rather than
-                   setting it back to the blue hex -- that's what lets each
-                   theme fall back to its own tuned default again (see the
-                   accentColor state in PropLedger). */}
-              {accentColor && (
-                <div
-                  role="button"
-                  onClick={() => onAccentColorChange(null)}
-                  style={{
-                    marginTop: 12, textAlign: "center", fontSize: 11.5,
-                    color: "var(--dim)", cursor: "pointer", textDecoration: "underline",
-                  }}
-                >
-                  Reset to default
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
 
 export default function PropLedger() {
   const [page, setPage] = useState("feed");
+
+  // Theme, accent colour and the default sportsbook used to be three pieces
+  // of state here, each with its own localStorage key and persistence effect.
+  // They now live in the settings store (src/settings.jsx), which also owns
+  // applying data-theme/--accent-color/--accent-on to the document -- see the
+  // effects in SettingsProvider, which are the ones that used to be here.
+  const settings = useSettings();
+  const { sportsbook } = settings.betting;
+
   // Lives here rather than inside PropFeedPage so it survives navigating
   // away to a single-player page and back -- PropFeedPage unmounts on every
   // such trip, which would otherwise reset the sport switcher to its
   // default every time.
-  const [feedSport, setFeedSport] = useState(defaultFeedSport);
+  //
+  // Seeded once, from Settings > Betting > Default sport. "auto" falls
+  // through to defaultFeedSport(), the seasonal MLB->NFL pick this had before
+  // the setting existed. Deliberately only an initial value: changing the
+  // setting shouldn't yank the board out from under someone mid-session, it
+  // should decide where the next visit opens.
+  const [feedSport, setFeedSport] = useState(() => {
+    const pref = settings.betting.defaultSport;
+    return pref && pref !== "auto" ? pref : defaultFeedSport();
+  });
 
   const [myPicks, setMyPicks] = useState(() => {
     try { return JSON.parse(localStorage.getItem("propLedgerPicks") || "[]"); } catch { return []; }
   });
-  const [sportsbook, setSportsbook] = useState(() => localStorage.getItem("propLedgerSportsbook") || SPORTSBOOKS[0].id);
   const [picksOpen, setPicksOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem("propLedgerTheme") || "dark";
-    // Set eagerly (not just in the effect below) so the very first paint
-    // already uses the saved theme instead of flashing dark-then-light.
-    document.documentElement.setAttribute("data-theme", saved);
-    return saved;
-  });
-  React.useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("propLedgerTheme", theme);
-  }, [theme]);
-
-  // Accent color: --accent-color drives --amber (and everything derived from
-  // it) through a CSS fallback -- see the :root blocks in the stylesheet.
-  // The property is only set once the user has actually picked a color; until
-  // then it stays unset so `var(--accent-color, <default>)` falls through to
-  // each theme's own tuned blue, which differ deliberately (dark mode's
-  // #2f8cf5 is too light to read on light mode's near-white panels).
-  const [accentColor, setAccentColor] = useState(() => {
-    const saved = localStorage.getItem("propLedgerAccentColor");
-    // Migration: the previous version wrote the default blue into storage on
-    // first load whether or not the user ever opened the picker, so a stored
-    // value identical to that default means "never chose one" -- treat it as
-    // unset so light mode gets its own deeper blue back. Anyone who actually
-    // wants blue lands on the same colour via the fallback anyway.
-    if (!saved || saved.toLowerCase() === "#2f8cf5") return null;
-    return saved;
-  });
-  React.useEffect(() => {
-    if (accentColor) {
-      document.documentElement.style.setProperty("--accent-color", accentColor);
-      localStorage.setItem("propLedgerAccentColor", accentColor);
-    } else {
-      document.documentElement.style.removeProperty("--accent-color");
-      localStorage.removeItem("propLedgerAccentColor");
-    }
-  }, [accentColor]);
-
-  // Keeps --accent-on (the label colour for text on a solid accent fill)
-  // matched to whatever --amber actually resolved to. Reads the resolved
-  // value rather than `accentColor` so it also covers the unset case, where
-  // the two themes fall back to different default blues -- hence the theme
-  // dependency. Must stay after the two effects above so it observes the
-  // data-theme attribute and --accent-color they've already written.
-  React.useEffect(() => {
-    const root = document.documentElement;
-    const resolved = getComputedStyle(root).getPropertyValue("--amber");
-    root.style.setProperty("--accent-on", accentForeground(resolved));
-  }, [accentColor, theme]);
+  // Drives the Settings dialog's centered-vs-bottom-sheet placement. 560 is
+  // the same breakpoint the header tagline drops at (.hide-narrow).
+  const isNarrowShell = useIsNarrow(560);
 
   React.useEffect(() => {
     localStorage.setItem("propLedgerPicks", JSON.stringify(myPicks));
   }, [myPicks]);
-  React.useEffect(() => {
-    localStorage.setItem("propLedgerSportsbook", sportsbook);
-  }, [sportsbook]);
 
   const pickIds = useMemo(() => new Set(myPicks.map((p) => p.id)), [myPicks]);
   const togglePick = (pick) => {
@@ -16360,15 +16450,14 @@ export default function PropLedger() {
         sportsbook={sportsbook}
         onOpenSettings={() => { setPicksOpen(false); setSettingsOpen(true); }}
       />
-      <SettingsPanel
+      {/* Reads and writes every preference through the settings context, so
+          the only thing it needs from here is the sportsbook list (which
+          lives in this module) and the breakpoint. */}
+      <SettingsModal
         open={settingsOpen}
-        onToggleOpen={() => setSettingsOpen((v) => !v)}
-        sportsbook={sportsbook}
-        onSportsbookChange={setSportsbook}
-        theme={theme}
-        onThemeChange={setTheme}
-        accentColor={accentColor}
-        onAccentColorChange={setAccentColor}
+        onClose={() => setSettingsOpen(false)}
+        isNarrow={isNarrowShell}
+        sportsbooks={SPORTSBOOKS}
       />
     </div>
   );
