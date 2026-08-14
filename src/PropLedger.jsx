@@ -14537,6 +14537,18 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             fill
             padding="9px 6px"
           />
+          {/* Today's games, moved up here right under the sport switcher so
+              it's one of the first things visible instead of sitting below
+              the whole filter stack. MLB only for now -- see the note by
+              showGamesStrip's definition. */}
+          {showGamesStrip && (
+            <TodaysGamesStrip
+              options={activeMatchupOptions}
+              selected={selectedGameIds}
+              onChange={setSelectedGameIds}
+              logoFn={mlbTeamLogo}
+            />
+          )}
           <div style={{ display: "flex", gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <PropTypePicker groups={propGroups} value={selectedMarket} onChange={setSelectedMarket} fill />
@@ -14609,6 +14621,19 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           </div>
         ))}
       </div>
+
+      {/* Today's games, moved up here right under the sport switcher so
+          it's one of the first things visible instead of sitting below the
+          whole filter stack. MLB only for now -- see the note by
+          showGamesStrip's definition. */}
+      {showGamesStrip && (
+        <TodaysGamesStrip
+          options={activeMatchupOptions}
+          selected={selectedGameIds}
+          onChange={setSelectedGameIds}
+          logoFn={mlbTeamLogo}
+        />
+      )}
 
       {/* Prop-type picker -- searchable grouped dropdown of every real
            market for this sport, plus pinned quick-pick chips. Replaces the
@@ -14963,17 +14988,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         )}
       </div>
       </>
-      )}
-      {/* MLB only for now -- the component is sport-agnostic, but NFL's week
-          slate is 16 games deep and wants its own look at mobile before it
-          gets turned on there. */}
-      {showGamesStrip && (
-        <TodaysGamesStrip
-          options={activeMatchupOptions}
-          selected={selectedGameIds}
-          onChange={setSelectedGameIds}
-          logoFn={mlbTeamLogo}
-        />
       )}
       {/* .feed-table-wrap replaces the old inline overflow:hidden -- see
           index.css for why the horizontal overflow mode has to change with
@@ -16364,10 +16378,15 @@ export default function PropLedger() {
                  declaration instead of a breakpoint ternary. */}
             <h1
               className="oswald"
+              onClick={() => setPage("feed")}
+              role="button"
+              tabIndex={0}
+              aria-label="Go to feed"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPage("feed"); } }}
               style={{
                 fontSize: "clamp(22px, 5vw, 30px)", fontWeight: 700, letterSpacing: "-0.02em",
                 margin: 0, color: "var(--text)", display: "flex", alignItems: "baseline", gap: 8,
-                whiteSpace: "nowrap",
+                whiteSpace: "nowrap", cursor: "pointer",
               }}
             >
               <span style={{ color: "var(--amber)" }}>●</span>

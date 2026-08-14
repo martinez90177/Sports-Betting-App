@@ -452,6 +452,30 @@ const GLOSSARY = [
   },
 ];
 
+const GLOSSARY_BY_TERM = Object.fromEntries(GLOSSARY.map((g) => [g.term, g.def]));
+
+// Grouped for scanability -- the flat 14-entry list read as a wall of text
+// behind one big toggle. Term text still comes from GLOSSARY above, so the
+// two can never drift out of sync.
+const GLOSSARY_GROUPS = [
+  {
+    title: "Reading the board",
+    terms: ["Hit rate", "L5 · L10 · L20 · Season", "Line", "Form", "Straight"],
+  },
+  {
+    title: "Matchup & difficulty",
+    terms: ["Opp rank", "Soft / Average / Tough matchup", "In posted lineup · Projected lineup"],
+  },
+  {
+    title: "Odds & value",
+    terms: ["Odds", "Implied probability", "No-vig probability"],
+  },
+  {
+    title: "Tracking results",
+    terms: ["Unit", "ROI", "Correlation", "Thin sample"],
+  },
+];
+
 function LinkRow({ label, hint, action, href }) {
   return (
     <a
@@ -474,7 +498,15 @@ function LinkRow({ label, hint, action, href }) {
 }
 
 function AboutSection({ settings }) {
-  const [glossaryOpen, setGlossaryOpen] = useState(false);
+  const [openGlossaryGroups, setOpenGlossaryGroups] = useState(() => new Set());
+  const toggleGlossaryGroup = (title) => {
+    setOpenGlossaryGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  };
 
   return (
     <>
@@ -497,30 +529,40 @@ function AboutSection({ settings }) {
         />
       </Field>
 
-      <Field label="Glossary" hint="What every number on the board actually means.">
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => setGlossaryOpen((v) => !v)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setGlossaryOpen((v) => !v); } }}
-          className="chip"
-          style={{ cursor: "pointer", display: "inline-flex", gap: 7 }}
-        >
-          {glossaryOpen ? "Hide" : `Show all ${GLOSSARY.length} terms`}
-          <span style={{ fontSize: 10 }}>{glossaryOpen ? "▲" : "▼"}</span>
-        </div>
-        {glossaryOpen && (
-          <div style={{ marginTop: 12 }}>
-            {GLOSSARY.map((g) => (
-              <div key={g.term} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
-                <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", letterSpacing: "0.02em" }}>
-                  {g.term}
+      <Field label="Glossary" hint={`What every number on the board actually means — ${GLOSSARY.length} terms across ${GLOSSARY_GROUPS.length} categories.`}>
+        <div style={{ marginTop: 4 }}>
+          {GLOSSARY_GROUPS.map((group) => {
+            const open = openGlossaryGroups.has(group.title);
+            return (
+              <div key={group.title} style={{ marginTop: 12 }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => toggleGlossaryGroup(group.title)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleGlossaryGroup(group.title); } }}
+                  className="chip"
+                  style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}
+                >
+                  <span className="oswald" style={{ fontWeight: 700, letterSpacing: "0.02em" }}>{group.title}</span>
+                  <span style={{ fontSize: 11, color: "var(--dim)" }}>({group.terms.length})</span>
+                  <span style={{ fontSize: 10 }}>{open ? "▲" : "▼"}</span>
                 </div>
-                <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.5, marginTop: 4 }}>{g.def}</div>
+                {open && (
+                  <div style={{ marginTop: 10, paddingLeft: 2, borderTop: "1px solid var(--line)" }}>
+                    {group.terms.map((term) => (
+                      <div key={term} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                        <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", letterSpacing: "0.02em" }}>
+                          {term}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.5, marginTop: 4 }}>{GLOSSARY_BY_TERM[term]}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
       </Field>
 
       <Field label="About">
