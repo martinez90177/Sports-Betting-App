@@ -864,3 +864,11 @@ select.select-sm:focus, select.select-sm:focus-visible {
   70%  { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); opacity: 0.85; }
   100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); opacity: 1; }
 }
+
+/* Drops an element on phones. Used for copy that is nice-to-have on a wide
+   screen but competes with the actual content above the fold on a small one
+   (the header tagline). 560px matches useIsNarrow(560) in the Prop Feed, so
+   the CSS and the JS layout switch on the same line. */
+@media (max-width: 560px) {
+  .hide-narrow { display: none !important; }
+}

@@ -11518,7 +11518,10 @@ const PROP_QUICK_PICKS = {
 // plus pinned quick-pick chips underneath -- replaces the old flat category
 // chip row (All/Core/Power/...), which filtered down to a *bucket* of
 // markets rather than letting the user land on one real prop directly.
-function PropTypePicker({ groups, value, onChange }) {
+// `fill` makes the trigger span its container instead of hugging its label --
+// used by the phone control block, where it shares one line with the Filters
+// button and needs to take whatever space is left over.
+function PropTypePicker({ groups, value, onChange, fill = false }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const deferredSearch = React.useDeferredValue(search);
@@ -11552,7 +11555,7 @@ function PropTypePicker({ groups, value, onChange }) {
   const showAllOption = !q;
 
   return (
-    <div ref={panelRef} style={{ position: "relative", display: "inline-block" }}>
+    <div ref={panelRef} style={{ position: "relative", display: fill ? "block" : "inline-block" }}>
       <button
         type="button"
         className="oswald"
@@ -11563,9 +11566,12 @@ function PropTypePicker({ groups, value, onChange }) {
           background: open ? "var(--amber-dim)" : "var(--panel)",
           color: open ? "var(--amber)" : "var(--text)",
           display: "flex", alignItems: "center", gap: 8,
+          ...(fill ? { width: "100%", boxSizing: "border-box", justifyContent: "space-between" } : null),
         }}
       >
-        {value === "all" ? "All Props" : activeMarket ? activeMarket.label : "Choose a prop"}
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {value === "all" ? "All Props" : activeMarket ? activeMarket.label : "Choose a prop"}
+        </span>
         <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>▾</span>
       </button>
       {open && (
@@ -11824,7 +11830,7 @@ function GameSelect({ groups, value, onChange, logoFn, compact }) {
 // MATCHUP <select> so a user researching "everyone playing tonight except
 // the early games" isn't limited to one game at a time. An empty `selected`
 // set means "all games", matching the old dropdown's "all" option.
-function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
+function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill = false }) {
   const [open, setOpen] = useState(false);
   const panelRef = React.useRef(null);
   const { floatRef, anchorStyle } = useCenteredPanel(open);
@@ -11841,7 +11847,7 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
   const label = selected.size === 0 ? allLabel : `${selected.size} game${selected.size > 1 ? "s" : ""}`;
 
   return (
-    <div ref={panelRef} style={{ position: "relative", display: "inline-block" }}>
+    <div ref={panelRef} style={{ position: "relative", display: fill ? "block" : "inline-block" }}>
       <button
         type="button"
         className="oswald"
@@ -11852,6 +11858,7 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn }) {
           background: open ? "var(--amber-dim)" : "var(--panel)",
           color: open ? "var(--amber)" : "var(--text)",
           display: "flex", alignItems: "center", gap: 8,
+          ...(fill ? { width: "100%", boxSizing: "border-box", justifyContent: "space-between" } : null),
         }}
       >
         {label}
@@ -12322,6 +12329,23 @@ const FEED_TEAM_COLORS = { nba: NBA_TEAM_COLORS, wnba: WNBA_TEAM_COLORS, nfl: NF
 // actions. Memoized since sortedRows re-slices/re-sorts on every filter
 // change but most individual row *props* don't change between those
 // re-renders -- skips re-rendering rows whose own data is untouched.
+// The one definition of a saved pick's identity. It has to be shared, because
+// FeedRow uses it to build the pick it writes while PropFeedPage uses it to
+// decide whether that pick is already saved (the + vs the ✓) -- when those two
+// were built from separate string templates the button silently stopped
+// reflecting the slip.
+//
+// Direction is in the id because an Over and an Under on the same line are
+// different bets. The game date is in it so the same player/market on a later
+// date is a new pick rather than a collision with a graded one -- without it,
+// yesterday's settled Judge Over 0.5 Hits would make today's identical row
+// read as already added.
+function feedPickId(sport, r) {
+  const dir = r.direction === "under" ? "-u" : "";
+  const date = r.date ? `@${String(r.date).slice(0, 10)}` : "";
+  return `${sport}-${r.key}${dir}${date}`;
+}
+
 const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast }) {
   // Filled pill background for a clear favorable/unfavorable read at a
   // glance; "mid" stays neutral so it doesn't compete visually with the
@@ -12337,11 +12361,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
   // localStorage before the Over/Under switcher existed still match; Unders
   // get their own suffix so both sides of the same prop can sit on the slip
   // at once without one masking the other's added state.
-  // The game date is part of the id so the same player/market on a later
-  // date is a genuinely different pick. Without it, yesterday's settled
-  // Judge Over 0.5 Hits would make today's identical row read as already
-  // added, and re-adding it would overwrite the graded one.
-  const pickId = `${sport}-${r.key}${r.direction === "under" ? "-u" : ""}${r.date ? `@${String(r.date).slice(0, 10)}` : ""}`;
+  const pickId = feedPickId(sport, r);
   const direction = r.direction || "over";
   const streak = feedStreak(r.values, r.line, r.isBinary, direction);
   const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
@@ -12451,6 +12471,19 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
         gradeKind: r.gradeKind || null,
         gradeId: r.gradeId || null,
         addedAt: Date.now(),
+        marketLabel: r.marketLabel || null,
+        // A snapshot of what the row actually said at the moment it was
+        // added, so the Report can explain a pick without re-deriving it from
+        // a feed that has since moved on (lines move, form changes, and MLB
+        // rebuilds these rows every day). Deliberately just the scalars the
+        // Report reads -- not `values`, which would put a full game log per
+        // pick into localStorage.
+        snap: {
+          l5: r.l5, l10: r.l10, l20: r.l20, all: r.all,
+          rank: r.rank, tier: r.tier, streak, cushion,
+          cushionWindow: sampleWindow,
+          lineupConfirmed: typeof r.lineupConfirmed === "boolean" ? r.lineupConfirmed : null,
+        },
       })}
       title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
       style={{
@@ -12965,6 +12998,141 @@ function parlayCorrelationGroups(picks) {
   return groups;
 }
 
+// --------------------------------------------------------------------------
+// The Report: reading the slip and the record back to you
+// --------------------------------------------------------------------------
+// Everything here is arithmetic over data the app already holds -- the row
+// snapshot saved with each pick, and the graded results in the Ledger. There
+// is no model and no language model: a sentence only appears when a specific
+// numeric condition is true, so the Report can't tell you something the
+// numbers don't say. That also means it costs nothing to run and works with
+// no API key, no network and no account.
+//
+// Severity drives both ordering and colour: "warn" is something working
+// against the pick, "good" is something for it, "note" is context.
+const REPORT_TONE = {
+  good: { color: "var(--pos)", mark: "▲" },
+  warn: { color: "var(--neg)", mark: "▼" },
+  note: { color: "var(--dim)", mark: "•" },
+};
+
+// Thresholds are deliberately conservative and named, so the text can quote
+// the same number it tested against.
+const REPORT_STRONG_RATE = 0.7;
+const REPORT_WEAK_RATE = 0.55;
+// A gap this wide between the 5-game and 20-game rate means the pick is being
+// carried by recent form rather than by an established level.
+const REPORT_FORM_GAP = 0.2;
+// Within this much of the line, the average result is close enough to the
+// number that the hit rate is nearly a coin flip on the night.
+const REPORT_THIN_CUSHION = 0.3;
+
+function reportSlipFindings(picks) {
+  const findings = [];
+  picks.forEach((p) => {
+    const s = p.snap;
+    if (!s) return;
+    const who = `${p.name} ${p.subtitle}`;
+
+    if (s.l10 >= REPORT_STRONG_RATE && s.l20 != null && Math.abs(s.l10 - s.l20) <= 0.1) {
+      findings.push({ tone: "good", who, text:
+        `hits ${Math.round(s.l10 * 100)}% over 10 games and ${Math.round(s.l20 * 100)}% over 20 — the level is established, not a hot streak.` });
+    } else if (s.l5 != null && s.l20 != null && s.l5 - s.l20 >= REPORT_FORM_GAP) {
+      findings.push({ tone: "warn", who, text:
+        `is ${Math.round(s.l5 * 100)}% in its last 5 but only ${Math.round(s.l20 * 100)}% over 20. You're buying recent form, and that's the number most likely to fall back.` });
+    } else if (s.l10 != null && s.l10 < REPORT_WEAK_RATE) {
+      findings.push({ tone: "warn", who, text:
+        `has only hit ${Math.round(s.l10 * 100)}% of its last 10. Nothing in the sample supports this one.` });
+    }
+
+    if (s.cushion != null && Math.abs(s.cushion) < REPORT_THIN_CUSHION) {
+      findings.push({ tone: "warn", who, text:
+        `clears the line by just ${Math.abs(s.cushion).toFixed(2)} on average — close enough that one quiet night flips it.` });
+    } else if (s.cushion != null && s.cushion >= 1) {
+      findings.push({ tone: "good", who, text:
+        `clears the line by ${s.cushion.toFixed(1)} on average, so it doesn't need a perfect night.` });
+    }
+
+    if (s.streak <= -3) {
+      findings.push({ tone: "warn", who, text: `has missed ${Math.abs(s.streak)} in a row.` });
+    } else if (s.streak >= 5) {
+      findings.push({ tone: "good", who, text: `has hit ${s.streak} straight.` });
+    }
+
+    if (s.tier === "tough") {
+      findings.push({ tone: "warn", who, text: `draws a top-tier matchup (opponent rank #${s.rank}), the hardest kind for this stat.` });
+    } else if (s.tier === "soft") {
+      findings.push({ tone: "good", who, text: `draws a soft matchup (opponent rank #${s.rank}).` });
+    }
+
+    if (s.lineupConfirmed === false) {
+      findings.push({ tone: "note", who, text: `is on a projected lineup — the batting order isn't posted yet, so the plate appearances aren't guaranteed.` });
+    }
+  });
+  return findings;
+}
+
+// One plain sentence over the whole slip. Counts legs by whether anything
+// argued against them, which is the thing a list of findings makes hard to see.
+function reportSlipVerdict(picks, findings, correlations) {
+  const withSnap = picks.filter((p) => p.snap);
+  if (!withSnap.length) return null;
+  const flagged = new Set(findings.filter((f) => f.tone === "warn").map((f) => f.who));
+  const clean = withSnap.length - flagged.size;
+  const parts = [];
+  if (withSnap.length === 1) {
+    // A one-leg slip isn't a parlay, and "every leg" / "3 of 4" both read
+    // strangely for it.
+    parts.push(clean ? `Nothing in the data argues against this one.` : `There's something working against this one.`);
+  } else if (clean === withSnap.length) {
+    parts.push(`Nothing in the data argues against any of these ${withSnap.length} legs.`);
+  } else if (clean === 0) {
+    parts.push(`Every leg here has something working against it.`);
+  } else {
+    parts.push(`${clean} of ${withSnap.length} legs look clean; ${flagged.size} ${flagged.size === 1 ? "has" : "have"} a mark against ${flagged.size === 1 ? "it" : "them"}.`);
+  }
+  if (correlations.length && withSnap.length > 1) {
+    parts.push(`The legs also overlap, so the parlay price is more optimistic than it looks.`);
+  }
+  return parts.join(" ");
+}
+
+// Splits the settled record along one dimension (sport, market, side, price
+// band) and returns only buckets with enough picks to be worth printing.
+function reportBreakdown(settled, keyFn, minPicks = 3) {
+  const buckets = new Map();
+  settled.forEach((p) => {
+    const k = keyFn(p);
+    if (!k) return;
+    const b = buckets.get(k) || { label: k, won: 0, lost: 0, units: 0 };
+    if (p.result === "won") b.won++; else b.lost++;
+    b.units += pickUnitProfit(p);
+    buckets.set(k, b);
+  });
+  return [...buckets.values()]
+    .filter((b) => b.won + b.lost >= minPicks)
+    .sort((a, b) => b.units - a.units);
+}
+
+// The number of settled picks below which a record is noise. Well-known rule
+// of thumb rather than anything derived -- the point is only to stop the
+// Report from reading a 3-1 start as a discovered edge.
+const REPORT_MIN_SAMPLE = 20;
+
+function reportHistory(settled) {
+  const summary = ledgerSummary(settled);
+  if (!summary.settled) return null;
+  return {
+    summary,
+    thin: summary.settled < REPORT_MIN_SAMPLE,
+    bySport: reportBreakdown(settled, (p) => (p.sport || "").toUpperCase()),
+    byMarket: reportBreakdown(settled, (p) => p.marketLabel || null),
+    bySide: reportBreakdown(settled, (p) => (p.direction === "under" ? "Unders" : "Overs")),
+    byPrice: reportBreakdown(settled, (p) =>
+      p.odds == null ? null : p.odds <= -150 ? "Heavy favourites" : p.odds < 100 ? "Short favourites" : "Underdogs"),
+  };
+}
+
 // Deep-links go to each book's sportsbook landing page rather than a
 // prefilled bet slip -- none of these books expose a public API for
 // injecting picks into a slip, so "add to sportsbook" means "open the
@@ -13325,9 +13493,16 @@ const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["ALL", "all
 // Shared chrome for the filter rail's segmented controls (sample size, and
 // the Over/Under side switcher below), so the two read as the same control
 // type rather than two separately-styled lookalikes.
-function FeedSegmented({ options, value, onChange, titleFor, padding = "6px 16px" }) {
+// `fill` stretches the control to its container and gives every cell an equal
+// share of it -- that's what lets the phone layout put two of these side by
+// side on one line and have both land on a predictable width, instead of each
+// sizing to its own label text.
+function FeedSegmented({ options, value, onChange, titleFor, padding = "6px 16px", fill = false }) {
   return (
-    <div style={{ display: "flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+    <div style={{
+      display: "flex", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden",
+      ...(fill ? { width: "100%" } : null),
+    }}>
       {options.map(([label, key], idx) => (
         <div
           key={key}
@@ -13338,6 +13513,7 @@ function FeedSegmented({ options, value, onChange, titleFor, padding = "6px 16px
           style={{
             cursor: "pointer",
             padding,
+            ...(fill ? { flex: 1, textAlign: "center", minWidth: 0 } : null),
             fontSize: 12.5,
             fontWeight: 700,
             borderLeft: idx === 0 ? "none" : "1px solid var(--line)",
@@ -13354,12 +13530,14 @@ function FeedSegmented({ options, value, onChange, titleFor, padding = "6px 16px
   );
 }
 
-function WindowSwitcher({ value, onChange }) {
+function WindowSwitcher({ value, onChange, fill }) {
   return (
     <FeedSegmented
       options={FEED_WINDOWS}
       value={value}
       onChange={onChange}
+      fill={fill}
+      padding={fill ? "7px 6px" : "6px 16px"}
       titleFor={(label) => `Show ${label} hit rate everywhere`}
     />
   );
@@ -13369,13 +13547,14 @@ function WindowSwitcher({ value, onChange }) {
 // half the feed -- a prop that only goes Over 20% of the time is an 80%
 // Under, and there was no way to look at it that way. See flipFeedRowToUnder.
 const FEED_DIRECTIONS = [["OVER", "over"], ["UNDER", "under"]];
-function DirectionSwitcher({ value, onChange }) {
+function DirectionSwitcher({ value, onChange, fill }) {
   return (
     <FeedSegmented
       options={FEED_DIRECTIONS}
       value={value}
       onChange={onChange}
-      padding="6px 20px"
+      fill={fill}
+      padding={fill ? "7px 6px" : "6px 20px"}
       titleFor={(label) =>
         label === "OVER"
           ? "Price every prop as an Over"
@@ -13786,6 +13965,52 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const filterRailRef = React.useRef(null);
   const filterRailHeight = useElementHeight(filterRailRef);
 
+  // Phone-only: the legend and the "+ adds a prop" explainer are one-time
+  // reading, but they were sitting between the controls and the data on every
+  // visit -- ~250px of instructions above the first row. Collapsed behind a
+  // disclosure they cost one line until asked for.
+  const [showFeedKey, setShowFeedKey] = useState(false);
+
+  // Hoisted out of the desktop filter rail so the phone control block can put
+  // the same button on the same line as the prop picker.
+  const filtersButton = (
+    <button
+      type="button"
+      className="oswald"
+      onClick={() => setFeedFiltersOpen((v) => !v)}
+      style={{
+        cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
+        border: `1px solid ${feedFiltersOpen ? "var(--amber)" : "var(--line)"}`,
+        background: feedFiltersOpen ? "var(--amber-dim)" : "var(--panel)",
+        color: feedFiltersOpen ? "var(--amber)" : "var(--text)",
+        display: "flex", alignItems: "center", gap: 8, flexShrink: 0, whiteSpace: "nowrap",
+      }}
+    >
+      Filters
+      {feedActiveFilterCount > 0 && (
+        <span className="mono" style={{
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8,
+          fontSize: 10, fontWeight: 800, background: "var(--amber)", color: "var(--accent-on)",
+        }}>
+          {feedActiveFilterCount}
+        </span>
+      )}
+    </button>
+  );
+
+  // The games strip is itself a game picker, so on a phone the Games dropdown
+  // beside it would be a second control for the same job -- MLB gets the strip
+  // and drops the dropdown.
+  const showGamesStrip = sport === "mlb";
+
+  const resultCount = (
+    <>
+      Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
+      <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{rows.length}</span> props
+    </>
+  );
+
   return (
     // 900px left ~270px of dead gutter either side of a 1440px window while
     // the table itself overflowed its container -- the feed is a ten-column
@@ -13793,6 +14018,67 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // the single-player pages (1920 there; 1600 here keeps the rows from
     // stretching past the point where scanning a row is comfortable).
     <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", boxSizing: "border-box" }}>
+      {/* Phone control block. The desktop layout below stacks each control
+          under its own centered uppercase label, which on a 375px screen came
+          to roughly 600px of filters -- you scrolled past a screen and a half
+          of chrome before the first prop. Here the same controls sit on four
+          full-width lines with no labels (a segmented OVER|UNDER needs no
+          caption saying SIDE), and the legend moves behind a disclosure. */}
+      {isNarrow ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+          <FeedSegmented
+            options={FEED_SPORTS.filter((s) => s.available).map((s) => [s.label, s.id])}
+            value={sport}
+            onChange={setSport}
+            fill
+            padding="9px 6px"
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <PropTypePicker groups={propGroups} value={selectedMarket} onChange={setSelectedMarket} fill />
+            </div>
+            {filtersButton}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <DirectionSwitcher value={direction} onChange={setDirection} fill />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} fill />
+            </div>
+          </div>
+          {!showGamesStrip && (
+            showMatchupDropdown ? (
+              <GamesMultiSelect
+                options={activeMatchupOptions}
+                selected={selectedGameIds}
+                onChange={setSelectedGameIds}
+                allLabel={sport === "mlb" ? "All of today's games" : "All of this week's games"}
+                logoFn={sport === "mlb" ? mlbTeamLogo : nflTeamLogo}
+                fill
+              />
+            ) : (
+              <select className="select" style={{ width: "100%", boxSizing: "border-box" }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+                <option value="all">All teams</option>
+                {teamOptions.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            )
+          )}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: "var(--dim)" }}>
+            <span>{resultCount}</span>
+            <span
+              role="button"
+              onClick={() => setShowFeedKey((v) => !v)}
+              style={{ cursor: "pointer", color: "var(--amber)", fontWeight: 600, flexShrink: 0 }}
+            >
+              {showFeedKey ? "Hide key ▴" : "What am I looking at? ▾"}
+            </span>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Sport switcher */}
       <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         {FEED_SPORTS.map((s) => (
@@ -13877,29 +14163,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         </div>
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={{ ...FEED_LABEL_STYLE, opacity: 0 }}>·</span>
-          <button
-            type="button"
-            className="oswald"
-            onClick={() => setFeedFiltersOpen((v) => !v)}
-            style={{
-              cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
-              border: `1px solid ${feedFiltersOpen ? "var(--amber)" : "var(--line)"}`,
-              background: feedFiltersOpen ? "var(--amber-dim)" : "var(--panel)",
-              color: feedFiltersOpen ? "var(--amber)" : "var(--text)",
-              display: "flex", alignItems: "center", gap: 8,
-            }}
-          >
-            Filters
-            {feedActiveFilterCount > 0 && (
-              <span className="mono" style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                minWidth: 16, height: 16, padding: "0 4px", borderRadius: 8,
-                fontSize: 10, fontWeight: 800, background: "var(--amber)", color: "var(--accent-on)",
-              }}>
-                {feedActiveFilterCount}
-              </span>
-            )}
-          </button>
+          {filtersButton}
         </div>
       </div>
       {/* Live result count -- tells the user how much the filters above are
@@ -13909,6 +14173,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
         <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{rows.length}</span> props
       </div>
+      </>
+      )}
 
       {feedFiltersOpen && (
       <div style={{
@@ -14132,6 +14398,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       )}
 
       {/* Feed */}
+      {/* On a phone this pair -- the "+" explainer and the matchup/lineup key
+          below it -- is ~250px of one-time reading sitting between the
+          controls and the data, so it hides behind the "What am I looking
+          at?" disclosure. On desktop there's room for it to stay put. */}
+      {(!isNarrow || showFeedKey) && (
+      <>
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10,
         fontSize: 12, color: "var(--dim)", textAlign: "center",
@@ -14181,10 +14453,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           </>
         )}
       </div>
+      </>
+      )}
       {/* MLB only for now -- the component is sport-agnostic, but NFL's week
           slate is 16 games deep and wants its own look at mobile before it
           gets turned on there. */}
-      {sport === "mlb" && (
+      {showGamesStrip && (
         <TodaysGamesStrip
           options={activeMatchupOptions}
           selected={selectedGameIds}
@@ -14210,7 +14484,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             sport={sport}
             sampleWindow={sampleWindow}
             isNarrow={isNarrow}
-            isAdded={pickIds.has(`${sport}-${r.key}`)}
+            isAdded={pickIds.has(feedPickId(sport, r))}
             onTogglePick={onTogglePick}
             onOpenProp={onOpenProp}
             isLast={i === visibleRows.length - 1}
@@ -14836,6 +15110,138 @@ function LedgerStat({ label, value, color }) {
   );
 }
 
+function ReportSection({ title, children }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--dim)", marginBottom: 8 }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// One split of the settled record (by sport, market, side, price). Units are
+// the headline rather than win-loss, because a 5-5 record at long odds and a
+// 5-5 record at heavy favourites are not the same result.
+function ReportBreakdownRows({ rows }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      {rows.map((b) => (
+        <div key={b.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
+          <span style={{ color: "var(--text)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.label}</span>
+          <span className="mono" style={{ flexShrink: 0, color: "var(--dim)" }}>
+            {b.won}-{b.lost}{" "}
+            <span style={{ color: b.units >= 0 ? "var(--pos)" : "var(--neg)", fontWeight: 700 }}>
+              {b.units >= 0 ? "+" : "−"}{Math.abs(b.units).toFixed(2)}u
+            </span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Reads the slip and the record back in plain sentences. Every line is
+// generated from a numeric test over data already on the device -- see the
+// Report section above for why there's no model behind it.
+function PickReportTab({ openPicks, settledPicks, correlations }) {
+  const findings = useMemo(() => reportSlipFindings(openPicks), [openPicks]);
+  const verdict = useMemo(() => reportSlipVerdict(openPicks, findings, correlations), [openPicks, findings, correlations]);
+  const history = useMemo(() => reportHistory(settledPicks), [settledPicks]);
+  const snapless = openPicks.filter((p) => !p.snap).length;
+
+  const grouped = useMemo(() => {
+    const order = { warn: 0, good: 1, note: 2 };
+    const by = new Map();
+    [...findings].sort((a, b) => order[a.tone] - order[b.tone]).forEach((f) => {
+      by.set(f.who, [...(by.get(f.who) || []), f]);
+    });
+    return [...by.entries()];
+  }, [findings]);
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px" }}>
+      {openPicks.length === 0 && !history && (
+        <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "20px 0", textAlign: "center", lineHeight: 1.5 }}>
+          Add some picks and this reads them back to you — what's holding each
+          one up, what's working against it, and once you have results, which
+          sports and markets you're actually good at.
+        </div>
+      )}
+
+      {verdict && (
+        <ReportSection title="THE SLIP">
+          <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5, marginBottom: 12 }}>
+            {verdict}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {grouped.map(([who, fs]) => (
+              <div key={who}>
+                <div className="oswald" style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 3 }}>{who}</div>
+                {fs.map((f, i) => (
+                  <div key={i} style={{ display: "flex", gap: 6, fontSize: 11.5, lineHeight: 1.45, marginTop: 2 }}>
+                    <span style={{ color: REPORT_TONE[f.tone].color, flexShrink: 0 }}>{REPORT_TONE[f.tone].mark}</span>
+                    <span style={{ color: "var(--dim)" }}>{f.text}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          {snapless > 0 && (
+            <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 10, fontStyle: "italic" }}>
+              {snapless} older {snapless === 1 ? "pick isn't" : "picks aren't"} covered — they were saved before the Report existed.
+            </div>
+          )}
+        </ReportSection>
+      )}
+
+      {history && (
+        <>
+          <ReportSection title="YOUR RECORD">
+            <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5 }}>
+              {history.summary.won}-{history.summary.lost} on settled picks,{" "}
+              <span style={{ color: history.summary.units >= 0 ? "var(--pos)" : "var(--neg)", fontWeight: 700 }}>
+                {history.summary.units >= 0 ? "+" : "−"}{Math.abs(history.summary.units).toFixed(2)}u
+              </span>{" "}
+              at a flat 1u a pick.
+            </div>
+            {/* Stated before any of the breakdowns below, because at these
+                sample sizes the breakdowns are the most tempting thing in the
+                panel to over-read. */}
+            {history.thin && (
+              <div style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.45, marginTop: 8 }}>
+                That's {history.summary.settled} picks. Anything under {REPORT_MIN_SAMPLE} is
+                too small to separate skill from luck, so read the splits below
+                as description, not as an edge you've found.
+              </div>
+            )}
+          </ReportSection>
+
+          {history.bySport.length > 1 && (
+            <ReportSection title="BY SPORT"><ReportBreakdownRows rows={history.bySport} /></ReportSection>
+          )}
+          {history.byMarket.length > 1 && (
+            <ReportSection title="BY MARKET"><ReportBreakdownRows rows={history.byMarket} /></ReportSection>
+          )}
+          {history.bySide.length > 1 && (
+            <ReportSection title="OVERS VS UNDERS"><ReportBreakdownRows rows={history.bySide} /></ReportSection>
+          )}
+          {history.byPrice.length > 1 && (
+            <ReportSection title="BY PRICE"><ReportBreakdownRows rows={history.byPrice} /></ReportSection>
+          )}
+        </>
+      )}
+
+      <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+        Written from your own picks and the game logs on this device — no
+        account, no model, no prediction. Each line above is a fact about the
+        sample, which is not the same thing as a fact about tonight.
+      </div>
+    </div>
+  );
+}
+
 function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, sportsbook, onOpenSettings }) {
   const [tab, setTab] = useState("slip");
 
@@ -14923,9 +15329,12 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
           <div style={{ display: "flex", borderBottom: "1px solid var(--line)" }}>
             {tabBtn("slip", "SLIP", openPicks.length)}
             {tabBtn("ledger", "LEDGER", settledPicks.length)}
+            {tabBtn("report", "REPORT", 0)}
           </div>
 
-          {tab === "slip" ? (
+          {tab === "report" ? (
+            <PickReportTab openPicks={openPicks} settledPicks={settledPicks} correlations={correlations} />
+          ) : tab === "slip" ? (
             <>
               <div style={{ flex: 1, overflowY: "auto", padding: "8px 18px" }}>
                 {openPicks.length === 0 ? (
@@ -15553,7 +15962,10 @@ export default function PropLedger() {
               <span style={{ color: "var(--amber)" }}>●</span>
               <span>Prop<span style={{ color: "var(--amber)" }}>Palace</span></span>
             </h1>
-            <span style={{ color: "var(--dim)", fontSize: 13 }}>your own hit-rate research, before you place it</span>
+            {/* Hidden on a phone: it wrapped to two lines directly under the
+                wordmark, and a tagline is not worth 45px of a 812px screen
+                above the controls. */}
+            <span className="hide-narrow" style={{ color: "var(--dim)", fontSize: 13 }}>your own hit-rate research, before you place it</span>
           </div>
           <div
             onClick={() => setSettingsOpen((v) => !v)}
