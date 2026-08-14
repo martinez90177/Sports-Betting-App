@@ -2,10 +2,30 @@ import React, { useState, useMemo } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
 } from "recharts";
-import NewsPage from "./NewsPage.jsx";
-import GamesPage from "./GamesPage.jsx";
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
-import ColorWheel from "./ColorWheel.jsx";
+import ErrorBoundary from "./ErrorBoundary.jsx";
+
+// Loaded on demand rather than up front. The app opens on the Prop Feed, and
+// these three are never on screen until the user navigates to them -- but
+// statically imported they still had to download and parse before the feed
+// could render. GamesPage is the big one: it pulls in MatchupPage and
+// GamecastPage behind it, so all three leave the initial bundle together.
+// ColorWheel only ever appears inside the Settings drawer.
+const GamesPage = React.lazy(() => import("./GamesPage.jsx"));
+const NewsPage = React.lazy(() => import("./NewsPage.jsx"));
+const ColorWheel = React.lazy(() => import("./ColorWheel.jsx"));
+
+// Every lazy component needs a Suspense boundary above it. These chunks are
+// small and same-origin, so the gap is usually a frame or two -- a spinner
+// would flash more than it would inform, and a fixed-height placeholder stops
+// the layout jumping when the real thing lands.
+function LazyPane({ minHeight = 240, children }) {
+  return (
+    <React.Suspense fallback={<div style={{ minHeight }} />}>
+      {children}
+    </React.Suspense>
+  );
+}
 
 // ---------- Seeded RNG so the mock data is stable across renders ----------
 function mulberry32(seed) {
@@ -2757,37 +2777,82 @@ function parseNFLGameLogResponse(data) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-// The 2025 season is already final, so once fetched this data never changes
-// -- cached to sessionStorage so it's only fetched once per tab regardless
-// of how many times a player's page gets revisited.
-const nflGameLogCache = new Map();
-async function fetchNFLPlayerGameLog(espnId) {
-  if (nflGameLogCache.has(espnId)) return nflGameLogCache.get(espnId);
+// An NFL season is labelled by the year it kicks off in, but it runs into
+// February -- so a January game belongs to the previous year's season. August
+// counts as the new season because that's when ESPN starts serving it.
+function nflSeasonForDate(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.getUTCMonth() >= 7 ? dt.getUTCFullYear() : dt.getUTCFullYear() - 1;
+}
+function currentNFLSeason() {
+  return nflSeasonForDate(new Date());
+}
 
-  const cacheKey = `nfl_gamelog_v1_${espnId}`;
+// A finished season is immutable, so it's cached with no TTL. The season
+// currently being played is not, so it gets a short one -- without this, a
+// Sunday's results would be stuck behind whatever the tab fetched on
+// Saturday, which is exactly when the Ledger is trying to settle picks.
+const NFL_LIVE_GAMELOG_TTL_MS = 6 * 60 * 60 * 1000;
+const nflGameLogCache = new Map();
+async function fetchNFLPlayerGameLog(espnId, season = currentNFLSeason()) {
+  // Keyed by season, not just by player: the same athlete has a different
+  // log per year, and the grader deliberately asks for the season its pick
+  // was played in rather than today's.
+  const key = `${espnId}:${season}`;
+  const isFinished = season < currentNFLSeason();
+  const fresh = (rec) => rec && (isFinished || Date.now() - rec.fetchedAt < NFL_LIVE_GAMELOG_TTL_MS);
+
+  // `games: []` is cached deliberately, and is the reason this returns null
+  // through a stored record rather than short-circuiting on a falsy cache
+  // hit. Before Week 1 the current season is empty for every player, and the
+  // display path asks for it first -- without remembering the empty answer,
+  // every page load would re-request an empty season once per player, which
+  // for the full NFL roster is a couple of hundred pointless requests a load.
+  const cached = nflGameLogCache.get(key);
+  if (fresh(cached)) return cached.games.length ? cached.games : null;
+
+  const cacheKey = `nfl_gamelog_v2_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
-      const games = JSON.parse(stored);
-      nflGameLogCache.set(espnId, games);
-      return games;
+      const parsed = JSON.parse(stored);
+      if (fresh(parsed)) {
+        nflGameLogCache.set(key, parsed);
+        return parsed.games.length ? parsed.games : null;
+      }
     }
   } catch {}
 
   try {
     const res = await fetch(
-      `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${espnId}/gamelog?season=2025`
+      `https://site.web.api.espn.com/apis/common/v3/sports/football/nfl/athletes/${espnId}/gamelog?season=${season}`
     );
     if (!res.ok) return null;
     const data = await res.json();
     const games = parseNFLGameLogResponse(data);
-    if (!games.length) return null;
-    nflGameLogCache.set(espnId, games);
-    try { sessionStorage.setItem(cacheKey, JSON.stringify(games)); } catch {}
-    return games;
+    const record = { games, fetchedAt: Date.now() };
+    nflGameLogCache.set(key, record);
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+    return games.length ? games : null;
   } catch {
+    // A network failure is not evidence that the season is empty, so it is
+    // not cached -- the next load should try again.
     return null;
   }
+}
+
+// What the feed and the charts should show. Before Week 1 the new season has
+// no games in it, and hit rates built on nothing are worse than hit rates
+// built on last year -- so this prefers the current season and falls back to
+// the one before it. That also means the rollover happens on its own: the
+// first week real 2026 games exist, they're what gets used, with no date
+// hardcoded anywhere to go stale.
+async function fetchNFLPlayerGameLogForDisplay(espnId) {
+  const season = currentNFLSeason();
+  const current = await fetchNFLPlayerGameLog(espnId, season);
+  if (current && current.length) return current;
+  return fetchNFLPlayerGameLog(espnId, season - 1);
 }
 
 function getNFLGames(player) {
@@ -12860,11 +12925,14 @@ function combineParlayOdds(americanOddsList) {
 // A pick's `gradeKind` decides which log to read; rows that have no real log
 // behind them (synthetic NBA, an NFL player with no ESPN id) carry no
 // gradeKind at all and are reported as unsettleable rather than guessed at.
+// fetchLog receives the pick as well as the id, because NFL logs are fetched
+// one season at a time and the season that matters is the one the pick's game
+// was played in -- not whatever season is current when the Ledger opens.
 const PICK_GRADE_SOURCES = {
-  mlb_batter: { fetchLog: fetchMLBGameLog, value: statValueMLB },
-  mlb_pitcher: { fetchLog: fetchMLBPitcherGameLog, value: statValueMLBPitcher },
-  nfl: { fetchLog: fetchNFLPlayerGameLog, value: statValueNFL },
-  wnba: { fetchLog: fetchWNBAPlayerGameLog, value: statValue },
+  mlb_batter: { fetchLog: (id) => fetchMLBGameLog(id), value: statValueMLB },
+  mlb_pitcher: { fetchLog: (id) => fetchMLBPitcherGameLog(id), value: statValueMLBPitcher },
+  nfl: { fetchLog: (id, p) => fetchNFLPlayerGameLog(id, nflSeasonForDate(p.gameDate) ?? currentNFLSeason()), value: statValueNFL },
+  wnba: { fetchLog: (id) => fetchWNBAPlayerGameLog(id), value: statValue },
 };
 
 // Picks saved before the Ledger existed carry only {id, sport, name, team,
@@ -12921,7 +12989,7 @@ async function gradePick(p) {
 
   let games = null;
   try {
-    games = await source.fetchLog(p.gradeId);
+    games = await source.fetchLog(p.gradeId, p);
   } catch {
     return { status: "pending" };
   }
@@ -14477,9 +14545,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             {sport === "mlb" && mlbLoading ? "Loading live MLB matchup data…" : "No props match these filters yet."}
           </div>
         )}
+        {/* Per-row rather than only at the app root: these rows are built from
+            live-fetched logs for hundreds of players, so one player's odd
+            payload is the likeliest single cause of a render throw here. A
+            boundary around each row turns that into one greyed-out line
+            instead of an empty feed. */}
         {visibleRows.map((r, i) => (
+          <ErrorBoundary key={r.key} compact label={`${r.name || "This row"} couldn't be displayed.`}>
           <FeedRow
-            key={r.key}
             r={r}
             sport={sport}
             sampleWindow={sampleWindow}
@@ -14489,6 +14562,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             onOpenProp={onOpenProp}
             isLast={i === visibleRows.length - 1}
           />
+          </ErrorBoundary>
         ))}
       </div>
       {sortedRows.length > visibleRows.length && (
@@ -15628,7 +15702,7 @@ function SettingsPanel({ open, onToggleOpen, sportsbook, onSportsbookChange, the
               <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 12, lineHeight: 1.4 }}>
                 Used for active tabs, buttons, and chart highlights.
               </div>
-              <ColorWheel value={accentColor} onChange={onAccentColorChange} />
+              <LazyPane minHeight={180}><ColorWheel value={accentColor} onChange={onAccentColorChange} /></LazyPane>
               {/* Passing null clears --accent-color entirely rather than
                    setting it back to the blue hex -- that's what lets each
                    theme fall back to its own tuned default again (see the
@@ -15817,7 +15891,7 @@ export default function PropLedger() {
     ALL_NFL_PLAYERS.forEach((player) => {
       const espnId = NFL_ESPN_ID[player.id];
       if (!espnId) return;
-      fetchNFLPlayerGameLog(espnId).then((games) => {
+      fetchNFLPlayerGameLogForDisplay(espnId).then((games) => {
         if (cancelled || !games) return;
         NFL_REAL_GAME_LOGS[player.id] = games;
         bumpNflRefresh();
@@ -16025,9 +16099,9 @@ export default function PropLedger() {
         <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} sport={feedSport} setSport={setFeedSport} />
       )}
 
-      {page === "games" && <GamesPage onViewProps={goToGameProps} />}
+      {page === "games" && <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} /></LazyPane>}
 
-      {page === "news" && <NewsPage />}
+      {page === "news" && <LazyPane minHeight={400}><NewsPage /></LazyPane>}
 
       <MyPicksPanel
         picks={myPicks}
