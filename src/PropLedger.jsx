@@ -7182,7 +7182,9 @@ const NATIONALS_PLAYERS = [
   { id: "jyoung", name: "Jacob Young", team: "WSH", pos: "CF", mlbId: 696285 },
   { id: "wood", name: "James Wood", team: "WSH", pos: "RF", mlbId: 695578 },
   { id: "tena", name: "José Tena", team: "WSH", pos: "DH", mlbId: 677588 },
-  { id: "mikolas", name: "Miles Mikolas", team: "WSH", pos: "SP", mlbId: 571945 },
+  // Mikolas was designated for assignment on 2026-08-12; Kent was recalled
+  // from Triple-A Rochester and made his MLB debut as starter that night.
+  { id: "jkent", name: "Jackson Kent", team: "WSH", pos: "SP", mlbId: 800600 },
 ];
 const PADRES_PLAYERS = [
   { id: "campusano", name: "Luis Campusano", team: "SD", pos: "C", mlbId: 669134 },
