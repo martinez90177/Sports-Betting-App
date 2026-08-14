@@ -872,3 +872,22 @@ select.select-sm:focus, select.select-sm:focus-visible {
 @media (max-width: 560px) {
   .hide-narrow { display: none !important; }
 }
+
+/* Player name / proposition in a Prop Feed row, as a secondary route into
+   that player's chart ("View Chart" is the primary one). Deliberately styled
+   as almost nothing until you interact with it: an underline on hover, a
+   focus ring on keyboard focus. Colouring it like a link would put two
+   competing calls to action in the same row. */
+.feed-prop-link:hover .feed-prop-link-name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.feed-prop-link:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.feed-prop-link:focus-visible .feed-prop-link-name {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

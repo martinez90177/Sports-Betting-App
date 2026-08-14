@@ -12617,6 +12617,44 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
       {isAdded ? "✓" : "+"}
     </div>
   );
+  // Name + proposition as a secondary way into the chart. "View Chart" stays
+  // the primary, obvious control -- this is the shortcut people reach for
+  // without being told, because the player's name is the thing they're
+  // actually thinking about. Kept visually quiet for that reason: no link
+  // colouring, just an underline on hover/focus, so it never competes with
+  // the button for attention.
+  //
+  // Guarded on playerId for the same reason chartBtn is: a row with no player
+  // page behind it must not look clickable.
+  const openChart = r.playerId
+    ? () => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team })
+    : null;
+
+  const propositionBlock = (
+    <div
+      className={openChart ? "feed-prop-link" : undefined}
+      onClick={openChart || undefined}
+      // Enter/Space and a real tab stop, so this shortcut is reachable
+      // without a mouse -- a div with role="button" that can't be focused
+      // announces itself as a button to a screen reader and then refuses to
+      // behave like one.
+      onKeyDown={openChart ? (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openChart(); }
+      } : undefined}
+      role={openChart ? "button" : undefined}
+      tabIndex={openChart ? 0 : undefined}
+      title={openChart ? `Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page` : undefined}
+      style={{ minWidth: 0, cursor: openChart ? "pointer" : "default" }}
+    >
+      <div className="oswald feed-prop-link-name" style={{ fontSize: isNarrow ? 14.5 : 14, color: "var(--text)" }}>
+        {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
+        {r.subtitle}
+      </div>
+    </div>
+  );
+
   const chartBtn = r.playerId && (
     <div
       className="oswald cta-btn"
@@ -12715,12 +12753,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {avatarEl}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="oswald" style={{ fontSize: 14.5, color: "var(--text)" }}>
-              {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
-            </div>
-            <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
-              {r.subtitle}
-            </div>
+            {propositionBlock}
           </div>
         </div>
         {oppRankLine}
@@ -12756,12 +12789,10 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
       {addBtn}
       {avatarEl}
       <div style={{ minWidth: 0 }}>
-        <div className="oswald" style={{ fontSize: 14, color: "var(--text)" }}>
-          {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
-        </div>
-        <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
-          {r.subtitle}
-        </div>
+        {propositionBlock}
+        {/* Outside the clickable block on purpose -- the opponent rank is
+            reference information, not part of the proposition, and including
+            it would make the click target sprawl over most of the row. */}
         <div style={{ marginTop: 3 }}>{oppRankLine}</div>
       </div>
       {formCell || <div />}
