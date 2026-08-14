@@ -383,9 +383,146 @@ function AccountSection() {
   );
 }
 
+const DISCORD_INVITE = "https://discord.gg/DbrPwnrW6P";
+
+// Every definition here describes what this app actually computes, not the
+// general betting sense of the term -- the numbers are checked against the
+// code that produces them (defTier, FEED_FORM_GAMES, noVigProbability,
+// REPORT_MIN_SAMPLE, pickUnitProfit). If any of those change, these change.
+const GLOSSARY = [
+  {
+    term: "Hit rate",
+    def: "How often this player cleared the line over the selected window — the L5 / L10 / L20 / Season columns. It's the player's own game log, not a projection.",
+  },
+  {
+    term: "L5 · L10 · L20 · Season",
+    def: "The sample the hit rate is measured over: the last 5, 10 or 20 games, or the full season. A short window reacts fastest and is the easiest to be fooled by.",
+  },
+  {
+    term: "Line",
+    def: "The number the prop is set at. The small figure beneath it is the player's average over the selected window, so you can see how much room there is above or below the line.",
+  },
+  {
+    term: "Form",
+    def: "The player's last 10 games as one bar per game. Green cleared the line, red missed it, and bar height is how far past it they went — so a row of tall green bars is a very different story from a row of narrow ones.",
+  },
+  {
+    term: "Straight",
+    def: "The run of same-coloured bars at the end of the Form strip — the current streak, underlined in place rather than restated as a separate number.",
+  },
+  {
+    term: "Opp rank",
+    def: "How the opposing defence ranks against this stat. #1 is the toughest matchup in the league and the highest number is the easiest — so a high number is good for an Over.",
+  },
+  {
+    term: "Soft / Average / Tough matchup",
+    def: "The colour on the Opp rank badge. Ranks 1–10 are tough (red), 21 and up are soft (green), and the middle is average — for NFL the soft band starts at 22, since it has more teams.",
+  },
+  {
+    term: "In posted lineup · Projected lineup",
+    def: "MLB only. A filled dot means the team has officially posted its lineup and this player is in it. A hollow dot means the lineup isn't out yet and this is the projection, so they could be rested.",
+  },
+  {
+    term: "Odds",
+    def: "The price on the side shown. These are derived from the hit rate, not pulled from a sportsbook — real posted prices only appear in the MLB odds panel.",
+  },
+  {
+    term: "Implied probability",
+    def: "The chance a price corresponds to. A price of -150 implies 60%, so if the player clears the line more often than that, the price is the interesting part.",
+  },
+  {
+    term: "No-vig probability",
+    def: "A book prices Over and Under so they add up to more than 100%; the excess is its fee, not an opinion. Normalising the pair back to 100% leaves the book's actual estimate — the only number worth comparing a hit rate against. Needs both sides posted.",
+  },
+  {
+    term: "Unit",
+    def: "One stake. The Ledger grades every pick at a flat 1 unit so results are comparable, and shows dollars too once you set a bankroll in Betting.",
+  },
+  {
+    term: "ROI",
+    def: "Profit in units divided by the number of settled picks. At a flat 1 unit a pick, that's return per unit risked.",
+  },
+  {
+    term: "Correlation",
+    def: "Two legs that move together — same player, or same game. A parlay price assumes legs are independent, so when they aren't, the quoted payout flatters the slip. Flagged as a heuristic, not a corrected price.",
+  },
+  {
+    term: "Thin sample",
+    def: "Fewer than 20 settled picks. Below that a record is mostly noise, and the Report says so before it shows you any breakdown of it.",
+  },
+];
+
+function LinkRow({ label, hint, action, href }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "11px 0", borderBottom: "1px solid var(--line)",
+        textDecoration: "none", color: "inherit",
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, color: "var(--text)" }}>{label}</div>
+        {hint && <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3, lineHeight: 1.45 }}>{hint}</div>}
+      </div>
+      <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 600, color: "var(--amber)" }}>{action} →</span>
+    </a>
+  );
+}
+
 function AboutSection({ settings }) {
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
+
   return (
     <>
+      <Field label="Community">
+        <LinkRow
+          href={DISCORD_INVITE}
+          label="Join the Discord"
+          hint="Talk through slates, share screens, and see what everyone else is on."
+          action="Open"
+        />
+        {/* Feature requests go to the same place rather than an email or a
+            form: it needs no backend, the reply is public so the next person
+            asking finds the answer, and it puts anyone with an opinion about
+            the product in the room with everyone else. */}
+        <LinkRow
+          href={DISCORD_INVITE}
+          label="Request a feature"
+          hint="Post it in the Discord — that's where the roadmap gets argued about."
+          action="Open"
+        />
+      </Field>
+
+      <Field label="Glossary" hint="What every number on the board actually means.">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setGlossaryOpen((v) => !v)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setGlossaryOpen((v) => !v); } }}
+          className="chip"
+          style={{ cursor: "pointer", display: "inline-flex", gap: 7 }}
+        >
+          {glossaryOpen ? "Hide" : `Show all ${GLOSSARY.length} terms`}
+          <span style={{ fontSize: 10 }}>{glossaryOpen ? "▲" : "▼"}</span>
+        </div>
+        {glossaryOpen && (
+          <div style={{ marginTop: 12 }}>
+            {GLOSSARY.map((g) => (
+              <div key={g.term} style={{ padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+                <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", letterSpacing: "0.02em" }}>
+                  {g.term}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.5, marginTop: 4 }}>{g.def}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Field>
+
       <Field label="About">
         <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.6 }}>
           PropPalace — your own hit-rate research, before you place it.
