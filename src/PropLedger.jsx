@@ -3266,7 +3266,7 @@ const TEAMMATE_TONES = {
   muted: { bg: "var(--surface-3)", fg: "var(--dim)", dot: "var(--dim)" },
 };
 
-function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact, onHover }) {
+function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact, onHover, statusFor }) {
   const scrollRef = React.useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -3412,6 +3412,8 @@ function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact,
                   fallbackSrc={mlbEspnHeadshot(p.id)}
                   size={44}
                   inset={2}
+                  status={statusFor && statusFor(p)}
+                  surface="var(--surface-2)"
                   dimmed={!p.available}
                 />
                 {/* Overlaps the headshot's lower-right rather than sitting in
@@ -3798,7 +3800,7 @@ function FilterSection({ title, action, shaded, children }) {
 // reads and writes the same teammateChips array the chip row above does, so
 // the two controls are alternate front ends onto one filter rather than two
 // filters that have to agree.
-function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel }) {
+function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel, statusFor }) {
   const [tab, setTab] = useState("with");
   const [query, setQuery] = useState("");
 
@@ -3894,6 +3896,8 @@ function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel }) 
                     fallbackSrc={mlbEspnHeadshot(p.id)}
                     size={22}
                     inset={1}
+                    status={statusFor && statusFor(p)}
+                    surface="var(--panel)"
                   />
                   <span style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 5 }}>
                     <span
@@ -5624,6 +5628,90 @@ function wnbaGameDateForTeam(abbr, playerId) {
   return matchupDateForPlayer(WNBA_MATCHUPS, playerId);
 }
 
+// ---------- WNBA starters ----------
+//
+// Real starter flags, never a minutes threshold dressed up as one. ESPN's
+// roster route has no starter field and no depth chart; the box score does --
+// `starter: true` on exactly five athletes per team, keyed by the same espnId
+// we already carry.
+//
+// The wrinkle: an upcoming game has no box score at all (boxscore.players is
+// empty until tip), so tonight's starters do not exist as data anywhere. What
+// does exist is who started each team's last completed game, which the
+// matchup summary hands us directly via lastFiveGames. That is what this
+// returns, and it is labelled as such in the UI -- "STARTERS · LAST GAME" --
+// so a real fact from a prior game is never presented as tonight's lineup.
+// A live or finished game uses its own box score instead.
+//
+// Returns { byTeam: { ABBR: Set<espnId> }, dateByTeam: { ABBR: "YYYY-MM-DD" } }
+// or null. Null means no divider: the rails fall back to a flat MPG-sorted
+// list rather than inventing a split.
+const WNBA_STARTERS_TTL_MS = 15 * 60 * 1000;
+const wnbaStartersCache = new Map();
+
+function readStartersFromSummary(summary) {
+  const out = {};
+  ((summary && summary.boxscore && summary.boxscore.players) || []).forEach((g) => {
+    const abbr = g?.team?.abbreviation;
+    const athletes = (g?.statistics || [])[0]?.athletes || [];
+    const ids = athletes.filter((a) => a?.starter && a?.athlete?.id).map((a) => String(a.athlete.id));
+    if (abbr && ids.length) out[abbr] = new Set(ids);
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+async function fetchWNBAStarters(eventId) {
+  if (!eventId) return null;
+  const cached = wnbaStartersCache.get(eventId);
+  if (cached && Date.now() - cached.fetchedAt < WNBA_STARTERS_TTL_MS) return cached.data;
+
+  const SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/summary?event=";
+  let data = null;
+  try {
+    const res = await fetch(SUMMARY + eventId);
+    if (!res.ok) return null;
+    const summary = await res.json();
+
+    // Live or final: this game's own box score is the truth.
+    const own = readStartersFromSummary(summary);
+    if (own) {
+      const date = (summary?.header?.competitions || [])[0]?.date || "";
+      const dateByTeam = {};
+      Object.keys(own).forEach((a) => { dateByTeam[a] = date.slice(0, 10); });
+      data = { byTeam: own, dateByTeam, fromThisGame: true };
+    } else {
+      // Upcoming: fall back to each team's most recent completed game.
+      const byTeam = {};
+      const dateByTeam = {};
+      await Promise.all((summary?.lastFiveGames || []).map(async (t) => {
+        const abbr = t?.team?.abbreviation;
+        const events = [...(t?.events || [])].sort((a, b) => String(a.gameDate).localeCompare(String(b.gameDate)));
+        const last = events[events.length - 1];
+        if (!abbr || !last?.id) return;
+        try {
+          const r2 = await fetch(SUMMARY + last.id);
+          if (!r2.ok) return;
+          const prev = await r2.json();
+          const st = readStartersFromSummary(prev);
+          if (st && st[abbr]) {
+            byTeam[abbr] = st[abbr];
+            dateByTeam[abbr] = String(last.gameDate || "").slice(0, 10);
+          }
+        } catch {}
+      }));
+      if (Object.keys(byTeam).length) data = { byTeam, dateByTeam, fromThisGame: false };
+    }
+  } catch {
+    data = null;
+  }
+  if (!data) return null;
+
+  // Sets do not survive sessionStorage, and this is cheap to refetch, so it is
+  // deliberately memory-only for the tab.
+  wnbaStartersCache.set(eventId, { data, fetchedAt: Date.now() });
+  return data;
+}
+
 // Live rosters for every franchise, memoised for the tab. Individual team
 // failures are tolerated -- that team simply falls back to its static roster
 // (or to no players, which excludes its players without excluding its game).
@@ -5995,6 +6083,7 @@ async function fetchWNBALiveSlate() {
           : "";
         return {
           id: `${awayAbbr}-${homeAbbr}-${ev.id}`,
+          espnEventId: ev.id,
           label: `${(WNBA_TEAM_FULL_NAME[awayAbbr] || awayAbbr).split(" ").pop()} @ ${(WNBA_TEAM_FULL_NAME[homeAbbr] || homeAbbr).split(" ").pop()}`,
           teamA: { abbr: awayAbbr, label: WNBA_TEAM_FULL_NAME[awayAbbr] || awayAbbr, players: wnbaRosterFor(awayAbbr) },
           teamB: { abbr: homeAbbr, label: WNBA_TEAM_FULL_NAME[homeAbbr] || homeAbbr, players: wnbaRosterFor(homeAbbr) },
@@ -6316,6 +6405,42 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     (p) => (availability && p && p.espnId ? availability[String(p.espnId)] : undefined),
     [availability]
   );
+
+  // Real starter flags for the selected game (see fetchWNBAStarters). Null
+  // until they resolve, and null forever if the box score has none -- both of
+  // which mean "no divider", never a guessed split.
+  const [starters, setStarters] = useState(null);
+  // The matchup id is `AWAY-HOME-<espnEventId>`, so the id is recoverable even
+  // from a slate cached by a build that predates the espnEventId field -- the
+  // schedule cache has a one-hour TTL and outlives a deploy.
+  const espnEventId = matchup?.espnEventId || String(matchup?.id || "").split("-").pop();
+  React.useEffect(() => {
+    let cancelled = false;
+    setStarters(null);
+    if (!espnEventId) return undefined;
+    fetchWNBAStarters(espnEventId)
+      .then((d) => { if (!cancelled) setStarters(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [espnEventId]);
+
+  // Split a team's rail into STARTERS / BENCH, each already MPG-sorted by the
+  // matchup memo. Returns a single unlabelled section when there is no starter
+  // data, which is what makes the fallback a plain list rather than a guess.
+  const sectionsFor = React.useCallback((players, abbr) => {
+    const ids = starters && starters.byTeam && starters.byTeam[abbr];
+    if (!ids || !ids.size) return [{ label: null, players }];
+    const isStarter = (p) => p.espnId && ids.has(String(p.espnId));
+    const a = players.filter(isStarter);
+    const b = players.filter((p) => !isStarter(p));
+    if (!a.length) return [{ label: null, players }];
+    const when = starters.fromThisGame ? "THIS GAME" : "LAST GAME";
+    const date = (starters.dateByTeam || {})[abbr];
+    return [
+      { label: "STARTERS", note: date ? `${when} · ${date}` : when, players: a },
+      { label: "BENCH", note: null, players: b },
+    ];
+  }, [starters]);
   // Once the live slate lands, jump off the static default matchup/player
   // onto the real first game of the day (its id won't exist in WNBA_MATCHUPS).
   React.useEffect(() => {
@@ -6376,7 +6501,12 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   // than a crash.
   const player = useMemo(() => {
     const pool = [...(matchup?.teamA?.players || []), ...(matchup?.teamB?.players || [])];
-    return pool.find((p) => p.id === playerId) || ALL_WNBA_PLAYERS.find((p) => p.id === playerId);
+    const fromSlate = pool.find((p) => p.id === playerId);
+    if (fromSlate) return fromSlate;
+    // The static fallback has to clear the same data bar as the rails, or a
+    // player the rails deliberately excluded can still be selected by id.
+    const stat = ALL_WNBA_PLAYERS.find((p) => p.id === playerId);
+    return stat && wnbaPlayerHasData(stat) ? stat : undefined;
   }, [matchup, playerId]);
   // If the selected id is no longer in the slate (rosters loaded, a player was
   // filtered out, the matchup changed), fall to the first player that is.
@@ -6399,7 +6529,11 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId]);
 
-  const allGames = useMemo(() => getWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)), [player, dataVersion]);
+  // `|| []` because getWNBAGames returns null for a player with no game log
+  // at all. Such a player is normally filtered out of the rails before they
+  // can be selected, but the static fallback in the resolver above can still
+  // surface one, and an empty array renders an empty chart instead of throwing.
+  const allGames = useMemo(() => getWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)) || [], [player, dataVersion]);
   const seasonAvg = useMemo(() => {
     const n = allGames.length || 1;
     const sum = (key) => allGames.reduce((a, g) => a + g[key], 0);
@@ -6883,6 +7017,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     <TeamRosterPanel
       teamLabel={matchup.teamA.label}
       players={matchup.teamA.players}
+      sections={sectionsFor(matchup.teamA.players, matchup.teamA.abbr)}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
@@ -7030,6 +7165,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     <TeamRosterPanel
       teamLabel={matchup.teamB.label}
       players={matchup.teamB.players}
+      sections={sectionsFor(matchup.teamB.players, matchup.teamB.abbr)}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
@@ -10572,6 +10708,26 @@ function MLBPropsPage({ jumpTo }) {
     return out.sort((a, b) => (a.available === b.available ? 0 : a.available ? -1 : 1));
   }, [liveTeamRoster, teamRoster, player.mlbId, teamRosterStatus, nextGame, isPitcher]);
 
+  // Availability for an MLB player, from the 40-man roster status already
+  // fetched for the badges. Distinct from `badge`, which is null both when a
+  // player is active and when the status feed has not loaded -- a dot must not
+  // read those two as the same thing.
+  //
+  // On "muted": that tone covers AAA (RM/MIN/OPT), DFA (DES) and
+  // restricted/suspended/reserve (RES/SU/RE, which the badge itself labels
+  // "Out"). None of those players is available for tonight, so they map to
+  // `out`, not to available -- a green dot on a player badged "Out" would be
+  // plainly wrong. The badge beside the avatar still names the specific
+  // reason, so nothing is lost by the dot being coarser.
+  const mlbStatusOf = React.useCallback((p) => {
+    if (!teamRosterStatus || !p || !p.mlbId) return undefined;
+    const s = teamRosterStatus[p.mlbId];
+    if (!s) return undefined;                       // not on the 40-man: unknown
+    const badge = MLB_STATUS_BADGES[s.code];
+    if (!badge) return "active";                    // code "A"
+    return badge.tone === "warn" ? "questionable" : "out";
+  }, [teamRosterStatus]);
+
   // mlbId -> the player's average in this market when that teammate played,
   // minus their average when he didn't. Computed over the in-scope games we
   // actually have boxscores for (see teammateScopeGamePks), so it narrows
@@ -11356,6 +11512,8 @@ function MLBPropsPage({ jumpTo }) {
         colorMap={MLB_TEAM_COLORS}
         headshotSrc={mlbHeadshot(player.mlbId)}
         fallbackSrc={mlbEspnHeadshot(player.id)}
+        status={mlbStatusOf(player)}
+        surface="var(--panel)"
         size={compact ? 56 : 84}
         inset={compact ? 3 : 5}
         backing={"#000"}
@@ -11507,6 +11665,7 @@ function MLBPropsPage({ jumpTo }) {
             loading={boxscoresLoading}
             compact={compact}
             onHover={setHoverTeammate}
+            statusFor={mlbStatusOf}
           />
         </FilterSection>
       )}
@@ -11519,6 +11678,7 @@ function MLBPropsPage({ jumpTo }) {
             chips={teammateChips}
             onChange={setTeammateChips}
             oppLabel={nextGame?.opp}
+            statusFor={mlbStatusOf}
           />
         </FilterSection>
       )}
@@ -12740,6 +12900,39 @@ function FeedPctCell({ v }) {
 // gradient treatment as the lineup panel across all four sports.
 const FEED_TEAM_COLORS = { nba: NBA_TEAM_COLORS, wnba: WNBA_TEAM_COLORS, nfl: NFL_TEAM_COLORS, mlb: MLB_TEAM_COLORS };
 
+// Availability for a saved pick, read out of whatever the app has already
+// fetched this session. Synchronous on purpose: the slip and Ledger are a
+// drawer over the current page, not a place to start network requests.
+//
+// WNBA and MLB are the two sports with a player availability feed, so they are
+// the only ones that can return anything here. NBA and NFL return undefined,
+// which renders no dot -- deliberately not a green one.
+//
+// Both caches are only warm once the user has visited that sport's pages this
+// session. A cold cache returns undefined, i.e. no dot, which is the correct
+// reading: we do not know yet.
+function pickStatus(p) {
+  if (!p) return undefined;
+  if (p.sport === "wnba" && p.espnId) {
+    for (const rec of wnbaRosterStatusCache.values()) {
+      const st = rec && rec.data && rec.data.byId && rec.data.byId[String(p.espnId)];
+      if (st) return st;
+    }
+    return undefined;
+  }
+  if (p.sport === "mlb" && p.gradeId) {
+    for (const rec of mlbRosterStatusCache.values()) {
+      const s = rec && rec.byId && rec.byId[p.gradeId];
+      if (!s) continue;
+      const badge = MLB_STATUS_BADGES[s.code];
+      if (!badge) return "active";
+      return badge.tone === "warn" ? "questionable" : "out";
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
 // One feed row -- player avatar (team logo demoted to a corner badge on it,
 // instead of being the only image in the row), name/subtitle/matchup, the
 // L5/L10/L20/season splits strip, odds, and the add-to-picks/view-chart
@@ -12871,6 +13064,15 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
         gameId: r.gameId || null,
         gradeKind: r.gradeKind || null,
         gradeId: r.gradeId || null,
+        // Identity for the slip/Ledger avatar. The photo URL is snapshotted
+        // rather than rebuilt later because each sport resolves it from a
+        // different id (mlbId / nbaId / espnId / a static NFL map) and the
+        // Ledger has no sport-specific code. Picks saved before this existed
+        // simply have no photo and fall back to the team gradient, which is
+        // the correct read rather than a wrong face.
+        espnId: r.espnId || null,
+        avatar: r.avatar || null,
+        avatarFallback: r.avatarFallback || null,
         addedAt: Date.now(),
         marketLabel: r.marketLabel || null,
         // A snapshot of what the row actually said at the moment it was
@@ -15201,7 +15403,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 // entirely by MobilePlayerNav (persistent bottom chip strip + Lineup side
 // drawer, rendered once per page rather than once per TeamRosterPanel) --
 // see below. TeamRosterPanel itself renders nothing in that range.
-function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, statusFor, confirmed }) {
+function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, statusFor, sections, confirmed }) {
   const compact = useIsNarrow(1100);
   // Pitchers (pos "SP") get sectioned off from the batting order rather than
   // just tacked onto the end of the list -- MLB is the only sport that
@@ -15209,6 +15411,11 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
   // as before, just inside the same scrollable wrapper.
   const batters = players.filter((p) => p.pos !== "SP");
   const pitchers = players.filter((p) => p.pos === "SP");
+  // Only treat sections as real when at least one carries a label and some
+  // players -- a single unlabelled section means "no split available".
+  const labelledSections = sections && sections.some((sec) => sec.label && sec.players.length)
+    ? sections.filter((sec) => sec.players.length)
+    : null;
 
   const renderRow = (p) => {
     const active = p.id === activeId;
@@ -15314,9 +15521,37 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
             </div>
           </>
         )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {batters.map(renderRow)}
-        </div>
+        {/* `sections` is only ever set when something real backs the split --
+             today, actual starter flags off a box score. Absent (or a single
+             unlabelled section) renders the flat list exactly as before, which
+             is what a missing/failed starters fetch falls back to. */}
+        {labelledSections ? labelledSections.map((sec, i) => (
+          <div key={sec.label || i} style={{ marginBottom: i < labelledSections.length - 1 ? 10 : 0 }}>
+            <div style={{
+              display: "flex", alignItems: "baseline", justifyContent: "center", gap: 6,
+              paddingTop: i > 0 ? 10 : 0,
+              borderTop: i > 0 ? "1px solid var(--line)" : "none",
+              marginBottom: 6,
+            }}>
+              <span style={{
+                fontSize: 10.5, fontWeight: 700, color: "var(--dim)",
+                textTransform: "uppercase", letterSpacing: "0.06em",
+              }}>
+                {sec.label}
+              </span>
+              {sec.note && (
+                <span className="mono" style={{ fontSize: 9, color: "var(--dim)", opacity: 0.8 }}>{sec.note}</span>
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {sec.players.map(renderRow)}
+            </div>
+          </div>
+        )) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {batters.map(renderRow)}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -16018,6 +16253,18 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                 ) : (
                   openPicks.map((p) => (
                     <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
+                      <PlayerAvatar
+                        name={p.name}
+                        sport={p.sport}
+                        team={p.team}
+                        colorMap={FEED_TEAM_COLORS[p.sport]}
+                        headshotSrc={p.avatar}
+                        fallbackSrc={p.avatarFallback}
+                        status={pickStatus(p)}
+                        surface="var(--panel)"
+                        size={34}
+                        inset={2}
+                      />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="oswald" style={{ fontSize: 13.5, color: "var(--text)" }}>
                           {p.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({p.team})</span>
@@ -16166,6 +16413,18 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                 ) : (
                   settledPicks.map((p) => (
                     <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
+                      <PlayerAvatar
+                        name={p.name}
+                        sport={p.sport}
+                        team={p.team}
+                        colorMap={FEED_TEAM_COLORS[p.sport]}
+                        headshotSrc={p.avatar}
+                        fallbackSrc={p.avatarFallback}
+                        status={pickStatus(p)}
+                        surface="var(--panel)"
+                        size={34}
+                        inset={2}
+                      />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="oswald" style={{ fontSize: 13.5, color: "var(--text)" }}>
                           {p.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({p.team})</span>
