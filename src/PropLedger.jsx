@@ -9231,11 +9231,6 @@ function pitcherPercentileRow(pitcher, sideKey, statDef) {
   return { value, pct };
 }
 
-function pitcherSampleCount(pitcher, sideKey) {
-  const rng = seededRng(pitcher.mlbId, sideKey, "sample_count");
-  return Math.round(400 + rng() * 3000);
-}
-
 const PITCH_TYPES = [
   { key: "FF", name: "Fastball", velo: [91, 97] },
   { key: "SI", name: "Sinker", velo: [90, 96] },
@@ -9852,9 +9847,6 @@ function BullpenAnalyzerPanel({ teamLabel, bullpen }) {
 // filters (mirrors the reference screenshot's "Overall" vs "vs RHP"
 // layout) -- both are about the selected pitcher only.
 function PercentileRankingsPanel({ pitcher, leftSplit, setLeftSplit, leftSample, setLeftSample, rightSplit, setRightSplit, rightSample, setRightSample }) {
-  const leftPC = useMemo(() => pitcherSampleCount(pitcher, `${leftSplit}_${leftSample}`), [pitcher.mlbId, leftSplit, leftSample]);
-  const rightPF = useMemo(() => pitcherSampleCount(pitcher, `${rightSplit}_${rightSample}`) * 5, [pitcher.mlbId, rightSplit, rightSample]);
-
   const HandSelect = ({ value, onChange }) => (
     <select className="select" value={value} onChange={(e) => onChange(e.target.value)} style={{ fontSize: 11, padding: "3px 8px" }}>
       {["Overall", "vs LHP", "vs RHP"].map((o) => <option key={o} value={o}>{o}</option>)}
@@ -9884,11 +9876,14 @@ function PercentileRankingsPanel({ pitcher, leftSplit, setLeftSplit, leftSample,
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 11, color: "var(--dim)" }}>Hand split</span>
           <HandSelect value={leftSplit} onChange={setLeftSplit} />
+          {/* The pitch counts that sat here were generated (seededRng, 400-3000)
+               -- an invented sample size attached to stats that have no sample
+               at all, which read as more rigorous than the app's real numbers.
+               Removed outright rather than replaced: no number beats a made-up
+               one. */}
           <SamplePills options={["L3", "L6", "L10", "All"]} value={leftSample} onChange={setLeftSample} />
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{leftPC} PC</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{rightPF} PF</span>
           <SamplePills options={["L10", "L20", "L30", "All"]} value={rightSample} onChange={setRightSample} />
           <HandSelect value={rightSplit} onChange={setRightSplit} />
           <span style={{ fontSize: 11, color: "var(--dim)" }}>Hand split</span>
