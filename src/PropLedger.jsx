@@ -1323,17 +1323,21 @@ let nflTeamDefReal = null;
 // Lazily-built, memoized per (market, position) so each prop type's ranking
 // is computed once and reused, instead of re-sorting 31 teams every render.
 const nflDefCategoryCache = {};
-const NFL_DEF_RANK_FALLBACK = { rank: 16, rating: 0 };
+// Returns null when there is no rank for this opponent. There used to be a
+// { rank: 16 } fallback here, which rendered as "OPP RANK #16" -- a number
+// indistinguishable from a genuine middle-of-the-league matchup. A missing
+// rank now shows nothing at all; every caller below drops the badge rather
+// than filling the space with an average.
 function getNFLDefRank(market, pos, opp) {
   if (nflTeamDefReal && nflTeamDefReal[opp]) return nflTeamDefReal[opp];
   const range = NFL_MARKET_DEF_RANGE[market];
-  if (!range) return NFL_TEAM_DEF[opp] || NFL_DEF_RANK_FALLBACK; // kicking markets — no defensive-matchup concept
+  if (!range) return NFL_TEAM_DEF[opp] || null; // kicking markets — no defensive-matchup concept
   const key = `${market}_${pos}`;
   if (!nflDefCategoryCache[key]) {
     const seed = 4300 + (hashStr(key) % 5000);
     nflDefCategoryCache[key] = buildNFLDefenseCategory(seed, range[0], range[1]);
   }
-  return nflDefCategoryCache[key][opp] || NFL_DEF_RANK_FALLBACK;
+  return nflDefCategoryCache[key][opp] || null;
 }
 
 // ESPN abbreviates Washington as WSH; every other team's abbreviation in the
@@ -5163,7 +5167,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
             date: g.date,
             snapPct: g.snapPct,
             home: g.home,
-            defRank: getNFLDefRank(market, player.pos, g.opp).rank,
+            defRank: (getNFLDefRank(market, player.pos, g.opp) || {}).rank ?? null,
           }))}
           // right clears LineHandle, which anchors to the container's right
           // edge: it needs right:8 + its 52px minimum, less the 6px the
@@ -5262,7 +5266,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
                 const over = v > rowLine;
                 const push = !isBinary && v === rowLine;
                 const def = getNFLDefRank(market, player.pos, g.opp);
-                const tier = nflDefTier(def.rank);
+                const tier = def ? nflDefTier(def.rank) : null;
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
@@ -13255,18 +13259,24 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     // the Proposition track enough that "OPP RANK" itself was breaking across
     // two lines once the streak and lineup badges joined the row.
     <div style={{ fontSize: 10.5, color: "var(--dim-strong)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 6px" }}>
-      <span style={{ whiteSpace: "nowrap" }}>OPP RANK</span>
-      <span
-        className="mono"
-        title={`#${r.rank} in ${r.rankLabel}`}
-        style={{
-          display: "inline-block", padding: "1px 6px", borderRadius: 4,
-          fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
-          background: tierBg, color: tierFg, border: tierBorder,
-        }}
-      >
-        #{r.rank}
-      </span>
+      {/* No rank, no chip. Printing a placeholder here is what made a missing
+           matchup read as an average one. */}
+      {r.rank != null && (
+        <>
+          <span style={{ whiteSpace: "nowrap" }}>OPP RANK</span>
+          <span
+            className="mono"
+            title={`#${r.rank} in ${r.rankLabel}`}
+            style={{
+              display: "inline-block", padding: "1px 6px", borderRadius: 4,
+              fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
+              background: tierBg, color: tierFg, border: tierBorder,
+            }}
+          >
+            #{r.rank}
+          </span>
+        </>
+      )}
       {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
            otherwise produce two visually identical rows per prop. */}
       <span style={{ whiteSpace: "nowrap" }}>vs {r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}</span>
@@ -13938,7 +13948,7 @@ function buildNFLFeedRows() {
       const line = isBinary ? 0.5 : fairFeedLine(values);
       const hit = isBinary ? (v) => v === 1 : (v) => v > line;
       const def = getNFLDefRank(m.id, player.pos, nextOpp);
-      const tier = nflDefTier(def.rank);
+      const tier = def ? nflDefTier(def.rank) : null;
       const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
       rows.push({
         key: `nfl_${player.id}_${m.id}`,
@@ -13953,13 +13963,13 @@ function buildNFLFeedRows() {
         marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
-        rank: def.rank, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
+        rank: def ? def.rank : null, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
         values, line, isBinary, variance,
-        direction: "over", matchupScore: def.rank,
+        direction: "over", matchupScore: def ? def.rank : null,
         recent: feedRecentGames(games, values),
         // See gradePick. Null for anyone with no ESPN id mapped -- those
         // rows fall back to synthetic logs, which must never be graded.
@@ -14754,7 +14764,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
-    if (r.rank < rankLo || r.rank > rankHi) return false;
+    if (r.rank == null) { if (rankLo > 1 || rankHi < 32) return false; }
+    else if (r.rank < rankLo || r.rank > rankHi) return false;
     if (showMatchupDropdown) {
       if (selectedGameIds.size > 0) {
         // MLB rows carry the id of the exact game they were built from, so
