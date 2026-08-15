@@ -3754,6 +3754,15 @@ function SampleSizeGrid({ cells }) {
           >
             {s.rate === null ? "—" : `${Math.round(s.rate * 100)}%`}
           </div>
+          {s.rate !== null && s.count != null && (
+            <div
+              className="mono tnum"
+              title={s.asked && s.count < s.asked ? `Only ${s.count} games available — fewer than the ${s.asked} this window asks for` : `${s.count} games`}
+              style={{ fontSize: 9, marginTop: 1, color: s.active ? "var(--accent-on)" : s.count < 10 ? "var(--warn)" : "var(--dim)" }}
+            >
+              {s.count}{s.asked && s.count < s.asked ? " of " + s.asked : ""}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -4023,6 +4032,10 @@ function CollapsibleSection({ title, storageKey, defaultOpen = false, children }
 // `includeH2h` is opt-out for pages that have no single "next opponent" to
 // compare against -- WNBA picks an opponent from a dropdown instead, so a H2H
 // cell there would be permanently disabled rather than merely unavailable.
+// Each split carries `count` -- the games actually behind it -- and `asked`,
+// the games its label implies. They differ whenever a player has played fewer
+// games than the window: an L25 cell on a nine game log is a nine game sample,
+// and the label on its own conceals that.
 function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels, includeH2h = true }) {
   const rate = (games) => {
     if (!games.length) return null;
@@ -4034,13 +4047,15 @@ function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLa
     ...[5, 10, 15, 20, 25].map((n) => ({
       key: `l${n}`, label: `L${n}`, active: !h2h && lastN === n,
       rate: rate(allGames.slice(-n)),
+      count: allGames.slice(-n).length, asked: n,
       onClick: () => { onSetH2h(false); onSetLastN(n); },
     })),
-    { key: "season", label: shortLabels ? "SZN" : "Season", active: !h2h && lastN === "all", rate: rate(allGames), onClick: () => { onSetH2h(false); onSetLastN("all"); } },
+    { key: "season", label: shortLabels ? "SZN" : "Season", active: !h2h && lastN === "all", rate: rate(allGames), count: allGames.length, asked: null, onClick: () => { onSetH2h(false); onSetLastN("all"); } },
     ...(includeH2h ? [{
       key: "h2h",
       label: !shortLabels && opponentAbbr ? `H2H vs ${opponentAbbr}` : "H2H",
       active: h2h, rate: rate(h2hGames),
+      count: h2hGames.length, asked: null,
       onClick: () => opponentAbbr && onSetH2h(true), disabled: !opponentAbbr,
     }] : []),
   ];
@@ -4084,6 +4099,15 @@ function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, 
             <div className="mono stat-value" style={{ fontSize: isNarrow ? 13 : 14.5, color: rateColor(s.rate) }}>
               {s.rate === null ? "—" : `${Math.round(s.rate * 100)}%`}
             </div>
+            {s.rate !== null && s.count != null && (
+              <div
+                className="mono tnum"
+                title={s.asked && s.count < s.asked ? `Only ${s.count} games available — fewer than the ${s.asked} this window asks for` : `${s.count} games`}
+                style={{ fontSize: 9, marginTop: 1, color: s.count < 10 ? "var(--warn)" : "var(--dim)" }}
+              >
+                {s.count}{s.asked && s.count < s.asked ? " of " + s.asked : ""}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -12063,6 +12087,12 @@ function buildWNBAFeedRows() {
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
+        // Counts alongside the rates: values.slice(-20) on a nine game log
+        // returns nine, so a cell labelled L20 can be a nine game sample.
+        n5: hitRateCount(values, 5),
+        n10: hitRateCount(values, 10),
+        n20: hitRateCount(values, 20),
+        nAll: hitRateCount(values, "all"),
         values, line, isBinary, variance,
         direction: "over", matchupScore: rank,
         recent: feedRecentGames(games, values),
@@ -12921,7 +12951,10 @@ function feedShortDate(date) {
   return `${FEED_MONTHS[Number(m[2]) - 1] || ""} ${Number(m[3])}`;
 }
 
-function FeedPctCell({ v }) {
+// Every rate carries the number of games behind it, the same way the player
+// page prints "60% (6/10)". The count is not decoration: a window labelled L20
+// on a nine game log is a nine game sample, and the label alone hides that.
+function FeedPctCell({ v, n, label }) {
   if (v == null) {
     return (
       <div style={{ textAlign: "center" }}>
@@ -12950,6 +12983,20 @@ function FeedPctCell({ v }) {
       }}>
         {Math.round(v * 100)}%
       </span>
+      {n != null && (
+        <div
+          className="mono tnum"
+          title={label && n < label ? `Only ${n} games available — fewer than the ${label} this column asks for` : `${n} games`}
+          style={{
+            fontSize: 9.5, marginTop: 2, letterSpacing: "0.02em",
+            // A short sample is flagged rather than hidden: under ten games the
+            // count is the thing worth reading, not the percentage.
+            color: n < 10 ? "var(--warn)" : "var(--dim)",
+          }}
+        >
+          {n}{label && n < label ? " of " + label : ""}
+        </div>
+      )}
     </div>
   );
 }
@@ -13374,10 +13421,10 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
         )}
       </div>
       <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{odds == null ? "—" : formatOdds(odds, oddsFormat)}</div>
-      <FeedPctCell v={r.l5} />
-      <FeedPctCell v={r.l10} />
-      <FeedPctCell v={r.l20} />
-      <FeedPctCell v={r.all} />
+      <FeedPctCell v={r.l5} n={r.n5} label={5} />
+      <FeedPctCell v={r.l10} n={r.n10} label={10} />
+      <FeedPctCell v={r.l20} n={r.n20} label={20} />
+      <FeedPctCell v={r.all} n={r.nAll} />
       {chartBtn}
     </div>
   );
@@ -13911,6 +13958,12 @@ function buildNBAFeedRows() {
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
+        // Counts alongside the rates: values.slice(-20) on a nine game log
+        // returns nine, so a cell labelled L20 can be a nine game sample.
+        n5: hitRateCount(values, 5),
+        n10: hitRateCount(values, 10),
+        n20: hitRateCount(values, 20),
+        nAll: hitRateCount(values, "all"),
         values, line, isBinary, variance,
         direction: "over", matchupScore: rank,
         recent: feedRecentGames(games, values),
@@ -13968,6 +14021,12 @@ function buildNFLFeedRows() {
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
+        // Counts alongside the rates: values.slice(-20) on a nine game log
+        // returns nine, so a cell labelled L20 can be a nine game sample.
+        n5: hitRateCount(values, 5),
+        n10: hitRateCount(values, 10),
+        n20: hitRateCount(values, 20),
+        nAll: hitRateCount(values, "all"),
         values, line, isBinary, variance,
         direction: "over", matchupScore: def ? def.rank : null,
         recent: feedRecentGames(games, values),
@@ -14027,6 +14086,12 @@ function buildMLBFeedRows(teamsData) {
           l10: hitRateWindow(values, 10, hit),
           l20: hitRateWindow(values, 20, hit),
           all: hitRateWindow(values, "all", hit),
+          // Counts alongside the rates: values.slice(-20) on a nine game log
+          // returns nine, so a cell labelled L20 can be a nine game sample.
+          n5: hitRateCount(values, 5),
+          n10: hitRateCount(values, 10),
+          n20: hitRateCount(values, 20),
+          nAll: hitRateCount(values, "all"),
           values, line, isBinary: false, variance,
           direction: "over", matchupScore: rank,
           recent: feedRecentGames(games, values),
@@ -14125,6 +14190,12 @@ function buildMLBPitcherFeedRows(teamsData) {
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
         all: hitRateWindow(values, "all", hit),
+        // Counts alongside the rates: values.slice(-20) on a nine game log
+        // returns nine, so a cell labelled L20 can be a nine game sample.
+        n5: hitRateCount(values, 5),
+        n10: hitRateCount(values, 10),
+        n20: hitRateCount(values, 20),
+        nAll: hitRateCount(values, "all"),
         values, line, isBinary: false, variance,
         direction: "over", matchupScore: rank,
         recent: feedRecentGames(pitcherGames, values),
