@@ -7198,11 +7198,30 @@ const mlbTeamDefReal = new Set();
 function mlbDefFor(abbr) {
   return mlbTeamDefReal.has(abbr) && MLB_TEAM_DEF[abbr] ? MLB_TEAM_DEF[abbr] : null;
 }
+
+// Per-market ranks, computed nightly by api/refresh-mlb-matchups.js from the
+// team stat line the market actually measures -- HR allowed for a Home Runs
+// prop, steals allowed for Stolen Bases, and so on. The team-wide ERA rank
+// above is a run-prevention number and describes only the runs markets; using
+// it everywhere had the Rockies rated the softest strikeout matchup in
+// baseball when by strikeout rate they were the toughest.
+//
+// Each entry carries its own `label`, because the label has to describe the
+// number rather than the market. Markets with no real per-market source
+// (Outs Recorded) simply have no entry here and render no badge.
+function mlbDefForMarket(abbr, market) {
+  const team = mlbDefFor(abbr);
+  return team?.markets?.[market] || null;
+}
 function applyMlbTeamDef(byTeam) {
   Object.keys(byTeam || {}).forEach((abbr) => {
     if (MLB_TEAM_DEF[abbr] && byTeam[abbr]) {
       MLB_TEAM_DEF[abbr].rank = byTeam[abbr].rank;
       MLB_TEAM_DEF[abbr].rating = byTeam[abbr].era;
+      // Absent on a payload written by the pre-per-market cron. Left
+      // undefined rather than {} so mlbDefForMarket returns null and the
+      // badge hides, instead of the stale ERA rank standing in for it.
+      MLB_TEAM_DEF[abbr].markets = byTeam[abbr].markets;
       mlbTeamDefReal.add(abbr);
     }
   });
@@ -10420,7 +10439,7 @@ function MLBPropsPage({ jumpTo }) {
     date: g.date,
     minutes: isPitcher ? formatOuts(g.outs) : g.pa,
     home: g.home,
-    defRank: mlbDefFor(g.opp)?.rank ?? null,
+    defRank: mlbDefForMarket(g.opp, market)?.rank ?? null,
     // undefined (not false) when there's nothing to preview or no boxscore
     // for the game, so an unknown lineup is never rendered as "sat out".
     previewOut:
@@ -10428,7 +10447,7 @@ function MLBPropsPage({ jumpTo }) {
         ? !boxscoreLineups[g.gamePk].has(hoverTeammate)
         : undefined,
   }));
-  if (nextGame && mlbDefFor(nextGame.opp)) {
+  if (nextGame && mlbDefForMarket(nextGame.opp, market)) {
     const nextDate = (nextGame.date || "").slice(0, 10);
     chartData.push({
       idx: chartData.length + 1,
@@ -10438,7 +10457,7 @@ function MLBPropsPage({ jumpTo }) {
       date: nextDate,
       minutes: null,
       home: nextGame.home,
-      defRank: mlbDefFor(nextGame.opp).rank,
+      defRank: mlbDefForMarket(nextGame.opp, market).rank,
       isPlaceholder: true,
     });
   }
@@ -11026,14 +11045,17 @@ function MLBPropsPage({ jumpTo }) {
                 const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
                 const over = v > effectiveLine;
                 const push = !isBinary && v === effectiveLine;
-                const def = mlbDefFor(g.opp);
+                const def = mlbDefForMarket(g.opp, market);
                 const tier = def ? mlbDefTier(def.rank) : null;
                 return (
                   <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
                     <div>{g.date}</div>
                     <div>{g.opp}</div>
-                    <div style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
+                    <div
+                      title={def ? `#${def.rank} of ${def.of} in ${def.label} (${def.value})` : undefined}
+                      style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}
+                    >{def ? `#${def.rank}` : "—"}</div>
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
                     <div>{isPitcher ? formatOuts(g.outs) : g.pa}</div>
                     <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
@@ -12977,18 +12999,14 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
 // the real nightly ERA ranking was never once used for the badge. Every OPP
 // RANK on the feed and on the player pages was a seeded per-market table.
 //
-// Now the real ranking wins, and there is no fallback: no rank until
-// /api/mlb-matchups lands, and none at all if it fails.
+// Then it was the real ERA ranking against every market, which fixed the
+// fabrication but left the badge measuring runs beside a Home Runs or Stolen
+// Bases prop. Now each market gets ranked by its own stat, and carries the
+// label describing that stat. Still no fallback: no rank until
+// /api/mlb-matchups lands, and none at all if it fails or if the market has
+// no real defensive metric behind it.
 function getMLBDefRank(market, opp) {
-  return mlbDefFor(opp);
-}
-
-// One label for every market, because there is now one number behind all of
-// them. It is team runs allowed per game -- not hits allowed, not home runs
-// allowed, not "opponent plate discipline". Naming a per-market split on a
-// number that is not per-market was the misleading half of the old badge.
-function mlbDefCategoryLabel() {
-  return "opponent runs allowed per game";
+  return mlbDefForMarket(opp, market);
 }
 
 // Hit rate over the trailing n games (or the whole sample for n === "all"),
@@ -13607,7 +13625,7 @@ function buildMLBFeedRows(teamsData) {
           marketLabel: m.label,
           subtitle: `Over ${line} ${m.label}`,
           opp: nextGame.opp,
-          rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
+          rank, tier, rankLabel: def?.label ?? null,
           l5: hitRateWindow(values, 5, hit),
           l10: hitRateWindow(values, 10, hit),
           l20: hitRateWindow(values, 20, hit),
@@ -13711,7 +13729,7 @@ function buildMLBPitcherFeedRows(teamsData) {
         marketLabel: m.label,
         subtitle: `Over ${line} ${m.label}`,
         opp: nextGame.opp,
-        rank, tier, rankLabel: mlbDefCategoryLabel(m.id),
+        rank, tier, rankLabel: def?.label ?? null,
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),

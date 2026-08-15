@@ -9,12 +9,124 @@ const TEAM_ID_ABBR = {
   137: "SF", 138: "STL", 139: "TB", 140: "TEX", 141: "TOR", 120: "WSH",
 };
 
-// Triggered nightly by the Vercel Cron Job defined in vercel.json. Pulls
-// each team's real season pitching ERA from the MLB Stats API and ranks
-// teams by it (lower ERA = tougher on hitters = rank 1), replacing the
-// mock defense ranking the app falls back to. Result is stored in Redis
-// (Upstash, via the Vercel Marketplace integration) so every visitor reads
-// the same precomputed ranking instead of each browser recomputing it.
+// Per-market defensive metrics.
+//
+// A team's ERA is a run-prevention number. Ranking a Home Runs or a Stolen
+// Bases prop by it is a category error -- the badge ends up describing runs
+// while sitting next to a market that isn't runs. The same endpoint already
+// returns the per-category totals, so each market gets ranked by the thing it
+// actually measures.
+//
+// Batter markets read the opponent's PITCHING line (what that staff allows).
+// Pitcher markets read the opponent's HITTING line (what that lineup does).
+//
+// Rate, never total: a team that has played 150 games has allowed fewer of
+// everything than one that has played 162, and ranking raw totals in-season
+// would mostly rank games played. Batter markets use per-9-innings so extra
+// innings don't inflate them; the per-9 fields the API already publishes are
+// preferred over recomputing.
+//
+// `label` is what the badge prints. It must describe the number, not the
+// market -- that mismatch is the bug this replaces.
+//
+// Direction is uniform: ascending, so rank 1 is always the opponent that most
+// suppresses the stat. That holds for strikeout markets without inverting --
+// a low-strikeout staff suppresses a batter's strikeout prop the same way a
+// low-homer staff suppresses their home run prop.
+const IP = (s) => (Number(s.outs) || 0) / 3;
+const per9 = (v, s) => (IP(s) > 0 ? (Number(v) || 0) / IP(s) * 9 : null);
+const perGame = (v, s) => (Number(s.gamesPlayed) > 0 ? (Number(v) || 0) / Number(s.gamesPlayed) : null);
+
+const BATTER_METRICS = {
+  h:     { label: "opp hits allowed / 9",       value: (s) => Number(s.hitsPer9Inn) },
+  r:     { label: "opp runs allowed / 9",       value: (s) => Number(s.runsScoredPer9) },
+  hr:    { label: "opp HR allowed / 9",         value: (s) => Number(s.homeRunsPer9) },
+  bb:    { label: "opp walks allowed / 9",      value: (s) => Number(s.walksPer9Inn) },
+  so:    { label: "opp strikeouts / 9",         value: (s) => Number(s.strikeoutsPer9Inn) },
+  tb:    { label: "opp total bases allowed / 9", value: (s) => per9(s.totalBases, s) },
+  sb:    { label: "opp steals allowed / g",     value: (s) => perGame(s.stolenBases, s) },
+  // No "RBI allowed" stat exists, and H+R+RBI is a composite with no single
+  // source. Both are run-driven, so they borrow the runs-allowed ranking --
+  // and say so in the label rather than claiming to measure RBI.
+  rbi:   { label: "opp runs allowed / 9",       value: (s) => Number(s.runsScoredPer9) },
+  hrrbi: { label: "opp runs allowed / 9",       value: (s) => Number(s.runsScoredPer9) },
+};
+
+// p_outs has no entry on purpose: how many outs a starter records is a
+// function of his own leash and his manager, not of the lineup he faces.
+// There is nothing real to rank it by, so it gets no badge.
+const PITCHER_METRICS = {
+  p_k:  { label: "opp strikeouts / g",   value: (s) => perGame(s.strikeOuts, s) },
+  p_h:  { label: "opp hits / g",         value: (s) => perGame(s.hits, s) },
+  p_bb: { label: "opp walks / g",        value: (s) => perGame(s.baseOnBalls, s) },
+  // The market is Earned Runs but the team hitting line only carries total
+  // runs scored. Close, not identical -- so the label says runs scored.
+  p_er: { label: "opp runs scored / g",  value: (s) => perGame(s.runs, s) },
+};
+
+// Exported (and kept free of Redis, fetch and `res`) so the ranking can be
+// run against the live API without a deploy -- see scripts/check-mlb-def.mjs.
+// The badge is only correct if this function is, and it is otherwise
+// reachable exclusively through a nightly cron on production.
+export function buildMlbTeamDef(pitching, hitting) {
+  const byTeam = {};
+
+  // The overall ERA ranking stays as `rank`/`era`. It is what the player
+  // page's general "run prevention" read uses, and keeping it means a
+  // client running older code still gets a sane number rather than a blank.
+  const ratings = pitching
+    .map((s) => ({ abbr: TEAM_ID_ABBR[s.team?.id], era: parseFloat(s.stat?.era) }))
+    .filter((t) => t.abbr && !Number.isNaN(t.era));
+  if (!ratings.length) throw new Error("No team ERA returned");
+  ratings.sort((a, b) => a.era - b.era);
+  ratings.forEach((t, i) => {
+    byTeam[t.abbr] = { rank: i + 1, era: t.era, markets: {} };
+  });
+
+  Object.entries(BATTER_METRICS).forEach(([id, m]) => rankMetric(pitching, id, m, byTeam));
+  if (hitting?.length) {
+    Object.entries(PITCHER_METRICS).forEach(([id, m]) => rankMetric(hitting, id, m, byTeam));
+  }
+  return { byTeam, teams: ratings.length };
+}
+
+async function teamStats(group, season) {
+  const r = await fetch(
+    `https://statsapi.mlb.com/api/v1/teams/stats?stats=season&group=${group}&season=${season}&sportId=1`
+  );
+  if (!r.ok) throw new Error(`MLB API responded ${r.status} for ${group}`);
+  const data = await r.json();
+  return data?.stats?.[0]?.splits || [];
+}
+
+// Ranks every team by one metric, ascending, and writes {rank, value, label}
+// onto that team's `markets` bucket. Teams whose value doesn't compute are
+// left out entirely rather than sorted to one end, where they'd read as
+// either the toughest or the softest matchup in the league.
+function rankMetric(splits, marketId, metric, out) {
+  const rows = splits
+    .map((sp) => ({ abbr: TEAM_ID_ABBR[sp.team?.id], value: metric.value(sp.stat || {}) }))
+    .filter((t) => t.abbr && Number.isFinite(t.value));
+  if (!rows.length) return;
+  rows.sort((a, b) => a.value - b.value);
+  rows.forEach((t, i) => {
+    if (!out[t.abbr]) out[t.abbr] = {};
+    if (!out[t.abbr].markets) out[t.abbr].markets = {};
+    out[t.abbr].markets[marketId] = {
+      rank: i + 1,
+      value: Math.round(t.value * 100) / 100,
+      label: metric.label,
+      of: rows.length,
+    };
+  });
+}
+
+// Triggered nightly by the Vercel Cron Job defined in vercel.json. Pulls both
+// team stat groups from the MLB Stats API and ranks all 30 teams by each
+// market's own defensive metric, replacing the single ERA ranking the badge
+// used to show against every market. Result is stored in Redis (Upstash, via
+// the Vercel Marketplace integration) so every visitor reads the same
+// precomputed ranking instead of each browser recomputing it.
 export default async function handler(req, res) {
   try {
     const redis = new Redis({
@@ -22,29 +134,24 @@ export default async function handler(req, res) {
       token: process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN,
     });
     const season = new Date().getFullYear();
-    const r = await fetch(
-      `https://statsapi.mlb.com/api/v1/teams/stats?stats=season&group=pitching&season=${season}&sportId=1`
-    );
-    if (!r.ok) throw new Error(`MLB API responded ${r.status}`);
-    const data = await r.json();
-    const splits = data?.stats?.[0]?.splits || [];
+    const [pitching, hitting] = await Promise.all([
+      teamStats("pitching", season),
+      teamStats("hitting", season),
+    ]);
+    if (!pitching.length) throw new Error("No team pitching stats returned");
 
-    const ratings = splits
-      .map((s) => ({ abbr: TEAM_ID_ABBR[s.team?.id], era: parseFloat(s.stat?.era) }))
-      .filter((t) => t.abbr && !Number.isNaN(t.era));
-
-    if (!ratings.length) throw new Error("No team pitching stats returned");
-
-    ratings.sort((a, b) => a.era - b.era);
-    ratings.forEach((t, i) => { t.rank = i + 1; });
-
-    const byTeam = {};
-    ratings.forEach((t) => { byTeam[t.abbr] = { rank: t.rank, era: t.era }; });
+    const { byTeam, teams } = buildMlbTeamDef(pitching, hitting);
 
     const record = { byTeam, season, updatedAt: Date.now() };
     await redis.set("mlb_team_def", record);
 
-    res.status(200).json({ ok: true, teams: ratings.length, updatedAt: record.updatedAt });
+    res.status(200).json({
+      ok: true,
+      teams,
+      markets: Object.keys(Object.values(byTeam)[0]?.markets || {}).length,
+      hitting: hitting.length,
+      updatedAt: record.updatedAt,
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err) });
   }
