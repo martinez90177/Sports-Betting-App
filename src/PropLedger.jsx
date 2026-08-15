@@ -12918,6 +12918,13 @@ function feedShortDate(date) {
 }
 
 function FeedPctCell({ v }) {
+  if (v == null) {
+    return (
+      <div style={{ textAlign: "center" }}>
+        <span className="mono" title="No games in this window" style={{ fontSize: 11.5, color: "var(--dim)" }}>—</span>
+      </div>
+    );
+  }
   const good = v >= 0.55, bad = v <= 0.45;
   // Tint strength scales with distance from 50% (a 95% hit rate reads
   // stronger than a 56% one) instead of one fixed alpha for every
@@ -13019,7 +13026,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   const tierFg = r.tier === "mid" ? "var(--dim-strong)" : "#08131c";
   const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
   const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
-  const odds = probToAmericanOdds(r[sampleWindow]);
+  const odds = r[sampleWindow] == null ? null : probToAmericanOdds(r[sampleWindow]);
   // Overs keep the original `${sport}-${key}` id so picks saved to
   // localStorage before the Over/Under switcher existed still match; Unders
   // get their own suffix so both sides of the same prop can sit on the slip
@@ -13231,14 +13238,14 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   const oddsBlock = (
     <div style={{ textAlign: isNarrow ? "left" : "right", flexShrink: 0 }}>
       <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
-        {formatOdds(odds, oddsFormat)}
+        {odds == null ? "—" : formatOdds(odds, oddsFormat)}
       </div>
       <div
         className="mono"
         title={`Hit rate over the trailing ${sampleWindow.slice(1)} games`}
-        style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: hrColor(r[sampleWindow]) }}
+        style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: r[sampleWindow] == null ? "var(--dim)" : hrColor(r[sampleWindow]) }}
       >
-        {Math.round(r[sampleWindow] * 100)}%
+        {r[sampleWindow] == null ? "—" : `${Math.round(r[sampleWindow] * 100)}%`}
         <span style={{ color: "var(--dim)", fontWeight: 600, fontSize: 11 }}> ({sampleWindow.toUpperCase()})</span>
       </div>
     </div>
@@ -13356,7 +13363,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
           </div>
         )}
       </div>
-      <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{formatOdds(odds, oddsFormat)}</div>
+      <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{odds == null ? "—" : formatOdds(odds, oddsFormat)}</div>
       <FeedPctCell v={r.l5} />
       <FeedPctCell v={r.l10} />
       <FeedPctCell v={r.l20} />
@@ -13403,11 +13410,26 @@ function mlbDefCategoryLabel(market) {
 
 // Hit rate over the trailing n games (or the whole sample for n === "all"),
 // falling back gracefully when a player has fewer than n games logged.
+// Null, not 0, for an empty window. A rate of "0%" is a measurement -- it says
+// the player cleared the line in none of N games -- and using it to mean "we
+// have no games" makes absence indistinguishable from a total miss. Every
+// consumer below treats null as "no data" and renders an em dash.
 function hitRateWindow(values, n, hit) {
   const w = n === "all" ? values : values.slice(-n);
-  if (!w.length) return 0;
+  if (!w.length) return null;
   return w.filter(hit).length / w.length;
 }
+
+// How many games actually sat behind a window. `values.slice(-25)` on a nine
+// game log returns nine, so a cell labelled L25 can be a nine game sample --
+// this is what lets the UI say so instead of implying twenty-five.
+function hitRateCount(values, n) {
+  return (n === "all" ? values : values.slice(-n)).length;
+}
+
+// Inverting a rate for the Under side has to preserve "no data" rather than
+// turning null into a confident 100%.
+const flipRate = (v) => (v == null ? null : 1 - v);
 
 // The last n games as {v, opp, date}, for the row's recent-form strip and its
 // hover breakdown. Deliberately capped rather than carrying the whole log:
@@ -13477,10 +13499,10 @@ function flipFeedRowToUnder(r) {
   return {
     ...r,
     direction: "under",
-    l5: 1 - r.l5,
-    l10: 1 - r.l10,
-    l20: 1 - r.l20,
-    all: 1 - r.all,
+    l5: flipRate(r.l5),
+    l10: flipRate(r.l10),
+    l20: flipRate(r.l20),
+    all: flipRate(r.all),
     tier: r.tier === "soft" ? "tough" : r.tier === "tough" ? "soft" : "mid",
     matchupScore: -r.rank,
     subtitle: r.isBinary ? `No ${r.marketLabel}` : `Under ${r.line} ${r.marketLabel}`,
@@ -14152,7 +14174,7 @@ const FEED_SORT_MODES = [
     description: "Ranks by how little a player's results swing game to game. Low variance means steady, predictable output -- useful if you want to avoid boom-or-bust props even if the average hit rate is similar.",
   },
   {
-    id: "trend", label: "Trending Up", metric: (r) => r.l5 - r.l20, defaultDir: "desc",
+    id: "trend", label: "Trending Up", metric: (r) => (r.l5 == null || r.l20 == null ? null : r.l5 - r.l20), defaultDir: "desc",
     description: "Ranks by recent form (L5) compared to season-long form (L20) -- surfaces players heating up right now relative to their own baseline, not just whoever has the highest raw hit rate.",
   },
 ];
@@ -14730,6 +14752,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const oddsHiProb = oddsSliderProb(oddsMinX);
   const filteredRows = useMemo(() => marketRows.filter((r) => {
     const p = r[sampleWindow];
+    if (p == null) return false;   // no sample -> cannot satisfy a rate filter
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
     if (r.rank < rankLo || r.rank > rankHi) return false;
     if (showMatchupDropdown) {
@@ -14774,16 +14797,25 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // since l5/l10/l20/all each have their own real number on every row.
     if (columnSort) {
       const { key, dir } = columnSort;
-      const val = (r) => (key === "line" ? r.line : key === "odds" ? probToAmericanOdds(r[sampleWindow]) : r[key]);
+      const val = (r) => (key === "line" ? r.line
+        : key === "odds" ? (r[sampleWindow] == null ? null : probToAmericanOdds(r[sampleWindow]))
+        : r[key]);
       copy.sort((a, b) => {
         const av = val(a), bv = val(b);
+        // A row with no sample has nothing to rank on -- park it at the bottom
+        // either way instead of letting NaN decide the order.
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
         return dir === "desc" ? bv - av : av - bv;
       });
       return copy;
     }
     copy.sort((a, b) => {
       const aHit = a[sampleWindow], bHit = b[sampleWindow];
-      if (bHit !== aHit) return bHit - aHit;
+      if (aHit == null && bHit != null) return 1;
+      if (bHit == null && aHit != null) return -1;
+      if (aHit != null && bHit != null && bHit !== aHit) return bHit - aHit;
       const av = activeSortMode.metric(a, sampleWindow);
       const bv = activeSortMode.metric(b, sampleWindow);
       return sortDir === "desc" ? bv - av : av - bv;
