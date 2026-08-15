@@ -23,7 +23,7 @@ import {
 // GamecastPage behind it, so all three leave the initial bundle together.
 // ColorWheel only ever appears inside the Settings drawer.
 const GamesPage = React.lazy(() => import("./GamesPage.jsx"));
-const NewsPage = React.lazy(() => import("./NewsPage.jsx"));
+const NewsPageRedesign = React.lazy(() => import("./NewsPageRedesign.jsx"));
 const ColorWheel = React.lazy(() => import("./ColorWheel.jsx"));
 
 // Every lazy component needs a Suspense boundary above it. These chunks are
@@ -16204,6 +16204,161 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
   );
 }
 
+// ---------- News page: attaching headlines to players ----------
+//
+// The Newsdata feed carries no player attribution -- just a headline, source
+// and snippet -- so the News page matches names out of the headline against
+// the four player pools the rest of the app already draws from. A miss is a
+// normal outcome, not a failure: that article renders as a headline with no
+// face and no AFFECTS row, and never with a stand-in avatar.
+//
+// Diacritics and punctuation are stripped from both sides ("Luis García Jr." in
+// our roster vs "Luis Garcia Jr" in a wire headline), and only names of two or
+// more words are matchable -- a single-token surname would match half the feed.
+function newsNameKey(s) {
+  return String(s || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[.'’`]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const NEWS_DEFAULT_MARKET = { nfl: "passYds", nba: "pts", wnba: "pts", mlb: "h" };
+
+// How many wire rows the rail shows before it stops listing and starts
+// counting. Whatever it cuts is stated as a count under the last row -- a
+// league-wide injury report runs well past a dozen names, and a rail that just
+// ends at twelve reads as "twelve players are hurt".
+const NEWS_WIRE_LIMIT = 12;
+
+// One entry per player the app can name, carrying everything PlayerAvatar
+// needs for that league (colours are per-sport because abbreviations collide,
+// and every sport has its own photo CDN). Longest names first, so "Luis Garcia
+// Jr" wins over "Luis Garcia" on a headline containing both.
+function buildNewsPlayerPool() {
+  const entries = [];
+  const add = (e) => {
+    const nameKey = newsNameKey(e.name);
+    if (nameKey.split(" ").length < 2) return;
+    entries.push({ ...e, nameKey });
+  };
+
+  ALL_NFL_PLAYERS.forEach((p) => add({
+    sport: "nfl", playerId: p.id, name: p.name, team: p.team, position: p.pos,
+    espnId: NFL_ESPN_ID[p.id] || null, headshotSrc: NFL_HEADSHOTS[p.id] || null,
+  }));
+  ALL_NBA_PLAYERS.forEach((p) => add({
+    sport: "nba", playerId: p.id, name: p.name, team: p.team, position: p.pos,
+    espnId: p.espnId, headshotSrc: p.espnId ? espnHeadshot(p.espnId) : null,
+    fallbackSrc: p.nbaId ? nbaHeadshot(p.nbaId) : null,
+  }));
+  // Live rosters first, hand-written pool second, de-duped by espnId -- same
+  // precedence buildWNBAFeedRows uses.
+  const seenWnba = new Set();
+  const addWnba = (p) => {
+    const key = p && p.espnId ? String(p.espnId) : p && p.id;
+    if (!key || seenWnba.has(key)) return;
+    seenWnba.add(key);
+    add({
+      sport: "wnba", playerId: p.id, name: p.name, team: p.team, position: p.pos,
+      espnId: p.espnId, headshotSrc: p.espnId ? wnbaHeadshot(p.espnId) : null,
+    });
+  };
+  Object.keys(WNBA_TEAM_ESPN_ID).forEach((abbr) => wnbaRosterFor(abbr).forEach(addWnba));
+  ALL_WNBA_PLAYERS.forEach(addWnba);
+  ALL_MLB_PLAYERS.forEach((p) => add({
+    sport: "mlb", playerId: p.id, name: p.name, team: p.team, position: p.pos,
+    mlbId: p.mlbId, headshotSrc: p.mlbId ? mlbHeadshot(p.mlbId) : null,
+    fallbackSrc: mlbEspnHeadshot(p.id),
+  }));
+
+  entries.sort((a, b) => b.nameKey.length - a.nameKey.length);
+  return entries;
+}
+
+// player -> the props this item moves, keyed `sport:playerId`. Built from the
+// same feed rows the Prop Feed shows, so a rate here and a rate there are the
+// same number off the same finished games.
+//
+// NFL and WNBA only. NBA rows come out of genGames, a seeded RNG -- a mock rate
+// beside a real headline would read as a claim about a real player. MLB has
+// real logs but they hang off the day's slate fetch (see buildMLBFeedRows),
+// which the News tab doesn't load; those players still get a face and a status,
+// just no AFFECTS row until phase 3 wires the ladder data.
+function buildNewsAffects() {
+  const byPlayer = new Map();
+  const add = (sport, r) => {
+    if (!r.playerId || !r.nAll || !Number.isFinite(r.all)) return;
+    const key = `${sport}:${r.playerId}`;
+    const list = byPlayer.get(key) || [];
+    list.push({
+      marketId: r.marketId,
+      label: r.marketLabel,
+      line: r.isBinary ? null : r.line,
+      hitRate: r.all,
+      gamesCounted: r.nAll,
+      gamesOver: Math.round(r.all * r.nAll),
+    });
+    byPlayer.set(key, list);
+  };
+  buildNFLFeedRows().forEach((r) => add("nfl", r));
+  buildWNBAFeedRows().forEach((r) => add("wnba", r));
+  // Deepest sample first, then the highest rate; three chips is what the row
+  // has room for at 1280px.
+  byPlayer.forEach((list) => {
+    list.sort((a, b) => b.gamesCounted - a.gamesCounted || b.hitRate - a.hitRate);
+    list.splice(3);
+  });
+  return byPlayer;
+}
+
+// Availability for a pool entry, read out of the caches the app has already
+// filled this session -- same reader the slip and Ledger use. WNBA resolves on
+// every visit (all 15 rosters are fetched on mount); MLB only once an MLB page
+// has been open. NBA and NFL have no availability feed at all and return
+// undefined, which renders no dot rather than a green one.
+function newsPlayerStatus(entry) {
+  return pickStatus({ sport: entry.sport, espnId: entry.espnId, gradeId: entry.mlbId });
+}
+
+function newsWirePropLine(status, affects) {
+  if (status === "out") return "Props hidden while out";
+  const a = affects && affects[0];
+  if (!a) return null;
+  const line = a.line == null ? "" : ` ${a.line}`;
+  return a.gamesCounted >= 10
+    ? `${a.label}${line} · ${Math.round(a.hitRate * 100)}% · ${a.gamesOver} of ${a.gamesCounted}`
+    : `${a.label}${line} · ${a.gamesOver} of ${a.gamesCounted} games · too few`;
+}
+
+// The rail's injury wire. Everyone the app currently has a designation for --
+// which means the WNBA rosters it fetched on mount, plus MLB once those pages
+// have been open. Players reading ACTIVE are only listed when there's a pick of
+// yours riding on them; the rest of a healthy league isn't news.
+function buildNewsInjuryWire(pool, affectsByPlayer, watchingKeys) {
+  const rows = [];
+  pool.forEach((entry) => {
+    if (entry.sport !== "wnba" && entry.sport !== "mlb") return;
+    const status = newsPlayerStatus(entry);
+    if (!status) return;
+    const key = `${entry.sport}:${entry.playerId}`;
+    const watching = watchingKeys.has(key);
+    if (status === "active" && !watching) return;
+    rows.push({
+      key, sport: entry.sport, name: entry.name, team: entry.team, position: entry.position,
+      espnId: entry.espnId, headshotSrc: entry.headshotSrc, fallbackSrc: entry.fallbackSrc,
+      status,
+      propLine: newsWirePropLine(status, affectsByPlayer.get(key)),
+    });
+  });
+  // Questionable first -- it's the only one of the three that's still a
+  // decision. Then out, then the active players you have a pick on.
+  const order = { questionable: 0, out: 1, active: 2 };
+  rows.sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
+  return rows;
+}
+
 export default function PropLedger() {
   const [page, setPage] = useState("feed");
 
@@ -16463,6 +16618,67 @@ export default function PropLedger() {
     return entries;
   }, [mlbActiveIds]);
 
+  // ---------- News page inputs ----------
+  //
+  // All three are gated on the News tab actually being open: buildNewsAffects
+  // walks every NFL and WNBA feed row, which is the same work the Prop Feed
+  // does for one sport, and there's no reason to pay for it on the feed.
+  //
+  // Rebuilt when the underlying data lands rather than once on mount --
+  // nflDataVersion/wnbaDataVersion bump as the real game logs and rosters
+  // resolve, and a rate built before them is the fallback data, not the feed's.
+  const newsPlayerPool = useMemo(
+    () => (page === "news" ? buildNewsPlayerPool() : []),
+    [page, wnbaDataVersion]
+  );
+  const newsAffects = useMemo(
+    () => (page === "news" ? buildNewsAffects() : new Map()),
+    [page, nflDataVersion, wnbaDataVersion]
+  );
+  // "Watching" is the app's own slip: a saved, still-unsettled pick on that
+  // player. There is no separate watchlist to read.
+  const newsWatching = useMemo(
+    () => new Set(myPicks.filter((p) => !p.result && p.sport && p.playerId).map((p) => `${p.sport}:${p.playerId}`)),
+    [myPicks]
+  );
+
+  const resolveNewsPlayer = React.useCallback((article) => {
+    const title = ` ${newsNameKey(article && article.title)} `;
+    if (title.trim().length < 3) return null;
+    const entry = newsPlayerPool.find((e) => title.includes(` ${e.nameKey} `));
+    if (!entry) return null;
+    const key = `${entry.sport}:${entry.playerId}`;
+    return {
+      ...entry,
+      status: newsPlayerStatus(entry),
+      watching: newsWatching.has(key),
+      affects: newsAffects.get(key) || [],
+    };
+  }, [newsPlayerPool, newsAffects, newsWatching]);
+
+  // The rail only has room for so many, and on a day with a long injury report
+  // the rest are still counted rather than quietly cut (see NEWS_WIRE_LIMIT).
+  const newsInjuryWireAll = useMemo(
+    () => (page === "news" ? buildNewsInjuryWire(newsPlayerPool, newsAffects, newsWatching) : []),
+    [page, newsPlayerPool, newsAffects, newsWatching]
+  );
+  const newsInjuryWire = useMemo(() => newsInjuryWireAll.slice(0, NEWS_WIRE_LIMIT), [newsInjuryWireAll]);
+  const newsInjuryWireMore = Math.max(0, newsInjuryWireAll.length - newsInjuryWire.length);
+  const newsInjuryWireMeta = useMemo(() => {
+    const sports = [...new Set(newsInjuryWireAll.map((p) => p.sport))].map((s) => s.toUpperCase());
+    if (!sports.length) return null;
+    return `${sports.join(" · ")} · ${newsInjuryWireAll.length} LISTED`;
+  }, [newsInjuryWireAll]);
+
+  // The ladder this links to doesn't exist until phase 3; today it opens the
+  // player's own prop page on the market the AFFECTS chip named.
+  const openNewsPlayer = (player) => {
+    if (!player || !player.playerId) return;
+    const market = (player.affects && player.affects[0] && player.affects[0].marketId)
+      || NEWS_DEFAULT_MARKET[player.sport];
+    goToProp(player.sport, player.playerId, market);
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
 
@@ -16570,7 +16786,19 @@ export default function PropLedger() {
 
       {page === "games" && <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} /></LazyPane>}
 
-      {page === "news" && <LazyPane minHeight={400}><NewsPage /></LazyPane>}
+      {page === "news" && (
+        <LazyPane minHeight={400}>
+          <NewsPageRedesign
+            query="NFL OR MLB OR WNBA OR NBA"
+            resolvePlayer={resolveNewsPlayer}
+            injuryWire={newsInjuryWire}
+            injuryWireMeta={newsInjuryWireMeta}
+            injuryWireMore={newsInjuryWireMore}
+            onOpenLadder={openNewsPlayer}
+            footnote="Headlines cache for ~45 minutes to stay within Newsdata's free-tier request limit."
+          />
+        </LazyPane>
+      )}
 
       <MyPicksPanel
         picks={myPicks}

@@ -14,8 +14,9 @@ function timeAgo(pubDate) {
 
 // Drop-in "Latest News" module for a single-player prop page. Reuses that
 // page's own headshot image (already loaded there for the player selector)
-// as the thumbnail instead of anything pulled from the news API -- see
-// NewsPage.jsx's ArticleThumb placeholder for why we avoid scraped images.
+// as the thumbnail rather than anything pulled from the news API: licensing
+// on the AP/Getty-sourced photos redistributed through it is murky, so we
+// deliberately never scrape article images.
 export default function PlayerNewsModule({ playerName, headshotSrc, sport, team, status, limit = 4 }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);

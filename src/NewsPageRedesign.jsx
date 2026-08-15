@@ -10,8 +10,14 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 // article to a player + affected props. Items without a match still render, just
 // without an avatar or AFFECTS row -- no placeholder faces.
 //
-//   resolvePlayer(article) -> { name, team, position, espnId, status,
+//   resolvePlayer(article) -> { name, team, position, sport, espnId, headshotSrc,
+//                               fallbackSrc, status, watching,
 //                               affects: [{ label, line, hitRate, gamesOver, gamesCounted }] } | null
+//
+// `sport`/`headshotSrc`/`fallbackSrc` are on top of the original handoff shape:
+// this app's PlayerAvatar resolves team colours per league (abbreviations
+// collide across them) and each sport has its own photo CDN, so a bare espnId
+// would give NFL colours and an NFL headshot URL to a WNBA player.
 
 function timeAgo(pubDate) {
   if (!pubDate) return "";
@@ -33,19 +39,25 @@ function AffectsRow({ affects, onOpenLadder }) {
       {affects.map((a) => (
         <span key={a.label} style={{ display: "flex", alignItems: "center", gap: 9, border: "1px solid var(--line)", padding: "7px 12px" }}>
           <span style={{ fontSize: 13 }}>{a.label} <span style={{ color: "var(--dim)" }}>{a.line}</span></span>
+          {/* The rate never travels without the count behind it -- the
+              reference chip shows a bare "78%", which is the one thing this
+              app doesn't do. */}
           {a.gamesCounted >= 10 ? (
             <span className="pp-mono" style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: a.hitRate >= 0.7 ? "var(--pos, #3ecf8e)" : "var(--dim-strong, #aab2c0)" }}>
-              {pct(a.hitRate)}
+              {pct(a.hitRate)} <span style={{ fontWeight: 400, color: "var(--dim)" }}>{a.gamesOver} of {a.gamesCounted}</span>
             </span>
           ) : (
             <span className="pp-mono" style={{ fontSize: 12, color: "var(--dim)" }}>{a.gamesOver} of {a.gamesCounted} · too few</span>
           )}
         </span>
       ))}
+      {/* "OPEN ALT LINES" in the reference. There are no alt lines in the app
+          until phase 3 builds the rung data, so the link says what it actually
+          does today -- opens this player's hit-rate chart. */}
       {onOpenLadder && (
         <button type="button" onClick={onOpenLadder} className="pp-mono"
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 11.5, letterSpacing: "0.08em", color: "var(--accent-text, #8fa6ff)" }}>
-          OPEN ALT LINES →
+          VIEW HIT-RATE CHART →
         </button>
       )}
     </div>
@@ -67,8 +79,9 @@ function FeedItem({ article, player, lead, onOpenLadder, action }) {
     >
       {player && (
         <PlayerAvatar
-          name={player.name} team={player.team} espnId={player.espnId}
-          status={player.status} size={avatarSize}
+          name={player.name} team={player.team} sport={player.sport}
+          espnId={player.espnId} headshotSrc={player.headshotSrc} fallbackSrc={player.fallbackSrc}
+          status={player.status} size={avatarSize} alt={player.name}
           surface={lead ? "var(--panel2)" : "var(--panel)"}
         />
       )}
@@ -113,15 +126,39 @@ function RailHeader({ title, meta }) {
   );
 }
 
-const FILTERS = ["All", "Watching", "Injuries", "Line moves"];
+// "Line moves" is in the reference but not here: the app keeps no history of a
+// posted line moving, so that tab could only ever be empty. A filter that can
+// never match anything is worse than an absent one.
+const FILTERS = ["All", "Watching", "Injuries"];
+
+// The two-column grid below is a desktop layout (a 372px rail beside the feed).
+// Mobile is explicitly a later project, but the News tab is reachable on a
+// phone today, so below this width the rail stacks under the feed rather than
+// pushing the page into a horizontal scroll.
+const TWO_COLUMN_MIN = 900;
+
+function useIsWide(min = TWO_COLUMN_MIN) {
+  const [wide, setWide] = useState(() => (typeof window === "undefined" ? true : window.innerWidth >= min));
+  useEffect(() => {
+    const onResize = () => setWide(window.innerWidth >= min);
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+  }, [min]);
+  return wide;
+}
 
 export default function NewsPageRedesign({
   resolvePlayer,
   injuryWire = [],
+  injuryWireMeta,
+  injuryWireMore = 0,
   watchlistMoves = [],
   onOpenLadder,
   query = "NBA OR NFL",
+  footnote,
 }) {
+  const wide = useIsWide();
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -175,8 +212,8 @@ export default function NewsPageRedesign({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 372px", borderTop: "1px solid var(--line)" }}>
-          <div style={{ borderRight: "1px solid var(--line)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: wide ? "1fr 372px" : "1fr", borderTop: "1px solid var(--line)" }}>
+          <div style={{ borderRight: wide ? "1px solid var(--line)" : "none", minWidth: 0 }}>
             {loading && <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>Loading headlines…</div>}
             {!loading && shown.length === 0 && (
               <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
@@ -197,20 +234,29 @@ export default function NewsPageRedesign({
             ))}
           </div>
 
-          <div>
+          <div style={{ minWidth: 0 }}>
             {injuryWire.length > 0 && (
               <>
-                <RailHeader title="Injury wire" meta={injuryWire.meta} />
+                <RailHeader title="Injury wire" meta={injuryWireMeta} />
                 {injuryWire.map((p) => (
-                  <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 24px", borderBottom: "1px solid var(--line)", opacity: p.status === "out" ? 0.75 : 1 }}>
-                    <PlayerAvatar name={p.name} team={p.team} espnId={p.espnId} size={38} />
+                  <div key={p.key || p.name} style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 24px", borderBottom: "1px solid var(--line)", opacity: p.status === "out" ? 0.75 : 1 }}>
+                    <PlayerAvatar
+                      name={p.name} team={p.team} sport={p.sport}
+                      espnId={p.espnId} headshotSrc={p.headshotSrc} fallbackSrc={p.fallbackSrc}
+                      status={p.status} size={38} alt={p.name}
+                    />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 14 }}>{p.name} <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.team} · {p.position}</span></div>
-                      <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2 }}>{p.propLine}</div>
+                      <div style={{ fontSize: 14 }}>{p.name} <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)" }}>{p.team}{p.position ? ` · ${p.position}` : ""}</span></div>
+                      {p.propLine && <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2 }}>{p.propLine}</div>}
                     </div>
                     <span style={{ marginLeft: "auto" }}><StatusPill status={p.status} /></span>
                   </div>
                 ))}
+                {injuryWireMore > 0 && (
+                  <div className="pp-mono" style={{ padding: "12px 24px", borderBottom: "1px solid var(--line)", fontSize: 11.5, letterSpacing: "0.08em", color: "var(--dim)" }}>
+                    {injuryWireMore} MORE CARRYING A DESIGNATION
+                  </div>
+                )}
               </>
             )}
 
@@ -220,7 +266,11 @@ export default function NewsPageRedesign({
                 {watchlistMoves.map((m) => (
                   <div key={m.player.name + m.from} style={{ padding: "18px 24px", borderBottom: "1px solid var(--line)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <PlayerAvatar name={m.player.name} team={m.player.team} espnId={m.player.espnId} size={34} />
+                      <PlayerAvatar
+                        name={m.player.name} team={m.player.team} sport={m.player.sport}
+                        espnId={m.player.espnId} headshotSrc={m.player.headshotSrc} fallbackSrc={m.player.fallbackSrc}
+                        status={m.player.status} size={34} alt={m.player.name}
+                      />
                       <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>
                         {m.player.name} {m.market} <span style={{ color: "var(--dim)" }}>{m.from}</span> → <span style={{ color: "var(--accent-text, #8fa6ff)" }}>{m.to}</span>
                       </div>
@@ -251,6 +301,9 @@ export default function NewsPageRedesign({
         <div style={{ marginTop: 12, fontSize: 12, color: "var(--dim)" }}>
           Showing cached headlines from earlier — live refresh is temporarily unavailable.
         </div>
+      )}
+      {footnote && (
+        <div style={{ marginTop: 12, fontSize: 12, color: "var(--dim)" }}>{footnote}</div>
       )}
     </div>
   );
