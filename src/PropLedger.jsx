@@ -10,6 +10,11 @@ import { formatOdds, americanToDecimal, decimalToAmerican } from "./odds.js";
 import SettingsModal from "./SettingsModal.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
+import PlayerAvatar from "./PlayerAvatar.jsx";
+import {
+  NBA_TEAM_COLORS, NFL_TEAM_COLORS, WNBA_TEAM_COLORS, MLB_TEAM_COLORS,
+  teamAvatarBackground,
+} from "./lib/teamColors.js";
 
 // Loaded on demand rather than up front. The app opens on the Prop Feed, and
 // these three are never on screen until the user navigates to them -- but
@@ -86,81 +91,7 @@ const nbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/nba/500/${NBA_L
 
 // Official-ish NBA brand colors (primary/secondary), used only to tint the
 // player avatar's background ring -- not for logos, charts, or anything else.
-const NBA_TEAM_COLORS = {
-  ATL: { primary: "#E03A3E", secondary: "#26282A" },
-  BOS: { primary: "#007A33", secondary: "#BA9653" },
-  BKN: { primary: "#000000", secondary: "#777D84" },
-  CHA: { primary: "#1D1160", secondary: "#00788C" },
-  CHI: { primary: "#CE1141", secondary: "#000000" },
-  CLE: { primary: "#860038", secondary: "#FDBB30" },
-  DAL: { primary: "#00538C", secondary: "#B8C4CA" },
-  DEN: { primary: "#0E2240", secondary: "#FEC524" },
-  DET: { primary: "#C8102E", secondary: "#1D42BA" },
-  GSW: { primary: "#1D428A", secondary: "#FFC72C" },
-  HOU: { primary: "#CE1141", secondary: "#000000" },
-  IND: { primary: "#002D62", secondary: "#FDBB30" },
-  LAC: { primary: "#C8102E", secondary: "#1D428A" },
-  LAL: { primary: "#552583", secondary: "#FDB927" },
-  MEM: { primary: "#5D76A9", secondary: "#12173F" },
-  MIA: { primary: "#98002E", secondary: "#F9A01B" },
-  MIL: { primary: "#00471B", secondary: "#EEE1C6" },
-  MIN: { primary: "#0C2340", secondary: "#236192" },
-  NOP: { primary: "#0C2340", secondary: "#C8102E" },
-  NYK: { primary: "#006BB6", secondary: "#F58426" },
-  OKC: { primary: "#007AC1", secondary: "#EF3B24" },
-  ORL: { primary: "#0077C0", secondary: "#C4CED4" },
-  PHI: { primary: "#006BB6", secondary: "#ED174C" },
-  PHX: { primary: "#1D1160", secondary: "#E56020" },
-  POR: { primary: "#E03A3E", secondary: "#000000" },
-  SAC: { primary: "#5A2D81", secondary: "#63727A" },
-  SAS: { primary: "#8A8D8F", secondary: "#000000" },
-  TOR: { primary: "#CE1141", secondary: "#000000" },
-  UTA: { primary: "#002B5C", secondary: "#F9A01B" },
-  WAS: { primary: "#002B5C", secondary: "#E31837" },
-};
 
-// Subtle team-tinted background for a player avatar's ring: a diagonal blend
-// of the team's two brand colors, darkened with a black overlay so it always
-// reads as a muted frame rather than a bright disc competing with the
-// headshot. Shared by every page's avatar (NBA/NFL/MLB) -- each just passes
-// its own team-color map. Falls back to a neutral dark gradient for any
-// team missing from that map.
-const AVATAR_FALLBACK_COLORS = { primary: "#282c31", secondary: "#15171b" };
-
-// Pushes a hex color's own saturation/lightness toward a vivid "neon" range
-// instead of relying on an outer glow -- so the ring itself reads as a
-// brighter, punchier version of the team color rather than the muted brand
-// hex (which is often designed to work on jerseys/logos, not glow on a
-// screen). Grays/near-neutrals (low saturation) are left alone so team
-// colors like the Spurs' silver don't get tinted a random hue.
-function neonizeColor(hex) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
-  if (!m) return hex;
-  const n = parseInt(m[1], 16);
-  const r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
-  const d = max - min;
-  if (d < 0.03) return hex; // effectively gray -- don't invent a hue
-  let s = d / (1 - Math.abs(2 * l - 1));
-  let h;
-  if (max === r) h = ((g - b) / d) % 6;
-  else if (max === g) h = (b - r) / d + 2;
-  else h = (r - g) / d + 4;
-  h *= 60; if (h < 0) h += 360;
-  s = Math.min(1, s * 1.35);
-  const lOut = Math.min(0.62, Math.max(0.46, l * 1.08));
-  const c2 = (1 - Math.abs(2 * lOut - 1)) * s;
-  const x = c2 * (1 - Math.abs((h / 60) % 2 - 1));
-  const m2 = lOut - c2 / 2;
-  let [r2, g2, b2] = h < 60 ? [c2, x, 0] : h < 120 ? [x, c2, 0] : h < 180 ? [0, c2, x] : h < 240 ? [0, x, c2] : h < 300 ? [x, 0, c2] : [c2, 0, x];
-  const toHex = (v) => Math.round((v + m2) * 255).toString(16).padStart(2, "0");
-  return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`;
-}
-
-const teamAvatarBackground = (colorMap, teamAbbr) => {
-  const c = colorMap[teamAbbr] || AVATAR_FALLBACK_COLORS;
-  return `linear-gradient(135deg, rgba(0,0,0,var(--avatar-ring-shade1, 0.2)), rgba(0,0,0,var(--avatar-ring-shade2, 0.45))), linear-gradient(135deg, ${neonizeColor(c.primary)} 0%, ${neonizeColor(c.secondary)} 100%)`;
-};
 
 // Groups a sport's matchup list by calendar date for its matchup dropdown,
 // sorted chronologically both across days (earliest date first) and within
@@ -829,47 +760,22 @@ function NBAPropsPage({ jumpTo }) {
       padding: compact ? "8px 12px" : "12px 20px",
       paddingRight: compact ? 12 : 110,
     }}>
-      <div style={{
-        position: "relative", width: compact ? 56 : 84, height: compact ? 56 : 84, borderRadius: "50%", flexShrink: 0,
-        background: teamAvatarBackground(NBA_TEAM_COLORS, player.team),
-        boxShadow: `0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
-      }}>
-        {/* Always-visible team-colored backing, in case the headshot image can't
-             load (ad-block / privacy extensions often block sports-CDN image
-             requests) -- keeps the circle on-brand instead of going flat black. */}
-        <div style={{
-          position: "absolute", inset: compact ? 3 : 5, borderRadius: "50%",
-          background: (NBA_TEAM_COLORS[player.team] || {}).primary || "#000",
-          border: "1px solid var(--line)",
-        }} />
-        <img
-          key={player.id}
-          src={espnHeadshot(player.espnId)}
-          alt={player.name}
-          width={compact ? 50 : 74}
-          height={compact ? 50 : 74}
-          referrerPolicy="no-referrer"
-          style={{
-            position: "absolute", inset: compact ? 3 : 5,
-            width: compact ? 50 : 74, height: compact ? 50 : 74,
-            borderRadius: "50%",
-            objectFit: "cover",
-            objectPosition: "center top",
-            border: "1px solid var(--line)",
-            opacity: 0,
-            transition: "opacity 0.15s ease",
-          }}
-          onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
-          onError={(e) => {
-            if (e.currentTarget.dataset.fallback !== "1") {
-              e.currentTarget.dataset.fallback = "1";
-              e.currentTarget.src = nbaHeadshot(player.nbaId);
-            } else {
-              e.currentTarget.style.opacity = 0;
-            }
-          }}
-        />
-      </div>
+      <PlayerAvatar
+        key={player.id}
+        name={player.name}
+        alt={player.name}
+        sport="nba"
+        team={player.team}
+        colorMap={NBA_TEAM_COLORS}
+        headshotSrc={espnHeadshot(player.espnId)}
+        fallbackSrc={nbaHeadshot(player.nbaId)}
+        size={compact ? 56 : 84}
+        inset={compact ? 3 : 5}
+        backing={(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
+        imgBorder="1px solid var(--line)"
+        fadeIn
+        shadow={`0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+      />
 
       <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
         <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
@@ -1331,7 +1237,7 @@ function NBAPropsPage({ jumpTo }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Sample data only — built to test the filtering and layout before wiring in a real stats/odds feed.
       </div>
-      <PlayerNewsModule playerName={player.name} headshotSrc={espnHeadshot(player.espnId)} />
+      <PlayerNewsModule playerName={player.name} headshotSrc={espnHeadshot(player.espnId)} sport="nba" team={player.team} />
     </div>
   );
 }
@@ -1508,40 +1414,6 @@ const nflTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/nfl/500/${NFL_L
 
 // Official-ish NFL brand colors (primary/secondary), used only to tint the
 // player avatar's background ring -- see teamAvatarBackground above.
-const NFL_TEAM_COLORS = {
-  ARI: { primary: "#97233F", secondary: "#000000" },
-  ATL: { primary: "#A71930", secondary: "#000000" },
-  BAL: { primary: "#241773", secondary: "#9E7C0C" },
-  BUF: { primary: "#00338D", secondary: "#C60C30" },
-  CAR: { primary: "#0085CA", secondary: "#101820" },
-  CHI: { primary: "#0B162A", secondary: "#C83803" },
-  CIN: { primary: "#FB4F14", secondary: "#000000" },
-  CLE: { primary: "#311D00", secondary: "#FF3C00" },
-  DAL: { primary: "#041E42", secondary: "#869397" },
-  DEN: { primary: "#FB4F14", secondary: "#002244" },
-  DET: { primary: "#0076B6", secondary: "#B0B7BC" },
-  GB: { primary: "#203731", secondary: "#FFB612" },
-  HOU: { primary: "#03202F", secondary: "#A71930" },
-  IND: { primary: "#002C5F", secondary: "#A2AAAD" },
-  JAX: { primary: "#101820", secondary: "#D7A22A" },
-  KC: { primary: "#E31837", secondary: "#FFB81C" },
-  LV: { primary: "#000000", secondary: "#A5ACAF" },
-  LAC: { primary: "#0080C6", secondary: "#FFC20E" },
-  LAR: { primary: "#003594", secondary: "#FFA300" },
-  MIA: { primary: "#008E97", secondary: "#FC4C02" },
-  MIN: { primary: "#4F2683", secondary: "#FFC62F" },
-  NE: { primary: "#002244", secondary: "#C60C30" },
-  NO: { primary: "#D3BC8D", secondary: "#101820" },
-  NYG: { primary: "#0B2265", secondary: "#A71930" },
-  NYJ: { primary: "#125740", secondary: "#000000" },
-  PHI: { primary: "#004C54", secondary: "#A5ACAF" },
-  PIT: { primary: "#FFB612", secondary: "#101820" },
-  SF: { primary: "#AA0000", secondary: "#B3995D" },
-  SEA: { primary: "#002244", secondary: "#69BE28" },
-  TB: { primary: "#D50A0A", secondary: "#34302B" },
-  TEN: { primary: "#0C2340", secondary: "#4B92DB" },
-  WAS: { primary: "#5A1414", secondary: "#FFB612" },
-};
 
 // ESPN player IDs (from espn.com/nfl/team/roster) -> combiner-image headshot URLs.
 const NFL_ESPN_ID = {
@@ -3526,18 +3398,21 @@ function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact,
               }}
             >
               <div style={{ position: "relative", flexShrink: 0 }}>
-                <img
-                  src={mlbHeadshot(p.mlbId)}
-                  onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
-                  alt=""
-                  style={{
-                    width: 44, height: 44, borderRadius: "50%", objectFit: "cover",
-                    background: "var(--surface-3)", display: "block",
-                    // An unavailable player is still worth showing (you can ask
-                    // "how did he do without this guy?"), just visibly demoted.
-                    filter: p.available ? "none" : "grayscale(0.6)",
-                    opacity: p.available ? 1 : 0.75,
-                  }}
+                {/* An unavailable player is still worth showing (you can ask
+                     "how did he do without this guy?"), just visibly demoted --
+                     that is what `dimmed` does. No status dot here: the badge
+                     just below already names the lineup state in words, and a
+                     dot would say the same thing less precisely. */}
+                <PlayerAvatar
+                  name={p.name}
+                  sport="mlb"
+                  team={p.team}
+                  colorMap={MLB_TEAM_COLORS}
+                  headshotSrc={mlbHeadshot(p.mlbId)}
+                  fallbackSrc={mlbEspnHeadshot(p.id)}
+                  size={44}
+                  inset={2}
+                  dimmed={!p.available}
                 />
                 {/* Overlaps the headshot's lower-right rather than sitting in
                      its own row -- positioned against the image wrapper so it
@@ -4010,11 +3885,15 @@ function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel }) 
               const tone = p.badge ? TEAMMATE_TONES[p.badge.tone] : null;
               return (
                 <div key={p.mlbId} role="button" aria-pressed={checked} onClick={() => toggle(p)} className="fp-player-row">
-                  <img
-                    src={mlbHeadshot(p.mlbId)}
-                    onError={(e) => { e.currentTarget.src = mlbEspnHeadshot(p.id); }}
-                    alt=""
-                    style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", background: "var(--surface-3)" }}
+                  <PlayerAvatar
+                    name={p.name}
+                    sport="mlb"
+                    team={p.team}
+                    colorMap={MLB_TEAM_COLORS}
+                    headshotSrc={mlbHeadshot(p.mlbId)}
+                    fallbackSrc={mlbEspnHeadshot(p.id)}
+                    size={22}
+                    inset={1}
                   />
                   <span style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 5 }}>
                     <span
@@ -5128,42 +5007,21 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       padding: compact ? "8px 12px" : "12px 20px",
       paddingRight: compact ? 12 : 110,
     }}>
-      <div style={{
-        position: "relative", width: compact ? 56 : 84, height: compact ? 56 : 84, borderRadius: "50%", flexShrink: 0,
-        background: teamAvatarBackground(NFL_TEAM_COLORS, player.team),
-        boxShadow: `0 4px 14px ${(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
-      }}>
-        {/* Always-visible team-colored backing, in case the headshot image can't
-             load (ad-block / privacy extensions often block sports-CDN image
-             requests) -- keeps the circle on-brand instead of going flat black. */}
-        <div style={{
-          position: "absolute", inset: compact ? 3 : 5, borderRadius: "50%",
-          background: (NFL_TEAM_COLORS[player.team] || {}).primary || "#000",
-          border: "1px solid var(--line)",
-        }} />
-        {NFL_HEADSHOTS[player.id] && (
-          <img
-            key={player.id}
-            src={NFL_HEADSHOTS[player.id]}
-            alt={player.name}
-            width={compact ? 50 : 74}
-            height={compact ? 50 : 74}
-            referrerPolicy="no-referrer"
-            style={{
-              position: "absolute", inset: compact ? 3 : 5,
-              width: compact ? 50 : 74, height: compact ? 50 : 74,
-              borderRadius: "50%",
-              objectFit: "cover",
-              objectPosition: "center top",
-              border: "1px solid var(--line)",
-              opacity: 0,
-              transition: "opacity 0.15s ease",
-            }}
-            onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
-            onError={(e) => { e.currentTarget.style.opacity = 0; }}
-          />
-        )}
-      </div>
+      <PlayerAvatar
+        key={player.id}
+        name={player.name}
+        alt={player.name}
+        sport="nfl"
+        team={player.team}
+        colorMap={NFL_TEAM_COLORS}
+        headshotSrc={NFL_HEADSHOTS[player.id]}
+        size={compact ? 56 : 84}
+        inset={compact ? 3 : 5}
+        backing={(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}
+        imgBorder="1px solid var(--line)"
+        fadeIn
+        shadow={`0 4px 14px ${(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+      />
 
       <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
         <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
@@ -5584,7 +5442,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Real 2025 regular-season game logs (ESPN Stats API) for every player shown above — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.
       </div>
-      <PlayerNewsModule playerName={player.name} headshotSrc={NFL_HEADSHOTS[player.id]} />
+      <PlayerNewsModule playerName={player.name} headshotSrc={NFL_HEADSHOTS[player.id]} sport="nfl" team={player.team} />
     </div>
   );
 }
@@ -5613,23 +5471,6 @@ const wnbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/wnba/500/${WNB
 
 // Official-ish WNBA brand colors (primary/secondary), used only to tint the
 // player avatar's background ring -- see teamAvatarBackground above.
-const WNBA_TEAM_COLORS = {
-  ATL: { primary: "#E31837", secondary: "#5091CC" },
-  CHI: { primary: "#5091CD", secondary: "#FFD520" },
-  CON: { primary: "#F05023", secondary: "#0A2240" },
-  DAL: { primary: "#002B5C", secondary: "#C4D600" },
-  GS: { primary: "#B38FCF", secondary: "#000000" },
-  IND: { primary: "#002D62", secondary: "#E03A3E" },
-  LV: { primary: "#A7A8AA", secondary: "#000000" },
-  LA: { primary: "#552583", secondary: "#FDB927" },
-  MIN: { primary: "#266092", secondary: "#79BC43" },
-  NY: { primary: "#86CEBC", secondary: "#000000" },
-  PHX: { primary: "#3C286E", secondary: "#FA4B0A" },
-  POR: { primary: "#CEE5EB", secondary: "#000000" },
-  SEA: { primary: "#2C5235", secondary: "#FEE11A" },
-  TOR: { primary: "#33476D", secondary: "#7B1B38" },
-  WSH: { primary: "#E03A3E", secondary: "#002B5C" },
-};
 
 // Same ESPN combiner headshot proxy as the NBA/NFL pages, just pointed at
 // the wnba headshot path instead.
@@ -6409,40 +6250,21 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       padding: compact ? "8px 12px" : "12px 20px",
       paddingRight: compact ? 12 : 110,
     }}>
-      <div style={{
-        position: "relative", width: compact ? 56 : 84, height: compact ? 56 : 84, borderRadius: "50%", flexShrink: 0,
-        background: teamAvatarBackground(WNBA_TEAM_COLORS, player.team),
-        boxShadow: `0 4px 14px ${(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
-      }}>
-        {/* Always-visible team-colored backing, in case the headshot image can't
-             load (ad-block / privacy extensions often block sports-CDN image
-             requests) -- keeps the circle on-brand instead of going flat black. */}
-        <div style={{
-          position: "absolute", inset: compact ? 3 : 5, borderRadius: "50%",
-          background: (WNBA_TEAM_COLORS[player.team] || {}).primary || "#000",
-          border: "1px solid var(--line)",
-        }} />
-        <img
-          key={player.id}
-          src={wnbaHeadshot(player.espnId)}
-          alt={player.name}
-          width={compact ? 50 : 74}
-          height={compact ? 50 : 74}
-          referrerPolicy="no-referrer"
-          style={{
-            position: "absolute", inset: compact ? 3 : 5,
-            width: compact ? 50 : 74, height: compact ? 50 : 74,
-            borderRadius: "50%",
-            objectFit: "cover",
-            objectPosition: "center top",
-            border: "1px solid var(--line)",
-            opacity: 0,
-            transition: "opacity 0.15s ease",
-          }}
-          onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
-          onError={(e) => { e.currentTarget.style.opacity = 0; }}
-        />
-      </div>
+      <PlayerAvatar
+        key={player.id}
+        name={player.name}
+        alt={player.name}
+        sport="wnba"
+        team={player.team}
+        colorMap={WNBA_TEAM_COLORS}
+        headshotSrc={wnbaHeadshot(player.espnId)}
+        size={compact ? 56 : 84}
+        inset={compact ? 3 : 5}
+        backing={(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
+        imgBorder="1px solid var(--line)"
+        fadeIn
+        shadow={`0 4px 14px ${(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+      />
 
       <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
         <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
@@ -6847,7 +6669,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Live 2026 regular-season game logs (ESPN Stats API) for the players shown above, refreshed each tab. Defensive matchup ranks are real opponent points allowed per game.
       </div>
-      <PlayerNewsModule playerName={player.name} headshotSrc={wnbaHeadshot(player.espnId)} />
+      <PlayerNewsModule playerName={player.name} headshotSrc={wnbaHeadshot(player.espnId)} sport="wnba" team={player.team} />
     </div>
   );
 }
@@ -6868,38 +6690,6 @@ const mlbTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/mlb/500/${MLB_L
 
 // Official-ish MLB brand colors (primary/secondary), used only to tint the
 // player avatar's background ring -- see teamAvatarBackground above.
-const MLB_TEAM_COLORS = {
-  ARI: { primary: "#A71930", secondary: "#E3D4AD" },
-  ATL: { primary: "#CE1141", secondary: "#13274F" },
-  BAL: { primary: "#DF4601", secondary: "#000000" },
-  BOS: { primary: "#BD3039", secondary: "#0C2340" },
-  CHC: { primary: "#0E3386", secondary: "#CC3433" },
-  CWS: { primary: "#27251F", secondary: "#C4CED4" },
-  CIN: { primary: "#C6011F", secondary: "#000000" },
-  CLE: { primary: "#00385D", secondary: "#E50022" },
-  COL: { primary: "#33006F", secondary: "#C4CED4" },
-  DET: { primary: "#0C2340", secondary: "#FA4616" },
-  HOU: { primary: "#002D62", secondary: "#EB6E1F" },
-  KC: { primary: "#004687", secondary: "#BD9B60" },
-  LAA: { primary: "#BA0021", secondary: "#003263" },
-  LAD: { primary: "#005A9C", secondary: "#EF3E42" },
-  MIA: { primary: "#00A3E0", secondary: "#EF3340" },
-  MIL: { primary: "#12284B", secondary: "#FFC52F" },
-  MIN: { primary: "#002B5C", secondary: "#D31145" },
-  NYM: { primary: "#002D72", secondary: "#FF5910" },
-  NYY: { primary: "#0C2340", secondary: "#C4CED4" },
-  ATH: { primary: "#003831", secondary: "#EFB21E" },
-  PHI: { primary: "#E81828", secondary: "#002D72" },
-  PIT: { primary: "#FDB827", secondary: "#27251F" },
-  SD: { primary: "#2F241D", secondary: "#FFC425" },
-  SEA: { primary: "#0C2C56", secondary: "#005C5C" },
-  SF: { primary: "#27251F", secondary: "#FD5A1E" },
-  STL: { primary: "#C41E3A", secondary: "#0C2340" },
-  TB: { primary: "#092C5C", secondary: "#8FBCE6" },
-  TEX: { primary: "#003278", secondary: "#C0111F" },
-  TOR: { primary: "#134A8E", secondary: "#1D2D5C" },
-  WSH: { primary: "#AB0003", secondary: "#14225A" },
-};
 
 // Mock run-prevention rating (lower = tougher pitching/defense), used as an
 // instant fallback so the page never has to show a loading state for this.
@@ -9384,27 +9174,20 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
           <React.Fragment key={p.id}>
             {i === 1 && <div className="oswald" style={{ fontSize: 13, color: "var(--dim)" }}>vs</div>}
             <div style={{ textAlign: "center", width: 96 }}>
-              <div style={{
-                position: "relative", width: 56, height: 56, borderRadius: "50%", margin: "0 auto 6px",
-                background: (MLB_TEAM_COLORS[p.team] || {}).primary || "#000",
-                boxShadow: `0 0 0 1px ${(MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}`,
-              }}>
-                <img
-                  src={mlbHeadshot(p.mlbId)}
-                  alt={p.name}
-                  width={52}
-                  height={52}
-                  referrerPolicy="no-referrer"
-                  style={{ position: "absolute", inset: 2, width: 52, height: 52, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
-                  onError={(e) => {
-                    const fallback = mlbEspnHeadshot(p.id);
-                    if (fallback && e.currentTarget.dataset.fallback !== "1") {
-                      e.currentTarget.dataset.fallback = "1";
-                      e.currentTarget.src = fallback;
-                    }
-                  }}
-                />
-              </div>
+              <PlayerAvatar
+                name={p.name}
+                alt={p.name}
+                sport="mlb"
+                team={p.team}
+                colorMap={MLB_TEAM_COLORS}
+                headshotSrc={mlbHeadshot(p.mlbId)}
+                fallbackSrc={mlbEspnHeadshot(p.id)}
+                size={56}
+                inset={2}
+                backing={(MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
+                shadow={`0 0 0 1px ${(MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}`}
+                style={{ display: "block", margin: "0 auto 6px" }}
+              />
               <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {p.name}
               </div>
@@ -11191,48 +10974,22 @@ function MLBPropsPage({ jumpTo }) {
       padding: compact ? "8px 12px" : "12px 20px",
       paddingRight: compact ? 12 : 110,
     }}>
-      <div style={{
-        position: "relative", width: compact ? 56 : 84, height: compact ? 56 : 84, borderRadius: "50%", flexShrink: 0,
-        background: teamAvatarBackground(MLB_TEAM_COLORS, player.team),
-        boxShadow: `0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`,
-      }}>
-        {/* Always-visible black backing, in case the headshot image can't load
-             -- covers rookies/trades/missing photos. */}
-        <div style={{
-          position: "absolute", inset: compact ? 3 : 5, borderRadius: "50%",
-          background: "#000",
-          border: "1px solid var(--line)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }} />
-        <img
-          key={player.id}
-          src={mlbHeadshot(player.mlbId)}
-          alt={player.name}
-          width={compact ? 50 : 74}
-          height={compact ? 50 : 74}
-          referrerPolicy="no-referrer"
-          style={{
-            position: "absolute", inset: compact ? 3 : 5,
-            width: compact ? 50 : 74, height: compact ? 50 : 74,
-            borderRadius: "50%",
-            objectFit: "cover",
-            objectPosition: "center top",
-            border: "1px solid var(--line)",
-            opacity: 0,
-            transition: "opacity 0.15s ease",
-          }}
-          onLoad={(e) => { e.currentTarget.style.opacity = 1; }}
-          onError={(e) => {
-            const fallback = mlbEspnHeadshot(player.id);
-            if (fallback && e.currentTarget.dataset.fallback !== "1") {
-              e.currentTarget.dataset.fallback = "1";
-              e.currentTarget.src = fallback;
-            } else {
-              e.currentTarget.style.opacity = 0;
-            }
-          }}
-        />
-      </div>
+      <PlayerAvatar
+        key={player.id}
+        name={player.name}
+        alt={player.name}
+        sport="mlb"
+        team={player.team}
+        colorMap={MLB_TEAM_COLORS}
+        headshotSrc={mlbHeadshot(player.mlbId)}
+        fallbackSrc={mlbEspnHeadshot(player.id)}
+        size={compact ? 56 : 84}
+        inset={compact ? 3 : 5}
+        backing={"#000"}
+        imgBorder="1px solid var(--line)"
+        fadeIn
+        shadow={`0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+      />
 
       <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
         <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
@@ -11531,7 +11288,7 @@ function MLBPropsPage({ jumpTo }) {
     />
     </div>
 
-      <PlayerNewsModule playerName={player.name} headshotSrc={mlbHeadshot(player.mlbId)} />
+      <PlayerNewsModule playerName={player.name} headshotSrc={mlbHeadshot(player.mlbId)} sport="mlb" team={player.team} />
 
       {/* Mounted once, unguarded, and last: it's a position:fixed overlay, so
            where it sits in the tree doesn't affect where it paints, but two
@@ -12046,7 +11803,7 @@ function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel }) {
         onClick={() => setOpen((v) => !v)}
         style={{
           cursor: "pointer", padding: "7px 12px", borderRadius: 6, fontSize: 15, width: "100%",
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "inherit",
           border: `1px solid ${open ? "var(--amber)" : "var(--line)"}`,
           background: open ? "var(--amber-dim)" : "var(--panel)",
           color: "var(--text)",
@@ -12646,41 +12403,28 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
 
   const avatarEl = (
     <div style={{ position: "relative", width: avatarSize, height: avatarSize, flexShrink: 0 }}>
-      <div style={{
-        position: "absolute", inset: 0, borderRadius: "50%",
-        background: teamAvatarBackground(FEED_TEAM_COLORS[sport] || {}, r.team),
-        boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
-      }} />
-      {/* Flat team-color disc behind the photo, inset to the same depth as
-           the <img> below -- keeps the gradient confined to the thin outer
-           ring instead of showing through wherever a headshot has
+      {/* `backing` is a flat team-color disc behind the photo, inset to the
+           same depth as the photo -- it keeps the gradient confined to the
+           thin outer ring instead of showing through wherever a headshot has
            transparent padding (common on NFL/NBA/WNBA cutout photos), which
            otherwise reads as a big flat blob instead of a crisp ring. Same
-           two-layer treatment as the player-card header avatar. */}
-      <div style={{
-        position: "absolute", inset: 2, borderRadius: "50%",
-        background: (FEED_TEAM_COLORS[sport] && (FEED_TEAM_COLORS[sport][r.team] || {}).primary) || "#000",
-      }} />
-      {r.avatar && (
-        <img
-          src={r.avatar}
-          alt={r.name}
-          width={avatarSize - 4}
-          height={avatarSize - 4}
-          referrerPolicy="no-referrer"
-          style={{ position: "absolute", inset: 2, width: avatarSize - 4, height: avatarSize - 4, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
-          onError={(e) => {
-            if (r.avatarFallback && e.currentTarget.dataset.fallback !== "1") {
-              e.currentTarget.dataset.fallback = "1";
-              e.currentTarget.src = r.avatarFallback;
-            } else {
-              // No usable photo -- fall back to the team-colored ring alone
-              // (still identifies the team) rather than a broken image icon.
-              e.currentTarget.style.display = "none";
-            }
-          }}
-        />
-      )}
+           two-layer treatment as the player-card header avatar. A player with
+           no usable photo keeps the ring alone, which still identifies the
+           team. */}
+      <PlayerAvatar
+        name={r.name}
+        alt={r.name}
+        sport={sport}
+        team={r.team}
+        colorMap={FEED_TEAM_COLORS[sport]}
+        headshotSrc={r.avatar}
+        fallbackSrc={r.avatarFallback}
+        size={avatarSize}
+        inset={2}
+        backing={(FEED_TEAM_COLORS[sport] && (FEED_TEAM_COLORS[sport][r.team] || {}).primary) || "#000"}
+        shadow="0 2px 8px rgba(0,0,0,0.35)"
+        style={{ position: "absolute", inset: 0 }}
+      />
       {/* Team logo corner badge -- was the row's only image before; now a
            secondary identifier riding on the player avatar instead of the
            primary one. */}
@@ -15091,27 +14835,16 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
              drop shadow below is deliberately neutral rather than team-
              tinted: avatarBg now returns a linear-gradient() string, which
              cannot be interpolated into a box-shadow color. */}
-        <div style={{
-          position: "relative", width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-          background: avatarBg ? avatarBg(p) : "#000",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
-        }}>
-          <img
-            src={headshotSrc(p)}
-            alt={p.name}
-            width={26}
-            height={26}
-            referrerPolicy="no-referrer"
-            style={{ position: "absolute", inset: 2, width: 26, height: 26, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
-            onError={(e) => {
-              const fallback = headshotFallback && headshotFallback(p);
-              if (fallback && e.currentTarget.dataset.fallback !== "1") {
-                e.currentTarget.dataset.fallback = "1";
-                e.currentTarget.src = fallback;
-              }
-            }}
-          />
-        </div>
+        <PlayerAvatar
+          name={p.name}
+          alt={p.name}
+          background={avatarBg ? avatarBg(p) : "#000"}
+          headshotSrc={headshotSrc(p)}
+          fallbackSrc={headshotFallback && headshotFallback(p)}
+          size={30}
+          inset={2}
+          shadow="0 2px 8px rgba(0,0,0,0.35)"
+        />
         <div style={{ minWidth: 0 }}>
           <div
             className="oswald"
@@ -15225,25 +14958,16 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
           background: active ? "var(--amber-dim)" : "var(--panel)",
         }}
       >
-        <div style={{
-          position: "relative", width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-          background: avatarBg ? avatarBg(p) : "#000",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
-        }}>
-          <img
-            src={headshotSrc(p)}
+        <div style={{ position: "relative", width: 32, height: 32, flexShrink: 0 }}>
+          <PlayerAvatar
+            name={p.name}
             alt={p.name}
-            width={28}
-            height={28}
-            referrerPolicy="no-referrer"
-            style={{ position: "absolute", inset: 2, width: 28, height: 28, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
-            onError={(e) => {
-              const fallback = headshotFallback && headshotFallback(p);
-              if (fallback && e.currentTarget.dataset.fallback !== "1") {
-                e.currentTarget.dataset.fallback = "1";
-                e.currentTarget.src = fallback;
-              }
-            }}
+            background={avatarBg ? avatarBg(p) : "#000"}
+            headshotSrc={headshotSrc(p)}
+            fallbackSrc={headshotFallback && headshotFallback(p)}
+            size={32}
+            inset={2}
+            shadow="0 2px 8px rgba(0,0,0,0.35)"
           />
           {isRole && (
             <span
@@ -15331,27 +15055,16 @@ function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headsho
           marginBottom: 6,
         }}
       >
-        <div style={{
-          position: "relative", width: 32, height: 32, borderRadius: "50%", flexShrink: 0,
-          background: avatarBg ? avatarBg(p) : "#000",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
-        }}>
-          <img
-            src={headshotSrc(p)}
-            alt={p.name}
-            width={28}
-            height={28}
-            referrerPolicy="no-referrer"
-            style={{ position: "absolute", inset: 2, width: 28, height: 28, borderRadius: "50%", objectFit: "cover", objectPosition: "center top" }}
-            onError={(e) => {
-              const fallback = headshotFallback && headshotFallback(p);
-              if (fallback && e.currentTarget.dataset.fallback !== "1") {
-                e.currentTarget.dataset.fallback = "1";
-                e.currentTarget.src = fallback;
-              }
-            }}
-          />
-        </div>
+        <PlayerAvatar
+          name={p.name}
+          alt={p.name}
+          background={avatarBg ? avatarBg(p) : "#000"}
+          headshotSrc={headshotSrc(p)}
+          fallbackSrc={headshotFallback && headshotFallback(p)}
+          size={32}
+          inset={2}
+          shadow="0 2px 8px rgba(0,0,0,0.35)"
+        />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="oswald" style={{ fontSize: 13, fontWeight: 600, color: active ? "var(--amber)" : "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {p.name}
@@ -16358,7 +16071,7 @@ export default function PropLedger() {
   }, [mlbActiveIds]);
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
 
       {/* Header */}
       <div style={{ borderBottom: "1px solid var(--line)", padding: "16px", background: "linear-gradient(to bottom, rgba(255,255,255,0.015), transparent)" }}>
@@ -16371,26 +16084,33 @@ export default function PropLedger() {
              is the correct reading for a header button. */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
-            {/* "Palace" takes var(--amber) rather than a fixed brand hex so the
-                 wordmark tracks whatever accent the user picks in the color
-                 wheel -- it can't clash with their accent because it is their
-                 accent. clamp() covers phone through desktop in one
+            {/* The three-bar mark takes var(--amber) rather than a fixed brand
+                 hex so the wordmark tracks whatever accent the user picks in
+                 the color wheel -- it can't clash with their accent because it
+                 is their accent. clamp() covers phone through desktop in one
                  declaration instead of a breakpoint ternary. */}
             <h1
-              className="oswald"
+              className="pp-display"
               onClick={() => setPage("feed")}
               role="button"
               tabIndex={0}
               aria-label="Go to feed"
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPage("feed"); } }}
               style={{
-                fontSize: "clamp(22px, 5vw, 30px)", fontWeight: 700, letterSpacing: "-0.02em",
-                margin: 0, color: "var(--text)", display: "flex", alignItems: "baseline", gap: 8,
+                fontSize: "clamp(18px, 4vw, 24px)", fontWeight: 600, letterSpacing: "0.06em",
+                margin: 0, color: "var(--text)", display: "flex", alignItems: "center", gap: 10,
                 whiteSpace: "nowrap", cursor: "pointer",
               }}
             >
-              <span style={{ color: "var(--amber)" }}>●</span>
-              <span>Prop<span style={{ color: "var(--amber)" }}>Palace</span></span>
+              {/* Bars sit on a shared baseline (align-items: flex-end) at the
+                  handoff's 12 / 21 / 16 heights, rounded on the top edge only
+                  so they read as a rising bar chart rather than three pills. */}
+              <span style={{ display: "flex", alignItems: "flex-end", gap: 3 }} aria-hidden="true">
+                {[12, 21, 16].map((h) => (
+                  <span key={h} style={{ width: 6, height: h, background: "var(--amber)", borderRadius: "3px 3px 0 0" }} />
+                ))}
+              </span>
+              <span>PROP PALACE</span>
             </h1>
             {/* Hidden on a phone: it wrapped to two lines directly under the
                 wordmark, and a tagline is not worth 45px of a 812px screen

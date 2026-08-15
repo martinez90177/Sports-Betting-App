@@ -3,6 +3,7 @@ import {
   teamLogo, dayLabel, timeLabel, fetchGamecastDetail,
   GAME_STATUS, isActiveStatus,
 } from "./lib/gamesData.js";
+import PlayerAvatar from "./PlayerAvatar.jsx";
 
 // Gamecast -- the page a GameCard opens once its game has actually started.
 //
@@ -182,25 +183,21 @@ function Linescore({ detail, isMobile }) {
   );
 }
 
-function LeaderRow({ item, isLast }) {
+function LeaderRow({ item, isLast, sport, team }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 11,
       padding: "10px 16px",
       borderBottom: isLast ? "none" : "1px solid var(--line)",
     }}>
-      {item.headshot ? (
-        <img
-          src={item.headshot}
-          alt=""
-          width={34}
-          height={34}
-          style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", background: "var(--surface-sunken)", flexShrink: 0 }}
-          onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
-        />
-      ) : (
-        <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--surface-sunken)", flexShrink: 0 }} />
-      )}
+      <PlayerAvatar
+        name={item.name}
+        sport={sport}
+        team={team}
+        headshotSrc={item.headshot}
+        size={34}
+        inset={2}
+      />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{
           fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
@@ -390,7 +387,13 @@ export default function GamecastPage({ game, isMobile, onBack, onViewProps }) {
               </SectionTitle>
               <div>
                 {t.items.map((item, i) => (
-                  <LeaderRow key={`${item.category}-${item.name}`} item={item} isLast={i === t.items.length - 1} />
+                  <LeaderRow
+                    key={`${item.category}-${item.name}`}
+                    item={item}
+                    isLast={i === t.items.length - 1}
+                    sport={game.sport}
+                    team={t.teamAbbr}
+                  />
                 ))}
               </div>
             </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fetchNews } from "./lib/newsdata.js";
+import PlayerAvatar from "./PlayerAvatar.jsx";
 
 function timeAgo(pubDate) {
   if (!pubDate) return "";
@@ -15,7 +16,7 @@ function timeAgo(pubDate) {
 // page's own headshot image (already loaded there for the player selector)
 // as the thumbnail instead of anything pulled from the news API -- see
 // NewsPage.jsx's ArticleThumb placeholder for why we avoid scraped images.
-export default function PlayerNewsModule({ playerName, headshotSrc, limit = 4 }) {
+export default function PlayerNewsModule({ playerName, headshotSrc, sport, team, limit = 4 }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -58,12 +59,13 @@ export default function PlayerNewsModule({ playerName, headshotSrc, limit = 4 })
           }}
         >
           {headshotSrc && (
-            <img
-              src={headshotSrc}
-              alt=""
-              width={32} height={32}
-              style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "1px solid var(--line)" }}
-              onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
+            <PlayerAvatar
+              name={playerName}
+              sport={sport}
+              team={team}
+              headshotSrc={headshotSrc}
+              size={32}
+              inset={2}
             />
           )}
           <div style={{ flex: 1, minWidth: 0 }}>

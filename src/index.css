@@ -398,7 +398,7 @@ select.select {
   padding: 7px 12px;
   border-radius: var(--r-sm);
   font-size: 15px;
-  font-family: 'Inter', sans-serif;
+  font-family: inherit;
   cursor: pointer;
 }
 select.select:hover { border-color: var(--amber); }
@@ -931,4 +931,24 @@ select.select-sm:focus, select.select-sm:focus-visible {
 .feed-prop-link:focus-visible .feed-prop-link-name {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* ---------- redesign type + token aliases (design handoff, phase 1) ----------
+   The redesign components reach for two classes rather than naming faces
+   inline, so swapping a face later is a one-line change here. Archivo
+   replaces Inter as the body face; Space Grotesk / JetBrains Mono stay
+   defined because .oswald, .mono and .stat-value are still used across the
+   existing screens. */
+.pp-display { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; }
+.pp-mono    { font-family: 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+body        { font-family: 'Archivo', system-ui, sans-serif; }
+
+/* The handoff components read --accent / --accent-text. This app's accent is
+   --amber (user-settable via --accent-color in Settings > ColorWheel), so
+   these alias onto it instead of introducing a second, fixed accent that
+   would ignore the picker. --accent-text uses --amber-ink, which is the
+   variant already tuned for accent-coloured *text* in both themes. */
+:root {
+  --accent: var(--amber);
+  --accent-text: var(--amber-ink);
 }
