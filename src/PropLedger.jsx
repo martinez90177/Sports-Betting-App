@@ -6171,6 +6171,35 @@ function wnbaPlayerHasData(player, seedOffset = 0) {
   return !!(g && g.length);
 }
 
+// Minutes per game, averaged over the player's real game log. This is measured
+// data, not an estimate: ESPN's gamelog carries `minutes` per event and
+// parseWNBAGameLogResponse already reads it.
+//
+// Note what this is NOT: a starter flag. ESPN's roster route carries no such
+// field (see the roster-rail sort below), so nothing here should be labelled
+// "starters" -- minutes are minutes.
+function wnbaMinutesPerGame(player) {
+  const games = getWNBAGames(player, 0);
+  if (!games || !games.length) return null;
+  const withMin = games.filter((g) => Number.isFinite(g.minutes) && g.minutes > 0);
+  if (!withMin.length) return null;
+  return withMin.reduce((a, g) => a + g.minutes, 0) / withMin.length;
+}
+
+// Roster rails read top-to-bottom by workload. Players whose minutes we cannot
+// compute sort last rather than being treated as zero-minute players, which
+// would bury a genuine starter whose log has not loaded yet.
+function wnbaSortByMinutes(players) {
+  return [...players].sort((a, b) => {
+    const ma = wnbaMinutesPerGame(a);
+    const mb = wnbaMinutesPerGame(b);
+    if (ma === null && mb === null) return 0;
+    if (ma === null) return 1;
+    if (mb === null) return -1;
+    return mb - ma;
+  });
+}
+
 // Curated market list for the WNBA page -- the core box-score stats plus
 // the NBA page's same combo props (PRA/RA/PR/PA).
 const WNBA_MARKETS_CORE = [
@@ -6246,8 +6275,8 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const rawMatchups = liveMatchups && liveMatchups.length ? liveMatchups : WNBA_MATCHUPS;
   const matchups = useMemo(() => rawMatchups.map((m) => ({
     ...m,
-    teamA: { ...m.teamA, players: (m.teamA.players || []).filter((p) => wnbaPlayerHasData(p)) },
-    teamB: { ...m.teamB, players: (m.teamB.players || []).filter((p) => wnbaPlayerHasData(p)) },
+    teamA: { ...m.teamA, players: wnbaSortByMinutes((m.teamA.players || []).filter((p) => wnbaPlayerHasData(p))) },
+    teamB: { ...m.teamB, players: wnbaSortByMinutes((m.teamB.players || []).filter((p) => wnbaPlayerHasData(p))) },
   })), [rawMatchups, dataVersion]);
   const matchupsByDate = useMemo(() => groupMatchupsByDate(matchups), [matchups]);
 
@@ -6847,7 +6876,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       statusFor={statusOf}
-      metaLine={(p) => p.pos}
+      metaLine={(p) => { const m = wnbaMinutesPerGame(p); return m === null ? p.pos : `${p.pos} · ${m.toFixed(1)} MPG`; }}
       avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout">
@@ -6858,7 +6887,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       statusFor={statusOf}
-      metaLine={(p) => p.pos}
+      metaLine={(p) => { const m = wnbaMinutesPerGame(p); return m === null ? p.pos : `${p.pos} · ${m.toFixed(1)} MPG`; }}
       avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
     <div className="roster-layout-center">
@@ -7005,7 +7034,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       statusFor={statusOf}
-      metaLine={(p) => p.pos}
+      metaLine={(p) => { const m = wnbaMinutesPerGame(p); return m === null ? p.pos : `${p.pos} · ${m.toFixed(1)} MPG`; }}
       avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
     </div>
@@ -12760,7 +12789,6 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
   const [formAnchor, setFormAnchor] = useState(null);
   const avatarSize = isNarrow ? 34 : 40;
-  const badgeSize = Math.round(avatarSize * 0.46);
   const dotSize = Math.round(avatarSize * 0.3);
 
   const avatarEl = (
@@ -12789,20 +12817,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
         surface="var(--panel)"
         style={{ position: "absolute", inset: 0 }}
       />
-      {/* Team logo corner badge -- was the row's only image before; now a
-           secondary identifier riding on the player avatar instead of the
-           primary one. */}
-      <img
-        src={r.icon}
-        alt={r.team}
-        width={badgeSize}
-        height={badgeSize}
-        style={{
-          position: "absolute", right: -2, bottom: -2, width: badgeSize, height: badgeSize,
-          borderRadius: "50%", background: "var(--panel)", border: "1.5px solid var(--panel)",
-          objectFit: "contain",
-        }}
-      />
+      {/* The team logo badge used to sit here, bottom-right. It has been
+           removed rather than moved: the avatar's bottom-right corner belongs
+           to the availability dot, and the team is already spelled out in text
+           beside the player's name, so the logo was the third statement of the
+           same fact and the only one competing for the dot's corner. */}
       {/* Lineup status, attached to the player it describes rather than
            spelled out as a "LINEUP"/"PROJ" chip beside his name. It's a
            binary state on one person -- a presence dot on the avatar is the

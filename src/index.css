@@ -952,3 +952,17 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
   --accent: var(--amber);
   --accent-text: var(--amber-ink);
 }
+
+/* ---------- availability status ----------
+   Health has exactly three colours and they are the same in both themes: a
+   player is not "more out" in light mode. Deliberately literal hexes rather
+   than --pos/--neg/--amber, because all three of those are theme- or
+   accent-derived: --amber in particular is the user's accent colour from the
+   Settings wheel (see --accent-color), so wiring "questionable" to it made the
+   dot render blue by default -- and green, if the user happened to pick green.
+   Availability must never track the accent. */
+:root {
+  --status-available: #3ecf8e;
+  --status-questionable: #e8b13a;
+  --status-out: #ef5b5b;
+}

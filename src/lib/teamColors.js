@@ -196,7 +196,7 @@ export function avatarBackgroundFor({ colorMap, sport, team }) {
 // a real status -- see the note in PlayerAvatar.jsx about which sports have
 // player-level availability data.
 export const STATUS = {
-  active: { label: "ACTIVE", dot: "var(--pos, #3ecf8e)", border: "#234a3a" },
-  questionable: { label: "QUEST", dot: "var(--amber, #e8b13a)", border: "#4a3d1c" },
-  out: { label: "OUT", dot: "var(--neg, #ef5b5b)", border: "#4a2323" },
+  active: { label: "ACTIVE", dot: "var(--status-available, #3ecf8e)", border: "#234a3a" },
+  questionable: { label: "QUEST", dot: "var(--status-questionable, #e8b13a)", border: "#4a3d1c" },
+  out: { label: "OUT", dot: "var(--status-out, #ef5b5b)", border: "#4a2323" },
 };
