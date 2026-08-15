@@ -5526,7 +5526,15 @@ const wnbaRosterStatusCache = new Map();
 // keyed on the slate day so it rolls over, and a failed or empty fetch is never
 // cached so the next call retries. 15 minutes because injury reports move on
 // gameday, often within hours of tip.
-async function fetchWNBATeamAvailability(abbr) {
+// One roster fetch per team, serving both products the route carries: the
+// team's current players (identity) and their availability. They were two
+// concerns but they are one request, and splitting them would double the
+// traffic for no gain.
+//
+// Returns { players, byId } or null. `players` is already merged with any
+// hand-written projections we have for that espnId; `byId` is the espnId ->
+// status map the avatars read.
+async function fetchWNBATeamRoster(abbr) {
   const teamId = WNBA_TEAM_ESPN_ID[abbr];
   if (!teamId) return null;
 
@@ -5535,29 +5543,31 @@ async function fetchWNBATeamAvailability(abbr) {
   // cloned so both sports roll their caches on the same boundary.
   const dayKey = currentMLBDayKey();
   const cached = wnbaRosterStatusCache.get(abbr);
-  if (cached && cached.dayKey === dayKey && Date.now() - cached.fetchedAt < WNBA_ROSTER_STATUS_TTL_MS) return cached.byId;
+  if (cached && cached.dayKey === dayKey && Date.now() - cached.fetchedAt < WNBA_ROSTER_STATUS_TTL_MS) return cached.data;
 
-  const cacheKey = `wnba_roster_status_v1_${abbr}`;
+  const cacheKey = `wnba_roster_v2_${abbr}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < WNBA_ROSTER_STATUS_TTL_MS) {
         wnbaRosterStatusCache.set(abbr, parsed);
-        return parsed.byId;
+        return parsed.data;
       }
     }
   } catch {}
 
-  let byId = null;
+  let data = null;
   try {
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams/${teamId}/roster`);
     if (!res.ok) return null;
-    const data = await res.json();
-    byId = {};
-    (data?.athletes || []).forEach((a) => {
-      const id = a?.id;
-      if (!id) return;
+    const json = await res.json();
+    const byId = {};
+    const players = [];
+    (json?.athletes || []).forEach((a) => {
+      const espnId = a?.id && String(a.id);
+      if (!espnId) return;
+
       const mapped = (a?.injuries || [])
         .map((inj) => String(inj?.status || inj?.details?.fantasyStatus?.abbreviation || "").toLowerCase().trim())
         .map((raw) => WNBA_INJURY_STATUS[raw])
@@ -5569,17 +5579,60 @@ async function fetchWNBATeamAvailability(abbr) {
         : mapped.includes("questionable") ? "questionable"
         : onActiveRoster ? "active"
         : undefined;
-      if (status) byId[String(id)] = status;
-    });
-  } catch {
-    byId = null;
-  }
-  if (!byId || !Object.keys(byId).length) return null;
+      if (status) byId[espnId] = status;
 
-  const record = { dayKey, byId, fetchedAt: Date.now() };
+      const proj = WNBA_PROJECTIONS_BY_ESPN_ID[espnId];
+      players.push({
+        // Keep the hand-written slug when we have one so feed pick ids -- and
+        // therefore already-saved picks -- survive the switch to live rosters.
+        id: (proj && proj.id) || `wnba_${espnId}`,
+        espnId,
+        name: a?.displayName || a?.fullName || "",
+        team: abbr,
+        pos: a?.position?.abbreviation || a?.position?.name || "",
+        base: proj && proj.base,
+        var: proj && proj.var,
+      });
+    });
+    if (players.length) data = { players, byId };
+  } catch {
+    data = null;
+  }
+  if (!data) return null;
+
+  const record = { dayKey, data, fetchedAt: Date.now() };
   wnbaRosterStatusCache.set(abbr, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
-  return byId;
+  return data;
+}
+
+// Back-compat shim for the availability-only callers.
+async function fetchWNBATeamAvailability(abbr) {
+  const data = await fetchWNBATeamRoster(abbr);
+  return data ? data.byId : null;
+}
+
+// Live rosters for every franchise, memoised for the tab. Individual team
+// failures are tolerated -- that team simply falls back to its static roster
+// (or to no players, which excludes its players without excluding its game).
+let wnbaLiveRosters = null;
+async function fetchWNBAAllRosters() {
+  if (wnbaLiveRosters) return wnbaLiveRosters;
+  const abbrs = Object.keys(WNBA_TEAM_ESPN_ID);
+  const results = await Promise.all(abbrs.map((a) => fetchWNBATeamRoster(a).catch(() => null)));
+  const byAbbr = {};
+  results.forEach((r, i) => { if (r && r.players.length) byAbbr[abbrs[i]] = r.players; });
+  wnbaLiveRosters = { byAbbr, all: Object.values(byAbbr).flat() };
+  return wnbaLiveRosters.all;
+}
+
+// The roster a screen should use for a team: live if we have it, the
+// hand-written array if not. Never throws and never returns undefined, so a
+// caller can always render a game even when it has nobody to list under it.
+function wnbaRosterFor(abbr) {
+  const live = wnbaLiveRosters && wnbaLiveRosters.byAbbr[abbr];
+  if (live && live.length) return live;
+  return WNBA_TEAM_PLAYERS_BY_ABBR[abbr] || [];
 }
 
 // Availability for a set of teams, merged into one espnId -> status map.
@@ -5843,19 +5896,36 @@ const WNBA_TEAM_PLAYERS_BY_ABBR = {
   MIN: MINNESOTA_LYNX_PLAYERS, NY: NEW_YORK_LIBERTY_PLAYERS, PHX: PHOENIX_MERCURY_PLAYERS,
   TOR: TORONTO_TEMPO_PLAYERS,
 };
+// All 15 franchises, not just the ten with hand-written rosters. The slate
+// builder reads this for every game it renders, so a missing entry here is a
+// dropped game -- which is exactly the bug this map used to cause.
 const WNBA_TEAM_FULL_NAME = {
   ATL: "Atlanta Dream", CHI: "Chicago Sky", CON: "Connecticut Sun", DAL: "Dallas Wings",
-  GS: "Golden State Valkyries", LV: "Las Vegas Aces", MIN: "Minnesota Lynx",
-  NY: "New York Liberty", PHX: "Phoenix Mercury", TOR: "Toronto Tempo",
+  GS: "Golden State Valkyries", IND: "Indiana Fever", LA: "Los Angeles Sparks",
+  LV: "Las Vegas Aces", MIN: "Minnesota Lynx", NY: "New York Liberty",
+  PHX: "Phoenix Mercury", POR: "Portland Fire", SEA: "Seattle Storm",
+  TOR: "Toronto Tempo", WSH: "Washington Mystics",
 };
+
+// Projections keyed by espnId rather than by our slug, so a player who arrives
+// from the live roster can pick up hand-tuned base/var if we happen to have
+// written them, and simply go without if we haven't. The slug is carried along
+// so an existing player keeps the same feed pick id and saved picks still match.
+const WNBA_PROJECTIONS_BY_ESPN_ID = {};
+ALL_WNBA_PLAYERS.forEach((p) => {
+  if (p.espnId) WNBA_PROJECTIONS_BY_ESPN_ID[String(p.espnId)] = { id: p.id, base: p.base, var: p.var };
+});
 
 const WNBA_SCHEDULE_TTL_MS = 60 * 60 * 1000;
 let wnbaScheduleCache = null;
+// Resolves to { matchups, unreadable, fetchFailed } -- the diagnostics travel
+// with the data so the page can distinguish "quiet slate" from "we failed to
+// read four games", which a bare array cannot express.
 async function fetchWNBALiveSlate() {
   const cacheKey = "wnba_live_slate_v1";
   const now = Date.now();
   if (wnbaScheduleCache && now - wnbaScheduleCache.fetchedAt < WNBA_SCHEDULE_TTL_MS) {
-    return wnbaScheduleCache.matchups;
+    return wnbaScheduleCache;
   }
   try {
     const stored = sessionStorage.getItem(cacheKey);
@@ -5863,15 +5933,25 @@ async function fetchWNBALiveSlate() {
       const parsed = JSON.parse(stored);
       if (now - parsed.fetchedAt < WNBA_SCHEDULE_TTL_MS) {
         wnbaScheduleCache = parsed;
-        return parsed.matchups;
+        return parsed;
       }
     }
   } catch {}
+
+  // Rosters first: the parser attaches each team's players as it builds the
+  // matchup, so without this the five teams we never hand-wrote would render
+  // their game with an empty player list on the very first load.
+  try { await fetchWNBAAllRosters(); } catch {}
 
   const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
   const today = new Date();
   const dayAfter = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
   let matchups = [];
+  // Events the parser could not read at all. Collected rather than swallowed so
+  // the page can say "3 games could not be loaded" instead of quietly showing a
+  // short slate -- a missing row is indistinguishable from a light schedule.
+  const unreadable = [];
+  let fetchFailed = false;
   try {
     const res = await fetch(
       `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${fmt(today)}-${fmt(dayAfter)}`
@@ -5885,34 +5965,54 @@ async function fetchWNBALiveSlate() {
         const away = competitors.find((c) => c.homeAway === "away");
         const homeAbbr = home?.team?.abbreviation;
         const awayAbbr = away?.team?.abbreviation;
-        if (!WNBA_TEAM_PLAYERS_BY_ABBR[homeAbbr] || !WNBA_TEAM_PLAYERS_BY_ABBR[awayAbbr]) return null;
+        // Deliberately NOT gated on having a roster for both teams. That
+        // guard used to drop the whole matchup when either side was one of
+        // the five franchises without a hand-written roster, which silently
+        // removed four of the seven games on a typical three-day window. A
+        // game with partial player data is still a game: it appears on the
+        // slate with whichever players do have data. Only a genuinely
+        // unreadable event -- no abbreviations at all -- is skipped, and that
+        // is surfaced as a visible error rather than a missing row.
+        if (!homeAbbr || !awayAbbr) {
+          unreadable.push(ev?.id || ev?.name || "unknown event");
+          return null;
+        }
         const venue = comp?.venue;
         const city = venue?.address
           ? [venue.address.city, venue.address.state].filter(Boolean).join(", ")
           : "";
         return {
           id: `${awayAbbr}-${homeAbbr}-${ev.id}`,
-          label: `${WNBA_TEAM_FULL_NAME[awayAbbr].split(" ").pop()} @ ${WNBA_TEAM_FULL_NAME[homeAbbr].split(" ").pop()}`,
-          teamA: { label: WNBA_TEAM_FULL_NAME[awayAbbr], players: WNBA_TEAM_PLAYERS_BY_ABBR[awayAbbr] },
-          teamB: { label: WNBA_TEAM_FULL_NAME[homeAbbr], players: WNBA_TEAM_PLAYERS_BY_ABBR[homeAbbr] },
+          label: `${(WNBA_TEAM_FULL_NAME[awayAbbr] || awayAbbr).split(" ").pop()} @ ${(WNBA_TEAM_FULL_NAME[homeAbbr] || homeAbbr).split(" ").pop()}`,
+          teamA: { abbr: awayAbbr, label: WNBA_TEAM_FULL_NAME[awayAbbr] || awayAbbr, players: wnbaRosterFor(awayAbbr) },
+          teamB: { abbr: homeAbbr, label: WNBA_TEAM_FULL_NAME[homeAbbr] || homeAbbr, players: wnbaRosterFor(homeAbbr) },
           date: ev.date,
           venue: venue?.fullName || "",
           city,
         };
       })
       .filter(Boolean);
-  } catch {}
+  } catch {
+    fetchFailed = true;
+  }
 
-  const record = { matchups, fetchedAt: now };
+  const record = { matchups, unreadable, fetchFailed, fetchedAt: now };
   wnbaScheduleCache = record;
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
-  return matchups;
+  return record;
 }
 
 // Same synthetic-game-log approach as genGames (NBA) -- per-player base/var
 // noised out into a season's worth of games -- just drawing its random
 // opponent from the WNBA's own team pool instead of the NBA's.
+// Synthetic fallback for players we hand-wrote projections for. Returns null
+// rather than throwing when a player has none -- every base/var read below is
+// guarded, because an unguarded `base.pts` on a live-roster call-up used
+// to take the whole page tree down through the ErrorBoundary.
 function genWNBAGames(player, seedOffset) {
+  const base = player && player.base;
+  const varr = player && player.var;
+  if (!base || !varr) return null;
   const rng = mulberry32(2000 + seedOffset);
   const opponents = WNBA_TEAMS.filter((t) => t !== player.team);
   const games = [];
@@ -5924,21 +6024,21 @@ function genWNBAGames(player, seedOffset) {
     const opp = opponents[Math.floor(rng() * opponents.length)];
     const minutes = Math.round(24 + rng() * 12);
     const noise = (mean, spread) => Math.max(0, Math.round(mean + (rng() - 0.5) * 2 * spread));
-    const fg3m = noise(player.base.fg3m, player.var.fg3m);
-    const ftm = noise(player.base.ftm, player.var.ftm);
+    const fg3m = noise(base.fg3m, varr.fg3m);
+    const ftm = noise(base.ftm, varr.ftm);
     games.push({
       date: d.toISOString().slice(0, 10), opp, home, minutes,
-      pts: noise(player.base.pts, player.var.pts),
-      oreb: noise(player.base.oreb, player.var.oreb),
-      dreb: noise(player.base.dreb, player.var.dreb),
-      ast: noise(player.base.ast, player.var.ast),
-      stl: noise(player.base.stl, player.var.stl),
-      blk: noise(player.base.blk, player.var.blk),
+      pts: noise(base.pts, varr.pts),
+      oreb: noise(base.oreb, varr.oreb),
+      dreb: noise(base.dreb, varr.dreb),
+      ast: noise(base.ast, varr.ast),
+      stl: noise(base.stl, varr.stl),
+      blk: noise(base.blk, varr.blk),
       fg3m,
-      fg3a: Math.max(fg3m, noise(player.base.fg3a, player.var.fg3a)),
+      fg3a: Math.max(fg3m, noise(base.fg3a, varr.fg3a)),
       ftm,
-      fta: Math.max(ftm, noise(player.base.fta, player.var.fta)),
-      tov: noise(player.base.tov, player.var.tov),
+      fta: Math.max(ftm, noise(base.fta, varr.fta)),
+      tov: noise(base.tov, varr.tov),
     });
   }
   return games;
@@ -6042,9 +6142,21 @@ async function fetchWNBAPlayerGameLog(espnId) {
   }
 }
 
+// Real ESPN game log first, hand-tuned synthetic second, nothing third.
+// Null means "we have no games for this player" -- callers exclude them rather
+// than invent a line for them. Keyed on espnId so a live-roster player resolves
+// the same way a hand-written one does.
 function getWNBAGames(player, seedOffset) {
-  if (WNBA_REAL_GAME_LOGS[player.id]) return WNBA_REAL_GAME_LOGS[player.id];
+  const real = player && player.espnId && WNBA_REAL_GAME_LOGS[String(player.espnId)];
+  if (real && real.length) return real;
   return genWNBAGames(player, seedOffset);
+}
+
+// The one predicate for "can this player be shown at all". Used by both the
+// player list and the feed so the two can never disagree about who exists.
+function wnbaPlayerHasData(player, seedOffset = 0) {
+  const g = getWNBAGames(player, seedOffset);
+  return !!(g && g.length);
 }
 
 // Curated market list for the WNBA page -- the core box-score stats plus
@@ -6084,6 +6196,7 @@ const WNBA_DD_PLAYERS = new Set(["ncollier", "areese", "athomas", "bstewart", "a
 const WNBA_TD_PLAYERS = new Set(["athomas", "bstewart", "ajwilson"]);
 function wnbaPlayerMarkets(player) {
   const extra = [];
+  if (!player) return WNBA_MARKETS_CORE;
   if (WNBA_DD_PLAYERS.has(player.id)) extra.push(WNBA_MILESTONE_MARKETS[0]);
   if (WNBA_TD_PLAYERS.has(player.id)) extra.push(WNBA_MILESTONE_MARKETS[1]);
   return [...WNBA_MARKETS_CORE, ...extra];
@@ -6098,15 +6211,41 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   // usable immediately and offline-safe if the fetch ever fails, while still
   // showing tonight's real games instead of a frozen date.
   const [liveMatchups, setLiveMatchups] = useState(null);
+  // Non-null when the slate is known to be incomplete. Surfaced in the UI --
+  // a game we could not read must never just be absent from the list.
+  const [slateIssue, setSlateIssue] = useState(null);
   React.useEffect(() => {
     let cancelled = false;
-    fetchWNBALiveSlate().then((m) => {
-      if (!cancelled && m.length) setLiveMatchups(m);
+    fetchWNBALiveSlate().then((res) => {
+      if (cancelled || !res) return;
+      if (res.matchups && res.matchups.length) setLiveMatchups(res.matchups);
+      setSlateIssue(
+        res.fetchFailed ? "fetch"
+          : (res.unreadable && res.unreadable.length) ? `unreadable:${res.unreadable.length}`
+          : null
+      );
     });
     return () => { cancelled = true; };
   }, []);
-  const matchups = liveMatchups && liveMatchups.length ? liveMatchups : WNBA_MATCHUPS;
+  // Players without a game log are dropped here, once, so the selector, the
+  // roster rails and the chart all agree on who exists. Dropping a player never
+  // drops the game: a matchup whose roster filters down to nobody still appears
+  // on the slate, it just has no players to list.
+  const rawMatchups = liveMatchups && liveMatchups.length ? liveMatchups : WNBA_MATCHUPS;
+  const matchups = useMemo(() => rawMatchups.map((m) => ({
+    ...m,
+    teamA: { ...m.teamA, players: (m.teamA.players || []).filter((p) => wnbaPlayerHasData(p)) },
+    teamB: { ...m.teamB, players: (m.teamB.players || []).filter((p) => wnbaPlayerHasData(p)) },
+  })), [rawMatchups, dataVersion]);
   const matchupsByDate = useMemo(() => groupMatchupsByDate(matchups), [matchups]);
+
+  // Games on the slate that ended up with nobody to show. Reported rather than
+  // hidden -- "this game is here but we have no player data for it" is a
+  // different statement from "this game does not exist".
+  const emptyMatchups = useMemo(
+    () => matchups.filter((m) => !m.teamA.players.length && !m.teamB.players.length).length,
+    [matchups]
+  );
 
   const [matchupId, setMatchupId] = useState(WNBA_MATCHUPS[0].id);
   const matchup = matchups.find((m) => m.id === matchupId) || matchups[0];
@@ -6120,8 +6259,8 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   // as active.
   const [availability, setAvailability] = useState(null);
   const matchupTeams = [
-    (matchup?.teamA?.players || [])[0]?.team,
-    (matchup?.teamB?.players || [])[0]?.team,
+    matchup?.teamA?.abbr || (matchup?.teamA?.players || [])[0]?.team,
+    matchup?.teamB?.abbr || (matchup?.teamB?.players || [])[0]?.team,
   ].filter(Boolean).join(",");
   React.useEffect(() => {
     let cancelled = false;
@@ -6189,7 +6328,23 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     setLine(null);
   };
 
-  const player = ALL_WNBA_PLAYERS.find((p) => p.id === playerId);
+  // Resolved from the matchup's own rosters first: those are live, so a player
+  // who exists only on ESPN's roster still resolves. ALL_WNBA_PLAYERS remains
+  // the fallback for the static/offline slate. Undefined when the roster
+  // filtered down to nobody, which the guard below turns into a message rather
+  // than a crash.
+  const player = useMemo(() => {
+    const pool = [...(matchup?.teamA?.players || []), ...(matchup?.teamB?.players || [])];
+    return pool.find((p) => p.id === playerId) || ALL_WNBA_PLAYERS.find((p) => p.id === playerId);
+  }, [matchup, playerId]);
+  // If the selected id is no longer in the slate (rosters loaded, a player was
+  // filtered out, the matchup changed), fall to the first player that is.
+  React.useEffect(() => {
+    if (player) return;
+    const first = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
+    if (first && first.id !== playerId) setPlayerId(first.id);
+  }, [player, matchup, playerId]);
+
   const playerMarkets = useMemo(() => wnbaPlayerMarkets(player), [player]);
 
   // Whenever the selected player changes, make sure the active market is
@@ -6637,8 +6792,42 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     </CollapsibleSection>
   );
 
+  // A slate item we cannot render has to say so. Returning null here, or
+  // quietly omitting the game from the list, is the failure mode this page
+  // used to have: four of seven games vanished with no indication anything
+  // was missing.
+  const slateBanner = (slateIssue || emptyMatchups > 0) ? (
+    <div
+      role="status"
+      className="mono"
+      style={{
+        margin: "0 0 12px", padding: "9px 12px", borderRadius: 6,
+        border: "1px solid var(--neg)", background: "var(--neg-dim)",
+        color: "var(--text)", fontSize: 12, lineHeight: 1.45,
+      }}
+    >
+      {slateIssue === "fetch"
+        ? "Could not load today's WNBA schedule \u2014 showing the last known slate."
+        : slateIssue && slateIssue.startsWith("unreadable:")
+        ? `${slateIssue.split(":")[1]} game(s) on today's schedule could not be read and are not listed.`
+        : `${emptyMatchups} game(s) on the slate have no player game logs yet \u2014 they are listed but have no props.`}
+    </div>
+  ) : null;
+
+  if (!player) {
+    return (
+      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+        {slateBanner}
+        <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+          No WNBA player game logs have loaded yet.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    {slateBanner}
     <MobilePlayerNav
       teamA={matchup.teamA}
       teamB={matchup.teamB}
@@ -11571,8 +11760,25 @@ async function fetchWNBATeamDefense() {
 // tonight/tomorrow rosters and its own curated market list.
 function buildWNBAFeedRows() {
   const rows = [];
-  ALL_WNBA_PLAYERS.forEach((player, pi) => {
+  // Live rosters when they have loaded, the hand-written arrays otherwise, and
+  // de-duped by espnId so a player who appears in both is only built once.
+  // Players without a game log are skipped -- the same wnbaPlayerHasData
+  // predicate the player page uses, so the feed and the page can never disagree
+  // about who exists.
+  const pool = [];
+  const seen = new Set();
+  const push = (p) => {
+    const key = p && p.espnId ? String(p.espnId) : p && p.id;
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    pool.push(p);
+  };
+  Object.keys(WNBA_TEAM_ESPN_ID).forEach((abbr) => wnbaRosterFor(abbr).forEach(push));
+  ALL_WNBA_PLAYERS.forEach(push);
+
+  pool.forEach((player, pi) => {
     const games = getWNBAGames(player, pi);
+    if (!games || !games.length) return;
     const nextOpp = games[games.length - 1].opp;
     const gameDate = matchupDateForPlayer(WNBA_MATCHUPS, player.id);
     wnbaPlayerMarkets(player).forEach((m) => {
@@ -16151,12 +16357,19 @@ export default function PropLedger() {
       bumpWnbaRefresh();
     });
 
-    ALL_WNBA_PLAYERS.forEach((player) => {
-      if (!player.espnId) return;
-      fetchWNBAPlayerGameLog(player.espnId).then((games) => {
-        if (cancelled || !games) return;
-        WNBA_REAL_GAME_LOGS[player.id] = games;
-        bumpWnbaRefresh();
+    // Keyed by espnId, not by our slug, so a player who only exists on the
+    // live roster resolves the same way a hand-written one does. Driven off
+    // every rostered player across the league rather than ALL_WNBA_PLAYERS,
+    // which covered only the ten teams we had written out by hand.
+    fetchWNBAAllRosters().then((players) => {
+      if (cancelled || !players) return;
+      players.forEach((player) => {
+        if (!player.espnId) return;
+        fetchWNBAPlayerGameLog(player.espnId).then((games) => {
+          if (cancelled || !games || !games.length) return;
+          WNBA_REAL_GAME_LOGS[String(player.espnId)] = games;
+          bumpWnbaRefresh();
+        });
       });
     });
 
