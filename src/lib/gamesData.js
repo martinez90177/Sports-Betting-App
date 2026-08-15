@@ -823,44 +823,6 @@ export async function fetchGamecastDetail(game, { force = false } = {}) {
 
 // ----------------------------------------------------------- recent form
 //
-// Last N finals for one team, for the Matchup Overview's two-sided game log.
-// Mock is seeded off the team abbreviation so a given team's form is stable
-// across re-renders and across the two halves of the log.
-
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function seedFrom(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-  return h;
-}
-
-function mockForm(sport, abbr, n) {
-  const rng = mulberry32(seedFrom(`${sport}:${abbr}`));
-  const pool = Object.keys(TEAMS_BY_SPORT[sport] || {}).filter((t) => t !== abbr);
-  const out = [];
-  const today = new Date();
-  for (let i = 0; i < n; i++) {
-    const opp = pool[Math.floor(rng() * pool.length)] || abbr;
-    const home = rng() > 0.5;
-    let us;
-    let them;
-    if (sport === "mlb") { us = Math.floor(rng() * 10); them = Math.floor(rng() * 10); }
-    else if (sport === "wnba") { us = 68 + Math.floor(rng() * 26); them = 68 + Math.floor(rng() * 26); }
-    else { us = 13 + Math.floor(rng() * 24); them = 13 + Math.floor(rng() * 24); }
-    if (us === them) them = us + 1;
-    const d = addDays(today, -(i + 1) * (sport === "nfl" ? 7 : 1));
-    out.push({ date: `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`, opp, home, us, them, win: us > them });
-  }
-  return out;
-}
 
 const formCache = new Map();
 
@@ -924,8 +886,16 @@ export async function fetchRecentForm(sport, abbr, n) {
     rows = null;
   }
 
-  const value = rows && rows.length ? rows : mockForm(sport, abbr, n);
-  formCache.set(ck, { value, at: Date.now() });
+  // Empty array, not invented games. This used to fall through to
+  // mockForm(), which generated plausible W/L results and final scores off a
+  // seed -- and did so silently, so a failed fetch or an out-of-season team
+  // showed a fabricated recent-form strip that was indistinguishable from a
+  // real one. The caller renders "no recent games" instead.
+  //
+  // Failures are deliberately not cached, so the next visit retries rather
+  // than being stuck on an empty strip for the whole TTL.
+  const value = rows && rows.length ? rows : [];
+  if (value.length) formCache.set(ck, { value, at: Date.now() });
   return value;
 }
 

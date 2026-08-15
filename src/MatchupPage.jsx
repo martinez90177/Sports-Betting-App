@@ -38,8 +38,12 @@ function SectionTitle({ children, right }) {
 // Win/Lose split, derived from the same rows the log below renders -- the
 // reference shows this as a paired green/red bar above the game list.
 function WinLoseBar({ label, rows, align }) {
+  // No games, no bar. With an empty set this rendered "0% W · 100% L" and a
+  // full red track -- a perfect losing record invented out of missing data.
+  // FormColumn's "No recent games." already covers the empty case.
+  if (!rows.length) return null;
   const wins = rows.filter((r) => r.win).length;
-  const pct = rows.length ? Math.round((wins / rows.length) * 100) : 0;
+  const pct = Math.round((wins / rows.length) * 100);
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{

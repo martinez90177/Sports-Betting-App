@@ -1264,51 +1264,6 @@ function buildDefenseCategoryFor(teams, seed, base, spread) {
   return byTeam;
 }
 
-function buildNFLDefenseCategory(seed, base, spread) {
-  return buildDefenseCategoryFor(NFL_TEAMS, seed, base, spread);
-}
-
-// Overall total-yards defense — used only as the Def# fallback for markets
-// with no defensive-matchup concept (kicking).
-const NFL_TEAM_DEF = buildNFLDefenseCategory(4200, 300, 120);
-
-// Every individual prop type gets its own independent defensive ranking —
-// a team's defense vs. receptions, vs. receiving yards, and vs. receiving
-// TDs are three different numbers in reality (and against real teams,
-// vs. WR / vs. TE / vs. RB differ too), so none of them may share a bucket.
-// [base, spread] is a rough plausible per-game range for that stat, just
-// used to seed a believable rating; the rank ordering is what matters.
-const NFL_MARKET_DEF_RANGE = {
-  passYds: [180, 100],
-  passTd: [1.2, 1.6],
-  comp: [16, 10],
-  int: [0.5, 1.2],
-  rushYds: [80, 80],
-  passRushYds: [260, 110],
-  rushAtt: [16, 12],
-  rec: [3.5, 3],
-  recYds: [50, 80],
-  longRec: [22, 14],
-  passAtt: [32, 12],
-  scrim: [90, 90],
-  anytimeTd: [0.5, 1.0],
-};
-const NFL_MARKET_DEF_BASE_LABEL = {
-  passYds: "pass yards defense",
-  passTd: "pass TD defense",
-  comp: "completions allowed",
-  int: "interception rate",
-  rushYds: "rush yards defense",
-  passRushYds: "total yards defense",
-  rushAtt: "rush volume allowed",
-  rec: "receptions allowed",
-  recYds: "receiving yards allowed",
-  longRec: "explosive-play defense",
-  passAtt: "pass volume allowed",
-  scrim: "scrimmage yards defense",
-  anytimeTd: "TD defense",
-};
-const NFL_POS_QUALIFIER = { WR: "vs WR", TE: "vs TE", RB: "vs RB", QB: "" };
 
 // Real per-category "defense vs pass/rush/receptions" splits aren't part of
 // any free public API (that's what makes DVOA-style data proprietary), so
@@ -1322,22 +1277,17 @@ let nflTeamDefReal = null;
 
 // Lazily-built, memoized per (market, position) so each prop type's ranking
 // is computed once and reused, instead of re-sorting 31 teams every render.
-const nflDefCategoryCache = {};
-// Returns null when there is no rank for this opponent. There used to be a
-// { rank: 16 } fallback here, which rendered as "OPP RANK #16" -- a number
-// indistinguishable from a genuine middle-of-the-league matchup. A missing
-// rank now shows nothing at all; every caller below drops the badge rather
-// than filling the space with an average.
+// Real points-allowed-per-game rank, or nothing.
+//
+// This used to fall back to a per-market seeded ranking (a different mock
+// table per market x position) whenever the real standings had not loaded, and
+// before that to a flat { rank: 16 }. Both meant the OPP RANK badge showed a
+// number with nothing behind it. There is now exactly one source -- ESPN's
+// real season standings, ranked by points allowed per game -- and no rank at
+// all until it lands. Callers drop the badge rather than fill the space.
 function getNFLDefRank(market, pos, opp) {
   if (nflTeamDefReal && nflTeamDefReal[opp]) return nflTeamDefReal[opp];
-  const range = NFL_MARKET_DEF_RANGE[market];
-  if (!range) return NFL_TEAM_DEF[opp] || null; // kicking markets — no defensive-matchup concept
-  const key = `${market}_${pos}`;
-  if (!nflDefCategoryCache[key]) {
-    const seed = 4300 + (hashStr(key) % 5000);
-    nflDefCategoryCache[key] = buildNFLDefenseCategory(seed, range[0], range[1]);
-  }
-  return nflDefCategoryCache[key][opp] || null;
+  return null;
 }
 
 // ESPN abbreviates Washington as WSH; every other team's abbreviation in the
@@ -1396,11 +1346,12 @@ function nflDefIsPointsAllowed(opp) {
   return !!(nflTeamDefReal && nflTeamDefReal[opp]);
 }
 
-function nflDefCategoryLabel(market, pos) {
-  const base = NFL_MARKET_DEF_BASE_LABEL[market];
-  if (!base) return "total defense";
-  const qualifier = NFL_POS_QUALIFIER[pos];
-  return qualifier ? `${base} ${qualifier}` : base;
+// The rank is always points allowed per game now, for every market, so the
+// label says that rather than naming a per-market split the number is not.
+// NFL_MARKET_DEF_BASE_LABEL / NFL_POS_QUALIFIER went with the seeded tables
+// they described.
+function nflDefCategoryLabel() {
+  return "points allowed per game";
 }
 
 const nflDefTier = (rank) => (rank <= 10 ? "tough" : rank >= 22 ? "soft" : "mid");
