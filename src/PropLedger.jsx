@@ -5247,7 +5247,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
                     <div>{g.date}</div>
                     <div>{g.opp}</div>
-                    <div style={{ color: tierColor(tier) }}>#{def.rank}</div>
+                    <div style={{ color: def ? tierColor(tier) : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
                     <div>{g.snapPct == null ? "—" : `${g.snapPct}%`}</div>
                     <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
@@ -5433,18 +5433,6 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
 // ---------- WNBA (2 real matchups for tonight's slate) ----------
 const WNBA_TEAMS = ["ATL","CHI","CON","DAL","GS","IND","LV","LA","MIN","NY","PHX","POR","SEA","TOR","WSH"];
 
-// Placeholder defensive ratings, same approach as the NBA's TEAM_DEF above
-// (mock ratings, ranked lowest-to-highest) -- a real WNBA opponent-stats feed
-// would replace this the same way it would replace TEAM_DEF.
-const wnbaDefRatingRng = mulberry32(4242);
-const WNBA_TEAM_DEF = (() => {
-  const raw = WNBA_TEAMS.map((t) => ({ team: t, rating: Math.round((98 + wnbaDefRatingRng() * 14) * 10) / 10 }));
-  raw.sort((a, b) => a.rating - b.rating);
-  raw.forEach((r, i) => (r.rank = i + 1));
-  const byTeam = {};
-  raw.forEach((r) => (byTeam[r.team] = r));
-  return byTeam;
-})();
 
 const WNBA_LOGO_SLUG = {
   ATL: "atl", CHI: "chi", CON: "conn", DAL: "dal", GS: "gs", IND: "ind", LV: "lv",
@@ -6922,13 +6910,13 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
                 const over = v > effectiveLine;
                 const push = !isBinary && v === effectiveLine;
                 const def = getWNBADefRank(market, g.opp);
-                const tier = defTier(def.rank);
+                const tier = def ? defTier(def.rank) : null;
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
                     <div>{g.date}</div>
                     <div>{g.opp}</div>
-                    <div style={{ color: tierColor(tier) }}>#{def.rank}</div>
+                    <div style={{ color: def ? tierColor(tier) : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
                     <div>{g.minutes}</div>
                     <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
@@ -7198,11 +7186,24 @@ const mlbDefTier = (rank) => (rank <= 10 ? "tough" : rank >= 21 ? "soft" : "mid"
 // Mutates MLB_TEAM_DEF's existing entries in place (rather than replacing
 // the object) so every place in this file that already read MLB_TEAM_DEF[abbr]
 // synchronously just sees the fresher numbers once the caller re-renders.
+// Which teams the real ranking has actually landed for. Without this, the
+// seeded starting values in MLB_TEAM_DEF are indistinguishable from the real
+// ones once they overwrite the same fields -- and getMLBDefRank has no way to
+// tell "not loaded yet" from "loaded".
+const mlbTeamDefReal = new Set();
+
+// The only way to read an MLB defence rank. Returns the entry once the real
+// ranking has landed for that team, and null before that -- so the seeded
+// starting values in MLB_TEAM_DEF can never reach the screen.
+function mlbDefFor(abbr) {
+  return mlbTeamDefReal.has(abbr) && MLB_TEAM_DEF[abbr] ? MLB_TEAM_DEF[abbr] : null;
+}
 function applyMlbTeamDef(byTeam) {
   Object.keys(byTeam || {}).forEach((abbr) => {
     if (MLB_TEAM_DEF[abbr] && byTeam[abbr]) {
       MLB_TEAM_DEF[abbr].rank = byTeam[abbr].rank;
       MLB_TEAM_DEF[abbr].rating = byTeam[abbr].era;
+      mlbTeamDefReal.add(abbr);
     }
   });
 }
@@ -10419,7 +10420,7 @@ function MLBPropsPage({ jumpTo }) {
     date: g.date,
     minutes: isPitcher ? formatOuts(g.outs) : g.pa,
     home: g.home,
-    defRank: MLB_TEAM_DEF[g.opp]?.rank ?? null,
+    defRank: mlbDefFor(g.opp)?.rank ?? null,
     // undefined (not false) when there's nothing to preview or no boxscore
     // for the game, so an unknown lineup is never rendered as "sat out".
     previewOut:
@@ -10427,7 +10428,7 @@ function MLBPropsPage({ jumpTo }) {
         ? !boxscoreLineups[g.gamePk].has(hoverTeammate)
         : undefined,
   }));
-  if (nextGame && MLB_TEAM_DEF[nextGame.opp]) {
+  if (nextGame && mlbDefFor(nextGame.opp)) {
     const nextDate = (nextGame.date || "").slice(0, 10);
     chartData.push({
       idx: chartData.length + 1,
@@ -10437,7 +10438,7 @@ function MLBPropsPage({ jumpTo }) {
       date: nextDate,
       minutes: null,
       home: nextGame.home,
-      defRank: MLB_TEAM_DEF[nextGame.opp].rank,
+      defRank: mlbDefFor(nextGame.opp).rank,
       isPlaceholder: true,
     });
   }
@@ -11025,8 +11026,8 @@ function MLBPropsPage({ jumpTo }) {
                 const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
                 const over = v > effectiveLine;
                 const push = !isBinary && v === effectiveLine;
-                const def = MLB_TEAM_DEF[g.opp];
-                const tier = mlbDefTier(def?.rank);
+                const def = mlbDefFor(g.opp);
+                const tier = def ? mlbDefTier(def.rank) : null;
                 return (
                   <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
@@ -11500,35 +11501,23 @@ const WNBA_FEED_CATEGORIES = ["All", "Points", "Rebounds", "Assists", "Combos", 
 // Same per-market defensive-ranking idea as the NBA feed above, just seeded
 // off the WNBA's own team pool and scaled down to WNBA-realistic per-game
 // ranges (lower scoring/pace than the NBA).
-const WNBA_MARKET_DEF_RANGE = {
-  pts: [78, 10], reb: [33, 6], ast: [19, 6], pra: [128, 14], ra: [50, 10], pr: [110, 12], pa: [96, 12],
-  "3pm": [8, 3], stl: [6, 2.5], blk: [3.5, 2],
-};
-const WNBA_MARKET_DEF_LABEL = {
-  pts: "scoring defense", reb: "rebounds allowed", ast: "assists allowed",
-  pra: "PRA allowed", ra: "RA allowed", pr: "PR allowed", pa: "PA allowed",
-  "3pm": "3PM allowed", stl: "steals forced", blk: "shots blocked",
-};
 // Same "one real number, applied to every market" approach as the NFL fix
 // (see nflTeamDefReal above) -- real per-category WNBA defensive splits
 // aren't available from any free public source, so once loaded this holds
 // real opponent points allowed per game, ranked, used across every market.
 let wnbaTeamDefReal = null;
 
-const wnbaDefCategoryCache = {};
-const WNBA_DEF_RANK_FALLBACK = { rank: 8, rating: 0 };
+// Real points-allowed rank, or nothing. The seeded per-market tables that
+// used to fill the gap before fetchWNBATeamDefense resolved are gone, along
+// with the flat { rank: 8 } default behind them -- the same pattern as NFL's
+// rank-16, and equally indistinguishable from a real mid-table matchup.
 function getWNBADefRank(market, opp) {
   if (wnbaTeamDefReal && wnbaTeamDefReal[opp]) return wnbaTeamDefReal[opp];
-  const range = WNBA_MARKET_DEF_RANGE[market];
-  if (!range) return WNBA_TEAM_DEF[opp] || WNBA_DEF_RANK_FALLBACK;
-  if (!wnbaDefCategoryCache[market]) {
-    const seed = 7300 + (hashStr(market) % 5000);
-    wnbaDefCategoryCache[market] = buildDefenseCategoryFor(WNBA_TEAMS, seed, range[0], range[1]);
-  }
-  return wnbaDefCategoryCache[market][opp] || WNBA_DEF_RANK_FALLBACK;
+  return null;
 }
-function wnbaDefCategoryLabel(market) {
-  return WNBA_MARKET_DEF_LABEL[market] || "overall defense";
+// One label for every market: the rank is points allowed per game.
+function wnbaDefCategoryLabel() {
+  return "opponent points allowed per game";
 }
 // Same caveat as nflDefIsPointsAllowed: once the real table has loaded,
 // getWNBADefRank ignores the market entirely and returns points allowed per
@@ -11604,8 +11593,8 @@ function buildWNBAFeedRows() {
     wnbaPlayerMarkets(player).forEach((m) => {
       const isBinary = m.id === "dd" || m.id === "td";
       const def = getWNBADefRank(m.id, nextOpp);
-      const rank = def.rank;
-      const tier = defTier(rank);
+      const rank = def ? def.rank : null;
+      const tier = rank == null ? null : defTier(rank);
       const values = games.map((g) => statValue(g, m.id));
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = isBinary ? 0.5 : fairFeedLine(values);
@@ -12980,32 +12969,26 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
 // hits-allowed and home-runs-allowed are different numbers in reality, so
 // the OPP RANK badge shouldn't reuse one overall run-prevention rating for
 // every market.
-const MLB_MARKET_DEF_RANGE = {
-  h: [8.6, 2.0], r: [4.3, 1.6], rbi: [4.1, 1.6], hrrbi: [8.0, 2.4],
-  hr: [1.1, 0.7], tb: [14.5, 3.5],
-  bb: [3.1, 1.4], so: [8.4, 2.6], sb: [0.5, 0.5],
-  p_k: [8.0, 2.6], p_outs: [16.5, 3.5], p_er: [3.6, 1.6], p_h: [7.8, 2.2], p_bb: [2.9, 1.3],
-};
-const MLB_MARKET_DEF_LABEL = {
-  h: "hits allowed", r: "runs allowed", rbi: "RBI allowed", hrrbi: "H+R+RBI allowed",
-  hr: "home runs allowed", tb: "total bases allowed",
-  bb: "walks allowed", so: "strikeout rate forced", sb: "steals allowed",
-  p_k: "opponent strikeout rate", p_outs: "opponent at-bat efficiency",
-  p_er: "opponent run production", p_h: "opponent contact rate", p_bb: "opponent plate discipline",
-};
 
-const mlbDefCategoryCache = {};
+// Real runs-allowed rank, or nothing.
+//
+// This used to check MLB_MARKET_DEF_RANGE first and only reach the real
+// ranking for a market with no range -- and every MLB market has a range, so
+// the real nightly ERA ranking was never once used for the badge. Every OPP
+// RANK on the feed and on the player pages was a seeded per-market table.
+//
+// Now the real ranking wins, and there is no fallback: no rank until
+// /api/mlb-matchups lands, and none at all if it fails.
 function getMLBDefRank(market, opp) {
-  const range = MLB_MARKET_DEF_RANGE[market];
-  if (!range) return MLB_TEAM_DEF[opp];
-  if (!mlbDefCategoryCache[market]) {
-    const seed = 6300 + (hashStr(market) % 5000);
-    mlbDefCategoryCache[market] = buildDefenseCategoryFor(MLB_TEAMS, seed, range[0], range[1]);
-  }
-  return mlbDefCategoryCache[market][opp];
+  return mlbDefFor(opp);
 }
-function mlbDefCategoryLabel(market) {
-  return MLB_MARKET_DEF_LABEL[market] || "run prevention";
+
+// One label for every market, because there is now one number behind all of
+// them. It is team runs allowed per game -- not hits allowed, not home runs
+// allowed, not "opponent plate discipline". Naming a per-market split on a
+// number that is not per-market was the misleading half of the old badge.
+function mlbDefCategoryLabel() {
+  return "opponent runs allowed per game";
 }
 
 // Hit rate over the trailing n games (or the whole sample for n === "all"),
@@ -13601,8 +13584,8 @@ function buildMLBFeedRows(teamsData) {
       if (!games.length) return;
       MLB_MARKETS.forEach((m) => {
         const def = getMLBDefRank(m.id, nextGame.opp);
-        const rank = def.rank;
-        const tier = mlbDefTier(rank);
+        const rank = def ? def.rank : null;
+        const tier = rank == null ? null : mlbDefTier(rank);
         const values = games.map((g) => statValueMLB(g, m.id));
         const avg = values.reduce((a, b) => a + b, 0) / values.length;
         const line = fairFeedLine(values);
@@ -13701,8 +13684,8 @@ function buildMLBPitcherFeedRows(teamsData) {
     const gameLabel = nextGame.gameNumber ? `Gm ${nextGame.gameNumber}` : null;
     MLB_PITCHER_MARKETS.forEach((m) => {
       const def = getMLBDefRank(m.id, nextGame.opp);
-      const rank = def.rank;
-      const tier = mlbDefTier(rank);
+      const rank = def ? def.rank : null;
+      const tier = rank == null ? null : mlbDefTier(rank);
       const values = pitcherGames.map((g) => statValueMLBPitcher(g, m.id));
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = fairFeedLine(values);
@@ -14378,7 +14361,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
-    if (r.rank == null) { if (rankLo > 1 || rankHi < 32) return false; }
+    // A row with no opponent rank is only excluded once the user has actually
+    // narrowed the Defense Rank filter -- an untouched filter must still show
+    // it. `maxRank` is the sport's own team count (30 MLB/NBA, 32 NFL, 15
+    // WNBA); comparing against a hardcoded 32 here meant every unranked MLB
+    // row was filtered out on an untouched filter, emptying the whole feed
+    // whenever /api/mlb-matchups had not answered.
+    if (r.rank == null) { if (rankLo > 1 || rankHi < maxRank) return false; }
     else if (r.rank < rankLo || r.rank > rankHi) return false;
     if (showMatchupDropdown) {
       if (selectedGameIds.size > 0) {
@@ -14395,7 +14384,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return false;
     }
     return true;
-  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter]);
+  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter]);
 
   // Badge shown on the Filters trigger -- counts only the controls tucked
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from

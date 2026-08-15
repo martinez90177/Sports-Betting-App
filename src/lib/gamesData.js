@@ -7,10 +7,12 @@
 // Three one-line logo builders are duplicated here instead -- far cheaper
 // than either refactoring a 14k-line module or debugging a circular import.
 //
-// Everything follows the same shape the rest of the app uses for remote
-// data: render a static mock instantly, then upgrade to the live feed if
-// (and only if) it answers. A failed fetch is silent -- the page keeps the
-// mock rather than showing an error state for something cosmetic.
+// Everything here is live. There used to be a static mock rendered instantly
+// and upgraded in place once the feed answered, which meant the Games page
+// opened on invented matchups and hardcoded team records. Callers now show a
+// loading state until real data lands, and an empty state if there genuinely
+// is none -- a fabricated slate on screen for half a second is still a
+// fabricated slate.
 
 // ---------------------------------------------------------------- logos
 
@@ -148,57 +150,7 @@ export function timeLabel(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-// ------------------------------------------------------------- mock data
-//
-// Records are the real 2026 standings visible in the desktop recording, so
-// the mock renders as an exact match for the reference frames.
 
-const MLB_RECORDS = {
-  CIN: "56-60", WSH: "58-61", NYM: "51-67", PIT: "58-61", ATH: "46-71", BOS: "64-52",
-  TOR: "56-62", PHI: "62-56", ATL: "70-47", NYY: "66-51", LAA: "45-72", MIA: "59-59",
-  MIN: "58-60", MIL: "73-44", CHC: "68-50", KC: "49-69", CLE: "58-60", CWS: "60-56",
-  COL: "46-71", STL: "58-59", BAL: "56-61", TEX: "59-58", DET: "57-60", SF: "49-68",
-  TB: "69-46", SEA: "56-61", LAD: "69-47", ARI: "62-55", HOU: "60-58", SD: "61-57",
-};
-
-// Today's slate, transcribed game-for-game from the desktop recording.
-const MLB_TODAY = [
-  ["CIN", "WSH", "12:15"], ["NYM", "PIT", "13:35"], ["ATH", "BOS", "13:35"],
-  ["TOR", "PHI", "13:35"], ["ATL", "NYY", "13:35"], ["LAA", "MIA", "13:40"],
-  ["MIN", "MIL", "14:10"], ["CHC", "KC", "14:10"], ["CLE", "CWS", "14:10"],
-  ["COL", "STL", "14:15"], ["BAL", "TEX", "14:35"], ["DET", "SF", "16:05"],
-  ["TB", "SEA", "16:10"], ["LAD", "ARI", "16:10"], ["HOU", "SD", "20:20"],
-];
-
-// The other three date tabs reuse the same 30 teams in a rotated pairing so
-// each day has a distinct, full slate without hand-writing 45 more matchups.
-// Purely presentational -- the live fetch replaces all of it.
-function rotatedSlate(offset) {
-  const teams = Object.keys(MLB_RECORDS);
-  const shift = offset * 7;
-  const times = ["13:05", "13:10", "13:40", "16:05", "16:10", "18:40", "19:05", "19:10", "19:15", "19:40", "20:10", "21:40"];
-  const out = [];
-  for (let i = 0; i < 12; i++) {
-    const a = teams[(i * 2 + shift) % teams.length];
-    const b = teams[(i * 2 + 1 + shift) % teams.length];
-    if (a === b) continue;
-    out.push([a, b, times[i]]);
-  }
-  return out;
-}
-
-const WNBA_RECORDS = {
-  ATL: "18-14", CHI: "11-21", CON: "8-24", DAL: "13-19", GS: "17-15", IND: "19-13",
-  LV: "24-8", LA: "14-18", MIN: "26-6", NY: "22-10", PHX: "20-12", POR: "9-23",
-  SEA: "16-16", TOR: "10-22", WSH: "12-20",
-};
-
-const WNBA_SLATES = {
-  0: [["NY", "ATL", "13:00"], ["LV", "PHX", "16:00"], ["MIN", "SEA", "18:00"], ["IND", "CHI", "20:00"]],
-  1: [["CON", "WSH", "13:00"], ["DAL", "LA", "16:30"], ["GS", "POR", "19:00"]],
-  2: [["TOR", "NY", "12:00"], ["PHX", "MIN", "15:00"], ["CHI", "LV", "19:30"], ["SEA", "GS", "22:00"]],
-  3: [["ATL", "IND", "19:00"], ["WSH", "DAL", "20:00"], ["LA", "CON", "19:30"]],
-};
 
 // NFL Week 1, 2026. The season has not been played at the time of writing,
 // so these pairings are placeholders in the correct Thu/Sun/Mon shape --
@@ -216,27 +168,6 @@ const NFL_WEEK1 = [
   ["CHI", "MIN", "2026-09-14T20:15"], ["NYG", "WAS", "2026-09-14T20:15"],
 ];
 
-function makeGame(sport, awayAbbr, homeAbbr, iso, records) {
-  const away = teamInfo(sport, awayAbbr);
-  const home = teamInfo(sport, homeAbbr);
-  const start = new Date(iso).getTime();
-  let status = GAME_STATUS.UPCOMING;
-  if (start - Date.now() <= STARTING_SOON_MS && start > Date.now()) {
-    status = GAME_STATUS.STARTING_SOON;
-  }
-  return {
-    id: `${sport}-${awayAbbr}-${homeAbbr}-${iso}`,
-    sport,
-    startsAt: iso,
-    away: { ...away, record: records ? records[awayAbbr] || "" : "0-0", score: null },
-    home: { ...home, record: records ? records[homeAbbr] || "" : "0-0", score: null },
-    probables: null,
-    status,
-    periodLabel: null,
-    isLive: false,
-    isFinal: false,
-  };
-}
 
 // Local ISO for a given day + "HH:MM", kept in local time so the card time
 // matches the date tab it is filed under.
@@ -247,22 +178,7 @@ function localIso(date, hhmm) {
   return d.toISOString();
 }
 
-export function mockGames(sport, offset) {
-  const date = addDays(new Date(), offset);
-  if (sport === "mlb") {
-    const rows = offset === 0 ? MLB_TODAY : rotatedSlate(offset);
-    return rows.map(([a, h, t]) => makeGame("mlb", a, h, localIso(date, t), MLB_RECORDS));
-  }
-  if (sport === "wnba") {
-    const rows = WNBA_SLATES[((offset % 4) + 4) % 4] || [];
-    return rows.map(([a, h, t]) => makeGame("wnba", a, h, localIso(date, t), WNBA_RECORDS));
-  }
-  return [];
-}
 
-export function mockNflWeekOne() {
-  return NFL_WEEK1.map(([a, h, iso]) => makeGame("nfl", a, h, new Date(iso).toISOString(), null));
-}
 
 // ------------------------------------------------------------- date tabs
 //
@@ -295,8 +211,9 @@ export function buildDateTabs(sport, nflGames) {
 
 // ---------------------------------------------------------- live fetchers
 //
-// Same cache-then-TTL discipline the rest of the app uses. Each returns
-// null on any failure so the caller can simply keep the mock.
+// Same cache-then-TTL discipline the rest of the app uses. Each returns null
+// on any failure, which the caller renders as a loading or empty state rather
+// than substituting anything.
 
 const SLATE_TTL_MS = 15 * 60 * 1000;
 // Live days need much fresher data; the poller also bypasses cache.
@@ -826,7 +743,7 @@ export async function fetchGamecastDetail(game, { force = false } = {}) {
 
 const formCache = new Map();
 
-// Real finals where they are one cheap request away, mock otherwise. MLB
+// Real finals only -- an empty array when there are none. MLB
 // goes through StatsAPI; WNBA/NFL use ESPN's team schedule, which accepts
 // the team abbreviation directly in the path (no id map needed).
 export async function fetchRecentForm(sport, abbr, n) {

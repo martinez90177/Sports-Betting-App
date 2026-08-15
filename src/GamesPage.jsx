@@ -3,7 +3,7 @@ import MatchupPage from "./MatchupPage.jsx";
 import GamecastPage from "./GamecastPage.jsx";
 import {
   SPORTS, teamLogo, dayKey, dayLabel, timeLabel, buildDateTabs,
-  mockGames, mockNflWeekOne, fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate,
+  fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate,
   GAME_STATUS, statusSortKey, isActiveStatus, opensGamecast,
 } from "./lib/gamesData.js";
 
@@ -392,8 +392,13 @@ export default function GamesPage({ onViewProps }) {
 
   // NFL is a week competition, so its whole Week 1 slate is loaded once and
   // the date tabs are derived from the kickoff days it actually contains.
-  const [nflWeek, setNflWeek] = useState(() => mockNflWeekOne());
-  const [dayGames, setDayGames] = useState([]);
+  // null means "not loaded yet", [] means "loaded, genuinely no games". Both
+  // used to be filled with a fabricated slate first -- mockNflWeekOne() and
+  // mockGames() -- so the page opened on invented matchups and hardcoded
+  // team records, and only swapped to real data once the fetch answered. A
+  // brief flash of invented records is still invented records on screen.
+  const [nflWeek, setNflWeek] = useState(null);
+  const [dayGames, setDayGames] = useState(null);
   const [pickedKey, setPickedKey] = useState(null);
   const pollRef = useRef(null);
 
@@ -416,12 +421,7 @@ export default function GamesPage({ onViewProps }) {
       });
     }
     if (!key) return Promise.resolve(null);
-    if (!silent) {
-      const offset = Math.round(
-        (new Date(`${key}T12:00:00`) - new Date(`${dayKey(new Date())}T12:00:00`)) / 86400000
-      );
-      setDayGames(mockGames(s, offset));
-    }
+    if (!silent) setDayGames(null);   // loading, not a placeholder slate
     const load = s === "mlb" ? fetchMlbSlate(key, opts) : fetchWnbaSlate(key, opts);
     return load.then((live) => {
       if (live) setDayGames(live);
@@ -436,15 +436,14 @@ export default function GamesPage({ onViewProps }) {
     return () => { cancelled = true; };
   }, [sport]);
 
-  // Mock first so the list never flashes empty, then upgrade in place if the
-  // live feed answers -- the pattern the rest of the app uses for remote data.
+  // Loading state first, then whatever the live feed actually returns. An
+  // empty array is a real answer ("no games today"); null is "still asking".
   useEffect(() => {
     if (sport === "nfl" || !activeKey) return undefined;
     let cancelled = false;
-    const offset = Math.round((new Date(`${activeKey}T12:00:00`) - new Date(`${dayKey(new Date())}T12:00:00`)) / 86400000);
-    setDayGames(mockGames(sport, offset));
+    setDayGames(null);
     const load = sport === "mlb" ? fetchMlbSlate(activeKey) : fetchWnbaSlate(activeKey);
-    load.then((live) => { if (!cancelled && live) setDayGames(live); });
+    load.then((live) => { if (!cancelled) setDayGames(live || []); });
     return () => { cancelled = true; };
   }, [sport, activeKey]);
 
@@ -464,8 +463,8 @@ export default function GamesPage({ onViewProps }) {
     };
 
     const base = sport === "nfl"
-      ? nflWeek.filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
-      : dayGames;
+      ? (nflWeek || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
+      : (dayGames || []);
     const needsPoll = base.some((g) => isActiveStatus(g.status));
 
     clearPoll();
@@ -476,10 +475,11 @@ export default function GamesPage({ onViewProps }) {
     return clearPoll;
   }, [sport, activeKey, dayGames, nflWeek, loadSlate]);
 
+  const slateLoading = (sport === "nfl" ? nflWeek : dayGames) === null;
   const games = useMemo(() => {
     const base = sport === "nfl"
-      ? nflWeek.filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
-      : dayGames;
+      ? (nflWeek || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
+      : (dayGames || []);
     const q = query.trim().toLowerCase();
     let list = base;
     if (q) {
@@ -510,7 +510,7 @@ export default function GamesPage({ onViewProps }) {
   // pull the game out from under an open page.
   const selected = useMemo(() => {
     if (!selectedId) return null;
-    const base = sport === "nfl" ? nflWeek : dayGames;
+    const base = (sport === "nfl" ? nflWeek : dayGames) || [];
     return base.find((g) => g.id === selectedId) || selectedSnap.current;
   }, [selectedId, sport, nflWeek, dayGames]);
 
@@ -621,9 +621,16 @@ export default function GamesPage({ onViewProps }) {
             onSelect={(picked) => { selectedSnap.current = picked; setSelectedId(picked.id); }}
           />
         ))}
+        {/* Three distinct states, because they mean different things: still
+             fetching, fetched and empty, and filtered to nothing. The page
+             used to show a fabricated slate during the first of these. */}
         {games.length === 0 && (
           <div style={{ padding: 28, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-            {query ? "No games match that search." : "No games scheduled for this date."}
+            {query
+              ? "No games match that search."
+              : slateLoading
+              ? "Loading today's slate…"
+              : "No games scheduled for this date."}
           </div>
         )}
       </div>
