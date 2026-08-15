@@ -8651,6 +8651,13 @@ const statValueMLBPitcher = (g, market) => {
 // general public knowledge about park dimensions/altitude/etc, not live
 // Statcast park factors, so treat the resulting % swings as a directional
 // research signal rather than a precise model.
+//
+// ENTERED 2026-08-15. Hand-maintained and never refreshed: unlike everything
+// else on this page these do not come from a feed, so they drift silently as
+// parks are altered and league offence moves. The date is here so the drift is
+// at least visible -- re-check them against a published park-factor table each
+// season, and update it when you do.
+const MLB_PARK_FACTORS_ENTERED = "2026-08-15";
 const MLB_PARK_FACTORS = {
   ARI: { hr: 102, runs: 100, single: 100 }, ATL: { hr: 104, runs: 102, single: 99 },
   BAL: { hr: 88, runs: 95, single: 102 }, BOS: { hr: 95, runs: 104, single: 108 },
@@ -8961,6 +8968,12 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLab
           <span className="mono" style={{ color: statColor(singlePct) }}>1B {signed(singlePct)}</span>
           <span className="status-pill" style={{ color: verdictColor }}>{verdict}</span>
         </span>
+        {/* Park factors are the one number in this bar with no feed behind
+             them, so they carry the date they were entered by hand. Weather
+             above is live from the MLB Stats API; these are not. */}
+        <span className="mono" style={{ fontSize: 9.5, color: "var(--dim)", opacity: 0.85 }}>
+          Park factors entered {MLB_PARK_FACTORS_ENTERED} · hand-maintained, not a live feed
+        </span>
       </div>
     </div>
   );
@@ -9230,178 +9243,32 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher, values }
   );
 }
 
-// ---------- Matchup Analyzer mock advanced metrics ----------
-// The MLB Stats API (used everywhere else on this page) has no public
-// Statcast-style percentile/pitch-mix endpoint, so these sections are
-// deterministic mock data seeded off mlbId/team + a split/sample key --
-// same player+split always renders the same numbers (no reshuffling on
-// re-render), same pattern as TEAM_DEF's seeded mock defensive ratings
-// near the top of this file.
 
-const PITCHER_PCT_STATS = [
-  { key: "ba", label: "BA", range: [0.18, 0.32], fmt: (v) => v.toFixed(3).replace(/^0/, "") },
-  { key: "bbPct", label: "BB%", range: [4, 13], fmt: (v) => `${v.toFixed(1)}%` },
-  { key: "chasePct", label: "Chase%", range: [22, 38], fmt: (v) => `${v.toFixed(1)}%` },
-  { key: "whiffPct", label: "Whiff%", range: [17, 34], fmt: (v) => `${v.toFixed(1)}%` },
-  { key: "kPct", label: "K%", range: [14, 32], fmt: (v) => `${v.toFixed(1)}%` },
-  { key: "contactPct", label: "Contact%", range: [64, 84], fmt: (v) => `${v.toFixed(1)}%` },
-  { key: "zonePct", label: "Zone%", range: [40, 52], fmt: (v) => `${v.toFixed(1)}%` },
-  { key: "swstrPct", label: "SwStr%", range: [7, 17], fmt: (v) => `${v.toFixed(1)}%` },
-  { key: "xba", label: "xBA", range: [0.2, 0.29], fmt: (v) => v.toFixed(3).replace(/^0/, "") },
-  { key: "xwoba", label: "xwOBA", range: [0.27, 0.36], fmt: (v) => v.toFixed(3).replace(/^0/, "") },
-];
 
-function pitcherPercentileRow(pitcher, sideKey, statDef) {
-  const rng = seededRng(pitcher.mlbId, sideKey, statDef.key);
-  const pct = Math.max(1, Math.min(99, Math.round(rng() * 98) + 1));
-  const [lo, hi] = statDef.range;
-  const value = lo + (hi - lo) * rng();
-  return { value, pct };
-}
-
-const PITCH_TYPES = [
-  { key: "FF", name: "Fastball", velo: [91, 97] },
-  { key: "SI", name: "Sinker", velo: [90, 96] },
-  { key: "FC", name: "Cutter", velo: [85, 91] },
-  { key: "SL", name: "Slider", velo: [80, 87] },
-  { key: "CU", name: "Curveball", velo: [74, 81] },
-  { key: "CH", name: "Changeup", velo: [82, 88] },
-  { key: "FS", name: "Splitter", velo: [83, 89] },
-  { key: "EP", name: "Eephus", velo: [55, 65] },
-];
 
 // A deterministic 4-6 pitch subset per pitcher, with usage% summing to
 // ~100 and Overall + vs-RHP whiff/BA/SLG/wOBA (+ percentile) per pitch.
-function pitcherPitchMix(pitcher) {
-  const rng = seededRng(pitcher.mlbId, "pitch_mix");
-  const shuffled = PITCH_TYPES.map((pt) => ({ pt, r: rng() })).sort((a, b) => a.r - b.r).map((x) => x.pt);
-  const n = 4 + Math.floor(rng() * 3);
-  const chosen = shuffled.slice(0, n);
-  const weights = chosen.map(() => 0.15 + rng() * 0.85);
-  const totalW = weights.reduce((a, b) => a + b, 0);
-  const totalPC = Math.round(900 + rng() * 2500);
-
-  const mkSide = (pt, sideKey) => {
-    const r2 = seededRng(pitcher.mlbId, "pitch", pt.key, sideKey);
-    const whiff = 8 + r2() * 35;
-    const whiffPct = Math.max(1, Math.min(99, Math.round(r2() * 98) + 1));
-    const ba = 0.15 + r2() * 0.22;
-    const baPct = Math.max(1, Math.min(99, Math.round(r2() * 98) + 1));
-    const slg = ba + r2() * 0.35;
-    const slgPct = Math.max(1, Math.min(99, Math.round(r2() * 98) + 1));
-    const woba = 0.22 + r2() * 0.22;
-    const wobaPct = Math.max(1, Math.min(99, Math.round(r2() * 98) + 1));
-    return { whiff, whiffPct, ba, baPct, slg, slgPct, woba, wobaPct };
-  };
-
-  return chosen
-    .map((pt, i) => {
-      const usage = weights[i] / totalW;
-      const pc = Math.round(totalPC * usage);
-      const pf = Math.round(pc * (2.2 + rng() * 1.6));
-      const velo = pt.velo[0] + rng() * (pt.velo[1] - pt.velo[0]);
-      return {
-        key: pt.key,
-        name: pt.name,
-        velo,
-        pc,
-        pf,
-        usage,
-        overall: mkSide(pt, "overall"),
-        vsRHP: mkSide(pt, "vsRHP"),
-      };
-    })
-    .sort((a, b) => b.usage - a.usage);
-}
 
 // Per-batter plate-discipline mock stats for the Expected Opposing Lineup
 // grid, keyed by batter mlbId + a hand-split/sample key so switching the
 // split filter changes the numbers but re-selecting the same split/batter
 // doesn't reshuffle them.
-function expectedLineupRow(batter, splitKey) {
-  const rng = seededRng(batter.mlbId, splitKey);
-  return {
-    pa: Math.round(120 + rng() * 280),
-    kPct: 12 + rng() * 22,
-    chasePct: 18 + rng() * 24,
-    bbPct: 4 + rng() * 12,
-    whiffPct: 10 + rng() * 26,
-    contPct: 62 + rng() * 26,
-    zonePct: 40 + rng() * 16,
-    cswPct: 20 + rng() * 18,
-    swstrPct: 6 + rng() * 16,
-  };
-}
 
 // Simple average of the same per-batter rows -- used when the "Show
 // pitcher vs team splits" toggle collapses the lineup grid to one row.
-function teamAggregateSplit(battingRoster, splitKey) {
-  const batters = (battingRoster?.players || []).filter((p) => p.pos !== "SP");
-  if (!batters.length) return null;
-  const rows = batters.map((b) => expectedLineupRow(b, splitKey));
-  const avg = (key) => rows.reduce((a, r) => a + r[key], 0) / rows.length;
-  return {
-    pa: Math.round(avg("pa")),
-    kPct: avg("kPct"),
-    chasePct: avg("chasePct"),
-    bbPct: avg("bbPct"),
-    whiffPct: avg("whiffPct"),
-    contPct: avg("contPct"),
-    zonePct: avg("zonePct"),
-    cswPct: avg("cswPct"),
-    swstrPct: avg("swstrPct"),
-  };
-}
 
-const RELIEVER_FIRST = ["K.", "C.", "J.", "T.", "O.", "S.", "M.", "D.", "R.", "A.", "B.", "L.", "N.", "G.", "W."];
-const RELIEVER_LAST = [
-  "Backhus", "Shugart", "Bowlan", "Duran", "Mayza", "Kerkering", "Alvarado", "Johnson", "Reyes", "Foster",
-  "Kimbrel", "Hicks", "Diekman", "Santos", "Walker", "Cruz", "Rivera", "Holmes", "Bednar", "Pagan",
-];
-
-// Mock bullpen roster for a team -- MLB_TEAM_ROSTERS only models the
-// starting 9 + SP, so relievers are generated deterministically per team
-// abbreviation rather than tied to real mlbIds.
-function teamBullpen(teamAbbr) {
-  const rng = seededRng(teamAbbr, "bullpen");
-  const n = 7 + Math.floor(rng() * 2);
-  const usedLast = new Set();
-  const relievers = [];
-  for (let i = 0; i < n; i++) {
-    let last;
-    do { last = RELIEVER_LAST[Math.floor(rng() * RELIEVER_LAST.length)]; } while (usedLast.has(last) && usedLast.size < RELIEVER_LAST.length);
-    usedLast.add(last);
-    const first = RELIEVER_FIRST[Math.floor(rng() * RELIEVER_FIRST.length)];
-    const throws = rng() < 0.32 ? "LHP" : "RHP";
-    relievers.push({
-      id: `${teamAbbr}_bp_${i}`,
-      name: `${first}${last}`,
-      throws,
-      pcL3: Math.round(rng() * 75),
-      restDays: Math.floor(rng() * 5),
-      kPct: 16 + rng() * 24,
-      bbPct: 4 + rng() * 15,
-      era: 1.4 + rng() * 5.2,
-      whip: 0.85 + rng() * 1.05,
-    });
-  }
-  return relievers.sort((a, b) => b.pcL3 - a.pcL3);
-}
-
-// Green/amber/red badge convention shared with the rest of the page (e.g.
-// the def-rank tiers above) -- >=70th percentile is good, <=30th is bad.
-function pctBadgeColor(pct) {
-  return pct >= 70 ? "var(--green)" : pct <= 30 ? "var(--red)" : "var(--neutral-badge-bg)";
-}
 
 // Prop detail tabs shown above the chart/table for an individual MLB
-// player -- Graph is the existing chart+ledger, the other three all draw on
-// MLBMatchupAnalyzer's shared pitcher/batter selection (Matchup, Lineup) or
-// the bullpen lists already built in MLBPropsPage (Bullpen).
+// player -- Graph is the existing chart+ledger; Matchup and Lineup both draw
+// on MLBMatchupAnalyzer's shared pitcher/batter selection.
+//
+// The Bullpen tab was removed with the mock data behind it: teamBullpen()
+// generated the relievers themselves (an initial plus a surname, from two
+// hardcoded pools) along with their ERA, WHIP, K%, BB% and rest days. There
+// were no real players in that table to keep.
 const MLB_DETAIL_TABS = [
   { id: "matchup", label: "Matchup" },
   { id: "lineup", label: "Lineup" },
-  { id: "bullpen", label: "Bullpen" },
 ];
 
 // The overlay those tabs open into. These panels used to render inline at the
@@ -9658,31 +9525,12 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pick?.nonce]);
 
-  // Hand-split / sample-size toggle state for the two Percentile Rankings
-  // columns and the Expected Opposing Lineup grid -- purely UI filters that
-  // key into the seeded mock generators above, so changing them changes
-  // the numbers shown without needing new state elsewhere.
-  const [leftSplit, setLeftSplit] = useState("Overall");
-  const [leftSample, setLeftSample] = useState("All");
-  const [rightSplit, setRightSplit] = useState("vs RHP");
-  const [rightSample, setRightSample] = useState("All");
-  const [lineupSample, setLineupSample] = useState("All");
-  const [showTeamSplits, setShowTeamSplits] = useState(false);
-
-  // `pitcher` is undefined whenever neither roster has a starter yet -- the
-  // bail-out below renders a friendly message for exactly that case, but this
-  // memo runs first, so reading .mlbId eagerly threw before the guard could
-  // ever fire and took the whole tab down instead.
-  const pitchMix = useMemo(() => (pitcher ? pitcherPitchMix(pitcher) : []), [pitcher?.mlbId]);
-  const lineupSplitKey = `${rightSplit}_${lineupSample}`;
-  const lineupRows = useMemo(
-    () => batterOptions.map((b) => ({ batter: b, ...expectedLineupRow(b, lineupSplitKey) })),
-    [batterOptions, lineupSplitKey]
-  );
-  const teamSplitRow = useMemo(
-    () => teamAggregateSplit(battingRoster, lineupSplitKey),
-    [battingRoster, lineupSplitKey]
-  );
+  // The lineup is now just the batting order: who bats, in what slot, and
+  // whether they are available. The plate-discipline columns that used to sit
+  // beside each name (PA, K%, Chase%, BB%, Whiff%, Cont%, Zone%, CSW%, SwStr%)
+  // were all seeded RNG off mlbId -- including PA, so even the sample size was
+  // invented -- and have been removed rather than relabelled.
+  const lineupRows = useMemo(() => batterOptions.map((b) => ({ batter: b })), [batterOptions]);
   const [h2h, setH2h] = useState(undefined);
   React.useEffect(() => {
     if (!pitcher || !batter) { setH2h(null); return; }
@@ -9780,29 +9628,19 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
       )}
     </div>
 
-    {section === "matchup" && (
-      <>
-        <PercentileRankingsPanel
-          pitcher={pitcher}
-          leftSplit={leftSplit} setLeftSplit={setLeftSplit}
-          leftSample={leftSample} setLeftSample={setLeftSample}
-          rightSplit={rightSplit} setRightSplit={setRightSplit}
-          rightSample={rightSample} setRightSample={setRightSample}
-        />
-
-        <PitchTypePanel pitcher={pitcher} pitchMix={pitchMix} />
-      </>
-    )}
+    {/* The Percentile Rankings and Pitch Mix panels used to render here. Every
+         number in both was generated (seededRng off mlbId): the percentile
+         grid's ten stats, the pitch types, their usage and velocity, and the
+         per-pitch splits. MLB's Stats API has no public Statcast endpoint, so
+         there is nothing real to put in their place -- removed rather than
+         labelled. What remains in this section is the pitcher-vs-batter head
+         to head, which is real (fetchMLBH2H). */}
 
     {section === "lineup" && (
       <ExpectedLineupPanel
         battingRoster={battingRoster}
         lineupRows={lineupRows}
         statusOf={batterStatusOf}
-        teamSplitRow={teamSplitRow}
-        splitLabel={rightSplit}
-        sample={lineupSample} setSample={setLineupSample}
-        showTeamSplits={showTeamSplits} setShowTeamSplits={setShowTeamSplits}
         selectedBatterId={batter.id}
         onSelectBatter={setBatterId}
       />
@@ -9812,324 +9650,96 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
   );
 }
 
-// ---------- Opposing Bullpen ----------
-// Workload + K%/BB% for the bullpen on the other side of the ball from
-// whichever player's props are being viewed -- teamBullpen()'s seeded mock
-// data (see comment where it's defined above) sorted by recent workload,
-// same "most relevant reliever first" ordering the batting-order/roster
-// panels use for their own bullpen lists.
-function BullpenAnalyzerPanel({ teamLabel, bullpen }) {
-  if (!bullpen || !bullpen.length) {
-    return (
-      <div className="roster-panel" style={{ maxWidth: 720, margin: "0 auto", textAlign: "center", color: "var(--dim)", fontSize: 13, padding: "24px 16px" }}>
-        Opposing bullpen isn't available yet — the opponent's roster hasn't loaded, or this team doesn't have relievers modeled.
-      </div>
-    );
-  }
-  const kColor = (v) => (v >= 25 ? "var(--green)" : v <= 17 ? "var(--red)" : "var(--text)");
-  const bbColor = (v) => (v <= 7 ? "var(--green)" : v >= 11 ? "var(--red)" : "var(--text)");
-  const restColor = (v) => (v >= 2 ? "var(--green)" : v === 0 ? "var(--red)" : "var(--text)");
-
-  return (
-    <div className="roster-panel" style={{ maxWidth: 720, margin: "0 auto", overflowX: "auto" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
-        Opposing Bullpen
-      </div>
-      <div style={{ fontSize: 10.5, color: "var(--dim)", marginBottom: 14 }}>
-        {teamLabel || "Bullpen"} · sorted by recent workload
-      </div>
-      <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, minWidth: 560 }}>
-        <thead>
-          <tr style={{ color: "var(--dim)", fontSize: 10 }}>
-            <th style={{ textAlign: "left", padding: "4px 6px" }}>RELIEVER</th>
-            <th style={{ textAlign: "center", padding: "4px 6px" }}>THROWS</th>
-            <th style={{ textAlign: "center", padding: "4px 6px" }}>REST</th>
-            <th style={{ textAlign: "center", padding: "4px 6px" }}>PC L3</th>
-            <th style={{ textAlign: "center", padding: "4px 6px" }}>K%</th>
-            <th style={{ textAlign: "center", padding: "4px 6px" }}>BB%</th>
-            <th style={{ textAlign: "center", padding: "4px 6px" }}>ERA</th>
-            <th style={{ textAlign: "center", padding: "4px 6px" }}>WHIP</th>
-          </tr>
-        </thead>
-        <tbody>
-          {bullpen.map((p) => (
-            <tr key={p.id} style={{ borderTop: "1px solid var(--line)" }}>
-              <td className="oswald" style={{ padding: "7px 6px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap" }}>{p.name}</td>
-              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--dim)" }}>{p.throws}</td>
-              <td style={{ textAlign: "center", padding: "7px 6px", fontWeight: 700, color: restColor(p.restDays) }}>{p.restDays}d</td>
-              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--dim)" }}>{p.pcL3}</td>
-              <td style={{ textAlign: "center", padding: "7px 6px", fontWeight: 700, color: kColor(p.kPct) }}>{p.kPct.toFixed(1)}%</td>
-              <td style={{ textAlign: "center", padding: "7px 6px", fontWeight: 700, color: bbColor(p.bbPct) }}>{p.bbPct.toFixed(1)}%</td>
-              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--text)" }}>{p.era.toFixed(2)}</td>
-              <td style={{ textAlign: "center", padding: "7px 6px", color: "var(--text)" }}>{p.whip.toFixed(2)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 // ---------- Percentile Rankings ----------
 // Two columns of the same 10 stats under different hand-split/sample
 // filters (mirrors the reference screenshot's "Overall" vs "vs RHP"
 // layout) -- both are about the selected pitcher only.
-function PercentileRankingsPanel({ pitcher, leftSplit, setLeftSplit, leftSample, setLeftSample, rightSplit, setRightSplit, rightSample, setRightSample }) {
-  const HandSelect = ({ value, onChange }) => (
-    <select className="select" value={value} onChange={(e) => onChange(e.target.value)} style={{ fontSize: 11, padding: "3px 8px" }}>
-      {["Overall", "vs LHP", "vs RHP"].map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  );
-  const SamplePills = ({ options, value, onChange }) => (
-    <div style={{ display: "flex", gap: 4 }}>
-      {options.map((o) => (
-        <div key={o} role="button" onClick={() => onChange(o)} className="mono" style={{
-          cursor: "pointer", padding: "2px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700,
-          border: `1px solid ${value === o ? "var(--amber)" : "var(--line)"}`,
-          background: value === o ? "var(--amber-dim)" : "var(--panel2)",
-          color: value === o ? "var(--amber)" : "var(--dim)",
-        }}>
-          {o}
-        </div>
-      ))}
-    </div>
-  );
-
-  return (
-    <div className="roster-panel">
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-        Percentile rankings
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>Hand split</span>
-          <HandSelect value={leftSplit} onChange={setLeftSplit} />
-          {/* The pitch counts that sat here were generated (seededRng, 400-3000)
-               -- an invented sample size attached to stats that have no sample
-               at all, which read as more rigorous than the app's real numbers.
-               Removed outright rather than replaced: no number beats a made-up
-               one. */}
-          <SamplePills options={["L3", "L6", "L10", "All"]} value={leftSample} onChange={setLeftSample} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <SamplePills options={["L10", "L20", "L30", "All"]} value={rightSample} onChange={setRightSample} />
-          <HandSelect value={rightSplit} onChange={setRightSplit} />
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>Hand split</span>
-        </div>
-      </div>
-
-      {PITCHER_PCT_STATS.map((statDef) => {
-        const left = pitcherPercentileRow(pitcher, `${leftSplit}_${leftSample}`, statDef);
-        const right = pitcherPercentileRow(pitcher, `${rightSplit}_${rightSample}`, statDef);
-        const highlight = statDef.key === "xba" || statDef.key === "xwoba";
-        const bubbleColor = highlight ? "var(--amber)" : "var(--neutral-badge-bg)";
-        return (
-          <div key={statDef.key} style={{ display: "grid", gridTemplateColumns: "1fr 110px 1fr", alignItems: "center", gap: 12, marginBottom: 10 }}>
-            <PercentileTrack pct={left.pct} color={bubbleColor} valueLabel={statDef.fmt(left.value)} align="left" />
-            <div style={{ textAlign: "center", fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{statDef.label}</div>
-            <PercentileTrack pct={right.pct} color={bubbleColor} valueLabel={statDef.fmt(right.value)} align="right" />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // One horizontal track + percentile bubble, mirrored for the left/right
 // columns (value label sits on the outer edge, bubble position = pct%).
-function PercentileTrack({ pct, color, valueLabel, align }) {
-  const bubbleLeft = align === "left" ? `${pct}%` : `${100 - pct}%`;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexDirection: align === "left" ? "row" : "row-reverse" }}>
-      <span className="mono" style={{ fontSize: 12, color: "var(--text)", width: 52, textAlign: align === "left" ? "left" : "right" }}>{valueLabel}</span>
-      <div style={{ position: "relative", flex: 1, height: 4, background: "var(--line)", borderRadius: 2 }}>
-        <div
-          className="mono"
-          style={{
-            position: "absolute", top: "50%", [align === "left" ? "left" : "right"]: bubbleLeft,
-            transform: "translate(50%, -50%)",
-            width: 22, height: 22, borderRadius: "50%", background: color,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 10, fontWeight: 800, color: "#08131c",
-          }}
-        >
-          {pct}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ---------- By pitch type ----------
-function PitchTypePanel({ pitcher, pitchMix }) {
-  const cell = (val, fmt, pct) => (
-    <div>
-      <div className="mono" style={{
-        display: "inline-block", minWidth: 44, padding: "2px 6px", borderRadius: 5, fontSize: 11.5, fontWeight: 700,
-        background: pctBadgeColor(pct), color: "#08131c",
-      }}>
-        {fmt(val)}
-      </div>
-      <div className="mono" style={{ fontSize: 9.5, color: "var(--dim)", marginTop: 1 }}>{pct}</div>
-    </div>
-  );
-  const pctFmt = (v) => `${v.toFixed(1)}%`;
-  const rateFmt = (v) => v.toFixed(3).replace(/^0/, "");
-
-  return (
-    <div className="roster-panel" style={{ overflowX: "auto" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-        By pitch type
-      </div>
-      <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 780 }}>
-        <thead>
-          <tr style={{ color: "var(--dim)", fontSize: 10 }}>
-            {["WHIFF", "BA", "SLG", "WOBA", "PC(%)", "PITCH (MPH)", "PF(%)", "WOBA ", "SLG ", "BA ", "WHIFF "].map((h, i) => (
-              <th key={i} style={{ textAlign: "center", padding: "4px 6px", fontWeight: 700 }}>{h.trim()}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {pitchMix.map((row) => (
-            <tr key={row.key} style={{ borderTop: "1px solid var(--line)" }}>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.overall.whiff, pctFmt, row.overall.whiffPct)}</td>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.overall.ba, rateFmt, row.overall.baPct)}</td>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.overall.slg, rateFmt, row.overall.slgPct)}</td>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.overall.woba, rateFmt, row.overall.wobaPct)}</td>
-              <td style={{ textAlign: "center", padding: "6px", color: "var(--text)" }}>{row.pc} ({Math.round(row.usage * 100)}%)</td>
-              <td className="oswald" style={{ textAlign: "center", padding: "6px", fontWeight: 700, color: "var(--text)" }}>
-                {row.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>{row.velo.toFixed(0)}</span>
-              </td>
-              <td style={{ textAlign: "center", padding: "6px", color: "var(--text)" }}>{row.pf} ({Math.round((row.pf / (pitchMix.reduce((a, r) => a + r.pf, 0) || 1)) * 100)}%)</td>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.vsRHP.woba, rateFmt, row.vsRHP.wobaPct)}</td>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.vsRHP.slg, rateFmt, row.vsRHP.slgPct)}</td>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.vsRHP.ba, rateFmt, row.vsRHP.baPct)}</td>
-              <td style={{ textAlign: "center", padding: "6px" }}>{cell(row.vsRHP.whiff, pctFmt, row.vsRHP.whiffPct)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 // ---------- Expected Opposing Lineup ----------
-function ExpectedLineupPanel({ battingRoster, lineupRows, teamSplitRow, splitLabel, sample, setSample, showTeamSplits, setShowTeamSplits, selectedBatterId, onSelectBatter, statusOf }) {
-  const cols = [
-    ["pa", "PA", (v) => v],
-    ["kPct", "K%", (v) => `${v.toFixed(1)}%`],
-    ["chasePct", "CHASE%", (v) => `${v.toFixed(1)}%`],
-    ["bbPct", "BB%", (v) => `${v.toFixed(1)}%`],
-    ["whiffPct", "WHIFF%", (v) => `${v.toFixed(1)}%`],
-    ["contPct", "CONT%", (v) => `${v.toFixed(1)}%`],
-    ["zonePct", "ZONE%", (v) => `${v.toFixed(1)}%`],
-    ["cswPct", "CSW%", (v) => `${v.toFixed(1)}%`],
-    ["swstrPct", "SWSTR%", (v) => `${v.toFixed(1)}%`],
-  ];
-  const pctColor = (key, v) => {
-    if (key === "pa") return "var(--text)";
-    const higherIsGoodForPitcher = key === "kPct" || key === "chasePct" || key === "whiffPct" || key === "cswPct" || key === "swstrPct";
-    const good = higherIsGoodForPitcher ? v >= 24 : v <= 8;
-    const bad = higherIsGoodForPitcher ? v <= 14 : v >= 12;
-    return good ? "var(--green)" : bad ? "var(--red)" : "var(--text)";
-  };
-
+// The batting order, and nothing that was invented.
+//
+// This table used to carry nine columns per batter -- PA, K%, Chase%, BB%,
+// Whiff%, Cont%, Zone%, CSW%, SwStr% -- every one of them seeded RNG off the
+// batter's mlbId. PA went with them: a generated plate-appearance count is a
+// generated sample size, which is worse than a generated rate, not better.
+//
+// What is real here is the batting order itself (reconciled against MLB's
+// active roster and the posted lineup when one exists), each batter's
+// identity, and their availability. That is what the panel shows now. The
+// pitcher-vs-team splits toggle and the L10/L20/L30 sample pills went too:
+// both only ever switched between different seeds of the same mock.
+function ExpectedLineupPanel({ battingRoster, lineupRows, selectedBatterId, onSelectBatter, statusOf }) {
   return (
     <div className="roster-panel" style={{ overflowX: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
         <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Expected Opposing Lineup
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--dim)", cursor: "pointer" }}>
-            <input type="checkbox" checked={showTeamSplits} onChange={(e) => setShowTeamSplits(e.target.checked)} />
-            Show pitcher vs team splits
-          </label>
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>Hand split {splitLabel}</span>
-          <div style={{ display: "flex", gap: 4 }}>
-            {["L10", "L20", "L30", "All"].map((o) => (
-              <div key={o} role="button" onClick={() => setSample(o)} className="mono" style={{
-                cursor: "pointer", padding: "2px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700,
-                border: `1px solid ${sample === o ? "var(--amber)" : "var(--line)"}`,
-                background: sample === o ? "var(--amber-dim)" : "var(--panel2)",
-                color: sample === o ? "var(--amber)" : "var(--dim)",
-              }}>
-                {o}
-              </div>
-            ))}
-          </div>
+        <div style={{ fontSize: 10.5, color: "var(--dim)" }}>
+          {battingRoster?.label || ""}
         </div>
       </div>
+      <div style={{ fontSize: 10.5, color: "var(--dim)", marginBottom: 12 }}>
+        Batting order and availability. Pick a batter to load their head-to-head against this pitcher.
+      </div>
 
-      <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, minWidth: 640 }}>
+      <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5, minWidth: 260 }}>
         <thead>
           <tr style={{ color: "var(--dim)", fontSize: 10 }}>
-            <th style={{ textAlign: "left", padding: "4px 6px" }}>{showTeamSplits ? "TEAM" : "#"}</th>
-            {!showTeamSplits && <th style={{ textAlign: "left", padding: "4px 6px" }}>BATTER</th>}
-            {cols.map(([key, label]) => <th key={key} style={{ textAlign: "center", padding: "4px 6px", fontWeight: 700 }}>{label}</th>)}
+            <th style={{ textAlign: "left", padding: "4px 6px" }}>#</th>
+            <th style={{ textAlign: "left", padding: "4px 6px" }}>BATTER</th>
+            <th style={{ textAlign: "left", padding: "4px 6px" }}>POS</th>
           </tr>
         </thead>
         <tbody>
-          {showTeamSplits ? (
-            teamSplitRow && (
-              <tr style={{ borderTop: "1px solid var(--line)" }}>
-                <td className="oswald" style={{ padding: "8px 6px", fontWeight: 700, color: "var(--text)" }}>{battingRoster?.label || "Team"}</td>
-                {cols.map(([key, , fmt]) => (
-                  <td key={key} style={{ textAlign: "center", padding: "8px 6px", color: pctColor(key, teamSplitRow[key]), fontWeight: 700 }}>
-                    {fmt(teamSplitRow[key])}
-                  </td>
-                ))}
+          {lineupRows.map((row, i) => {
+            const selected = row.batter.id === selectedBatterId;
+            const batterStatus = statusOf && statusOf(row.batter);
+            const nameColor = batterStatus === "out" ? "var(--status-out, #ef5b5b)"
+              : batterStatus === "questionable" ? "var(--status-questionable, #e8b13a)"
+              : "var(--text)";
+            return (
+              <tr
+                key={row.batter.id}
+                role="button"
+                onClick={() => onSelectBatter(row.batter.id)}
+                style={{
+                  borderTop: "1px solid var(--line)", cursor: "pointer",
+                  background: selected ? "var(--amber-dim)" : "transparent",
+                }}
+              >
+                <td className="mono" style={{ padding: "7px 6px", color: "var(--dim)" }}>{i + 1}</td>
+                {/* Availability lives in the name itself rather than on an
+                     avatar -- same three states as the dot, same three
+                     colours. A selected row keeps the accent so selection
+                     stays legible; an unknown player is left unstyled, never
+                     coloured as available. */}
+                <td className="oswald" style={{ padding: "7px 6px", fontWeight: 700, whiteSpace: "nowrap", color: selected ? "var(--amber)" : nameColor }}>
+                  {row.batter.name}
+                  {batterStatus === "out" && (
+                    <span
+                      className="mono"
+                      title="Out — not available for this game"
+                      style={{
+                        marginLeft: 6, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.06em",
+                        padding: "1px 4px", borderRadius: 3, verticalAlign: "middle",
+                        color: "var(--status-out, #ef5b5b)", border: "1px solid var(--status-out, #ef5b5b)",
+                      }}
+                    >
+                      OUT
+                    </span>
+                  )}
+                </td>
+                <td style={{ padding: "7px 6px", color: "var(--dim)" }}>{row.batter.pos || ""}</td>
               </tr>
-            )
-          ) : (
-            lineupRows.map((row, i) => {
-              const selected = row.batter.id === selectedBatterId;
-              const batterStatus = statusOf && statusOf(row.batter);
-              const nameColor = batterStatus === "out" ? "var(--status-out, #ef5b5b)"
-                : batterStatus === "questionable" ? "var(--status-questionable, #e8b13a)"
-                : "var(--text)";
-              return (
-                <tr
-                  key={row.batter.id}
-                  role="button"
-                  onClick={() => onSelectBatter(row.batter.id)}
-                  style={{
-                    borderTop: "1px solid var(--line)", cursor: "pointer",
-                    background: selected ? "var(--amber-dim)" : "transparent",
-                  }}
-                >
-                  <td className="mono" style={{ padding: "6px", color: "var(--dim)" }}>{i + 1}</td>
-                  {/* Availability lives in the name itself here rather than on
-                       an avatar: this is a dense scan table and a row of faces
-                       would compete with the numbers. Same three states as the
-                       dot, same three colours. A selected row keeps the accent
-                       so selection stays legible, and an unknown player is left
-                       unstyled -- never coloured as available. */}
-                  <td className="oswald" style={{ padding: "6px", fontWeight: 700, whiteSpace: "nowrap", color: selected ? "var(--amber)" : nameColor }}>
-                    {row.batter.name}
-                    {batterStatus === "out" && (
-                      <span
-                        className="mono"
-                        title="Out — not available for this game"
-                        style={{
-                          marginLeft: 6, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.06em",
-                          padding: "1px 4px", borderRadius: 3, verticalAlign: "middle",
-                          color: "var(--status-out, #ef5b5b)", border: "1px solid var(--status-out, #ef5b5b)",
-                        }}
-                      >
-                        OUT
-                      </span>
-                    )}
-                  </td>
-                  {cols.map(([key, , fmt]) => (
-                    <td key={key} style={{ textAlign: "center", padding: "6px", color: pctColor(key, row[key]), fontWeight: key === "pa" ? 400 : 700 }}>
-                      {fmt(row[key])}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })
-          )}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -10881,18 +10491,6 @@ function MLBPropsPage({ jumpTo }) {
     });
   }
 
-  // Bullpen lists shown under each team's lineup (see TeamRosterPanel /
-  // LineupDrawer's `bullpen` prop) -- teamBullpen() itself is still the
-  // seeded mock generator described where it's defined above; only where
-  // it renders has moved.
-  const teamBullpenList = useMemo(() => teamBullpen(teamAbbr), [teamAbbr]);
-  const oppBullpenList = useMemo(() => (nextGame ? teamBullpen(nextGame.opp) : []), [nextGame && nextGame.opp]);
-
-  // Bullpen tab always shows the reliever corps on the *other* side of the
-  // ball from the selected player, whichever roster that turns out to be.
-  const opposingBullpenList = playerOnOppSide ? teamBullpenList : oppBullpenList;
-  const opposingBullpenLabel = playerOnOppSide ? liveTeamRoster.label : ((liveOppRoster || {}).label || "");
-
   // Next-game info bar: the selected team's real next scheduled opponent
   // (see fetchMLBTeamNextGame), not a fixed mock date -- so it always
   // reflects the actual live schedule. Renders nothing until the live fetch
@@ -10955,9 +10553,6 @@ function MLBPropsPage({ jumpTo }) {
         <MLBMatchupAnalyzer teamRoster={liveTeamRoster} oppRoster={liveOppRoster} nextGame={nextGame} pick={matchupPick} section={view} />
       )}
 
-      {view === "bullpen" && (
-        <BullpenAnalyzerPanel teamLabel={opposingBullpenLabel} bullpen={opposingBullpenList} />
-      )}
     </MLBDetailModal>
   );
 
@@ -11795,10 +11390,7 @@ function MLBPropsPage({ jumpTo }) {
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
-    {/* Bullpen no longer passed to MobilePlayerNav below -- it doesn't
-         belong in the Lineup drawer (see LineupDrawer) since it already has
-         its own Bullpen tab (BullpenAnalyzerPanel, fed by
-         teamBullpenList/oppBullpenList directly further down). */}
+
     <MobilePlayerNav
       teamA={liveTeamRoster}
       teamB={liveOppRoster || { label: "Loading…", players: [] }}
