@@ -5477,6 +5477,121 @@ const wnbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/wnba/500/${WNB
 const wnbaHeadshot = (espnId) =>
   `https://a.espncdn.com/combiner/i?img=/i/headshots/wnba/players/full/${espnId}.png&w=350&h=350&scale=crop`;
 
+// ---------- WNBA availability ----------
+//
+// ESPN's team roster route is the only WNBA availability feed the app has, and
+// it is the good one: every athlete carries a numeric `id` that is exactly the
+// `espnId` already stored on our player objects, so the join needs no name
+// matching, plus an `injuries` array per athlete.
+//
+// The league-wide `/wnba/injuries` route carries the same information but with
+// `athlete.id` null on every entry -- the id is only recoverable by regexing it
+// out of a headshot URL. That is why this uses the per-team route despite
+// costing one request per team on the slate rather than one for the league.
+//
+// Caveat worth knowing before reading a green dot as "confirmed to play": this
+// route only ever returns players who are on the active roster, so `status.type`
+// is "active" for all 168 athletes across the league. Absence of an injury here
+// means "no injury reported", not "confirmed starter" -- the stronger claim MLB
+// can make from a posted batting order has no WNBA equivalent in this feed.
+const WNBA_TEAM_ESPN_ID = {
+  ATL: "20", CHI: "19", CON: "18", DAL: "3", GS: "129689", IND: "5", LA: "6",
+  LV: "17", MIN: "8", NY: "9", PHX: "11", POR: "132052", SEA: "14",
+  TOR: "131935", WSH: "16",
+};
+
+// Injury vocabulary -> the avatar's three states. Two vocabularies are folded
+// in on purpose: the roster route reports `status` as "Out"/"Day-To-Day", while
+// the league injuries route reports the same fact as a fantasyStatus
+// abbreviation ("OUT"/"OFS"/"GTD"). Only the first pair actually occurs on the
+// route used here; the rest are mapped so a future switch of source, or a value
+// ESPN adds later, lands somewhere deliberate instead of silently reading as
+// available. Anything unrecognised returns undefined and renders no dot.
+const WNBA_INJURY_STATUS = {
+  "out": "out",
+  "ofs": "out",
+  "injured reserve": "out",
+  "suspension": "out",
+  "day-to-day": "questionable",
+  "gtd": "questionable",
+  "questionable": "questionable",
+  "doubtful": "questionable",
+  "probable": "questionable",
+};
+
+const WNBA_ROSTER_STATUS_TTL_MS = 15 * 60 * 1000;
+const wnbaRosterStatusCache = new Map();
+
+// Cache shape mirrors fetchMLBTeamRosterStatus: module Map + sessionStorage,
+// keyed on the slate day so it rolls over, and a failed or empty fetch is never
+// cached so the next call retries. 15 minutes because injury reports move on
+// gameday, often within hours of tip.
+async function fetchWNBATeamAvailability(abbr) {
+  const teamId = WNBA_TEAM_ESPN_ID[abbr];
+  if (!teamId) return null;
+
+  // currentMLBDayKey is just "the slate day in ET, rolling over at 3am" -- not
+  // actually MLB-specific, and correct for a WNBA slate too. Reused rather than
+  // cloned so both sports roll their caches on the same boundary.
+  const dayKey = currentMLBDayKey();
+  const cached = wnbaRosterStatusCache.get(abbr);
+  if (cached && cached.dayKey === dayKey && Date.now() - cached.fetchedAt < WNBA_ROSTER_STATUS_TTL_MS) return cached.byId;
+
+  const cacheKey = `wnba_roster_status_v1_${abbr}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < WNBA_ROSTER_STATUS_TTL_MS) {
+        wnbaRosterStatusCache.set(abbr, parsed);
+        return parsed.byId;
+      }
+    }
+  } catch {}
+
+  let byId = null;
+  try {
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/teams/${teamId}/roster`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    byId = {};
+    (data?.athletes || []).forEach((a) => {
+      const id = a?.id;
+      if (!id) return;
+      const mapped = (a?.injuries || [])
+        .map((inj) => String(inj?.status || inj?.details?.fantasyStatus?.abbreviation || "").toLowerCase().trim())
+        .map((raw) => WNBA_INJURY_STATUS[raw])
+        .filter(Boolean);
+      // An athlete can carry more than one entry; the worst one wins, so a
+      // player listed both day-to-day and out doesn't read as merely doubtful.
+      const onActiveRoster = String(a?.status?.type || "").toLowerCase() === "active";
+      const status = mapped.includes("out") ? "out"
+        : mapped.includes("questionable") ? "questionable"
+        : onActiveRoster ? "active"
+        : undefined;
+      if (status) byId[String(id)] = status;
+    });
+  } catch {
+    byId = null;
+  }
+  if (!byId || !Object.keys(byId).length) return null;
+
+  const record = { dayKey, byId, fetchedAt: Date.now() };
+  wnbaRosterStatusCache.set(abbr, record);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return byId;
+}
+
+// Availability for a set of teams, merged into one espnId -> status map.
+// Unknown players are simply absent, which is what leaves their avatar dotless.
+async function fetchWNBAAvailability(abbrs) {
+  const unique = [...new Set(abbrs.filter(Boolean))];
+  const maps = await Promise.all(unique.map((a) => fetchWNBATeamAvailability(a).catch(() => null)));
+  const merged = {};
+  maps.forEach((m) => { if (m) Object.assign(merged, m); });
+  return Object.keys(merged).length ? merged : null;
+}
+
 // Real players from the two games on tonight's WNBA slate (see WNBA_MATCHUPS
 // below) -- a handful of rotation players per team rather than a full roster,
 // same "starting lineup" scope the MLB/NFL pages use.
@@ -5998,6 +6113,29 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const [playerId, setPlayerId] = useState(WNBA_MATCHUPS[0].teamA.players[0].id);
   const [market, setMarket] = useState("pts");
   const [rebSplit, setRebSplit] = useState("total");
+
+  // Availability for the two teams in view, refetched when the matchup changes.
+  // Null while loading or if the fetch failed, which every consumer below reads
+  // as "no dot" rather than "available" -- an unknown status must never render
+  // as active.
+  const [availability, setAvailability] = useState(null);
+  const matchupTeams = [
+    (matchup?.teamA?.players || [])[0]?.team,
+    (matchup?.teamB?.players || [])[0]?.team,
+  ].filter(Boolean).join(",");
+  React.useEffect(() => {
+    let cancelled = false;
+    setAvailability(null);
+    if (!matchupTeams) return undefined;
+    fetchWNBAAvailability(matchupTeams.split(","))
+      .then((m) => { if (!cancelled) setAvailability(m); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [matchupTeams]);
+  const statusOf = React.useCallback(
+    (p) => (availability && p && p.espnId ? availability[String(p.espnId)] : undefined),
+    [availability]
+  );
   // Once the live slate lands, jump off the static default matchup/player
   // onto the real first game of the day (its id won't exist in WNBA_MATCHUPS).
   React.useEffect(() => {
@@ -6258,6 +6396,8 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
         team={player.team}
         colorMap={WNBA_TEAM_COLORS}
         headshotSrc={wnbaHeadshot(player.espnId)}
+        status={statusOf(player)}
+        surface="var(--panel)"
         size={compact ? 56 : 84}
         inset={compact ? 3 : 5}
         backing={(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
@@ -6505,6 +6645,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
+      statusFor={statusOf}
       metaLine={(p) => p.pos}
       avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
@@ -6515,6 +6656,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
+      statusFor={statusOf}
       metaLine={(p) => p.pos}
       avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
@@ -6661,6 +6803,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
+      statusFor={statusOf}
       metaLine={(p) => p.pos}
       avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
     />
@@ -6669,7 +6812,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Live 2026 regular-season game logs (ESPN Stats API) for the players shown above, refreshed each tab. Defensive matchup ranks are real opponent points allowed per game.
       </div>
-      <PlayerNewsModule playerName={player.name} headshotSrc={wnbaHeadshot(player.espnId)} sport="wnba" team={player.team} />
+      <PlayerNewsModule playerName={player.name} headshotSrc={wnbaHeadshot(player.espnId)} sport="wnba" team={player.team} status={statusOf(player)} />
     </div>
   );
 }
@@ -11449,6 +11592,7 @@ function buildWNBAFeedRows() {
         category: WNBA_MARKET_CATEGORY[m.id],
         icon: wnbaTeamLogo(player.team),
         avatar: wnbaHeadshot(player.espnId),
+        espnId: player.espnId,
         name: player.name,
         team: player.team,
         date: gameDate,
@@ -12372,7 +12516,7 @@ function feedPickId(sport, r) {
   return `${sport}-${r.key}${dir}${date}`;
 }
 
-const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast }) {
+const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast }) {
   // Read from context rather than passed down: this component is memo'd, and
   // a context read still re-renders it when the format changes (memo only
   // short-circuits prop changes), so the whole feed reformats without adding
@@ -12423,6 +12567,8 @@ const FeedRow = React.memo(function FeedRow({ r, sport, sampleWindow, isNarrow, 
         inset={2}
         backing={(FEED_TEAM_COLORS[sport] && (FEED_TEAM_COLORS[sport][r.team] || {}).primary) || "#000"}
         shadow="0 2px 8px rgba(0,0,0,0.35)"
+        status={status}
+        surface="var(--panel)"
         style={{ position: "absolute", inset: 0 }}
       />
       {/* Team logo corner badge -- was the row's only image before; now a
@@ -13725,6 +13871,25 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // against whatever fallback/mock data existed at that instant and never
   // recompute once the real data actually arrives.
   const wnbaRows = useMemo(() => (sport === "wnba" ? buildWNBAFeedRows() : []), [sport, wnbaDataVersion]);
+
+  // Availability for every WNBA team with a row on the slate. Null while
+  // loading or on failure, which FeedRow reads as "no dot" -- never as
+  // available. Keyed off the team list rather than the rows themselves so it
+  // doesn't refetch every time a filter re-slices the same players.
+  const wnbaTeamsOnSlate = useMemo(
+    () => (sport === "wnba" ? [...new Set(wnbaRows.map((r) => r.team).filter(Boolean))].sort().join(",") : ""),
+    [sport, wnbaRows]
+  );
+  const [wnbaAvailability, setWnbaAvailability] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    setWnbaAvailability(null);
+    if (!wnbaTeamsOnSlate) return undefined;
+    fetchWNBAAvailability(wnbaTeamsOnSlate.split(","))
+      .then((m) => { if (!cancelled) setWnbaAvailability(m); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [wnbaTeamsOnSlate]);
   const nflRows = useMemo(() => (sport === "nfl" ? buildNFLFeedRows() : []), [sport, nflDataVersion]);
 
   // This week's real NFL slate (see fetchNFLWeekSlate, one fetch for the
@@ -14754,6 +14919,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           <FeedRow
             r={r}
             sport={sport}
+            status={wnbaAvailability && r.espnId ? wnbaAvailability[String(r.espnId)] : undefined}
             sampleWindow={sampleWindow}
             isNarrow={isNarrow}
             isAdded={pickIds.has(feedPickId(sport, r))}
@@ -14798,7 +14964,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 // entirely by MobilePlayerNav (persistent bottom chip strip + Lineup side
 // drawer, rendered once per page rather than once per TeamRosterPanel) --
 // see below. TeamRosterPanel itself renders nothing in that range.
-function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, confirmed }) {
+function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, statusFor, confirmed }) {
   const compact = useIsNarrow(1100);
   // Pitchers (pos "SP") get sectioned off from the batting order rather than
   // just tacked onto the end of the list -- MLB is the only sport that
@@ -14841,6 +15007,8 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
           background={avatarBg ? avatarBg(p) : "#000"}
           headshotSrc={headshotSrc(p)}
           fallbackSrc={headshotFallback && headshotFallback(p)}
+          status={statusFor && statusFor(p)}
+          surface={active ? "var(--amber-dim)" : "var(--panel)"}
           size={30}
           inset={2}
           shadow="0 2px 8px rgba(0,0,0,0.35)"
@@ -14923,7 +15091,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
 // action via the drawer, not something you scroll or swipe into by
 // accident), plus a "Lineup" entry point into LineupDrawer for the full
 // two-team matchup. Replaces TeamRosterPanel's old per-side bottom sheet.
-function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, chipRole, chipRoleLabel }) {
+function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, statusFor, chipRole, chipRoleLabel }) {
   const compact = useIsNarrow(1100);
   const [drawerOpen, setDrawerOpen] = useState(false);
   if (!compact) return null;
@@ -14965,6 +15133,8 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
             background={avatarBg ? avatarBg(p) : "#000"}
             headshotSrc={headshotSrc(p)}
             fallbackSrc={headshotFallback && headshotFallback(p)}
+            status={statusFor && statusFor(p)}
+            surface={active ? "var(--amber-dim)" : "var(--panel)"}
             size={32}
             inset={2}
             shadow="0 2px 8px rgba(0,0,0,0.35)"
@@ -15029,6 +15199,7 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
         onSelect={(id) => { onSelect(id); setDrawerOpen(false); }}
         headshotSrc={headshotSrc}
         headshotFallback={headshotFallback}
+        statusFor={statusFor}
         metaLine={metaLine}
         avatarBg={avatarBg}
       />
@@ -15040,7 +15211,7 @@ function MobilePlayerNav({ teamA, teamB, activeId, onSelect, headshotSrc, headsh
 // full matchup roster for both teams, grouped under team-name headers, so
 // switching to a player on the other side doesn't require backing out to
 // the market/matchup selector above the chart.
-function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg }) {
+function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, statusFor }) {
   const renderPlayerRow = (p) => {
     const active = p.id === activeId;
     return (
@@ -15061,6 +15232,8 @@ function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headsho
           background={avatarBg ? avatarBg(p) : "#000"}
           headshotSrc={headshotSrc(p)}
           fallbackSrc={headshotFallback && headshotFallback(p)}
+          status={statusFor && statusFor(p)}
+          surface={active ? "var(--amber-dim)" : "var(--panel2)"}
           size={32}
           inset={2}
           shadow="0 2px 8px rgba(0,0,0,0.35)"
