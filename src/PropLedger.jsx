@@ -5612,6 +5612,18 @@ async function fetchWNBATeamAvailability(abbr) {
   return data ? data.byId : null;
 }
 
+// A player's next game date, resolved from the live slate by team rather than
+// from the static matchup list by slug. The slug lookup only ever worked for
+// the 50 hand-written players; every live-roster player came back null, and a
+// pick with no gameDate is permanently unsettleable (see gradePick). Falls
+// back to the static list so the offline slate still dates its picks.
+function wnbaGameDateForTeam(abbr, playerId) {
+  const live = (wnbaScheduleCache && wnbaScheduleCache.matchups) || [];
+  const game = live.find((m) => m.teamA?.abbr === abbr || m.teamB?.abbr === abbr);
+  if (game && game.date) return game.date;
+  return matchupDateForPlayer(WNBA_MATCHUPS, playerId);
+}
+
 // Live rosters for every franchise, memoised for the tab. Individual team
 // failures are tolerated -- that team simply falls back to its static roster
 // (or to no players, which excludes its players without excluding its game).
@@ -11780,7 +11792,7 @@ function buildWNBAFeedRows() {
     const games = getWNBAGames(player, pi);
     if (!games || !games.length) return;
     const nextOpp = games[games.length - 1].opp;
-    const gameDate = matchupDateForPlayer(WNBA_MATCHUPS, player.id);
+    const gameDate = wnbaGameDateForTeam(player.team, player.id);
     wnbaPlayerMarkets(player).forEach((m) => {
       const isBinary = m.id === "dd" || m.id === "td";
       const def = getWNBADefRank(m.id, nextOpp);
@@ -16361,6 +16373,11 @@ export default function PropLedger() {
     // live roster resolves the same way a hand-written one does. Driven off
     // every rostered player across the league rather than ALL_WNBA_PLAYERS,
     // which covered only the ten teams we had written out by hand.
+    // The feed needs the slate too -- it dates every pick off it -- and the
+    // feed can be the first thing a user opens, before the WNBA props page has
+    // ever mounted.
+    fetchWNBALiveSlate().then(() => { if (!cancelled) bumpWnbaRefresh(); });
+
     fetchWNBAAllRosters().then((players) => {
       if (cancelled || !players) return;
       players.forEach((player) => {
