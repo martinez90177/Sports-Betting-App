@@ -75,7 +75,6 @@ function SportTabs({ sport, onChange, isMobile }) {
         return (
           <div
             key={s.id}
-            className="gm-tab"
             role="tab"
             aria-selected={active}
             tabIndex={0}
