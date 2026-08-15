@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { timingSafeEqual } from "node:crypto";
 
 // Maps MLB Stats API team IDs to the 3-letter abbreviations used throughout
 // the app (kept in sync with MLB_TEAM_ID_ABBR in src/PropLedger.jsx).
@@ -121,6 +122,32 @@ function rankMetric(splits, marketId, metric, out) {
   });
 }
 
+// Vercel sends `Authorization: Bearer $CRON_SECRET` on cron-triggered
+// invocations once that env var is set on the project, and sends nothing on
+// an ordinary request -- so checking for it is what separates the cron from
+// the open internet. Without it this route was callable by anyone who knew
+// the path.
+//
+// The check is unconditional rather than "only enforce when CRON_SECRET is
+// set". The conditional form is the more forgiving default, but it fails
+// open: if the variable is ever missing -- unset on a new environment,
+// dropped in a project migration, typo'd -- the endpoint silently goes back
+// to being public and nothing anywhere says so. Better that a missing
+// secret breaks the refresh loudly.
+//
+// Constant-time compare so a caller can't recover the secret byte by byte
+// from response timings. timingSafeEqual throws on a length mismatch, hence
+// the explicit length check first.
+function authorized(req) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return false;
+  const header = req.headers?.authorization || "";
+  const expected = `Bearer ${secret}`;
+  const a = Buffer.from(header);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 // Triggered nightly by the Vercel Cron Job defined in vercel.json. Pulls both
 // team stat groups from the MLB Stats API and ranks all 30 teams by each
 // market's own defensive metric, replacing the single ERA ranking the badge
@@ -128,6 +155,13 @@ function rankMetric(splits, marketId, metric, out) {
 // the Vercel Marketplace integration) so every visitor reads the same
 // precomputed ranking instead of each browser recomputing it.
 export default async function handler(req, res) {
+  // Deliberately vague to an unauthorized caller: confirming whether the
+  // secret is merely missing from the project or wrong in this request tells
+  // them something they shouldn't learn from probing.
+  if (!authorized(req)) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
   try {
     const redis = new Redis({
       url: process.env.UPSTASH_REDIS_REST_KV_REST_API_URL,
