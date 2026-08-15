@@ -9575,6 +9575,35 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
   const battingRoster = !pitcher ? null : pitcher.oppSide === "opp" ? teamRoster : oppRoster;
   const batterOptions = battingRoster ? battingRoster.players.filter((p) => p.pos !== "SP") : [];
 
+  // Availability for the batting side. The Expected Opposing Lineup asserts
+  // who is hitting tonight, so an IL'd or day-to-day batter appearing in it
+  // unmarked is the most consequential silent omission on the page -- this is
+  // the same 40-man status feed the player page reads, keyed by mlbId.
+  const battingAbbr = (batterOptions[0] || {}).team;
+  const [lineupStatus, setLineupStatus] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    setLineupStatus(null);
+    const teamId = MLB_ABBR_TEAM_ID[battingAbbr];
+    if (!teamId) return undefined;
+    fetchMLBTeamRosterStatus(teamId)
+      .then((byId) => { if (!cancelled) setLineupStatus(byId); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [battingAbbr]);
+
+  // Same three states as the avatar dot, resolved the same way -- undefined
+  // when the feed has not loaded or the player is not on the 40-man, so an
+  // unknown player is never styled.
+  const batterStatusOf = React.useCallback((b) => {
+    if (!lineupStatus || !b || !b.mlbId) return undefined;
+    const s = lineupStatus[b.mlbId];
+    if (!s) return undefined;
+    const badge = MLB_STATUS_BADGES[s.code];
+    if (!badge) return "active";
+    return badge.tone === "warn" ? "questionable" : "out";
+  }, [lineupStatus]);
+
   const [batterId, setBatterId] = useState(batterOptions[0]?.id);
   React.useEffect(() => {
     if (batterOptions.length && !batterOptions.some((p) => p.id === batterId)) {
@@ -9746,6 +9775,7 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
       <ExpectedLineupPanel
         battingRoster={battingRoster}
         lineupRows={lineupRows}
+        statusOf={batterStatusOf}
         teamSplitRow={teamSplitRow}
         splitLabel={rightSplit}
         sample={lineupSample} setSample={setLineupSample}
@@ -9961,7 +9991,7 @@ function PitchTypePanel({ pitcher, pitchMix }) {
 }
 
 // ---------- Expected Opposing Lineup ----------
-function ExpectedLineupPanel({ battingRoster, lineupRows, teamSplitRow, splitLabel, sample, setSample, showTeamSplits, setShowTeamSplits, selectedBatterId, onSelectBatter }) {
+function ExpectedLineupPanel({ battingRoster, lineupRows, teamSplitRow, splitLabel, sample, setSample, showTeamSplits, setShowTeamSplits, selectedBatterId, onSelectBatter, statusOf }) {
   const cols = [
     ["pa", "PA", (v) => v],
     ["kPct", "K%", (v) => `${v.toFixed(1)}%`],
@@ -10031,6 +10061,10 @@ function ExpectedLineupPanel({ battingRoster, lineupRows, teamSplitRow, splitLab
           ) : (
             lineupRows.map((row, i) => {
               const selected = row.batter.id === selectedBatterId;
+              const batterStatus = statusOf && statusOf(row.batter);
+              const nameColor = batterStatus === "out" ? "var(--status-out, #ef5b5b)"
+                : batterStatus === "questionable" ? "var(--status-questionable, #e8b13a)"
+                : "var(--text)";
               return (
                 <tr
                   key={row.batter.id}
@@ -10042,8 +10076,27 @@ function ExpectedLineupPanel({ battingRoster, lineupRows, teamSplitRow, splitLab
                   }}
                 >
                   <td className="mono" style={{ padding: "6px", color: "var(--dim)" }}>{i + 1}</td>
-                  <td className="oswald" style={{ padding: "6px", fontWeight: 700, color: selected ? "var(--amber)" : "var(--text)", whiteSpace: "nowrap" }}>
+                  {/* Availability lives in the name itself here rather than on
+                       an avatar: this is a dense scan table and a row of faces
+                       would compete with the numbers. Same three states as the
+                       dot, same three colours. A selected row keeps the accent
+                       so selection stays legible, and an unknown player is left
+                       unstyled -- never coloured as available. */}
+                  <td className="oswald" style={{ padding: "6px", fontWeight: 700, whiteSpace: "nowrap", color: selected ? "var(--amber)" : nameColor }}>
                     {row.batter.name}
+                    {batterStatus === "out" && (
+                      <span
+                        className="mono"
+                        title="Out — not available for this game"
+                        style={{
+                          marginLeft: 6, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.06em",
+                          padding: "1px 4px", borderRadius: 3, verticalAlign: "middle",
+                          color: "var(--status-out, #ef5b5b)", border: "1px solid var(--status-out, #ef5b5b)",
+                        }}
+                      >
+                        OUT
+                      </span>
+                    )}
                   </td>
                   {cols.map(([key, , fmt]) => (
                     <td key={key} style={{ textAlign: "center", padding: "6px", color: pctColor(key, row[key]), fontWeight: key === "pa" ? 400 : 700 }}>
