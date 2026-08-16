@@ -6,7 +6,9 @@ import PlayerNewsModule from "./PlayerNewsModule.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import { useSettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits } from "./settings.jsx";
 import { useOverlay } from "./useOverlay.js";
-import { formatOdds, americanToDecimal, decimalToAmerican } from "./odds.js";
+import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
+import AltLineLadder, { SlipLeg } from "./AltLineLadder.jsx";
+import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
 import SettingsModal from "./SettingsModal.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
@@ -12610,13 +12612,112 @@ function pickStatus(p) {
 // date is a new pick rather than a collision with a graded one -- without it,
 // yesterday's settled Judge Over 0.5 Hits would make today's identical row
 // read as already added.
-function feedPickId(sport, r) {
+// The rung is in the id for the same reason direction is: 4.5 and 5.5 on one
+// player/market are different bets and both can sit on the slip at once. It is
+// appended *only* when the line is off the posted one, so every main-line pick
+// -- including every pick already in localStorage from before alt lines
+// existed -- keeps the id it has always had and still reads as added.
+function feedPickId(sport, r, line) {
   const dir = r.direction === "under" ? "-u" : "";
   const date = r.date ? `@${String(r.date).slice(0, 10)}` : "";
-  return `${sport}-${r.key}${dir}${date}`;
+  const rung = line != null && line !== r.line ? `~${line}` : "";
+  return `${sport}-${r.key}${dir}${date}${rung}`;
 }
 
-const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast }) {
+// The same rung suffix, applied to an id that already exists. The slip's
+// stepper has no feed row to rebuild an id from -- it has the saved pick --
+// so this rewrites the suffix in place, keeping the sport/key/direction/date
+// part byte-identical. A leg stepped back onto the posted line loses the
+// suffix entirely and is once again indistinguishable from a main-line pick,
+// which is exactly what it is.
+function pickIdForLine(pick, line) {
+  const base = String(pick.id).replace(/~[-\d.]+$/, "");
+  return pick.mainLine != null && line !== pick.mainLine ? `${base}~${line}` : base;
+}
+
+// The slip's stepper and its combined block both need per-game values: the
+// stepper to recount a rung the user moves to, the block to count the games
+// where every leg landed together. Neither can be recovered from a feed row
+// after a reload -- MLB rebuilds its rows daily and the other sports' rows
+// exist only while that page is mounted -- so the values have to be persisted
+// with the pick. This supersedes the note that used to sit on `snap` saying
+// `values` were deliberately excluded, which was written when nothing read
+// them.
+//
+// What gets saved is exactly the window the pick was counted over -- not the
+// whole log, and not a fixed-length tail of it. That equality is the point: a
+// leg saved as "8 of 10" carries ten values, so the slip recounts it to the
+// same ten and the number never moves between the feed and the slip. A tail
+// capped at some other length would quietly recount an L10 pick over twenty
+// games the moment it landed on the slip.
+
+// The one place a pick object is built, for both the row's + button and the
+// ladder's + ADD LEG. They were separate string templates once and the button
+// silently stopped reflecting the slip; a rung and a row disagreeing about
+// what they'd saved would be the same bug with more surface area.
+function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status }) {
+  const line = rung ? rung.line : r.line;
+  const direction = r.direction || "over";
+  const hitRate = rung ? rung.hitRate : r[sampleWindow];
+  const side = direction === "under" ? "Under" : "Over";
+  return {
+    id: feedPickId(sport, r, line),
+    sport,
+    name: r.name,
+    team: r.team,
+    subtitle: r.isBinary ? r.marketLabel : `${side} ${line} ${r.marketLabel}`,
+    opp: r.gameLabel ? `${r.opp} · ${r.gameLabel}` : r.opp,
+    // The rung's own price when there is a rung, so the slip never prints a
+    // number the ladder showed as a dash -- a rung the sample never split has
+    // no price, and converting its 0%/100% would only reach the +/-1000 clamp.
+    odds: rung ? rung.price : hitRate == null ? null : probToAmericanOdds(hitRate),
+    // Everything below is what the Ledger needs to settle this pick later
+    // against the player's own game log (see gradePick). None of it is
+    // recoverable from `subtitle`.
+    playerId: r.playerId || null,
+    marketId: r.marketId || null,
+    line,
+    isBinary: !!r.isBinary,
+    direction,
+    // The posted line, kept beside the chosen one. ALT is "off the posted
+    // line", not "the user changed it", and after a reload there is no feed
+    // row left to work that out from.
+    mainLine: r.line,
+    hitRate: hitRate ?? null,
+    gamesOver: rung ? rung.gamesOver : null,
+    gamesCounted: rung ? rung.gamesCounted : null,
+    // Exactly the games this pick was counted over, so gamesCounted and
+    // logValues.length are the same number and stay that way.
+    logValues: Array.isArray(r.values) ? windowValues(r.values, sampleWindow) : null,
+    gameDate: r.date || null,
+    gameId: r.gameId || null,
+    gradeKind: r.gradeKind || null,
+    gradeId: r.gradeId || null,
+    // Identity for the slip/Ledger avatar. The photo URL is snapshotted rather
+    // than rebuilt later because each sport resolves it from a different id
+    // and the Ledger has no sport-specific code. Status rides along for the
+    // same reason -- rule 1 says the slip avatar carries availability, and the
+    // roster caches it comes from aren't loaded when the drawer opens cold.
+    espnId: r.espnId || null,
+    avatar: r.avatar || null,
+    avatarFallback: r.avatarFallback || null,
+    status: status || null,
+    addedAt: Date.now(),
+    marketLabel: r.marketLabel || null,
+    // A snapshot of what the row actually said at the moment it was added, so
+    // the Report can explain a pick without re-deriving it from a feed that
+    // has since moved on (lines move, form changes, and MLB rebuilds these
+    // rows every day).
+    snap: {
+      l5: r.l5, l10: r.l10, l20: r.l20, all: r.all,
+      rank: r.rank, tier: r.tier, streak, cushion,
+      cushionWindow: sampleWindow,
+      lineupConfirmed: typeof r.lineupConfirmed === "boolean" ? r.lineupConfirmed : null,
+    },
+  };
+}
+
+const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder }) {
   // Read from context rather than passed down: this component is memo'd, and
   // a context read still re-renders it when the format changes (memo only
   // short-circuits prop changes), so the whole feed reformats without adding
@@ -12710,44 +12811,16 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     <div
       className="oswald"
       role="button"
-      onClick={() => onTogglePick({
-        id: pickId, sport, name: r.name, team: r.team, subtitle: r.subtitle,
-        opp: r.gameLabel ? `${r.opp} · ${r.gameLabel}` : r.opp, odds,
-        // Everything below is what the Ledger needs to settle this pick
-        // later against the player's own game log (see gradePick). None of
-        // it is recoverable from `subtitle`, so it has to be written here
-        // -- this is the only place a pick is ever created.
-        playerId: r.playerId || null,
-        marketId: r.marketId || null,
-        line: r.line, isBinary: !!r.isBinary, direction,
-        gameDate: r.date || null,
-        gameId: r.gameId || null,
-        gradeKind: r.gradeKind || null,
-        gradeId: r.gradeId || null,
-        // Identity for the slip/Ledger avatar. The photo URL is snapshotted
-        // rather than rebuilt later because each sport resolves it from a
-        // different id (mlbId / nbaId / espnId / a static NFL map) and the
-        // Ledger has no sport-specific code. Picks saved before this existed
-        // simply have no photo and fall back to the team gradient, which is
-        // the correct read rather than a wrong face.
-        espnId: r.espnId || null,
-        avatar: r.avatar || null,
-        avatarFallback: r.avatarFallback || null,
-        addedAt: Date.now(),
-        marketLabel: r.marketLabel || null,
-        // A snapshot of what the row actually said at the moment it was
-        // added, so the Report can explain a pick without re-deriving it from
-        // a feed that has since moved on (lines move, form changes, and MLB
-        // rebuilds these rows every day). Deliberately just the scalars the
-        // Report reads -- not `values`, which would put a full game log per
-        // pick into localStorage.
-        snap: {
-          l5: r.l5, l10: r.l10, l20: r.l20, all: r.all,
-          rank: r.rank, tier: r.tier, streak, cushion,
-          cushionWindow: sampleWindow,
-          lineupConfirmed: typeof r.lineupConfirmed === "boolean" ? r.lineupConfirmed : null,
-        },
-      })}
+      // The main line, built through the same function the ladder's + ADD LEG
+      // uses. The ladder is built here rather than during render so it costs
+      // nothing on the thousands of rows nobody clicks -- but building it at
+      // all means a main-line pick carries its "6 of 9" too, and lands in the
+      // slip with a working stepper whether or not the ladder was ever opened.
+      onClick={() => {
+        const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction, window: sampleWindow });
+        const mainRung = rungs.find((x) => x.isMain) || null;
+        onTogglePick(pickFromRung(sport, r, mainRung, { streak, cushion, sampleWindow, status }));
+      }}
       title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
       style={{
         cursor: "pointer",
@@ -12840,6 +12913,37 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
       View Chart →
     </div>
   );
+
+  // Rule 4 in miniature: a binary market has no line to move, so the control
+  // renders disabled and says why rather than vanishing from half the rows and
+  // leaving the reader to work out which half.
+  const ladderBtn = showLadder && (
+    <div
+      className="oswald"
+      role="button"
+      aria-expanded={!!expanded}
+      onClick={r.isBinary ? undefined : onToggleLadder}
+      title={
+        r.isBinary
+          ? `${r.marketLabel} either happened or it didn't — there is no line to move`
+          : expanded ? "Close the alt-line ladder" : "Show every alt line, counted from the same games"
+      }
+      style={{
+        cursor: r.isBinary ? "default" : "pointer",
+        justifySelf: "end", whiteSpace: "nowrap", textAlign: "center",
+        padding: "6px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+        opacity: r.isBinary ? 0.45 : 1,
+        // Accent border when the rate on show is strong, neutral otherwise --
+        // the ladder is worth opening on a row that already reads well.
+        border: `1px solid ${!r.isBinary && r[sampleWindow] >= 0.7 ? "var(--amber)" : "var(--line-strong)"}`,
+        color: !r.isBinary && r[sampleWindow] >= 0.7 ? "var(--amber)" : "var(--dim-strong)",
+        background: "transparent",
+      }}
+    >
+      {r.isBinary ? "NO ALT LINES" : expanded ? "CLOSE LADDER ▴" : "OPEN LADDER ▾"}
+    </div>
+  );
+
   const oddsBlock = (
     <div style={{ textAlign: isNarrow ? "left" : "right", flexShrink: 0 }}>
       <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
@@ -12928,7 +13032,8 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           {oddsBlock}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {ladderBtn}
             {addBtn}
             {chartBtn}
           </div>
@@ -12979,10 +13084,68 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
       <FeedPctCell v={r.l10} n={r.n10} label={10} />
       <FeedPctCell v={r.l20} n={r.n20} label={20} />
       <FeedPctCell v={r.all} n={r.nAll} />
-      {chartBtn}
+      {/* Both actions share the last grid track rather than adding a seventh
+          column -- FeedTableHeader's template is the same six columns and the
+          two have to stay aligned. */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, justifySelf: "end" }}>
+        {chartBtn}
+        {ladderBtn}
+      </div>
     </div>
   );
 });
+
+// The ladder for one expanded feed row: builds the rungs, then hands them to
+// the shared AltLineLadder. Mounted only while that row is open (see the feed's
+// render loop) so the per-rung passes over the game log are paid once, for the
+// row actually being read.
+function FeedRowLadder({ r, sport, status, sampleWindow, pickIds, onTogglePick }) {
+  const direction = r.direction || "over";
+  const rungs = useMemo(
+    () => buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction, window: sampleWindow }),
+    [r.values, r.line, r.isBinary, direction, sampleWindow]
+  );
+  const streak = feedStreak(r.values, r.line, r.isBinary, direction);
+  const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
+  // Which rungs are already on the slip, worked out through the same id
+  // builder that writes them -- not a separate comparison that could drift
+  // from it. A rung's IN SLIP badge and the pick it refers to are then the
+  // same statement.
+  const slipLines = rungs.filter((x) => pickIds.has(feedPickId(sport, r, x.line))).map((x) => x.line);
+  // Rule 1: the ladder header names a player, so it carries their
+  // availability. The feed row's own `status` covers WNBA; pickStatus reaches
+  // the MLB active-roster cache the slip already reads, so an MLB ladder shows
+  // a dot wherever that cache has landed. Neither resolving means no dot --
+  // never a grey one, never a default to green.
+  const headerStatus = status || pickStatus({ sport, gradeId: r.gradeId, espnId: r.espnId }) || undefined;
+
+  return (
+    <div style={{ borderTop: "1px solid var(--line)", background: "var(--panel)" }}>
+      <AltLineLadder
+        player={{
+          name: r.name,
+          team: r.team,
+          headshotSrc: r.avatar,
+          fallbackSrc: r.avatarFallback,
+          espnId: r.espnId,
+          status: headerStatus,
+        }}
+        sport={sport}
+        colorMap={FEED_TEAM_COLORS[sport]}
+        market={direction === "under" ? `Under ${r.marketLabel}` : `Over ${r.marketLabel}`}
+        direction={direction}
+        rungs={rungs}
+        slipLines={slipLines}
+        emptyNote={
+          r.isBinary
+            ? `${r.marketLabel} either happened or it didn't — there is no line to move, so this prop has no ladder.`
+            : "No finished games behind this prop yet, so there are no rungs to count."
+        }
+        onAddLeg={(rung) => onTogglePick(pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status: headerStatus }))}
+      />
+    </div>
+  );
+}
 
 // Same idea as the NFL feed's per-market defensive ranking, applied to both
 // sides of the ball: for batter props this is the opponent pitching staff's
@@ -13045,13 +13208,10 @@ function feedRecentGames(games, values, n = FEED_FORM_GAMES) {
   });
 }
 
-// True when a game's value wins the bet, for whichever side is displayed.
-// Binary markets (double-double/triple-double) have no line to clear -- the
-// stat is already 1/0 -- so "Under" on one of those means it didn't happen.
-function feedIsHit(v, line, isBinary, direction) {
-  const over = isBinary ? v === 1 : v > line;
-  return direction === "under" ? !over : over;
-}
+// feedIsHit now lives in lib/altLines.js -- see the imports at the top of this
+// file. It moved because the alt-line ladder counts every rung through it, and
+// a rung that disagreed with the row above it about what a hit is would be
+// worse than no rung at all. One definition, four call sites here.
 
 // The current run of consecutive hits (positive) or misses (negative) ending
 // at the most recent game. Computed off the row's full `values`, not the
@@ -13126,17 +13286,9 @@ function fairFeedLine(values) {
   return Math.max(0.5, mid - 0.5);
 }
 
-// Converts a hit-rate probability into an American odds price, the same
-// vig-free implied-probability relationship real sportsbooks approximate.
-// Clamped to the +/-1000 band the Prop Feed now enforces as its max odds
-// range (see ODDS_PROB_LOW/ODDS_PROB_HIGH) so a displayed number never
-// exceeds what the feed actually allows through.
-function probToAmericanOdds(p) {
-  const prob = Math.min(ODDS_PROB_HIGH, Math.max(ODDS_PROB_LOW, p));
-  return prob >= 0.5
-    ? Math.round((-100 * prob) / (1 - prob))
-    : Math.round((100 * (1 - prob)) / prob);
-}
+// probToAmericanOdds now lives in odds.js alongside the other conversions --
+// the alt-line ladder prices every rung through it, and importing it from here
+// would have pulled this whole file into lib/altLines.js's module graph.
 // formatOdds/americanToDecimal/decimalToAmerican now live in odds.js -- see
 // the imports at the top of this file. Only formatOdds is format-aware; the
 // two converters stay pure American<->decimal maths and are unaffected by the
@@ -13449,13 +13601,9 @@ const SPORTSBOOKS = [
   { id: "espnbet", label: "ESPN BET", url: "https://espnbet.com/" },
   { id: "fanatics", label: "Fanatics", url: "https://sportsbook.fanatics.com/" },
 ];
-// The Prop Feed's odds range is hard-capped to American odds of -1000/+1000
-// -- anything outside that band (extreme favorites/longshots, e.g. a
-// Triple-Double prop that hits 0% or 100% of the time) is excluded from the
-// feed entirely rather than just hidden behind an untouched slider. These
-// are the hit-rate probabilities that correspond exactly to -1000 and +1000.
-const ODDS_PROB_LOW = 1 / 11; // +1000
-const ODDS_PROB_HIGH = 10 / 11; // -1000
+// ODDS_PROB_LOW/ODDS_PROB_HIGH -- the hit-rate probabilities corresponding to
+// +1000 and -1000, the band the Prop Feed hard-caps its odds range to -- moved
+// to odds.js with probToAmericanOdds, which is what clamps to them.
 // Converts the odds slider's uniform 4-96 encoded position into a hit-rate
 // probability, linearly spanning [ODDS_PROB_HIGH, ODDS_PROB_LOW] (highest
 // probability/most-favorite at x=4, lowest/most-underdog at x=96) -- see the
@@ -13892,6 +14040,27 @@ function DirectionSwitcher({ value, onChange, fill }) {
   );
 }
 
+// Whether each row offers its ladder of alternate lines. Off by default: the
+// posted line is what the feed has always shown and what most people are
+// looking for, and a ladder per row is only worth building when asked for.
+const FEED_LINES_MODES = [["MAIN LINE ONLY", "main"], ["SHOW ALT LINES", "alt"]];
+function LinesModeSwitcher({ value, onChange, fill }) {
+  return (
+    <FeedSegmented
+      options={FEED_LINES_MODES}
+      value={value}
+      onChange={onChange}
+      fill={fill}
+      padding={fill ? "7px 6px" : "6px 14px"}
+      titleFor={(label) =>
+        label === "MAIN LINE ONLY"
+          ? "One posted line per prop"
+          : "Add an OPEN LADDER control to every row -- alternate lines, each counted from the same finished games"
+      }
+    />
+  );
+}
+
 // Shared label style for the feed's filter-row form (TEAM / SAMPLE SIZE /
 // SORT BY) -- a fixed width + right-aligned text means every row's
 // control starts at the same x position, so the whole block reads as one
@@ -13925,6 +14094,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // Over-only; "under" runs them through flipFeedRowToUnder so the hit rates,
   // odds, sorting and filtering all describe the side actually on screen.
   const [direction, setDirection] = useState(() => bettingDefaults.lean);
+  // Whether the feed offers alt lines at all. "main" is the feed as it has
+  // always been -- one posted line per row, no ladder control. "alt" adds the
+  // OPEN LADDER control to every row; it does not expand anything by itself,
+  // because a feed that opened a thousand ladders at once would be unreadable
+  // and would cost a ladder build per row.
+  const [linesMode, setLinesMode] = useState("main");
+  // Exactly one ladder open at a time, keyed by row. Cleared whenever the
+  // ladder's own inputs change underneath it -- a ladder counted over L10 must
+  // not stay on screen labelled L5.
+  const [expandedKey, setExpandedKey] = useState(null);
+  React.useEffect(() => { setExpandedKey(null); }, [sport, selectedMarket, sampleWindow, direction, linesMode]);
   const [sortMode, setSortMode] = useState("matchup");
   const [sortDir, setSortDir] = useState("desc");
   const [showSortInfo, setShowSortInfo] = useState(false);
@@ -14624,6 +14804,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} fill />
             </div>
           </div>
+          <LinesModeSwitcher value={linesMode} onChange={setLinesMode} fill />
           {!showGamesStrip && (
             showMatchupDropdown ? (
               <GamesMultiSelect
@@ -14750,6 +14931,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={FEED_LABEL_STYLE}>SAMPLE SIZE</span>
           <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
+        </div>
+        <div style={FEED_FILTER_ROW_STYLE}>
+          <span className="oswald" style={FEED_LABEL_STYLE}>LINES</span>
+          <LinesModeSwitcher value={linesMode} onChange={setLinesMode} />
         </div>
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={{ ...FEED_LABEL_STYLE, opacity: 0 }}>·</span>
@@ -15065,21 +15250,43 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             payload is the likeliest single cause of a render throw here. A
             boundary around each row turns that into one greyed-out line
             instead of an empty feed. */}
-        {visibleRows.map((r, i) => (
+        {visibleRows.map((r, i) => {
+          const rowStatus = wnbaAvailability && r.espnId ? wnbaAvailability[String(r.espnId)] : undefined;
+          const expanded = expandedKey === r.key;
+          return (
           <ErrorBoundary key={r.key} compact label={`${r.name || "This row"} couldn't be displayed.`}>
           <FeedRow
             r={r}
             sport={sport}
-            status={wnbaAvailability && r.espnId ? wnbaAvailability[String(r.espnId)] : undefined}
+            status={rowStatus}
             sampleWindow={sampleWindow}
             isNarrow={isNarrow}
             isAdded={pickIds.has(feedPickId(sport, r))}
             onTogglePick={onTogglePick}
             onOpenProp={onOpenProp}
             isLast={i === visibleRows.length - 1}
+            showLadder={linesMode === "alt"}
+            expanded={expanded}
+            onToggleLadder={() => setExpandedKey((k) => (k === r.key ? null : r.key))}
           />
+          {/* Built for the one expanded row only. MLB alone mounts thousands of
+              rows, and a ladder is a pass over the game log per rung -- doing
+              that for every row on screen to show one would be paid on every
+              sort, filter and window change. Inside the same boundary as its
+              row, so a row that can't render can't take the ladder with it. */}
+          {expanded && (
+            <FeedRowLadder
+              r={r}
+              sport={sport}
+              status={rowStatus}
+              sampleWindow={sampleWindow}
+              pickIds={pickIds}
+              onTogglePick={onTogglePick}
+            />
+          )}
           </ErrorBoundary>
-        ))}
+          );
+        })}
       </div>
       {sortedRows.length > visibleRows.length && (
         <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
@@ -15850,7 +16057,132 @@ function PickReportTab({ openPicks, settledPicks, correlations }) {
   );
 }
 
-function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, sportsbook, onOpenSettings }) {
+// Rebuilds a saved leg's ladder from the log that rides with it. A pick saved
+// before alt lines existed has no `logValues` and gets no rungs -- it renders
+// with its line and its numbers intact and simply cannot be stepped, which
+// SlipLeg says out loud rather than showing a stepper that does nothing.
+function rungsForPick(p) {
+  if (!p || !Array.isArray(p.logValues) || !p.logValues.length || p.mainLine == null) return [];
+  return buildRungs({
+    values: p.logValues,
+    mainLine: p.mainLine,
+    isBinary: p.isBinary,
+    direction: p.direction || "over",
+    // The whole log that was saved. A window narrower than the saved log would
+    // recount the leg over fewer games than the number printed beside it.
+    window: "all",
+  });
+}
+
+// One slip leg, adapted from the saved pick shape to what SlipLeg expects.
+function slipLegFor(p) {
+  return {
+    player: {
+      name: p.name,
+      team: p.team,
+      headshotSrc: p.avatar,
+      fallbackSrc: p.avatarFallback,
+      espnId: p.espnId,
+      // Rule 1: the slip names a player, so the avatar carries availability.
+      // The live roster status wins when a cache is loaded; the status
+      // snapshotted at add time is the fallback, and unknown stays dotless.
+      status: pickStatus(p) || p.status || undefined,
+    },
+    side: p.direction === "under" ? "Under" : "Over",
+    // Opponent rides in the market line so the leg still says who the game is
+    // against, the way the slip row it replaces did.
+    market: p.opp ? `${p.marketLabel || p.subtitle} · vs ${p.opp}` : (p.marketLabel || p.subtitle),
+    line: p.line,
+    mainLine: p.mainLine,
+    hitRate: p.hitRate,
+    gamesOver: p.gamesOver,
+    gamesCounted: p.gamesCounted,
+    price: p.odds,
+  };
+}
+
+// How often every leg on the slip landed in the same game -- a count, not a
+// product. See combinedLanded: multiplying the legs' single rates assumes they
+// are independent, which slip legs routinely aren't, and would read as more
+// confident than anything measured supports. This block is the measured
+// counterpart to the combined price above it, which *is* a multiplication and
+// says so.
+function CombinedLandedBlock({ picks }) {
+  const legs = picks.map((p) => ({
+    values: p.logValues,
+    line: p.line,
+    isBinary: p.isBinary,
+    direction: p.direction || "over",
+  }));
+  const c = combinedLanded(legs);
+  const label = `ALL ${picks.length} HAVE LANDED TOGETHER`;
+
+  // Nothing to count from: at least one leg predates the saved log.
+  if (c.legsMissingLog) {
+    return (
+      <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
+        <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
+        <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
+          At least one leg was saved without its game log, so there is no set of
+          games all of these legs share. No combined rate is shown rather than
+          one counted off the legs that do have one.
+        </div>
+      </div>
+    );
+  }
+
+  // The thin rule, one step harder. Under three shared games a single result
+  // swings the rate by more than 30 points, and a percentage there would be
+  // theatre -- so the overlap is reported as too short and no rate is printed.
+  if (c.tooShort) {
+    return (
+      <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
+        <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
+        <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
+          These legs only share {c.counted} finished {c.counted === 1 ? "game" : "games"} — too
+          short to state a rate. The overlap is capped by whichever leg has the
+          fewest games behind it.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
+        <span className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--dim)" }}>{label}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Same badge the ladder header carries, for the same reason: the
+              count is the thing being qualified, so the label belongs on it
+              rather than only in the sentence underneath. */}
+          {c.thin && (
+            <span
+              className="mono"
+              title={`These legs share only ${c.counted} games — fewer than 10`}
+              style={{ fontSize: 9, letterSpacing: "0.1em", color: "var(--dim)", border: "1px solid var(--line-strong)", padding: "2px 5px" }}
+            >
+              THIN
+            </span>
+          )}
+          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap" }}>
+            {c.landed} of {c.counted}
+          </span>
+        </span>
+      </div>
+      <div style={{ display: "flex", height: 6, background: "var(--panel2)", marginBottom: 6 }}>
+        <span style={{ width: `${Math.round(c.hitRate * 100)}%`, background: c.hitRate >= 0.7 ? "var(--pos)" : "#6c7688" }} />
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
+        Counted over the {c.counted} games these legs share — the games where
+        every one of their players finished{c.thin ? ", fewer than 10, so treat it as thin" : ""}.
+        Not the single rates multiplied together: these legs don't move
+        independently, so that product would overstate this.
+      </div>
+    </div>
+  );
+}
+
+function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, onChangeLine, sportsbook, onOpenSettings }) {
   const [tab, setTab] = useState("slip");
   const oddsFormat = useOddsFormat();
   const dollarsPerUnit = useUnitValue();
@@ -15963,63 +16295,43 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                     Tap the + on any prop in the Prop Feed to add it here.
                   </div>
                 ) : (
-                  openPicks.map((p) => (
-                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
-                      <PlayerAvatar
-                        name={p.name}
+                  openPicks.map((p) => {
+                    const rungs = rungsForPick(p);
+                    // The same three states the slip has always spelled out,
+                    // now handed to SlipLeg as one note. A leg that can't be
+                    // stepped says so here too, rather than offering a control
+                    // that quietly refuses.
+                    const note = pickIsLegacy(p)
+                      ? "Saved before results were tracked — won't be graded."
+                      : !p.gradeKind || !p.gradeId
+                        ? (p.sport === "nba"
+                            ? "NBA data here is simulated — can't be graded."
+                            : "No real game log for this player — can't be graded.")
+                        : pickGameIsFinal(p)
+                          ? "Waiting on the box score."
+                          : !rungs.length
+                            ? "Saved before alt lines — this leg keeps its line but can't be moved."
+                            : null;
+                    return (
+                      <SlipLeg
+                        key={p.id}
+                        leg={slipLegFor(p)}
+                        rungs={rungs}
                         sport={p.sport}
-                        team={p.team}
                         colorMap={FEED_TEAM_COLORS[p.sport]}
-                        headshotSrc={p.avatar}
-                        fallbackSrc={p.avatarFallback}
-                        status={pickStatus(p)}
                         surface="var(--panel)"
-                        size={34}
-                        inset={2}
+                        note={note}
+                        onChangeLine={(rung) => onChangeLine(p.id, rung)}
+                        onRemove={() => onRemove(p.id)}
                       />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="oswald" style={{ fontSize: 13.5, color: "var(--text)" }}>
-                          {p.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({p.team})</span>
-                        </div>
-                        <div style={{ fontSize: 12, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>{p.subtitle}</div>
-                        <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 2 }}>vs {p.opp}</div>
-                        {/* Says up front which picks will never reach the
-                            Ledger, rather than letting them sit in the slip
-                            looking live forever. */}
-                        {pickIsLegacy(p) ? (
-                          <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 3, fontStyle: "italic" }}>
-                            Saved before results were tracked — won't be graded.
-                          </div>
-                        ) : !p.gradeKind || !p.gradeId ? (
-                          <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 3, fontStyle: "italic" }}>
-                            {p.sport === "nba"
-                              ? "NBA data here is simulated — can't be graded."
-                              : "No real game log for this player — can't be graded."}
-                          </div>
-                        ) : pickGameIsFinal(p) ? (
-                          <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 3, fontStyle: "italic" }}>
-                            Waiting on the box score.
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="mono" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>
-                        {formatOdds(p.odds, oddsFormat)}
-                      </div>
-                      <div
-                        onClick={() => onRemove(p.id)}
-                        role="button"
-                        aria-label={`Remove ${p.name} from My Picks`}
-                        style={{ cursor: "pointer", color: "var(--dim)", fontSize: 16, flexShrink: 0, padding: "0 2px" }}
-                      >
-                        ×
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
 
               {openPicks.length > 0 && (
                 <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  {openPicks.length > 1 && <CombinedLandedBlock picks={openPicks} />}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em" }}>
                       {openPicks.length > 1 ? "COMBINED PARLAY ODDS" : "ODDS"}
@@ -16403,6 +16715,30 @@ export default function PropLedger() {
     setMyPicks((cur) => (cur.some((p) => p.id === pick.id) ? cur.filter((p) => p.id !== pick.id) : [...cur, pick]));
   };
   const removePick = (id) => setMyPicks((cur) => cur.filter((p) => p.id !== id));
+  // Moving a leg to another rung rewrites the pick in place rather than
+  // removing and re-adding it, so it keeps its position on the slip and its
+  // `addedAt`. The id changes with the line (see feedPickId) because a
+  // different rung is a different bet -- and if that new id is already on the
+  // slip, the move is refused rather than silently collapsing two legs into
+  // one. Everything the rung measures is rewritten together; leaving `odds` or
+  // `hitRate` behind would leave the leg describing a line it is no longer on.
+  const updatePickLine = (id, rung) => setMyPicks((cur) => {
+    const p = cur.find((x) => x.id === id);
+    if (!p || !rung) return cur;
+    const side = p.direction === "under" ? "Under" : "Over";
+    const nextId = pickIdForLine(p, rung.line);
+    if (nextId !== id && cur.some((x) => x.id === nextId)) return cur;
+    return cur.map((x) => (x.id !== id ? x : {
+      ...x,
+      id: nextId,
+      line: rung.line,
+      hitRate: rung.hitRate,
+      gamesOver: rung.gamesOver,
+      gamesCounted: rung.gamesCounted,
+      odds: rung.price,
+      subtitle: x.isBinary ? x.marketLabel : `${side} ${rung.line} ${x.marketLabel || ""}`.trim(),
+    }));
+  });
   // "Clear slip" and "Clear history" are separate on purpose -- emptying the
   // slip must not wipe a settled record, and vice versa.
   const clearPicks = () => setMyPicks((cur) => cur.filter((p) => p.result));
@@ -16805,6 +17141,7 @@ export default function PropLedger() {
         open={picksOpen}
         onToggleOpen={() => setPicksOpen((v) => !v)}
         onRemove={removePick}
+        onChangeLine={updatePickLine}
         onClear={clearPicks}
         onClearSettled={clearSettledPicks}
         sportsbook={sportsbook}

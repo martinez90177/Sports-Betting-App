@@ -11,6 +11,30 @@
 // live sample next to the format picker, and importing it from PropLedger
 // would mean pulling the whole app into the settings dialog's module graph.
 
+// The Prop Feed's odds range is hard-capped to American odds of -1000/+1000
+// -- anything outside that band (extreme favorites/longshots, e.g. a
+// Triple-Double prop that hits 0% or 100% of the time) is excluded from the
+// feed entirely rather than just hidden behind an untouched slider. These
+// are the hit-rate probabilities that correspond exactly to -1000 and +1000.
+export const ODDS_PROB_LOW = 1 / 11; // +1000
+export const ODDS_PROB_HIGH = 10 / 11; // -1000
+
+// Converts a hit-rate probability into an American odds price, the same
+// vig-free implied-probability relationship real sportsbooks approximate.
+// Clamped to the +/-1000 band the Prop Feed enforces as its max odds range
+// so a displayed number never exceeds what the feed actually allows through.
+//
+// This runs one way only. A price is derived from a measured hit rate; no hit
+// rate anywhere in the app is ever derived back out of a price. The alt-line
+// ladder depends on that -- every rung's rate is a count of finished games,
+// never an implied probability.
+export function probToAmericanOdds(p) {
+  const prob = Math.min(ODDS_PROB_HIGH, Math.max(ODDS_PROB_LOW, p));
+  return prob >= 0.5
+    ? Math.round((-100 * prob) / (1 - prob))
+    : Math.round((100 * (1 - prob)) / prob);
+}
+
 export function americanToDecimal(o) {
   return o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o);
 }
