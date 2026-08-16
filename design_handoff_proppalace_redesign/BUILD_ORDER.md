@@ -1,6 +1,6 @@
 # Build order
 
-Do not hand the whole redesign over in one prompt. It is four phases; each one is
+Do not hand the whole redesign over in one prompt. It is five phases; each one is
 independently shippable and independently reviewable. Give Claude Code one phase
 at a time, in this order, and check the acceptance list before moving on.
 
@@ -10,6 +10,7 @@ Reference files are standalone HTML — open them in a browser next to the app:
     reference/alt-lines.html    Props feed ladder + slip (4b)
     reference/app-screens.html  Games slate, matchup overview, player prop detail (2a)
     reference/mobile.html       Mobile screens (3a) + the four logo candidates (3b)
+    reference/my-picks.html     My Picks drawer — slip / ledger / report (5a, 5b, 5c)
 
 `INSTALL.md` has the file-by-file mechanics. `README.md` has the measured spec
 (hexes, grid columns, type scale, state shape). This file is only the order.
@@ -79,6 +80,42 @@ line.
 
 ---
 
+## Phase 3.5 — My Picks drawer: slip, ledger, report
+
+The drawer already exists in the app with all three tabs. This phase restyles it
+and adds one thing it does not have. Do it directly after phase 3, because the
+slip tab depends on the rung data built there.
+
+**Slip tab.** The existing legs gain a `PlayerAvatar`, the rung stepper from
+phase 3, and the combined block that counts games where all legs landed together
+— never a product of the single rates. The stepper's `−` / `+` hit areas are
+44px.
+
+**ALT means off the posted line, in either direction.** Not "the user changed
+it." A leg the user never touched is ALT if the app opened it on a rung; a leg
+they moved back onto the posted line is not. The badge and the accent stepper
+border both key off `line !== book.mainLine`.
+
+**Report tab.** Keep the existing copy verbatim, including the closing
+disclaimer — it is the clearest statement of what the app does. Restyle only:
+avatar per leg, ▲ green / ▼ red / · neutral marks. Add one mark when a leg sits
+off the posted line, stating what that rung does to the rate.
+
+**Ledger tab — the one addition.** Above the settled list, a calibration block
+comparing the hit rate the app displayed against what actually happened, bucketed
+by band (90–100 / 80–89 / 70–79 / under 70). Bar is the real rate, the accent tick
+is what was claimed, each row carries its pick count. Buckets with fewer than 5
+settled picks are labelled thin, not hidden.
+
+The header reads wins−losses and a percentage, with a plain line stating what it
+counts: every saved pick graded off the box score, not a bankroll and not profit.
+
+**Accept when:** the drawer matches `reference/my-picks.html`, ALT keys off the
+posted line rather than user interaction, the calibration bands compute from
+settled picks with real counts, and the report's disclaimer is unchanged.
+
+---
+
 ## Phase 4 — Screen restyle (largest diff, no new behaviour)
 
 The games slate, matchup overview and player prop detail in
@@ -94,7 +131,7 @@ rate on screen is still paired with the number of games behind it.
 
 ## What is NOT in this bundle
 
-- **Mobile.** `reference/mobile.html` shows the intended mobile screens, but no
+- **Mobile.** The My Picks drawer is designed at desktop width; on mobile it is a full-height sheet with the same three tabs. `reference/mobile.html` shows the intended mobile screens, but no
   components are written for them. Treat it as a separate project after phase 4.
 - **The landing page.** Directions `1a` / `1b` / `1c` in the design canvas were
   explorations and are not part of this handoff.
@@ -104,6 +141,37 @@ rate on screen is still paired with the number of games behind it.
   and 4 are described in terms of intent, not diffs against your actual
   component tree. Claude Code reads it locally; expect it to propose a plan for
   that file before editing it, and ask it to.
+
+## Rules that apply in every phase
+
+These are not phase-specific. Any new screen, row, rail or card is checked
+against them before it ships.
+
+**1. A player's face and their availability travel together.** Anywhere a player
+is named — feed rows, roster rails, player pages, mobile nav, lineup drawers,
+news items, teammate chips, gamecast leaders — they get a `PlayerAvatar`, and
+that avatar carries their availability dot. There is no surface where a player
+appears as a bare name, and no surface where their photo appears without their
+status.
+
+**2. Exactly three availability colours, and blue is not one of them.**
+
+    available     green    #3ecf8e
+    questionable  amber    #e8b13a
+    out           red      #ef5b5b
+    unknown       no dot   (never a grey dot, never a default to green)
+
+Blue is the app's accent — it means selected or interactive, never health. If a
+status ever renders blue, that is a bug.
+
+**3. The dot owns the avatar's bottom-right corner.** Nothing else goes there —
+not a team logo, not a jersey number. The team is already stated in text
+alongside the name; availability is not stated anywhere else.
+
+**4. Nothing is ever silently dropped.** A game, player or row that can't be
+rendered surfaces as a visible state ("N games unreadable"), never as an absent
+row. This rule exists because four of seven WNBA games were invisible for
+exactly this reason.
 
 ## One rule to carry through every phase
 
