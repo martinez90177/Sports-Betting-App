@@ -9,6 +9,7 @@ import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
 import AltLineLadder, { SlipLeg } from "./AltLineLadder.jsx";
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
+import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsModal from "./SettingsModal.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
@@ -13469,7 +13470,7 @@ function parlayCorrelationGroups(picks) {
 const REPORT_TONE = {
   good: { color: "var(--pos)", mark: "▲" },
   warn: { color: "var(--neg)", mark: "▼" },
-  note: { color: "var(--dim)", mark: "•" },
+  note: { color: "var(--dim)", mark: "·" },
 };
 
 // Thresholds are deliberately conservative and named, so the text can quote
@@ -13483,46 +13484,77 @@ const REPORT_FORM_GAP = 0.2;
 // number that the hit rate is nearly a coin flip on the night.
 const REPORT_THIN_CUSHION = 0.3;
 
+// What sitting off the posted line did to this leg's rate, in one line. Built
+// from the same ladder the slip steps through (rungsForPick), so the numbers
+// here and the numbers on the slip can't drift apart.
+//
+// ALT means off the posted line in either direction -- not "the user moved
+// it" -- so a leg the app opened on a rung gets this mark untouched, and a leg
+// stepped back onto the posted line doesn't.
+function reportAltLineFinding(p) {
+  if (p.mainLine == null || p.line == null || p.line === p.mainLine) return null;
+  const dir = p.line < p.mainLine ? "below" : "above";
+  const rungs = rungsForPick(p);
+  const main = rungs.find((r) => r.isMain);
+  const here = rungs.find((r) => r.line === p.line);
+  // Saved without its game log, so there is no ladder to rebuild. State the
+  // move and claim nothing about what it bought.
+  if (!main || !here || main.hitRate == null || here.hitRate == null) {
+    return { tone: "note", text: `sits ${dir} the posted ${p.mainLine}, at ${p.line}. No saved log, so what that rung did to the rate isn't recoverable.` };
+  }
+  const move = Math.round(here.hitRate * 100) - Math.round(main.hitRate * 100);
+  return {
+    tone: "note",
+    text: `sits ${dir} the posted ${p.mainLine}, at ${p.line} — ${Math.round(here.hitRate * 100)}% instead of ${Math.round(main.hitRate * 100)}%${move === 0 ? ", the same rate," : ""} over the same ${here.gamesCounted} games.`,
+  };
+}
+
 function reportSlipFindings(picks) {
   const findings = [];
   picks.forEach((p) => {
+    // `who` is the pick's id rather than its display name: the Report groups
+    // findings by leg and heads each group with that player's avatar, which
+    // needs the pick itself. Two legs on one player stay two groups.
+    const who = p.id;
+    const push = (tone, text) => findings.push({ tone, who, pick: p, text });
+
+    // Stated before the snapshot guard below, because being off the posted
+    // line is a fact about the leg itself -- a pick saved before snaps existed
+    // still has a line and a main line.
+    const alt = reportAltLineFinding(p);
+    if (alt) push(alt.tone, alt.text);
+
     const s = p.snap;
     if (!s) return;
-    const who = `${p.name} ${p.subtitle}`;
 
     if (s.l10 >= REPORT_STRONG_RATE && s.l20 != null && Math.abs(s.l10 - s.l20) <= 0.1) {
-      findings.push({ tone: "good", who, text:
-        `hits ${Math.round(s.l10 * 100)}% over 10 games and ${Math.round(s.l20 * 100)}% over 20 — the level is established, not a hot streak.` });
+      push("good", `hits ${Math.round(s.l10 * 100)}% over 10 games and ${Math.round(s.l20 * 100)}% over 20 — the level is established, not a hot streak.`);
     } else if (s.l5 != null && s.l20 != null && s.l5 - s.l20 >= REPORT_FORM_GAP) {
-      findings.push({ tone: "warn", who, text:
-        `is ${Math.round(s.l5 * 100)}% in its last 5 but only ${Math.round(s.l20 * 100)}% over 20. You're buying recent form, and that's the number most likely to fall back.` });
+      push("warn", `is ${Math.round(s.l5 * 100)}% in its last 5 but only ${Math.round(s.l20 * 100)}% over 20. You're buying recent form, and that's the number most likely to fall back.`);
     } else if (s.l10 != null && s.l10 < REPORT_WEAK_RATE) {
-      findings.push({ tone: "warn", who, text:
-        `has only hit ${Math.round(s.l10 * 100)}% of its last 10. Nothing in the sample supports this one.` });
+      push("warn", `has only hit ${Math.round(s.l10 * 100)}% of its last 10. Nothing in the sample supports this one.`);
     }
 
     if (s.cushion != null && Math.abs(s.cushion) < REPORT_THIN_CUSHION) {
-      findings.push({ tone: "warn", who, text:
-        `clears the line by just ${Math.abs(s.cushion).toFixed(2)} on average — close enough that one quiet night flips it.` });
+      push("warn", `clears the line by just ${Math.abs(s.cushion).toFixed(2)} on average — close enough that one quiet night flips it.`);
     } else if (s.cushion != null && s.cushion >= 1) {
-      findings.push({ tone: "good", who, text:
-        `clears the line by ${s.cushion.toFixed(1)} on average, so it doesn't need a perfect night.` });
+      push("good", `clears the line by ${s.cushion.toFixed(1)} on average, so it doesn't need a perfect night.`);
     }
 
     if (s.streak <= -3) {
-      findings.push({ tone: "warn", who, text: `has missed ${Math.abs(s.streak)} in a row.` });
+      push("warn", `has missed ${Math.abs(s.streak)} in a row.`);
     } else if (s.streak >= 5) {
-      findings.push({ tone: "good", who, text: `has hit ${s.streak} straight.` });
+      push("good", `has hit ${s.streak} straight.`);
     }
 
     if (s.tier === "tough") {
-      findings.push({ tone: "warn", who, text: `draws a top-tier matchup (opponent rank #${s.rank}), the hardest kind for this stat.` });
+      push("warn", `draws a top-tier matchup (opponent rank #${s.rank}), the hardest kind for this stat.`);
     } else if (s.tier === "soft") {
-      findings.push({ tone: "good", who, text: `draws a soft matchup (opponent rank #${s.rank}).` });
+      push("good", `draws a soft matchup (opponent rank #${s.rank}).`);
     }
 
     if (s.lineupConfirmed === false) {
-      findings.push({ tone: "note", who, text: `is on a projected lineup — the batting order isn't posted yet, so the plate appearances aren't guaranteed.` });
+      push("note", `is on a projected lineup — the batting order isn't posted yet, so the plate appearances aren't guaranteed.`);
     }
   });
   return findings;
@@ -15903,21 +15935,169 @@ function PickResultBadge({ result }) {
   );
 }
 
-function LedgerStat({ label, value, color, sub }) {
+// The Ledger's headline. Wins-losses and a percentage, and one plain line
+// saying what that counts -- every pick saved, graded off the box score,
+// whether or not it was ever placed anywhere. Units and ROI sit underneath in
+// a single subline rather than as co-equal tiles: they're real (the unit size
+// comes from Settings) but they describe a bankroll this app never had, and
+// putting them level with the record made the tab read as a P&L.
+function LedgerHeader({ summary, settledPicks, dollarsPerUnit }) {
+  const since = useMemo(() => {
+    const stamps = settledPicks
+      .map((p) => p.gradedAt || p.addedAt)
+      .filter(Boolean)
+      .map((t) => new Date(t).getTime())
+      .filter((t) => Number.isFinite(t));
+    if (!stamps.length) return null;
+    const d = new Date(Math.min(...stamps));
+    return `${FEED_MONTHS[d.getMonth()]} ${d.getDate()}`;
+  }, [settledPicks]);
+
   return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div className="oswald" style={{ fontSize: 9.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.06em" }}>
-        {label}
+    <div style={{ padding: "16px 18px 14px", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 11 }}>
+        <span className="mono" style={{ fontSize: 27, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+          {summary.won}<span style={{ color: "var(--dim)" }}>−</span>{summary.lost}
+        </span>
+        <span className="mono" style={{ fontSize: 16, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
+          {summary.hitRate == null ? "—" : `${Math.round(summary.hitRate * 100)}%`}
+        </span>
+        {since && (
+          <span className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", color: "var(--dim)", marginLeft: "auto" }}>
+            SINCE {since.toUpperCase()}
+          </span>
+        )}
       </div>
-      <div className="mono" style={{ fontSize: 15, fontWeight: 700, color: color || "var(--text)", marginTop: 2 }}>
-        {value}
+      <div style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5, marginTop: 8 }}>
+        Every pick you saved, graded off the box score. Not a bankroll and not
+        profit — a slip you never placed counts the same as one you did.
       </div>
-      {/* Dollars go on their own line rather than inline with the units
-          figure: these four tiles share one row at 340px wide, and appending
-          "($123.45)" to the value wrapped the tile at any realistic total. */}
-      {sub && (
-        <div className="mono" style={{ fontSize: 10.5, fontWeight: 600, color: "var(--dim)", marginTop: 1 }}>
-          {sub}
+      <div className="mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 7, fontVariantNumeric: "tabular-nums" }}>
+        <span style={{ color: summary.units >= 0 ? "var(--pos)" : "var(--neg)", fontWeight: 700 }}>
+          {formatUnits(summary.units, dollarsPerUnit)}
+        </span>
+        {summary.roi != null && (
+          <> · ROI {summary.roi >= 0 ? "+" : "−"}{Math.abs(summary.roi * 100).toFixed(1)}% at a flat 1u</>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Did the rates the app displayed hold up? See lib/calibration.js for why this
+// is bucketed rather than scored per pick.
+//
+// Colour note: the bar is --accent for a band that held and a neutral --dim for
+// one that fell short. Green/amber/red mean player availability everywhere else
+// in this app, and a bar in those colours would read as a status. A band that
+// missed is stated by its label and its count, not by its colour.
+function CalibrationBlock({ picks }) {
+  const cal = useMemo(() => ledgerCalibration(picks), [picks]);
+  if (!cal) return null;
+
+  const pctOf = (v) => `${Math.round(v * 100)}%`;
+
+  return (
+    <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <span className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--dim)" }}>
+          DID THE RATES HOLD UP
+        </span>
+        <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.06em", color: "var(--text)", flexShrink: 0 }}>
+          │ CLAIMED
+        </span>
+      </div>
+
+      {/* The tolerance is printed, not applied silently -- it decides which
+          bars read as accent, and an unstated threshold is an unstated edit to
+          the numbers. */}
+      <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45, marginTop: 6 }}>
+        The bar is what happened; the tick is what was claimed. A band counts as
+        holding up when the real rate came within {Math.round(CALIBRATION_SLACK * 100)} points
+        of the claim.
+      </div>
+
+      {/* Under the floor the bands still render in full -- nothing is hidden --
+          but the total leads, and no band is read out as a conclusion. */}
+      {cal.belowFloor && (
+        <div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.45, marginTop: 8, fontStyle: "italic" }}>
+          {cal.total} settled {cal.total === 1 ? "pick" : "picks"} with a rate behind
+          {cal.total === 1 ? " it" : " them"}. Too few to read any band as calibration.
+        </div>
+      )}
+
+      <div style={{ marginTop: 10 }}>
+        {cal.bands.map((b) => (
+          <div
+            key={b.key}
+            // The right column is a fixed width, not `auto`. With `auto` the
+            // longer THIN chip took width from the 1fr track, so that band's
+            // bar was drawn on a narrower scale than the others and the four
+            // bands couldn't be compared by eye -- which is the only thing
+            // this block is for. Every track is now identical width.
+            style={{
+              display: "grid", gridTemplateColumns: "70px 1fr 88px", gap: 10,
+              alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--line)",
+            }}
+          >
+            <span className="mono" style={{ fontSize: 11, color: "var(--text)" }}>{b.label}</span>
+            <div style={{ height: 6, background: "var(--panel2)", position: "relative" }}>
+              {b.count > 0 && (
+                <>
+                  <span style={{
+                    position: "absolute", top: 0, bottom: 0, left: 0,
+                    width: `${Math.round(b.real * 100)}%`,
+                    background: b.held ? "var(--accent)" : "var(--dim)",
+                  }} />
+                  <span style={{
+                    position: "absolute", top: -3, bottom: -3,
+                    left: `${Math.min(Math.round(b.claimed * 100), 99.5)}%`,
+                    width: 2, background: "var(--text)",
+                  }} />
+                </>
+              )}
+            </div>
+            {/* The count sits on its own line under the rate so the chip never
+                competes with the track for width. */}
+            <span className="mono" style={{ fontSize: 11.5, color: "var(--text)", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+              {b.count === 0 ? (
+                <span style={{ color: "var(--dim)", fontSize: 10 }}>no picks yet</span>
+              ) : (
+                <>
+                  <div>{pctOf(b.real)}</div>
+                  {/* THIN already means "under 10 games" on the ladder. Here it
+                      means "under 5 settled picks", so the chip carries its
+                      unit rather than leaving the reader to guess which. */}
+                  {b.thin ? (
+                    <div
+                      title={`Fewer than ${CALIBRATION_THIN} settled picks in this band`}
+                      style={{ fontSize: 8.5, letterSpacing: "0.06em", color: "var(--dim)", border: "1px solid var(--line-strong)", padding: "1px 3px", marginTop: 3, display: "inline-block" }}
+                    >
+                      THIN · {b.count} {b.count === 1 ? "pick" : "picks"}
+                    </div>
+                  ) : (
+                    <div style={{ color: "var(--dim)", fontSize: 10, marginTop: 2 }}>{b.count} picks</div>
+                  )}
+                </>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* The gap, and only the gap. Which band drifted is measurable; why it
+          drifted isn't, so nothing here explains it. */}
+      {!cal.belowFloor && cal.worst && (
+        <div style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5, marginTop: 11 }}>
+          Your {cal.worst.label.toLowerCase().replace("under 70%", "under-70%")} picks
+          landed at {pctOf(cal.worst.real)} over {cal.worst.count} settled picks.
+        </div>
+      )}
+
+      {cal.unrated > 0 && (
+        <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45, marginTop: 8, fontStyle: "italic" }}>
+          {cal.unrated} settled {cal.unrated === 1 ? "pick predates" : "picks predate"} the
+          saved rate and {cal.unrated === 1 ? "isn't" : "aren't"} in these bands.
         </div>
       )}
     </div>
@@ -15985,15 +16165,41 @@ function PickReportTab({ openPicks, settledPicks, correlations }) {
         </div>
       )}
 
-      {verdict && (
+      {/* A leg can now produce a finding without a snapshot -- being off the
+          posted line is readable from the pick alone -- so the section renders
+          whenever there is anything to say, not only when the verdict (which
+          needs snapshots) exists. Rule 4: nothing computed is left unshown. */}
+      {(verdict || grouped.length > 0) && (
         <ReportSection title="THE SLIP">
-          <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5, marginBottom: 12 }}>
-            {verdict}
-          </div>
+          {verdict && (
+            <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.5, marginBottom: 12 }}>
+              {verdict}
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {grouped.map(([who, fs]) => (
+            {grouped.map(([who, fs]) => {
+              // Rule 1: the Report names a player, so the avatar comes with it
+              // and carries their availability. Same status chain the slip uses.
+              const p = fs[0].pick;
+              return (
               <div key={who}>
-                <div className="oswald" style={{ fontSize: 12.5, color: "var(--text)", marginBottom: 3 }}>{who}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <PlayerAvatar
+                    name={p.name}
+                    sport={p.sport}
+                    team={p.team}
+                    colorMap={FEED_TEAM_COLORS[p.sport]}
+                    headshotSrc={p.avatar}
+                    fallbackSrc={p.avatarFallback}
+                    status={pickStatus(p) || p.status || undefined}
+                    surface="var(--panel)"
+                    size={30}
+                    inset={2}
+                  />
+                  <div className="oswald" style={{ fontSize: 12.5, color: "var(--text)", minWidth: 0 }}>
+                    {p.name} <span style={{ color: "var(--dim)" }}>{p.subtitle}</span>
+                  </div>
+                </div>
                 {fs.map((f, i) => (
                   <div key={i} style={{ display: "flex", gap: 6, fontSize: 11.5, lineHeight: 1.45, marginTop: 2 }}>
                     <span style={{ color: REPORT_TONE[f.tone].color, flexShrink: 0 }}>{REPORT_TONE[f.tone].mark}</span>
@@ -16001,7 +16207,8 @@ function PickReportTab({ openPicks, settledPicks, correlations }) {
                   </div>
                 ))}
               </div>
-            ))}
+              );
+            })}
           </div>
           {snapless > 0 && (
             <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 10, fontStyle: "italic" }}>
@@ -16410,24 +16617,12 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
           ) : (
             <>
               {summary.settled > 0 && (
-                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)", display: "flex", gap: 10 }}>
-                  <LedgerStat label="RECORD" value={`${summary.won}-${summary.lost}`} />
-                  <LedgerStat label="HIT RATE" value={`${Math.round(summary.hitRate * 100)}%`} />
-                  <LedgerStat
-                    label={dollarsPerUnit ? "PROFIT" : "UNITS"}
-                    value={formatUnits(summary.units, null)}
-                    sub={dollarsPerUnit ? formatUnits(summary.units, dollarsPerUnit, { parens: false }) : null}
-                    color={summary.units >= 0 ? "var(--pos)" : "var(--neg)"}
-                  />
-                  <LedgerStat
-                    label="ROI"
-                    value={`${summary.roi >= 0 ? "+" : "−"}${Math.abs(summary.roi * 100).toFixed(1)}%`}
-                    color={summary.roi >= 0 ? "var(--pos)" : "var(--neg)"}
-                  />
-                </div>
+                <LedgerHeader summary={summary} settledPicks={settledPicks} dollarsPerUnit={dollarsPerUnit} />
               )}
 
-              <div style={{ flex: 1, overflowY: "auto", padding: "8px 18px" }}>
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                <CalibrationBlock picks={settledPicks} />
+                <div style={{ padding: "0 18px" }}>
                 {settledPicks.length === 0 ? (
                   <div style={{ color: "var(--dim)", fontSize: 12.5, padding: "24px 0", textAlign: "center", lineHeight: 1.5 }}>
                     Nothing settled yet. Picks land here automatically once the
@@ -16435,7 +16630,11 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                     anything yourself.
                   </div>
                 ) : (
-                  settledPicks.map((p) => (
+                  <>
+                  <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--dim)", padding: "14px 0 2px" }}>
+                    SETTLED
+                  </div>
+                  {settledPicks.map((p) => (
                     <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
                       <PlayerAvatar
                         name={p.name}
@@ -16444,7 +16643,16 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                         colorMap={FEED_TEAM_COLORS[p.sport]}
                         headshotSrc={p.avatar}
                         fallbackSrc={p.avatarFallback}
-                        status={pickStatus(p)}
+                        // Deliberately dotless, and the one place in the app
+                        // where an avatar carries no status. These games are
+                        // over: a dot here would advertise the player's
+                        // availability *today* against a result from a week
+                        // ago, which is a live fact attached to a settled one.
+                        // Unknown-is-dotless (rule 2) is the honest reading --
+                        // there is no availability that belongs to a finished
+                        // game. The slip and the Report, which are about games
+                        // still to come, do carry it.
+                        status={undefined}
                         surface="var(--panel)"
                         size={34}
                         inset={2}
@@ -16479,8 +16687,10 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                         ×
                       </div>
                     </div>
-                  ))
+                  ))}
+                  </>
                 )}
+                </div>
               </div>
 
               <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
