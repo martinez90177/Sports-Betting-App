@@ -67,7 +67,8 @@ export const MLB_STATUS_BADGES = {
 // Cache shape deliberately mirrors fetchMLBTeamActiveRoster: module Map +
 // sessionStorage, keyed on the MLB day so it rolls over with the slate, and a
 // failed fetch is never cached so the next call retries.
-const MLB_ROSTER_STATUS_TTL_MS = 15 * 60 * 1000;
+// Exported: the MLB player page polls the status feed on this same cadence.
+export const MLB_ROSTER_STATUS_TTL_MS = 15 * 60 * 1000;
 export const mlbRosterStatusCache = new Map();
 
 export async function fetchMLBTeamRosterStatus(teamId) {

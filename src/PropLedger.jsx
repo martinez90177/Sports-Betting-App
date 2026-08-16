@@ -23,6 +23,7 @@ import { fetchNews, timeAgo } from "./lib/newsdata.js";
 import {
   MLB_TEAM_ID_ABBR, MLB_ABBR_TEAM_ID, MLB_STATUS_BADGES, mlbRosterStatusCache,
   fetchMLBTeamRosterStatus, currentMLBDayKey, mlbHeadshot, mlbAvailability,
+  MLB_ROSTER_STATUS_TTL_MS,
 } from "./lib/mlbStatus.js";
 import {
   NBA_TEAM_COLORS, NFL_TEAM_COLORS, WNBA_TEAM_COLORS, MLB_TEAM_COLORS,
