@@ -7339,7 +7339,9 @@ const DODGERS_PLAYERS = [
   { id: "hernandez", name: "Teoscar Hernández", team: "LAD", pos: "LF", mlbId: 606192 },
   { id: "muncy", name: "Max Muncy", team: "LAD", pos: "3B", mlbId: 571970 },
   { id: "pages", name: "Andy Pages", team: "LAD", pos: "CF", mlbId: 681624 },
-  { id: "rushing", name: "Dalton Rushing", team: "LAD", pos: "C", mlbId: 687221 },
+  // Rushing (partial UCL tear) is considered unlikely to catch again in 2026;
+  // Rortvedt has taken the "lion's share" of starts behind the plate per Roberts.
+  { id: "rortvedt", name: "Ben Rortvedt", team: "LAD", pos: "C", mlbId: 666163 },
   { id: "rojas", name: "Miguel Rojas", team: "LAD", pos: "2B", mlbId: 500743 },
   { id: "sheehan", name: "Emmet Sheehan", team: "LAD", pos: "SP", mlbId: 686218 },
 ];
@@ -7371,7 +7373,9 @@ const BRAVES_PLAYERS = [
   { id: "yastrzemski", name: "Mike Yastrzemski", team: "ATL", pos: "LF", mlbId: 573262 },
   // Acquired from Kansas City at the deadline (White went back the other way).
   { id: "lthomas", name: "Lane Thomas", team: "ATL", pos: "RF", mlbId: 657041 },
-  { id: "mateo", name: "Jorge Mateo", team: "ATL", pos: "SS", mlbId: 622761 },
+  // Mateo was DFA'd (Aug 3) and released (Aug 10) to activate Ha-Seong Kim
+  // off the IL; Jarvis has held down shortstop as the everyday starter since.
+  { id: "jarvis", name: "Jim Jarvis", team: "ATL", pos: "SS", mlbId: 805347 },
   { id: "lopez", name: "Reynaldo López", team: "ATL", pos: "SP", mlbId: 625643 },
 ];
 
@@ -7397,7 +7401,9 @@ const BLUEJAYS_PLAYERS = [
   { id: "clement", name: "Ernie Clement", team: "TOR", pos: "2B", mlbId: 676391 },
   { id: "okamoto", name: "Kazuma Okamoto", team: "TOR", pos: "3B", mlbId: 672960 },
   { id: "gimenez", name: "Andrés Giménez", team: "TOR", pos: "SS", mlbId: 665926 },
-  { id: "schneider", name: "Davis Schneider", team: "TOR", pos: "LF", mlbId: 676914 },
+  // Schneider was optioned to Triple-A Buffalo (Aug 10) while batting .142;
+  // McAdoo was recalled and is now starting in left, batting leadoff.
+  { id: "mcadoo", name: "Charles McAdoo", team: "TOR", pos: "LF", mlbId: 807727 },
   { id: "varsho", name: "Daulton Varsho", team: "TOR", pos: "CF", mlbId: 662139 },
   { id: "lukes", name: "Nathan Lukes", team: "TOR", pos: "RF", mlbId: 664770 },
   { id: "springer", name: "George Springer", team: "TOR", pos: "DH", mlbId: 543807 },
@@ -7449,7 +7455,9 @@ const MARINERS_PLAYERS = [
   { id: "naylor", name: "Josh Naylor", team: "SEA", pos: "1B", mlbId: 647304 },
   { id: "young", name: "Cole Young", team: "SEA", pos: "2B", mlbId: 702284 },
   { id: "wilson", name: "Weston Wilson", team: "SEA", pos: "3B", mlbId: 642215 },
-  { id: "crawfordjp", name: "J.P. Crawford", team: "SEA", pos: "SS", mlbId: 641487 },
+  // Crawford has been out since July 30 (left wrist inflammation); Rivas
+  // has taken over at shortstop in his absence.
+  { id: "rivas", name: "Leo Rivas", team: "SEA", pos: "SS", mlbId: 660844 },
   { id: "arozarena", name: "Randy Arozarena", team: "SEA", pos: "LF", mlbId: 668227 },
   { id: "rodriguez", name: "Julio Rodríguez", team: "SEA", pos: "CF", mlbId: 677594 },
   // Acquired from Baltimore at the deadline; Raley (elbow) was on the IL
@@ -7602,7 +7610,9 @@ const NATIONALS_PLAYERS = [
   { id: "jyoung", name: "Jacob Young", team: "WSH", pos: "CF", mlbId: 696285 },
   { id: "wood", name: "James Wood", team: "WSH", pos: "RF", mlbId: 695578 },
   { id: "tena", name: "José Tena", team: "WSH", pos: "DH", mlbId: 677588 },
-  { id: "mikolas", name: "Miles Mikolas", team: "WSH", pos: "SP", mlbId: 571945 },
+  // Mikolas was designated for assignment on 2026-08-12; Kent was recalled
+  // from Triple-A Rochester and made his MLB debut as starter that night.
+  { id: "jkent", name: "Jackson Kent", team: "WSH", pos: "SP", mlbId: 800600 },
 ];
 const PADRES_PLAYERS = [
   { id: "campusano", name: "Luis Campusano", team: "SD", pos: "C", mlbId: 669134 },
@@ -7645,7 +7655,9 @@ const TWINS_PLAYERS = [
   { id: "kclemens", name: "Kody Clemens", team: "MIN", pos: "1B", mlbId: 665019 },
   { id: "keaschall", name: "Luke Keaschall", team: "MIN", pos: "2B", mlbId: 807712 },
   { id: "rlewis", name: "Royce Lewis", team: "MIN", pos: "3B", mlbId: 668904 },
-  { id: "kreidler", name: "Ryan Kreidler", team: "MIN", pos: "SS", mlbId: 668952 },
+  // Kreidler's bat cooled off (.443 OPS since July); top prospect Culpepper
+  // was called up (Aug 7) and has taken over as the everyday shortstop.
+  { id: "culpepper", name: "Kaelen Culpepper", team: "MIN", pos: "SS", mlbId: 701785 },
   { id: "larnach", name: "Trevor Larnach", team: "MIN", pos: "LF", mlbId: 663616 },
   { id: "buxton", name: "Byron Buxton", team: "MIN", pos: "CF", mlbId: 621439 },
   { id: "amartin", name: "Austin Martin", team: "MIN", pos: "RF", mlbId: 668885 },
@@ -7655,8 +7667,12 @@ const TWINS_PLAYERS = [
 const ROCKIES_PLAYERS = [
   { id: "goodman", name: "Hunter Goodman", team: "COL", pos: "C", mlbId: 696100 },
   { id: "rumfield", name: "TJ Rumfield", team: "COL", pos: "1B", mlbId: 681198 },
-  { id: "julien", name: "Edouard Julien", team: "COL", pos: "2B", mlbId: 666397 },
-  { id: "karros", name: "Kyle Karros", team: "COL", pos: "3B", mlbId: 691720 },
+  // Julien was outrighted to Triple-A (Aug 11) after losing playing time;
+  // Amador was recalled and takes over at second.
+  { id: "amador", name: "Adael Amador", team: "COL", pos: "2B", mlbId: 691182 },
+  // Karros went on the 7-day concussion IL (Aug 12) after colliding with
+  // Tovar; Castro shifts over from second to cover third base.
+  { id: "wcastro", name: "Willi Castro", team: "COL", pos: "3B", mlbId: 650489 },
   { id: "tovar", name: "Ezequiel Tovar", team: "COL", pos: "SS", mlbId: 678662 },
   { id: "moniak", name: "Mickey Moniak", team: "COL", pos: "LF", mlbId: 666160 },
   { id: "jmccarthy", name: "Jake McCarthy", team: "COL", pos: "CF", mlbId: 664983 },
