@@ -1,16 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { fetchNews } from "./lib/newsdata.js";
+import { fetchNews, timeAgo } from "./lib/newsdata.js";
 import PlayerAvatar from "./PlayerAvatar.jsx";
-
-function timeAgo(pubDate) {
-  if (!pubDate) return "";
-  const then = new Date(pubDate.replace(" ", "T") + "Z").getTime();
-  if (Number.isNaN(then)) return "";
-  const diffH = Math.round((Date.now() - then) / 3600000);
-  if (diffH < 1) return "just now";
-  if (diffH < 24) return `${diffH}h ago`;
-  return `${Math.round(diffH / 24)}d ago`;
-}
 
 // Drop-in "Latest News" module for a single-player prop page. Reuses that
 // page's own headshot image (already loaded there for the player selector)

@@ -559,14 +559,41 @@ select.select:focus, select.select:focus-visible {
   justify-content: center;
   gap: var(--s-2) var(--s-3);
 }
+/* Market chips, per the design handoff's player prop detail card: the market in
+   view is a filled accent chip and the rest are bordered, in place of the
+   underline the page-level .tab carries. Scoped to .market-bar so every other
+   .tab in the app is untouched.
+
+   The active label is --accent-on, not --accent-text. --accent-text is tuned
+   for accent-coloured text on a *panel* -- in dark mode it resolves to --amber
+   itself, so using it here would paint the accent on the accent and the chip
+   would read blank. --accent-on is the WCAG-contrast label colour computed from
+   whatever the user's colour wheel actually resolved to (see accentForeground
+   in settings.jsx), which is the thing that stays readable at both ends of the
+   wheel without hard-coding white. */
 .market-bar .tab {
   flex: 0 0 auto;
   width: auto;
-  font-size: 15px;
-  padding: 10px 12px;
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  color: var(--dim-strong);
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.market-bar .tab:hover { color: var(--text); border-color: var(--line-strong); }
+.market-bar .tab.active,
+.market-bar .tab.active:hover {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: var(--accent-on, #08131c);
 }
 @media (max-width: 480px) {
-  .market-bar .tab { font-size: 13px; padding: 8px 8px; }
+  /* Still a 44px hit area at this size -- 11px line box plus 2 x 12px. */
+  .market-bar .tab { font-size: 11px; padding: 12px 10px; letter-spacing: 0.03em; }
 }
 
 /* Native scrollbar hidden on the teammate chip row -- a reserved scrollbar

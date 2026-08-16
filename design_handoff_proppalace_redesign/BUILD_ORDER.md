@@ -178,3 +178,23 @@ exactly this reason.
 Every rate shows its sample size, and a thin sample is labelled rather than
 hidden. That constraint is what separates the app from the feed it was
 originally modelled on — if a change would drop it, the change is wrong.
+
+---
+
+## Running the dev server (note for the next session)
+
+`.claude/launch.json` has two entries, and that is deliberate:
+
+- **`prop-ledger-dev`** — the original. Runs `dev-mac.sh`, which sets `PATH` and
+  calls `npm run dev` on port 5173. Use this one normally.
+- **`prop-ledger-dev-direct`** — added during phase 4. Invokes
+  `node node_modules/vite/bin/vite.js` on port **5174**, skipping the shell
+  script entirely.
+
+The second exists because some sandboxed Claude Code sessions cannot execute
+`dev-mac.sh` (`Operation not permitted`), and `npm` itself then fails with
+`EPERM: uv_cwd` because the spawned process has no readable working directory.
+Calling the vite binary directly with absolute paths sidesteps both. Different
+port so the two can run at once and neither steals the other's server.
+
+`.claude/` is gitignored, so neither entry ships — this note is the only record.

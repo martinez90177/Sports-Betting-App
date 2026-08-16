@@ -10,6 +10,19 @@
 // local one is just latency.
 const CACHE_TTL_MS = 45 * 60 * 1000; // 45 min -- free tier articles already lag ~12hr, no need to refetch often
 
+// Relative age of an article's pubDate ("3h ago"). Lives here rather than in
+// one of the two components that render headlines, so the news module and the
+// player page's injury/news timeline label the same article the same way.
+export function timeAgo(pubDate) {
+  if (!pubDate) return "";
+  const then = new Date(pubDate.replace(" ", "T") + "Z").getTime();
+  if (Number.isNaN(then)) return "";
+  const diffH = Math.round((Date.now() - then) / 3600000);
+  if (diffH < 1) return "just now";
+  if (diffH < 24) return `${diffH}h ago`;
+  return `${Math.round(diffH / 24)}d ago`;
+}
+
 function cacheKey(params) {
   return `newsdata_cache:${params.category || "none"}:${params.q || "general"}`;
 }

@@ -22,16 +22,27 @@ const SECTION = {
   overflow: "hidden",
 };
 
-// Same accent-bar heading motif as MatchupPage, so the two screens a card can
-// open read as one family.
+// Same heading motif as MatchupPage, so the two screens a card can open read as
+// one family. Both moved from a short vertical accent bar to the handoff's open
+// arch at the same time; see the note on SectionArch in MatchupPage.jsx for why
+// the bar had to go (it read as a stripe of the three-bar wordmark, which an
+// arch does not).
 function SectionTitle({ children, right }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-      padding: "13px 16px", borderBottom: "1px solid var(--line)",
+      padding: "14px 28px", borderBottom: "1px solid var(--line)",
+      background: "var(--surface-sunken)",
     }}>
-      <div className="oswald" style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>
-        <span style={{ width: 3, height: 13, borderRadius: 2, background: "var(--amber)", flexShrink: 0 }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 11, fontSize: 20, fontWeight: 600, color: "var(--text)", letterSpacing: "-0.01em" }}>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 14, height: 9, flexShrink: 0,
+            border: "2px solid var(--amber)", borderBottom: "none",
+            borderRadius: "7px 7px 0 0",
+          }}
+        />
         {children}
       </div>
       {right}

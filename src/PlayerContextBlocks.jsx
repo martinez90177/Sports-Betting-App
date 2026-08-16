@@ -3,7 +3,11 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 
 // Injury + news timeline for a single player's prop page.
 // items: [{ when, tone: "current"|"scare", text, result: "over"|"under"|null }]
-export function InjuryAndNews({ status = "active", statusNote, items = [], summary }) {
+// `status` has no default on purpose. It used to default to "active", which
+// meant a league with no availability feed at all (NBA, NFL) rendered a green
+// ACTIVE pill -- a colour standing in for data nobody had. Unknown must render
+// as nothing, which is what StatusPill already does for an unset status.
+export function InjuryAndNews({ status, statusNote, items = [], summary }) {
   return (
     <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--line)" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
@@ -48,8 +52,15 @@ export function InjuryAndNews({ status = "active", statusNote, items = [], summa
 // usage. Only list absences that moved target share by more than 3 points, and
 // always name how many games the split came from.
 //
-// people: [{ name, team, position, espnId, status, note, effect, count }]
-export function MissingAround({ people = [], footnote }) {
+// people: [{ name, team, position, espnId, headshotSrc, fallbackSrc, status, note, effect, count }]
+//
+// `sport` and `colorMap` exist because this app renders four leagues through
+// one avatar: without them every teammate here would come out in NFL colours
+// off the NFL headshot CDN (see the note at the top of PlayerAvatar.jsx --
+// abbreviations collide across leagues, so the sport has to be part of the
+// lookup). The status reaches the avatar as well as the pill, because rule 1 is
+// that a face and its availability travel together.
+export function MissingAround({ people = [], footnote, sport, colorMap }) {
   return (
     <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--line)" }}>
       <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 14 }}>
@@ -59,7 +70,18 @@ export function MissingAround({ people = [], footnote }) {
       {people.map((p, i) => (
         <React.Fragment key={p.name}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: i === 0 ? "0 0 11px" : "14px 0 11px" }}>
-            <PlayerAvatar name={p.name} team={p.team} espnId={p.espnId} size={36} />
+            <PlayerAvatar
+              name={p.name}
+              team={p.team}
+              sport={sport}
+              colorMap={colorMap}
+              espnId={p.espnId}
+              headshotSrc={p.headshotSrc}
+              fallbackSrc={p.fallbackSrc}
+              status={p.status}
+              surface="var(--panel)"
+              size={36}
+            />
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 14 }}>
                 {p.name} <span className="pp-mono" style={{ fontSize: 11, color: "var(--dim)" }}>{p.position}</span>

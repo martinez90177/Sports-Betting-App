@@ -14,6 +14,16 @@ import SettingsModal from "./SettingsModal.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar from "./PlayerAvatar.jsx";
+import { InjuryAndNews, MissingAround } from "./PlayerContextBlocks.jsx";
+import { fetchNews, timeAgo } from "./lib/newsdata.js";
+// MLB availability lives in lib because the matchup overview needs it too and
+// cannot import from this file (see the note at the top of mlbStatus.js). The
+// roster-status cache is a single module instance, so the feed's prefetch and
+// the matchup screen read the same data.
+import {
+  MLB_TEAM_ID_ABBR, MLB_ABBR_TEAM_ID, MLB_STATUS_BADGES, mlbRosterStatusCache,
+  fetchMLBTeamRosterStatus, currentMLBDayKey, mlbHeadshot, mlbAvailability,
+} from "./lib/mlbStatus.js";
 import {
   NBA_TEAM_COLORS, NFL_TEAM_COLORS, WNBA_TEAM_COLORS, MLB_TEAM_COLORS,
   teamAvatarBackground,
@@ -494,6 +504,275 @@ function contextStatChartParts(stat, show, isNarrow) {
   ];
 }
 
+// The player header, shared by all four sport pages.
+//
+// It used to be four copies of the same JSX, one per sport, which is how they
+// drifted: the same row carried a status dot on MLB and WNBA and none on NBA or
+// NFL, and a redesign had to be applied four times to stick. The sport-specific
+// parts -- colour map, headshot chain, which season stats exist -- stay with the
+// page that knows them, handed in as `avatar` and `stats`.
+//
+// Geometry is the design handoff's (reference/app-screens.html, the player prop
+// detail card): 76px avatar, an 11px mono TEAM · POSITION line above a 42px
+// name, 18px gap, left-aligned rather than centred. Compact sizes are fixed
+// rather than proportional so the mobile header cannot drift below the 24px
+// floor: 48px avatar, 28px name, and the mono line stays 11px at both widths.
+//
+// The season stat tiles are not in the reference -- they are a working part of
+// this app's header, so they stay, pushed to the right end of the row under
+// their own mono label.
+function PlayerIdentityRow({ avatar, team, pos, name, stats, statsLabel = "SEASON", compact, style }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: compact ? 12 : 18,
+      flexWrap: "wrap", borderBottom: "1px solid var(--line)",
+      // Vertical padding is up from the old 12px: a 42px name needs the room,
+      // and this is the one place the reference's spacing has to win over the
+      // app's density or the type change reads as a mistake. paddingRight is
+      // unchanged -- it reserves the card's absolute top-right corner for the
+      // Filters button.
+      padding: compact ? "12px 12px" : "22px 20px",
+      paddingRight: compact ? 12 : 110,
+      ...style,
+    }}>
+      {avatar}
+
+      <div style={{ minWidth: 0 }}>
+        <div className="pp-mono" style={{
+          fontSize: 11, letterSpacing: "0.16em", color: "var(--dim)",
+          textTransform: "uppercase", whiteSpace: "nowrap",
+          overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {[team, pos].filter(Boolean).join(" · ")}
+        </div>
+        <div style={{
+          fontSize: compact ? 28 : 42, fontWeight: 600, letterSpacing: "-0.01em",
+          color: "var(--text)", lineHeight: 1.1, marginTop: compact ? 3 : 6,
+        }}>
+          {name}
+        </div>
+      </div>
+
+      {stats && stats.length > 0 && (
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <div className="pp-mono" style={{
+            fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 6,
+          }}>
+            {statsLabel}
+          </div>
+          <div style={{ display: "flex", gap: compact ? 12 : 20, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {stats.map((s) => (
+              <div key={s.label} style={{ textAlign: "center", width: s.width, flexShrink: 0 }}>
+                <div className="pp-mono" style={{ fontSize: compact ? 14 : 18, color: "var(--accent-text)", fontWeight: 700 }}>{s.value}</div>
+                <div style={{
+                  fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase",
+                  letterSpacing: "0.05em", whiteSpace: "nowrap",
+                }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Player page context blocks (design handoff, phase 4)
+// ---------------------------------------------------------------------------
+
+// Split a player's finished games by whether one teammate appeared, and count
+// each side against the line. One pass over the same game log the chart reads:
+// no modelling, no interpolation, no implied probability -- the same rule the
+// alt-line ladder follows.
+//
+// `playedIn(game)` answers "was this teammate in that game", or null when we
+// cannot tell. Games we cannot tell about are dropped from *both* sides rather
+// than guessed into one, and the count of them is returned so the caller can
+// say so rather than quietly shrinking the sample.
+//
+// Under `minGames` without the teammate there is no rate, only a labelled thin
+// state. Three is the floor because two games is a coin flip with a percentage
+// sign on it.
+const ABSENCE_MIN_GAMES = 3;
+
+// What the without-side actually counts, stated once per page.
+//
+// The split does not bound the without-games by roster tenure: doing that needs
+// a "when was this player on this roster" feed nobody here has, and inferring
+// it from the shape of a game log would be modelling, not counting. So a
+// teammate's without-side includes games from before they arrived and after
+// their season ended -- Ionescu's 20 "without Sabally" games run four months,
+// while Sabally's own log covers five weeks of them. Both counts are on screen,
+// but a reader would otherwise reasonably assume all 20 were games the teammate
+// could have played, so the footnote says plainly that they were not.
+const ABSENCE_WINDOW_CAVEAT =
+  "Without-games count every finished game the teammate didn't appear in, including before they joined or after they last played.";
+function absenceSplit({ games, valueOf, line, playedIn, minGames = ABSENCE_MIN_GAMES }) {
+  const withT = [];
+  const withoutT = [];
+  let unknown = 0;
+  (games || []).forEach((g) => {
+    const played = playedIn(g);
+    if (played === null || played === undefined) { unknown += 1; return; }
+    (played ? withT : withoutT).push(valueOf(g));
+  });
+  const over = (arr) => arr.filter((v) => v > line).length;
+  const base = { gamesWith: withT.length, gamesWithout: withoutT.length, unknown, minGames };
+  if (withoutT.length < minGames) return { ...base, state: "thin" };
+  return { ...base, state: "ok", overWith: over(withT), overWithout: over(withoutT) };
+}
+
+// Family name, for the second half of a split sentence where repeating the
+// full name reads as a stutter. Suffixes travel with the name they belong to,
+// so "Vladimir Guerrero Jr." shortens to "Guerrero Jr.", not "Jr.".
+const NAME_SUFFIX = /^(Jr|Sr|II|III|IV|V)\.?$/i;
+function familyName(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] || "";
+  const last = parts[parts.length - 1];
+  if (NAME_SUFFIX.test(last) && parts.length >= 3) return `${parts[parts.length - 2]} ${last}`;
+  return last;
+}
+
+// Turns a split into the sentence and the counted figure MissingAround prints.
+//
+// Counts lead, percentages follow in brackets -- the same order every other
+// rate on the page uses, so a reader isn't switching between two conventions on
+// one screen. The two halves are separated by a middot rather than joined into
+// prose, which keeps them parallel and scannable.
+//
+// Both halves name the teammate rather than reaching for a pronoun: these
+// blocks render on all four sport pages, so "him" is wrong on one of them, and
+// "them" is ambiguous when the sentence already has two people in it (the
+// player whose page this is, and the teammate who is out).
+//
+// Every branch that shows a rate shows the games behind it; every branch that
+// cannot show one says why instead of going quiet.
+function absenceEffectCopy(split, line, personName) {
+  if (!split) return { effect: null, count: null };
+  // The name keeps its own punctuation. Nothing below ever appends a period
+  // straight onto it -- the halves are joined with " · " and the string has no
+  // terminal full stop -- so "Guerrero Jr." stays "Guerrero Jr." rather than
+  // being stripped to a bare "Jr".
+  const full = personName ? String(personName) : "this teammate";
+  const short = personName ? familyName(personName) : "them";
+  if (split.state === "unsupported") return { effect: split.reason, count: null };
+  if (split.state === "pending") return { effect: `Working out the games ${full} missed…`, count: null };
+  if (split.state === "thin") {
+    const n = split.gamesWithout;
+    return {
+      effect: `Only ${n} finished game${n === 1 ? "" : "s"} without ${full} — under the ${split.minGames} this app will split on, so no rate is shown for it.`,
+      count: null,
+    };
+  }
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : "—");
+  const withPart = split.gamesWith
+    ? ` · ${split.overWith} of ${split.gamesWith} (${pct(split.overWith, split.gamesWith)}) with ${short}`
+    : ` · no finished games with ${short} to compare`;
+  const unknownPart = split.unknown
+    ? ` · ${split.unknown} game${split.unknown === 1 ? "" : "s"} unchecked, in neither number`
+    : "";
+  return {
+    effect: `${split.overWithout} of ${split.gamesWithout} (${pct(split.overWithout, split.gamesWithout)}) over ${line} without ${full}${withPart}${unknownPart}`,
+    count: { value: `${split.overWithout} of ${split.gamesWithout}`, label: `OVER ${line}` },
+  };
+}
+
+// Recent headlines for one player, shaped into InjuryAndNews's timeline.
+//
+// The `result` field that component supports is deliberately never set: tying a
+// headline to a particular game's over/under is not something anything in this
+// app can actually establish, and a guessed one would be exactly the invented
+// edge the rest of the page refuses to print.
+function usePlayerNewsTimeline(playerName, limit = 3) {
+  const [state, setState] = useState({ items: [], loading: true, error: null });
+  React.useEffect(() => {
+    if (!playerName) return undefined;
+    let cancelled = false;
+    setState({ items: [], loading: true, error: null });
+    fetchNews({ q: `"${playerName}"`, category: "sports", limit })
+      .then((res) => {
+        if (cancelled) return;
+        setState({
+          items: (res.articles || []).map((a) => ({
+            when: (timeAgo(a.pubDate) || "recent").toUpperCase(),
+            tone: "current",
+            text: a.title,
+          })),
+          loading: false,
+          error: res.articles && res.articles.length ? null : res.error,
+        });
+      })
+      .catch((err) => { if (!cancelled) setState({ items: [], loading: false, error: String(err) }); });
+    return () => { cancelled = true; };
+  }, [playerName, limit]);
+  return state;
+}
+
+// The two handoff blocks, wired once for all four sport pages.
+//
+// Both sit above the splits block on the player card. What differs per sport is
+// only what real data exists behind them, which is why `absences` and
+// `availabilityNote` are handed in rather than resolved here:
+//
+//   WNBA / MLB  a real availability feed, so real absent teammates and, where
+//               the game logs support it, a real with/without split.
+//   NBA / NFL   no player availability feed at all. MissingAround says so once.
+//               InjuryAndNews just omits its status pill and says nothing about
+//               it -- two blocks announcing the same gap on one page reads as
+//               broken, and the news timeline under it still has content.
+//
+// Neither block carries a data disclaimer. The card already has exactly one, at
+// its foot; a page that disclaims itself three times reads as less trustworthy,
+// not more.
+function PlayerPropContextBlocks({
+  playerName, status, statusNote, sport, colorMap,
+  hits, total, line, absences, availabilityNote,
+}) {
+  const news = usePlayerNewsTimeline(playerName);
+
+  // Rule 4: a timeline that fetched nothing says so. An empty block would read
+  // as "no news", which is a different claim from "we could not load any".
+  const items = news.loading
+    ? [{ when: "…", tone: "current", text: "Loading recent headlines…" }]
+    : news.items.length
+    ? news.items
+    : [{
+        when: "NONE",
+        tone: "scare",
+        text: news.error
+          ? "Couldn't load headlines for this player right now."
+          : `No recent headlines matched ${playerName}.`,
+      }];
+
+  // Same thin threshold the alt-line ladder uses (see buildRungs), so a short
+  // sample is labelled here rather than reading as settled.
+  const summary = Number.isFinite(total) && total > 0 && Number.isFinite(line)
+    ? {
+        count: `${hits} of ${total}`,
+        text: `over ${line} in the finished games currently in view.${total < 10 ? " Too few games to lean on." : ""}`,
+      }
+    : null;
+
+  return (
+    <>
+      <InjuryAndNews status={status} statusNote={statusNote} items={items} summary={summary} />
+      <MissingAround
+        sport={sport}
+        colorMap={colorMap}
+        people={absences || []}
+        footnote={
+          availabilityNote ||
+          ((absences || []).length
+            ? `Everyone on this player's team currently listed out or questionable. A rate is shown only where at least ${ABSENCE_MIN_GAMES} finished games were played without that teammate, and each one names the games it came from. ${ABSENCE_WINDOW_CAVEAT}`
+            : "Nobody on this player's team is currently listed out or questionable.")
+        }
+      />
+    </>
+  );
+}
+
 function NBAPropsPage({ jumpTo }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NBA_MATCHUPS[0].id);
@@ -517,6 +796,17 @@ function NBAPropsPage({ jumpTo }) {
 
   React.useEffect(() => {
     if (!jumpTo) return;
+    // A jump names a player, never a game, so the matchup has to be derived
+    // from the player -- otherwise `matchup` stays on whatever game was
+    // selected before. `player` here resolves globally, so the chart would
+    // still be right, but everything read off the matchup would not:
+    // playerOnTeamA goes false for a player in neither roster, which silently
+    // makes the *opponent* rank, the soft/tough verdict, the venue and the tip
+    // time describe a game this player isn't in.
+    const jumpMatchup = NBA_MATCHUPS.find(
+      (m) => m.teamA.players.some((p) => p.id === jumpTo.playerId) || m.teamB.players.some((p) => p.id === jumpTo.playerId)
+    );
+    if (jumpMatchup) setMatchupId(jumpMatchup.id);
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(null);
@@ -757,50 +1047,39 @@ function NBAPropsPage({ jumpTo }) {
   // row underneath. paddingRight reserves room for the Filters button, which
   // floats in the card's absolute top-right corner on desktop.
   const playerIdentityRow = (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 10 : 20,
-      flexWrap: "wrap", borderBottom: "1px solid var(--line)",
-      padding: compact ? "8px 12px" : "12px 20px",
-      paddingRight: compact ? 12 : 110,
-    }}>
-      <PlayerAvatar
-        key={player.id}
-        name={player.name}
-        alt={player.name}
-        sport="nba"
-        team={player.team}
-        colorMap={NBA_TEAM_COLORS}
-        headshotSrc={espnHeadshot(player.espnId)}
-        fallbackSrc={nbaHeadshot(player.nbaId)}
-        size={compact ? 56 : 84}
-        inset={compact ? 3 : 5}
-        backing={(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
-        imgBorder="1px solid var(--line)"
-        fadeIn
-        shadow={`0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
-      />
-
-      <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
-        <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
-        <div style={{ fontSize: compact ? 9 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          {player.team} · {player.pos} · Season
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: compact ? 12 : 20, flexWrap: "wrap" }}>
-        {[
-          { label: "PTS", value: seasonAvg.pts },
-          { label: "REB", value: seasonAvg.reb },
-          { label: "AST", value: seasonAvg.ast },
-          { label: "MIN", value: seasonAvg.min },
-        ].map((s) => (
-          <div key={s.label} style={{ textAlign: "center" }}>
-            <div className="mono" style={{ fontSize: compact ? 14 : 18, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(1)}</div>
-            <div style={{ fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <PlayerIdentityRow
+      compact={compact}
+      team={player.team}
+      pos={player.pos}
+      name={player.name}
+      // No status: the NBA has no player availability feed (see pickStatus), so
+      // there is nothing real to put in the dot's corner.
+      avatar={
+        <PlayerAvatar
+          key={player.id}
+          name={player.name}
+          alt={player.name}
+          sport="nba"
+          team={player.team}
+          colorMap={NBA_TEAM_COLORS}
+          headshotSrc={espnHeadshot(player.espnId)}
+          fallbackSrc={nbaHeadshot(player.nbaId)}
+          surface="var(--panel)"
+          size={compact ? 48 : 76}
+          inset={compact ? 3 : 5}
+          backing={(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
+          imgBorder="1px solid var(--line)"
+          fadeIn
+          shadow={`0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+        />
+      }
+      stats={[
+        { label: "PTS", value: seasonAvg.pts.toFixed(1) },
+        { label: "REB", value: seasonAvg.reb.toFixed(1) },
+        { label: "AST", value: seasonAvg.ast.toFixed(1) },
+        { label: "MIN", value: seasonAvg.min.toFixed(1) },
+      ]}
+    />
   );
 
   const filtersBody = (
@@ -1207,6 +1486,15 @@ function NBAPropsPage({ jumpTo }) {
         )}
 
         {chartBlock}
+
+        <PlayerPropContextBlocks
+          playerName={player.name}
+          hits={hits}
+          total={values.length}
+          line={effectiveLine}
+          absences={[]}
+          availabilityNote="The NBA publishes no player availability feed this app can read, so there is no list of who is out around them. Nothing has been estimated to fill the gap."
+        />
 
         <HitRateSplits
           allGames={allGames}
@@ -2211,11 +2499,11 @@ const NFL_SNAPSHOT_STATS = {
     { label: "KICK PTS", key: "kickPts", decimals: 1 },
   ],
 };
-// QB has 4 snapshot stats, every other position has 3 -- the card always
-// reserves this many column slots (see the snapshot grid below) so
-// switching between a QB and any other position doesn't change the card's
-// width and shift the photo/selector next to it.
-const NFL_SNAPSHOT_MAX_STATS = Math.max(...Object.values(NFL_SNAPSHOT_STATS).map((s) => s.length));
+// QB has 4 snapshot stats, every other position has 3. The header used to
+// reserve a fixed slot count for the widest case so switching positions didn't
+// shift the photo and name beside it; PlayerIdentityRow now right-aligns the
+// stat group instead, so a narrower group pulls in from the right and leaves
+// the name where it is.
 
 // Real 2025 Dallas Cowboys regular-season game logs (Week 1 through each
 // player's final game), sourced from ESPN/CBS Sports box scores. Official
@@ -4987,52 +5275,39 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
   // row underneath. paddingRight reserves room for the Filters button, which
   // floats in the card's absolute top-right corner on desktop.
   const playerIdentityRow = (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 10 : 20,
-      flexWrap: "wrap", borderBottom: "1px solid var(--line)",
-      padding: compact ? "8px 12px" : "12px 20px",
-      paddingRight: compact ? 12 : 110,
-    }}>
-      <PlayerAvatar
-        key={player.id}
-        name={player.name}
-        alt={player.name}
-        sport="nfl"
-        team={player.team}
-        colorMap={NFL_TEAM_COLORS}
-        headshotSrc={NFL_HEADSHOTS[player.id]}
-        size={compact ? 56 : 84}
-        inset={compact ? 3 : 5}
-        backing={(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}
-        imgBorder="1px solid var(--line)"
-        fadeIn
-        shadow={`0 4px 14px ${(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
-      />
-
-      <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
-        <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
-        <div style={{ fontSize: compact ? 9 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          {player.team} · {player.pos} · Season
-        </div>
-      </div>
-
-      {/* Fixed width sized for NFL_SNAPSHOT_MAX_STATS columns (4, a QB's
-           count) no matter how many stats this position actually has, so the
-           row doesn't reflow when switching between a QB and anyone else --
-           but within that width a position with fewer stats centers its
-           group rather than leaving a stray empty slot on the right. */}
-      <div style={{
-        display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: compact ? 12 : 20,
-        width: compact ? undefined : NFL_SNAPSHOT_MAX_STATS * 62 + (NFL_SNAPSHOT_MAX_STATS - 1) * 20,
-      }}>
-        {seasonAvg.map((s) => (
-          <div key={s.label} style={{ textAlign: "center", width: compact ? undefined : 62, flexShrink: 0 }}>
-            <div className="mono" style={{ fontSize: compact ? 14 : 18, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(s.decimals)}</div>
-            <div style={{ fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <PlayerIdentityRow
+      compact={compact}
+      team={player.team}
+      pos={player.pos}
+      name={player.name}
+      // No status: the NFL has no player availability feed (see pickStatus).
+      avatar={
+        <PlayerAvatar
+          key={player.id}
+          name={player.name}
+          alt={player.name}
+          sport="nfl"
+          team={player.team}
+          colorMap={NFL_TEAM_COLORS}
+          headshotSrc={NFL_HEADSHOTS[player.id]}
+          surface="var(--panel)"
+          size={compact ? 48 : 76}
+          inset={compact ? 3 : 5}
+          backing={(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}
+          imgBorder="1px solid var(--line)"
+          fadeIn
+          shadow={`0 4px 14px ${(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+        />
+      }
+      // Fixed per-tile width no matter how many stats this position actually
+      // has, so the row doesn't reflow when switching between a QB (four) and
+      // anyone else.
+      stats={seasonAvg.map((s) => ({
+        label: s.label,
+        value: s.value.toFixed(s.decimals),
+        width: compact ? undefined : 62,
+      }))}
+    />
   );
 
   const filtersBody = (
@@ -5396,6 +5671,15 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
         />
 
         {chartBlock}
+
+        <PlayerPropContextBlocks
+          playerName={player.name}
+          hits={hits}
+          total={values.length}
+          line={effectiveLine}
+          absences={[]}
+          availabilityNote="The NFL's injury report isn't a feed this app reads, so there is no list of who is out around them. Nothing has been estimated to fill the gap."
+        />
 
         <HitRateSplits
           allGames={allGames}
@@ -6217,6 +6501,15 @@ async function fetchWNBAPlayerGameLog(espnId) {
 // Null means "we have no games for this player" -- callers exclude them rather
 // than invent a line for them. Keyed on espnId so a live-roster player resolves
 // the same way a hand-written one does.
+// Identifies one game across two players' logs. Date *and* opponent, not date
+// alone: two teammates always share both, while two players on different teams
+// playing the same night share only the date. Matching on the date by itself
+// therefore counts a player traded mid-season as having "played with" someone
+// they were never on the roster with -- and if the two actually faced each
+// other, the opponents differ too (each one's opponent is the other's team), so
+// this excludes that case as well.
+const wnbaGameKey = (g) => `${g.date}|${g.opp}`;
+
 function getWNBAGames(player, seedOffset) {
   const real = player && player.espnId && WNBA_REAL_GAME_LOGS[String(player.espnId)];
   if (real && real.length) return real;
@@ -6411,20 +6704,55 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       { label: "BENCH", note: null, players: b },
     ];
   }, [starters]);
+  // What a jump asked for, held so the two effects below can tell "the slate
+  // moved under the current selection" (swap to a valid player) apart from
+  // "the feed named someone this page cannot resolve" (say so).
+  const jumpRequest = React.useRef(null);
+
   // Once the live slate lands, jump off the static default matchup/player
   // onto the real first game of the day (its id won't exist in WNBA_MATCHUPS).
+  //
+  // This arrives *after* a jump, not before: the feed hands the page a player
+  // and this fetch resolves a moment later, so unconditionally selecting the
+  // first game's first player here was overwriting the player the user had just
+  // clicked -- the second half of the same bug the jump effect below fixes, and
+  // the half that actually put someone else's chart on screen. A pending jump
+  // is therefore re-resolved against the live slate rather than discarded.
   React.useEffect(() => {
     if (!liveMatchups || !liveMatchups.length) return;
-    if (!liveMatchups.some((m) => m.id === matchupId)) {
+    if (liveMatchups.some((m) => m.id === matchupId)) return;
+    const pending = jumpRequest.current;
+    if (pending) {
+      const live = liveMatchups.find(
+        (m) => m.teamA.players.some((p) => p.id === pending.id) || m.teamB.players.some((p) => p.id === pending.id)
+      );
+      // On the live slate after all: take that game and keep the player.
+      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(null); setOpponent("all"); return; }
+      // Not playing today. Move the *game* forward so the rails aren't showing
+      // a stale slate, but leave the player alone -- the guard further down
+      // says they aren't on today's card rather than swapping someone in.
       setMatchupId(liveMatchups[0].id);
-      setPlayerId(liveMatchups[0].teamA.players[0].id);
-      setLine(null);
-      setOpponent("all");
+      return;
     }
+    setMatchupId(liveMatchups[0].id);
+    setPlayerId(liveMatchups[0].teamA.players[0].id);
+    setLine(null);
+    setOpponent("all");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveMatchups]);
+
   React.useEffect(() => {
     if (!jumpTo) return;
+    // A jump names a player, never a game, so the matchup is derived from the
+    // player. Searching `matchups` rather than WNBA_MATCHUPS matters here:
+    // live-slate ids are minted `wnba_<espnId>` (see fetchWNBATeamRoster) and
+    // never appear in the static list, so searching the static one would miss
+    // exactly the players this is meant to fix.
+    const jumpMatchup = matchups.find(
+      (m) => m.teamA.players.some((p) => p.id === jumpTo.playerId) || m.teamB.players.some((p) => p.id === jumpTo.playerId)
+    );
+    if (jumpMatchup) setMatchupId(jumpMatchup.id);
+    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null };
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(null);
@@ -6480,11 +6808,38 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   }, [matchup, playerId]);
   // If the selected id is no longer in the slate (rosters loaded, a player was
   // filtered out, the matchup changed), fall to the first player that is.
+  //
+  // Except when the id came from a jump. Rule 4: a player the feed named and
+  // this page cannot resolve has to surface as a visible state. Swapping in the
+  // first player of whatever game happens to be selected -- which is what this
+  // did unconditionally -- put a different player's chart, identity row and
+  // market tabs under the name the user clicked, with nothing on screen saying
+  // so. The guard below renders that case instead.
+  const jumpMissed = !player && !!jumpRequest.current && jumpRequest.current.id === playerId;
   React.useEffect(() => {
-    if (player) return;
+    if (player) {
+      // Cleared only once the *jumped* player is the one on screen. Clearing on
+      // any truthy `player` looked equivalent and was not: on the mount that
+      // handles a jump, this effect runs after the jump effect but still sees
+      // the previous render's player, so it threw away the request that had
+      // just been recorded and the swap below fired anyway.
+      if (jumpRequest.current && jumpRequest.current.id === player.id) jumpRequest.current = null;
+      return;
+    }
+    if (jumpRequest.current && jumpRequest.current.id === playerId) return;
     const first = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
     if (first && first.id !== playerId) setPlayerId(first.id);
   }, [player, matchup, playerId]);
+
+  // Every deliberate player pick goes through here. Choosing someone by hand
+  // ends whatever jump was pending, so a later slate change is free to
+  // self-heal the selection again.
+  const selectPlayer = React.useCallback((id) => {
+    jumpRequest.current = null;
+    setPlayerId(id);
+    setLine(null);
+    setOpponent("all");
+  }, []);
 
   const playerMarkets = useMemo(() => wnbaPlayerMarkets(player), [player]);
 
@@ -6514,6 +6869,49 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       min: sum("minutes") / n,
     };
   }, [allGames]);
+
+  // Teammates on this player's own side of tonight's game who are currently
+  // listed out or questionable, from the same ESPN availability feed the roster
+  // rails read (see statusOf). Real absences only -- there is no list to invent
+  // from when the feed hasn't landed, and null availability yields none.
+  const playerSide = useMemo(() => {
+    if ((matchup?.teamA?.players || []).some((p) => p.id === playerId)) return matchup.teamA;
+    if ((matchup?.teamB?.players || []).some((p) => p.id === playerId)) return matchup.teamB;
+    return null;
+  }, [matchup, playerId]);
+  const absentTeammates = useMemo(
+    () => (playerSide?.players || []).filter(
+      (p) => p.id !== playerId && (statusOf(p) === "out" || statusOf(p) === "questionable")
+    ),
+    [playerSide, playerId, statusOf]
+  );
+
+  // espnId -> Set of dates that teammate actually appeared in, or null when
+  // their log could not be loaded. Fetched once per absent teammate per player
+  // selection: switching market, line or filters re-counts the same logs
+  // without going back to the network.
+  const [teammateGameDates, setTeammateGameDates] = useState({});
+  const teammateLogsRequested = React.useRef(new Set());
+  React.useEffect(() => {
+    teammateLogsRequested.current = new Set();
+    setTeammateGameDates({});
+  }, [playerId]);
+  React.useEffect(() => {
+    const todo = absentTeammates.filter((p) => p.espnId && !teammateLogsRequested.current.has(String(p.espnId)));
+    if (!todo.length) return undefined;
+    todo.forEach((p) => teammateLogsRequested.current.add(String(p.espnId)));
+    let cancelled = false;
+    Promise.all(
+      todo.map((p) =>
+        fetchWNBAPlayerGameLog(p.espnId)
+          .then((games) => [String(p.espnId), games && games.length ? new Set(games.map(wnbaGameKey)) : null])
+          .catch(() => [String(p.espnId), null])
+      )
+    ).then((pairs) => {
+      if (!cancelled) setTeammateGameDates((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
+    });
+    return () => { cancelled = true; };
+  }, [absentTeammates]);
 
   const opponentsForPlayer = useMemo(
     () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
@@ -6599,6 +6997,47 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   const edge = avg - effectiveLine;
   const marketLabel = WNBA_MARKETS.find((m) => m.id === market)?.label ?? "";
 
+  // What this player's market did in the games each absent teammate missed.
+  // Counted over their whole real log rather than `filtered`, so the split
+  // doesn't quietly shrink to nothing behind a last-5 filter -- and never
+  // computed at all when this player's log is the seeded fallback rather than a
+  // real one, because splitting generated numbers would look exactly like a
+  // finding and be worth nothing.
+  const playerLogIsReal = !!(player.espnId && WNBA_REAL_GAME_LOGS[String(player.espnId)]);
+  const absences = useMemo(() => absentTeammates.map((p) => {
+    const dates = p.espnId ? teammateGameDates[String(p.espnId)] : null;
+    let split;
+    if (!playerLogIsReal) {
+      split = { state: "unsupported", reason: "This player's game log is the generated fallback, not a real one, so there is nothing here worth splitting." };
+    } else if (!p.espnId) {
+      split = { state: "unsupported", reason: `No game log is available for ${p.name}, so the games they missed can't be counted.` };
+    } else if (dates === undefined) {
+      split = { state: "pending" };
+    } else if (dates === null) {
+      split = { state: "unsupported", reason: `Couldn't load ${p.name}'s game log, so the games they missed can't be counted.` };
+    } else {
+      split = absenceSplit({
+        games: allGames,
+        valueOf: (g) => statValue(g, market, rebSplit),
+        line: effectiveLine,
+        playedIn: (g) => dates.has(wnbaGameKey(g)),
+      });
+    }
+    const { effect, count } = absenceEffectCopy(split, effectiveLine, p.name);
+    const status = statusOf(p);
+    return {
+      name: p.name,
+      team: p.team,
+      position: p.pos,
+      espnId: p.espnId,
+      headshotSrc: wnbaHeadshot(p.espnId),
+      status,
+      note: status === "out" ? "Listed out on ESPN's availability report" : "Listed questionable on ESPN's availability report",
+      effect,
+      count,
+    };
+  }), [absentTeammates, teammateGameDates, playerLogIsReal, allGames, market, rebSplit, effectiveLine, statusOf]);
+
   // Season-wide average for the *currently selected market*, distinct from
   // `avg` (which is scoped to `filtered`, i.e. whatever the location/opponent/
   // minutes/sample-size filters have narrowed the chart down to). This is what
@@ -6682,51 +7121,37 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   // row underneath. paddingRight reserves room for the Filters button, which
   // floats in the card's absolute top-right corner on desktop.
   const playerIdentityRow = (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 10 : 20,
-      flexWrap: "wrap", borderBottom: "1px solid var(--line)",
-      padding: compact ? "8px 12px" : "12px 20px",
-      paddingRight: compact ? 12 : 110,
-    }}>
-      <PlayerAvatar
-        key={player.id}
-        name={player.name}
-        alt={player.name}
-        sport="wnba"
-        team={player.team}
-        colorMap={WNBA_TEAM_COLORS}
-        headshotSrc={wnbaHeadshot(player.espnId)}
-        status={statusOf(player)}
-        surface="var(--panel)"
-        size={compact ? 56 : 84}
-        inset={compact ? 3 : 5}
-        backing={(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
-        imgBorder="1px solid var(--line)"
-        fadeIn
-        shadow={`0 4px 14px ${(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
-      />
-
-      <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
-        <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
-        <div style={{ fontSize: compact ? 9 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          {player.team} · {player.pos} · Season
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: compact ? 12 : 20, flexWrap: "wrap" }}>
-        {[
-          { label: "PTS", value: seasonAvg.pts },
-          { label: "REB", value: seasonAvg.reb },
-          { label: "AST", value: seasonAvg.ast },
-          { label: "MIN", value: seasonAvg.min },
-        ].map((s) => (
-          <div key={s.label} style={{ textAlign: "center" }}>
-            <div className="mono" style={{ fontSize: compact ? 14 : 18, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(1)}</div>
-            <div style={{ fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <PlayerIdentityRow
+      compact={compact}
+      team={player.team}
+      pos={player.pos}
+      name={player.name}
+      avatar={
+        <PlayerAvatar
+          key={player.id}
+          name={player.name}
+          alt={player.name}
+          sport="wnba"
+          team={player.team}
+          colorMap={WNBA_TEAM_COLORS}
+          headshotSrc={wnbaHeadshot(player.espnId)}
+          status={statusOf(player)}
+          surface="var(--panel)"
+          size={compact ? 48 : 76}
+          inset={compact ? 3 : 5}
+          backing={(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
+          imgBorder="1px solid var(--line)"
+          fadeIn
+          shadow={`0 4px 14px ${(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+        />
+      }
+      stats={[
+        { label: "PTS", value: seasonAvg.pts.toFixed(1) },
+        { label: "REB", value: seasonAvg.reb.toFixed(1) },
+        { label: "AST", value: seasonAvg.ast.toFixed(1) },
+        { label: "MIN", value: seasonAvg.min.toFixed(1) },
+      ]}
+    />
   );
 
   const filtersBody = (
@@ -6960,11 +7385,37 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
   ) : null;
 
   if (!player) {
+    const missedName = jumpMissed ? (jumpRequest.current && jumpRequest.current.name) || "That player" : null;
+    const firstOnSlate = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
     return (
       <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
         {slateBanner}
         <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
-          No WNBA player game logs have loaded yet.
+          {jumpMissed ? (
+            <>
+              <div style={{ color: "var(--text)", marginBottom: 6 }}>
+                {missedName} isn&rsquo;t on a WNBA game we can read today.
+              </div>
+              <div style={{ lineHeight: 1.5 }}>
+                They were in the feed, so their game log loaded there, but no game on today&rsquo;s
+                slate lists them and there is no season log for them here. Nothing has been
+                substituted &mdash; another player&rsquo;s chart under their name would be worse
+                than this message.
+              </div>
+              {firstOnSlate && (
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ marginTop: 12 }}
+                  onClick={() => selectPlayer(firstOnSlate.id)}
+                >
+                  Show {firstOnSlate.name} instead
+                </button>
+              )}
+            </>
+          ) : (
+            "No WNBA player game logs have loaded yet."
+          )}
         </div>
       </div>
     );
@@ -6977,7 +7428,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       teamA={matchup.teamA}
       teamB={matchup.teamB}
       activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      onSelect={selectPlayer}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       statusFor={statusOf}
       metaLine={(p) => { const m = wnbaMinutesPerGame(p); return m === null ? p.pos : `${p.pos} · ${m.toFixed(1)} MPG`; }}
@@ -6989,7 +7440,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       players={matchup.teamA.players}
       sections={sectionsFor(matchup.teamA.players, matchup.teamA.abbr)}
       activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      onSelect={selectPlayer}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       statusFor={statusOf}
       metaLine={(p) => { const m = wnbaMinutesPerGame(p); return m === null ? p.pos : `${p.pos} · ${m.toFixed(1)} MPG`; }}
@@ -7050,7 +7501,8 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
           compact={compact}
           onChange={(next) => {
             setMatchupId(next.id);
-            setPlayerId(next.teamA.players[0].id);
+            jumpRequest.current = null;
+             setPlayerId(next.teamA.players[0].id);
             setLine(null);
             setOpponent("all");
           }}
@@ -7115,6 +7567,17 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
 
         {chartBlock}
 
+        <PlayerPropContextBlocks
+          playerName={player.name}
+          sport="wnba"
+          colorMap={WNBA_TEAM_COLORS}
+          status={statusOf(player)}
+          hits={hits}
+          total={values.length}
+          line={effectiveLine}
+          absences={absences}
+        />
+
         <HitRateSplits
           allGames={allGames}
           statValue={(g) => statValue(g, market, rebSplit)}
@@ -7137,7 +7600,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
       players={matchup.teamB.players}
       sections={sectionsFor(matchup.teamB.players, matchup.teamB.abbr)}
       activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      onSelect={selectPlayer}
       headshotSrc={(p) => wnbaHeadshot(p.espnId)}
       statusFor={statusOf}
       metaLine={(p) => { const m = wnbaMinutesPerGame(p); return m === null ? p.pos : `${p.pos} · ${m.toFixed(1)} MPG`; }}
@@ -7260,7 +7723,6 @@ async function loadRealMlbTeamDef() {
 // Primary headshot source: MLB's own official photo CDN, keyed by the same
 // mlbId already used to fetch live stats -- no separate id table to maintain,
 // and it resolves correctly for trades/rookies/new players automatically.
-const mlbHeadshot = (mlbId) => `https://midfield.mlbstatic.com/v1/people/${mlbId}/spots/120`;
 
 // ESPN player IDs (from espn.com/mlb/team/roster) -> combiner-image headshot
 // URLs, kept only as a secondary fallback if the MLB CDN doesn't have a photo.
@@ -7878,12 +8340,6 @@ MLB_MATCHUPS.forEach((m) => {
 // Live game logs, fetched directly from the official MLB Stats API (see
 // fetchMLBGameLog below) instead of a static snapshot -- this is what keeps
 // the props page from drifting stale once games are played.
-const MLB_TEAM_ID_ABBR = {
-  109: "ARI", 144: "ATL", 110: "BAL", 111: "BOS", 112: "CHC", 145: "CWS", 113: "CIN", 114: "CLE",
-  115: "COL", 116: "DET", 117: "HOU", 118: "KC", 108: "LAA", 119: "LAD", 146: "MIA", 158: "MIL",
-  142: "MIN", 121: "NYM", 147: "NYY", 133: "ATH", 143: "PHI", 134: "PIT", 135: "SD", 136: "SEA",
-  137: "SF", 138: "STL", 139: "TB", 140: "TEX", 141: "TOR", 120: "WSH",
-};
 
 // How long a fetched game log is considered fresh before we hit the API
 // again. Refetched on every page mount/player switch plus on this interval
@@ -8032,9 +8488,6 @@ function pitchingRateAgg(games) {
 // Reverse of MLB_TEAM_ID_ABBR -- needed to turn a selected roster's team
 // abbreviation back into the MLB Stats API's numeric team id for the
 // schedule fetch below.
-const MLB_ABBR_TEAM_ID = Object.fromEntries(
-  Object.entries(MLB_TEAM_ID_ABBR).map(([id, abbr]) => [abbr, Number(id)])
-);
 
 // Next scheduled/live game for any MLB team (opponent + home/away), used by
 // both the Prop Feed (Yankees) and the MLB Props page (whichever team is
@@ -8293,66 +8746,11 @@ function reconcileMlbLineup(roster, { activeRoster, lineupIds, abbr }) {
 // Cache shape deliberately mirrors fetchMLBTeamActiveRoster: module Map +
 // sessionStorage, keyed on the MLB "day" so it rolls over with the slate, and
 // a failed fetch is never cached so the next call retries.
-const MLB_ROSTER_STATUS_TTL_MS = 15 * 60 * 1000;
-const mlbRosterStatusCache = new Map();
 
 // statsapi status codes -> the short badge shown on a teammate chip. `tone`
 // drives both the chip badge fill and the status dot in the with/without
 // dropdowns. Anything not listed (chiefly "A", active) gets no badge at all.
-const MLB_STATUS_BADGES = {
-  D7: { label: "IL", tone: "out" },
-  D10: { label: "IL", tone: "out" },
-  D15: { label: "IL", tone: "out" },
-  D60: { label: "IL", tone: "out" },
-  DL: { label: "IL", tone: "out" },
-  BRV: { label: "IL", tone: "out" },
-  DTD: { label: "GTD", tone: "warn" },
-  RM: { label: "AAA", tone: "muted" },
-  MIN: { label: "AAA", tone: "muted" },
-  OPT: { label: "AAA", tone: "muted" },
-  DES: { label: "DFA", tone: "muted" },
-  RES: { label: "Out", tone: "muted" },
-  SU: { label: "Out", tone: "muted" },
-  RE: { label: "Out", tone: "muted" },
-};
 
-async function fetchMLBTeamRosterStatus(teamId) {
-  const dayKey = currentMLBDayKey();
-  const cached = mlbRosterStatusCache.get(teamId);
-  if (cached && cached.dayKey === dayKey && Date.now() - cached.fetchedAt < MLB_ROSTER_STATUS_TTL_MS) return cached.byId;
-
-  const cacheKey = `mlb_roster_status_v1_${teamId}`;
-  try {
-    const stored = sessionStorage.getItem(cacheKey);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < MLB_ROSTER_STATUS_TTL_MS) {
-        mlbRosterStatusCache.set(teamId, parsed);
-        return parsed.byId;
-      }
-    }
-  } catch {}
-
-  let byId = null;
-  try {
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/teams/${teamId}/roster?rosterType=40Man`);
-    const data = await res.json();
-    byId = {};
-    (data?.roster || []).forEach((r) => {
-      const id = r.person?.id;
-      if (!id) return;
-      byId[id] = { code: r.status?.code || "A", description: r.status?.description || "" };
-    });
-  } catch {
-    byId = null;
-  }
-  if (!byId || !Object.keys(byId).length) return null;
-
-  const record = { dayKey, byId, fetchedAt: Date.now() };
-  mlbRosterStatusCache.set(teamId, record);
-  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
-  return byId;
-}
 
 // Real pitcher-vs-batter head-to-head splits for the Matchup Analyzer, from
 // the MLB Stats API's (undocumented but public) "vsPlayer" stat group --
@@ -8393,15 +8791,6 @@ async function fetchMLBH2H(batterMlbId, pitcherMlbId) {
 // runs past midnight still belongs to the day it started. Used to key the
 // day-slate cache below so it naturally refetches once a new day's games
 // take over, without needing a separate cron job.
-function currentMLBDayKey() {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",
-  }).formatToParts(new Date());
-  const get = (type) => parts.find((p) => p.type === type)?.value;
-  const date = new Date(Date.UTC(Number(get("year")), Number(get("month")) - 1, Number(get("day"))));
-  if (Number(get("hour")) < 3) date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
-}
 
 const MLB_SLATE_TTL_MS = 15 * 60 * 1000;
 let mlbSlateCache = null;
@@ -10381,12 +10770,65 @@ function MLBPropsPage({ jumpTo }) {
   // reason, so nothing is lost by the dot being coarser.
   const mlbStatusOf = React.useCallback((p) => {
     if (!teamRosterStatus || !p || !p.mlbId) return undefined;
-    const s = teamRosterStatus[p.mlbId];
-    if (!s) return undefined;                       // not on the 40-man: unknown
-    const badge = MLB_STATUS_BADGES[s.code];
-    if (!badge) return "active";                    // code "A"
-    return badge.tone === "warn" ? "questionable" : "out";
+    return mlbAvailability(teamRosterStatus[p.mlbId]);
   }, [teamRosterStatus]);
+
+  // Teammates currently listed out on the 40-man status feed, and what this
+  // batter's market did in the games they missed.
+  //
+  // Nothing new is fetched for this: `boxscoreLineups` already answers "did
+  // this player appear in that game" per gamePk (it is what the With/Without
+  // teammate chips filter on), and asking for it is what `teammateDataWanted`
+  // below turns on. So the split is counted off the same immutable boxscores
+  // the chips use, not a second source that could disagree with them.
+  // Injured only, deliberately narrower than the availability dot. mlbStatusOf
+  // coarsens AAA/DFA/restricted into "out" because for a *dot* the only
+  // question is "can they play tonight", and the answer is no. This block asks
+  // a different question -- whose absence changed how this batter is used --
+  // and a player optioned to Triple-A in April is not that story. So it keys
+  // off the badge tone: "out" is the IL codes, "warn" is day to day.
+  const mlbAbsentTeammates = useMemo(
+    () => (isPitcher ? [] : teammateCandidates.filter((p) => p.badge && (p.badge.tone === "out" || p.badge.tone === "warn"))),
+    [teammateCandidates, isPitcher]
+  );
+  // Opening the page with absences to explain is itself a reason to load the
+  // boxscores, exactly as opening the teammate panel is.
+  React.useEffect(() => {
+    if (mlbAbsentTeammates.length) setTeammateDataWanted(true);
+  }, [mlbAbsentTeammates.length]);
+
+  // Only the games we actually hold a boxscore for can be split, and that is a
+  // recent window rather than the whole season (see teammateScopeGamePks --
+  // fetching every game's boxscore on page load would be a hundred requests for
+  // a block most visitors scroll past). Counting over the covered games and
+  // naming the window in the footnote is honest; counting over the whole log
+  // and reporting "77 could not be checked" on every row was accurate but
+  // unreadable, and buried the number that matters.
+  const mlbSplitGames = useMemo(
+    () => allGames.filter((g) => g.gamePk && boxscoreLineups[g.gamePk]),
+    [allGames, boxscoreLineups]
+  );
+
+  const mlbAbsences = useMemo(() => mlbAbsentTeammates.map((p) => {
+    const split = absenceSplit({
+      games: mlbSplitGames,
+      valueOf: statValueFn,
+      line: effectiveLine,
+      playedIn: (g) => boxscoreLineups[g.gamePk].has(p.mlbId),
+    });
+    const { effect, count } = absenceEffectCopy(split, effectiveLine, p.name);
+    return {
+      name: p.name,
+      team: p.team,
+      position: p.pos,
+      headshotSrc: mlbHeadshot(p.mlbId),
+      fallbackSrc: mlbEspnHeadshot(p.id),
+      status: p.badge.tone === "warn" ? "questionable" : "out",
+      note: p.badge.label === "IL" ? "On the injured list" : "Day to day",
+      effect,
+      count,
+    };
+  }), [mlbAbsentTeammates, mlbSplitGames, statValueFn, effectiveLine, boxscoreLineups]);
 
   // mlbId -> the player's average in this market when that teammate played,
   // minus their average when he didn't. Computed over the in-scope games we
@@ -11002,6 +11444,22 @@ function MLBPropsPage({ jumpTo }) {
         )}
       </div>
 
+      <PlayerPropContextBlocks
+        playerName={player.name}
+        sport="mlb"
+        colorMap={MLB_TEAM_COLORS}
+        status={mlbStatusOf(player)}
+        hits={hits}
+        total={values.length}
+        line={effectiveLine}
+        absences={mlbAbsences}
+        availabilityNote={isPitcher
+          ? "Who is out around a starting pitcher doesn't move their own line the way it moves a batter's, so this page doesn't split a pitcher's log on it."
+          : mlbAbsences.length
+          ? `Teammates on the injured list or day to day. Each split is counted over the ${mlbSplitGames.length} finished games of this batter's that have a published boxscore, and shows a rate only where at least ${ABSENCE_MIN_GAMES} of them were played without that teammate. ${ABSENCE_WINDOW_CAVEAT}`
+          : undefined}
+      />
+
       <HitRateSplits
         allGames={allGames}
         statValue={statValueFn}
@@ -11138,67 +11596,46 @@ function MLBPropsPage({ jumpTo }) {
   // the matchup selector, so it no longer carries its own background/
   // border, just a bottom divider against the sample-stats row below it.
   const playerIdentityRow = (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center", gap: compact ? 10 : 20,
-      flexWrap: "wrap", borderBottom: "1px solid var(--line)",
-      // Game Info now renders as its own full-width row above this one (see
-      // the GameConditionsBar render in graphCard()) instead of an
-      // absolutely-positioned corner overlay, so this row no longer needs
-      // left/right clearance to avoid running underneath it -- only the
-      // Filters button (still an absolute top-right overlay) needs a
-      // right-side reservation, and only while this row is short enough to
-      // reach that corner.
-      padding: compact ? "8px 12px" : "12px 20px",
-      paddingRight: compact ? 12 : 110,
-    }}>
-      <PlayerAvatar
-        key={player.id}
-        name={player.name}
-        alt={player.name}
-        sport="mlb"
-        team={player.team}
-        colorMap={MLB_TEAM_COLORS}
-        headshotSrc={mlbHeadshot(player.mlbId)}
-        fallbackSrc={mlbEspnHeadshot(player.id)}
-        status={mlbStatusOf(player)}
-        surface="var(--panel)"
-        size={compact ? 56 : 84}
-        inset={compact ? 3 : 5}
-        backing={"#000"}
-        imgBorder="1px solid var(--line)"
-        fadeIn
-        shadow={`0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
-      />
-
-      <div style={{ textAlign: "center", paddingRight: compact ? 8 : 16 }}>
-        <div className="oswald" style={{ fontSize: compact ? 13 : 16, color: "var(--text)", whiteSpace: "nowrap" }}>{player.name}</div>
-        <div style={{ fontSize: compact ? 9 : 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-          {player.team} · {player.pos} · Season
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: compact ? 12 : 20, flexWrap: "wrap" }}>
-        {(isPitcher
-          ? [
-              { label: "K", value: seasonAvg.k },
-              { label: "ER", value: seasonAvg.er },
-              { label: "BB", value: seasonAvg.bb },
-              { label: "H", value: seasonAvg.h },
-            ]
-          : [
-              { label: "H", value: seasonAvg.h },
-              { label: "HR", value: seasonAvg.hr },
-              { label: "RBI", value: seasonAvg.rbi },
-              { label: "R", value: seasonAvg.r },
-            ]
-        ).map((s) => (
-          <div key={s.label} style={{ textAlign: "center" }}>
-            <div className="mono" style={{ fontSize: compact ? 14 : 18, color: "var(--amber)", fontWeight: 700 }}>{s.value.toFixed(2)}</div>
-            <div style={{ fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-    </div>
+    <PlayerIdentityRow
+      compact={compact}
+      team={player.team}
+      pos={player.pos}
+      name={player.name}
+      avatar={
+        <PlayerAvatar
+          key={player.id}
+          name={player.name}
+          alt={player.name}
+          sport="mlb"
+          team={player.team}
+          colorMap={MLB_TEAM_COLORS}
+          headshotSrc={mlbHeadshot(player.mlbId)}
+          fallbackSrc={mlbEspnHeadshot(player.id)}
+          status={mlbStatusOf(player)}
+          surface="var(--panel)"
+          size={compact ? 48 : 76}
+          inset={compact ? 3 : 5}
+          backing={"#000"}
+          imgBorder="1px solid var(--line)"
+          fadeIn
+          shadow={`0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
+        />
+      }
+      stats={(isPitcher
+        ? [
+            { label: "K", value: seasonAvg.k },
+            { label: "ER", value: seasonAvg.er },
+            { label: "BB", value: seasonAvg.bb },
+            { label: "H", value: seasonAvg.h },
+          ]
+        : [
+            { label: "H", value: seasonAvg.h },
+            { label: "HR", value: seasonAvg.hr },
+            { label: "RBI", value: seasonAvg.rbi },
+            { label: "R", value: seasonAvg.r },
+          ]
+      ).map((s) => ({ label: s.label, value: s.value.toFixed(2) }))}
+    />
   );
 
   // How many filters are actually narrowing the sample right now. Drives the
@@ -12587,9 +13024,7 @@ function pickStatus(p) {
     for (const rec of mlbRosterStatusCache.values()) {
       const s = rec && rec.byId && rec.byId[p.gradeId];
       if (!s) continue;
-      const badge = MLB_STATUS_BADGES[s.code];
-      if (!badge) return "active";
-      return badge.tone === "warn" ? "questionable" : "out";
+      return mlbAvailability(s);
     }
     return undefined;
   }
@@ -13114,11 +13549,10 @@ function FeedRowLadder({ r, sport, status, sampleWindow, pickIds, onTogglePick }
   // same statement.
   const slipLines = rungs.filter((x) => pickIds.has(feedPickId(sport, r, x.line))).map((x) => x.line);
   // Rule 1: the ladder header names a player, so it carries their
-  // availability. The feed row's own `status` covers WNBA; pickStatus reaches
-  // the MLB active-roster cache the slip already reads, so an MLB ladder shows
-  // a dot wherever that cache has landed. Neither resolving means no dot --
-  // never a grey one, never a default to green.
-  const headerStatus = status || pickStatus({ sport, gradeId: r.gradeId, espnId: r.espnId }) || undefined;
+  // availability. `status` is resolved once by the feed's render loop and
+  // covers every sport that has a feed, so the row header and this ladder
+  // header are the same statement about the same player.
+  const headerStatus = status || undefined;
 
   return (
     <div style={{ borderTop: "1px solid var(--line)", background: "var(--panel)" }}>
@@ -14363,6 +14797,55 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     return [...batterRows, ...pitcherRows];
   }, [mlbTeamsData]);
 
+  // Availability for every MLB team on today's slate. pickStatus reads the
+  // 40-man status cache synchronously, but nothing in the feed used to fill
+  // it -- the only callers were the MLB player and matchup pages, so a cold
+  // load straight into the feed left every MLB row dotless no matter how
+  // healthy or hurt the player was. Warming it here is what makes rule 1 hold
+  // on first paint rather than only after a detour through another page.
+  //
+  // The counter exists because that cache is a module Map, not state: filling
+  // it changes what pickStatus returns without React knowing anything
+  // happened. Bumping it once, after the whole slate has landed, re-renders
+  // the rows exactly once instead of per team.
+  const mlbStatusTeams = useMemo(
+    () => (sport === "mlb" && mlbSlate
+      ? [...new Set(mlbSlate.flatMap((g) => [g.awayAbbr, g.homeAbbr]).filter(Boolean))].sort().join(",")
+      : ""),
+    [sport, mlbSlate]
+  );
+  const [mlbStatusVersion, setMlbStatusVersion] = useState(0);
+  React.useEffect(() => {
+    if (!mlbStatusTeams) return undefined;
+    let cancelled = false;
+    Promise.all(
+      mlbStatusTeams
+        .split(",")
+        .map((abbr) => MLB_ABBR_TEAM_ID[abbr])
+        .filter(Boolean)
+        .map((teamId) => fetchMLBTeamRosterStatus(teamId).catch(() => null))
+    ).then(() => { if (!cancelled) setMlbStatusVersion((n) => n + 1); });
+    return () => { cancelled = true; };
+  }, [mlbStatusTeams]);
+
+  // Rule 1: every named player carries their availability, not just the WNBA
+  // ones. One resolver for the whole feed, so a row and the ladder expanded
+  // underneath it can never disagree about the same player. The slate fetch is
+  // the freshest source for WNBA; pickStatus reads whatever else this session
+  // has already fetched, which for MLB is the 40-man cache warmed just above.
+  // NBA and NFL have no availability feed at all and resolve to undefined --
+  // no dot, which is the honest reading, never a default to green.
+  const resolveRowStatus = React.useCallback(
+    (r) =>
+      (wnbaAvailability && r.espnId ? wnbaAvailability[String(r.espnId)] : undefined) ||
+      pickStatus({ sport, gradeId: r.gradeId, espnId: r.espnId }) ||
+      undefined,
+    // mlbStatusVersion is a dependency because pickStatus reads a module-level
+    // Map that React cannot see change on its own.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wnbaAvailability, sport, mlbStatusVersion]
+  );
+
   // Matchup dropdown options for MLB -- one per game on today's slate,
   // sorted by first pitch (fetchMLBDaySlate already returns them in that
   // order), labeled "Away @ Home" so picking one shows just those two teams.
@@ -15283,7 +15766,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             boundary around each row turns that into one greyed-out line
             instead of an empty feed. */}
         {visibleRows.map((r, i) => {
-          const rowStatus = wnbaAvailability && r.espnId ? wnbaAvailability[String(r.espnId)] : undefined;
+          const rowStatus = resolveRowStatus(r);
           const expanded = expandedKey === r.key;
           return (
           <ErrorBoundary key={r.key} compact label={`${r.name || "This row"} couldn't be displayed.`}>

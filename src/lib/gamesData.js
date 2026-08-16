@@ -746,6 +746,25 @@ const formCache = new Map();
 // Real finals only -- an empty array when there are none. MLB
 // goes through StatsAPI; WNBA/NFL use ESPN's team schedule, which accepts
 // the team abbreviation directly in the path (no id map needed).
+// W / L / T for one finished game.
+//
+// Ties are real -- the NFL allows them -- and this used to have no way to say
+// so. Every row carried a boolean `win`, derived from `!!mine.winner`, which is
+// false for *both* teams in a drawn game: a 13-13 final rendered as an L and
+// was counted as a loss in the recent-form bar. A wrong number on screen.
+//
+// ESPN marks the winner explicitly, so "completed, and neither side is flagged
+// the winner" is a draw. Score comparison is the fallback for when those flags
+// are missing entirely, and it is also the only signal the MLB path has.
+function resultOf({ mineWon, theirsWon, us, them }) {
+  if (mineWon === true) return "W";
+  if (theirsWon === true) return "L";
+  if (mineWon === false && theirsWon === false) return "T";
+  if (us > them) return "W";
+  if (us < them) return "L";
+  return "T";
+}
+
 export async function fetchRecentForm(sport, abbr, n) {
   const ck = `${sport}:${abbr}:${n}`;
   const hit = formCache.get(ck);
@@ -774,7 +793,8 @@ export async function fetchRecentForm(sport, abbr, n) {
           home: isHome,
           us: mine?.score ?? 0,
           them: theirs?.score ?? 0,
-          win: (mine?.score ?? 0) > (theirs?.score ?? 0),
+          // No winner flags on this feed, so the score is the only signal.
+          result: resultOf({ us: mine?.score ?? 0, them: theirs?.score ?? 0 }),
         };
       });
     } else {
@@ -789,13 +809,15 @@ export async function fetchRecentForm(sport, abbr, n) {
         const mine = comp.competitors.find((c) => c.team?.abbreviation === abbr);
         const theirs = comp.competitors.find((c) => c.team?.abbreviation !== abbr);
         const d = new Date(e.date);
+        const us = Number(mine?.score?.value ?? mine?.score ?? 0);
+        const them = Number(theirs?.score?.value ?? theirs?.score ?? 0);
         return {
           date: `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`,
           opp: theirs?.team?.abbreviation || "",
           home: mine?.homeAway === "home",
-          us: Number(mine?.score?.value ?? mine?.score ?? 0),
-          them: Number(theirs?.score?.value ?? theirs?.score ?? 0),
-          win: !!mine?.winner,
+          us,
+          them,
+          result: resultOf({ mineWon: mine?.winner, theirsWon: theirs?.winner, us, them }),
         };
       });
     }
@@ -818,6 +840,18 @@ export async function fetchRecentForm(sport, abbr, n) {
 
 // Season series between two teams, shown on the Matchup Overview when it is
 // available. MLB only -- ESPN's scoreboard has no equally cheap H2H view.
+// Season series between two teams.
+//
+// Three different answers, deliberately distinguishable, because collapsing
+// them all into null is how a screen ends up silently missing a panel:
+//
+//   null                -> this sport has no season series to show. Nothing was
+//                          promised, so the caller renders no panel at all.
+//   { games: 0 }        -> supported, but these two have not met yet. That is a
+//                          fact worth one line, not an absent section.
+//   { error: true }     -> the lookup failed. Also worth a line; "we could not
+//                          check" is not the same claim as "they never played".
+//   { games, awayWins, homeWins }
 export async function fetchHeadToHead(sport, awayAbbr, homeAbbr) {
   if (sport !== "mlb") return null;
   const ck = `h2h:${awayAbbr}:${homeAbbr}`;
@@ -830,7 +864,11 @@ export async function fetchHeadToHead(sport, awayAbbr, homeAbbr) {
     const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${awayId}&opponentId=${homeId}&startDate=${year}-03-01&endDate=${dayKey(new Date())}`);
     const data = await res.json();
     const finals = (data?.dates || []).flatMap((d) => d.games || []).filter((g) => g.status?.abstractGameState === "Final");
-    if (!finals.length) return null;
+    if (!finals.length) {
+      const none = { games: 0, awayWins: 0, homeWins: 0 };
+      formCache.set(ck, { value: none, at: Date.now() });
+      return none;
+    }
     let awayWins = 0;
     finals.forEach((g) => {
       const aIsHome = MLB_ID_ABBR[g.teams?.home?.team?.id] === awayAbbr;
@@ -842,6 +880,8 @@ export async function fetchHeadToHead(sport, awayAbbr, homeAbbr) {
     formCache.set(ck, { value, at: Date.now() });
     return value;
   } catch {
-    return null;
+    // Not cached: a failed lookup should retry on the next visit rather than
+    // pinning "couldn't check" to this matchup for the rest of the TTL.
+    return { error: true };
   }
 }
