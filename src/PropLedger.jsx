@@ -4343,6 +4343,10 @@ function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLa
     return vals.filter((v) => v > effectiveLine).length / vals.length;
   };
   const h2hGames = opponentAbbr ? allGames.filter((g) => g.opp === opponentAbbr) : [];
+  // Games carry `home: true/false` (see NFL logs and the shared game-log
+  // shape). AT HOME / ON ROAD are the design's new split cells (Screen #1).
+  const homeGames = allGames.filter((g) => g.home === true);
+  const awayGames = allGames.filter((g) => g.home === false);
   return [
     ...[5, 10, 15, 20, 25].map((n) => ({
       key: `l${n}`, label: `L${n}`, active: !h2h && lastN === n,
@@ -4351,6 +4355,27 @@ function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLa
       onClick: () => { onSetH2h(false); onSetLastN(n); },
     })),
     { key: "season", label: shortLabels ? "SZN" : "Season", active: !h2h && lastN === "all", rate: rate(allGames), count: allGames.length, asked: null, onClick: () => { onSetH2h(false); onSetLastN("all"); } },
+    {
+      key: "home",
+      label: shortLabels ? "HM" : "At Home",
+      active: false,
+      rate: rate(homeGames),
+      count: homeGames.length,
+      asked: null,
+      // Display-first this pass: clicking still leaves the sample window alone.
+      // A dedicated home/away filter state can light `active` and drive the
+      // chart in a follow-up without changing the rate math.
+      onClick: () => { onSetH2h(false); onSetLastN("all"); },
+    },
+    {
+      key: "away",
+      label: shortLabels ? "AW" : "On Road",
+      active: false,
+      rate: rate(awayGames),
+      count: awayGames.length,
+      asked: null,
+      onClick: () => { onSetH2h(false); onSetLastN("all"); },
+    },
     ...(includeH2h ? [{
       key: "h2h",
       label: !shortLabels && opponentAbbr ? `H2H vs ${opponentAbbr}` : "H2H",
