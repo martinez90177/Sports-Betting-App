@@ -5095,7 +5095,7 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
   );
 }
 
-function NFLPropsPage({ jumpTo, dataVersion }) {
+function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
@@ -5640,13 +5640,34 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
     ? `${teamRoster.abbr || teamRoster.label} @ ${oppRoster.abbr || oppRoster.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
     : "";
 
+  const pagePickId = `nfl-${playerId}-${market}-${effectiveLine}`;
+  const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  const buildPagePick = () => ({
+    id: pagePickId,
+    sport: "nfl",
+    name: player.name,
+    team: player.team,
+    subtitle: `Over ${effectiveLine} ${market}`,
+    playerId,
+    marketId: market,
+    line: effectiveLine,
+    mainLine: effectiveLine,
+    direction: "over",
+    hitRate,
+    gamesOver: hits,
+    gamesCounted: values.length,
+    logValues: values.slice(),
+    addedAt: Date.now(),
+    marketLabel: market,
+  });
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <PlayerDetailBreadcrumb
-      onBack={() => {}}
+      onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={false}
-      onToggleWatch={() => {}}
+      watching={isPagePickAdded}
+      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
     />
     <MobilePlayerNav
       teamA={teamRoster}
@@ -5813,9 +5834,9 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
               letterSpacing: "0.04em",
               textTransform: "uppercase",
             }}
-            onClick={() => {}}
+            onClick={() => onTogglePick && onTogglePick(buildPagePick())}
           >
-            + Add to My Picks
+            {isPagePickAdded ? "Remove from My Picks" : "+ Add to My Picks"}
           </button>
         </div>
       </div>
@@ -6719,7 +6740,7 @@ function wnbaPlayerMarkets(player) {
   return [...WNBA_MARKETS_CORE, ...extra];
 }
 
-function WNBAPropsPage({ jumpTo, dataVersion }) {
+function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // Same volume stat as the NBA page -- minutes are the input almost every
   // basketball prop scales with, so the two pages share NBA_CONTEXT_STAT.
   const [showContext, setShowContext] = useState(false);
@@ -7549,13 +7570,34 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
     : "";
 
+  const pagePickId = `wnba-${playerId}-${market}-${effectiveLine}`;
+  const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  const buildPagePick = () => ({
+    id: pagePickId,
+    sport: "wnba",
+    name: player.name,
+    team: player.team,
+    subtitle: `Over ${effectiveLine} ${market}`,
+    playerId,
+    marketId: market,
+    line: effectiveLine,
+    mainLine: effectiveLine,
+    direction: "over",
+    hitRate,
+    gamesOver: hits,
+    gamesCounted: values.length,
+    logValues: values.slice(),
+    addedAt: Date.now(),
+    marketLabel: market,
+  });
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <PlayerDetailBreadcrumb
-      onBack={() => {}}
+      onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={false}
-      onToggleWatch={() => {}}
+      watching={isPagePickAdded}
+      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
     />
     {slateBanner}
     <MobilePlayerNav
@@ -7741,9 +7783,9 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
               letterSpacing: "0.04em",
               textTransform: "uppercase",
             }}
-            onClick={() => {}}
+            onClick={() => onTogglePick && onTogglePick(buildPagePick())}
           >
-            + Add to My Picks
+            {isPagePickAdded ? "Remove from My Picks" : "+ Add to My Picks"}
           </button>
         </div>
       </div>
@@ -10305,7 +10347,7 @@ class MLBPageErrorBoundary extends React.Component {
   }
 }
 
-function MLBPropsPage({ jumpTo }) {
+function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const [showContext, setShowContext] = useState(false);
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -11626,9 +11668,9 @@ function MLBPropsPage({ jumpTo }) {
             letterSpacing: "0.04em",
             textTransform: "uppercase",
           }}
-          onClick={() => {}}
+          onClick={() => onTogglePick && onTogglePick(buildPagePick())}
         >
-          + Add to My Picks
+          {isPagePickAdded ? "Remove from My Picks" : "+ Add to My Picks"}
         </button>
       </div>
 
@@ -11965,13 +12007,34 @@ function MLBPropsPage({ jumpTo }) {
     ? `${teamAbbr || "TEAM"} @ ${(liveOppRoster && (liveOppRoster.abbr || liveOppRoster.label)) || "OPP"} · ${new Date(nextGame.date || Date.now()).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
     : (market || "").toUpperCase();
 
+  const pagePickId = `mlb-${playerId}-${market}-${effectiveLine}`;
+  const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  const buildPagePick = () => ({
+    id: pagePickId,
+    sport: "mlb",
+    name: player?.name || "Player",
+    team: teamAbbr,
+    subtitle: `Over ${effectiveLine} ${market}`,
+    playerId,
+    marketId: market,
+    line: effectiveLine,
+    mainLine: effectiveLine,
+    direction: "over",
+    hitRate,
+    gamesOver: hits,
+    gamesCounted: values.length,
+    logValues: values.slice(),
+    addedAt: Date.now(),
+    marketLabel: market,
+  });
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <PlayerDetailBreadcrumb
-      onBack={() => {}}
+      onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={false}
-      onToggleWatch={() => {}}
+      watching={isPagePickAdded}
+      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
     />
 
     <MobilePlayerNav
