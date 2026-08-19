@@ -5754,6 +5754,8 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
           total={values.length}
           edge={edge}
           compact={compact}
+          line={effectiveLine}
+          sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
         />
 
         {chartBlock}
@@ -5780,6 +5782,24 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
           max={allGames.length}
           includeH2h={false}
         />
+
+        <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
+          <button
+            type="button"
+            className="cta-btn"
+            style={{
+              width: "100%",
+              height: 48,
+              fontSize: 14,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+            onClick={() => {}}
+          >
+            + Add to My Picks
+          </button>
+        </div>
       </div>
 
       {ledgerTable}
@@ -7660,6 +7680,8 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
           total={values.length}
           edge={edge}
           compact={compact}
+          line={effectiveLine}
+          sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
         />
 
         {chartBlock}
@@ -7688,6 +7710,24 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
           max={allGames.length}
           includeH2h={false}
         />
+
+        <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
+          <button
+            type="button"
+            className="cta-btn"
+            style={{
+              width: "100%",
+              height: 48,
+              fontSize: 14,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+            onClick={() => {}}
+          >
+            + Add to My Picks
+          </button>
+        </div>
       </div>
 
       {ledgerTable}
@@ -11259,32 +11299,17 @@ function MLBPropsPage({ jumpTo }) {
   // season-wide average for this market vs. the graph's own filtered-sample
   // average, hit rate against the current line, and edge.
   const metricRail = (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap",
-      gap: compact ? 20 : 32, padding: compact ? "10px 12px 6px" : "12px 20px 8px",
-    }}>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Season Avg</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{seasonAvgForMarket.toFixed(1)}</div>
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Graph Avg</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{avg.toFixed(1)}</div>
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Hit Rate</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>
-          {Math.round(hitRate * 100)}%{" "}
-          <span className="tnum" style={{ fontSize: compact ? 10 : 11, color: "var(--dim)", fontWeight: 600 }}>({hits}/{values.length})</span>
-        </div>
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Edge</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: edge >= 0 ? "var(--green)" : "var(--red)" }}>
-          {`${edge >= 0 ? "+" : ""}${edge.toFixed(1)}`}
-        </div>
-      </div>
-    </div>
+    <MetricRail
+      seasonAvg={seasonAvgForMarket}
+      graphAvg={avg}
+      hitRate={hitRate}
+      hits={hits}
+      total={values.length}
+      edge={edge}
+      compact={compact}
+      line={effectiveLine}
+      sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
+    />
   );
 
   // Local chart height for the blended graph card -- deliberately its own
@@ -11570,6 +11595,24 @@ function MLBPropsPage({ jumpTo }) {
         isNarrow={isNarrow}
         max={allGames.length}
       />
+
+      <div style={{ padding: compact ? "12px" : "16px 20px 12px" }}>
+        <button
+          type="button"
+          className="cta-btn"
+          style={{
+            width: "100%",
+            height: 48,
+            fontSize: 14,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+          onClick={() => {}}
+        >
+          + Add to My Picks
+        </button>
+      </div>
 
       {/* Action row -- Get Odds only now; Filters moved to the card's
            top-right corner (see above) so its panel has room to open
