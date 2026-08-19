@@ -21,28 +21,9 @@ const SECTION = {
   overflow: "hidden",
 };
 
-// The small arch before each heading, from the design handoff ("lapis, arches
-// and a serif do the separating").
-//
-// It is decoration and nothing else -- it is never the wordmark and never
-// stands alone. The wordmark is three ascending bars; this is a single open
-// arch, and the two are kept visually unrelated on purpose. That is also why
-// this replaced the old 3x13px vertical bar: a lone accent-coloured bar reads
-// as one stripe of the mark, which an arch cannot. It only ever appears
-// repeated at section headings, where repetition makes it read as a rule.
-function SectionArch() {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        width: 14, height: 9, flexShrink: 0,
-        border: "2px solid var(--amber)", borderBottom: "none",
-        borderRadius: "7px 7px 0 0",
-      }}
-    />
-  );
-}
-
+// Section titles no longer carry the temporary arch motif from phase 4b.
+// The permanent lockup is the three ascending bars (item #15); until then
+// headings are plain text.
 function SectionTitle({ children, right }) {
   return (
     <div style={{
@@ -51,7 +32,6 @@ function SectionTitle({ children, right }) {
       background: "var(--surface-sunken)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 11, fontSize: 20, fontWeight: 600, color: "var(--text)", letterSpacing: "-0.01em" }}>
-        <SectionArch />
         {children}
       </div>
       {right}

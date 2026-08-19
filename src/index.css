@@ -571,6 +571,9 @@ select.select:focus, select.select:focus-visible {
    whatever the user's colour wheel actually resolved to (see accentForeground
    in settings.jsx), which is the thing that stays readable at both ends of the
    wheel without hard-coding white. */
+/* Default market-bar tabs = filled/outlined chips (correct for Screen #2,
+   the matchup player page). Screen #1 (prop-feed player detail) opts out
+   with .market-bar--underlined so the tabs become classic underlined text. */
 .market-bar .tab {
   flex: 0 0 auto;
   width: auto;
@@ -591,9 +594,32 @@ select.select:focus, select.select:focus-visible {
   border-color: var(--amber);
   color: var(--accent-on, #08131c);
 }
+
+/* Underlined variant used by the prop-feed player detail (Screen #1). */
+.market-bar--underlined .tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 6px 8px;
+  color: var(--dim);
+}
+.market-bar--underlined .tab:hover {
+  color: var(--text);
+  border-color: transparent;
+  background: transparent;
+}
+.market-bar--underlined .tab.active,
+.market-bar--underlined .tab.active:hover {
+  background: transparent;
+  border-bottom-color: var(--amber);
+  color: var(--amber);
+}
+
 @media (max-width: 480px) {
   /* Still a 44px hit area at this size -- 11px line box plus 2 x 12px. */
   .market-bar .tab { font-size: 11px; padding: 12px 10px; letter-spacing: 0.03em; }
+  .market-bar--underlined .tab { padding: 12px 6px 10px; }
 }
 
 /* Native scrollbar hidden on the teammate chip row -- a reserved scrollbar

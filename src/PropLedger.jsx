@@ -14,6 +14,7 @@ import SettingsModal from "./SettingsModal.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar from "./PlayerAvatar.jsx";
+import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import { InjuryAndNews, MissingAround } from "./PlayerContextBlocks.jsx";
 import { fetchNews, timeAgo } from "./lib/newsdata.js";
 // MLB availability lives in lib because the matchup overview needs it too and
@@ -577,6 +578,8 @@ function PlayerIdentityRow({ avatar, team, pos, name, stats, statsLabel = "SEASO
     </div>
   );
 }
+
+// PlayerDetailBreadcrumb lives in src/player/PlayerDetailBreadcrumb.jsx
 
 // ---------------------------------------------------------------------------
 // Player page context blocks (design handoff, phase 4)
@@ -1333,8 +1336,18 @@ function NBAPropsPage({ jumpTo }) {
     </CollapsibleSection>
   );
 
+  const centerBreadcrumbLabel = matchup
+    ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "PTS").toUpperCase()}`
+    : "";
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <PlayerDetailBreadcrumb
+      onBack={() => { /* wired by parent / jumpTo later */ }}
+      centerLabel={centerBreadcrumbLabel}
+      watching={false}
+      onToggleWatch={() => {}}
+    />
     <MobilePlayerNav
       teamA={matchup.teamA}
       teamB={matchup.teamB}
@@ -1439,6 +1452,7 @@ function NBAPropsPage({ jumpTo }) {
         <div style={{ padding: compact ? "10px 12px 14px" : "12px 20px 18px" }}>
           <MarketSectionGrid
             singleBar
+            underlined
             sections={[
               { label: "Core", markets: MARKETS_ROW_1 },
               { label: "Combos", markets: MARKETS_ROW_3 },
@@ -1476,6 +1490,8 @@ function NBAPropsPage({ jumpTo }) {
           total={values.length}
           edge={edge}
           compact={compact}
+          line={effectiveLine}
+          sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
         />
 
         {/* Playoffs is the one view that can legitimately come back empty --
@@ -1510,6 +1526,29 @@ function NBAPropsPage({ jumpTo }) {
           max={allGames.length}
           includeH2h={false}
         />
+
+        {/* Add to My Picks — uses the same feedPickId format once parent
+            threads pickIds/onTogglePick. Stub for now so the layout matches
+            Screen #1; full wiring is the next step. */}
+        <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
+          <button
+            type="button"
+            className="cta-btn"
+            style={{
+              width: "100%",
+              height: 48,
+              fontSize: 14,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+            onClick={() => {
+              // Parent will supply onTogglePick + pickFromRung wiring.
+            }}
+          >
+            + Add to My Picks
+          </button>
+        </div>
       </div>
 
       {ledgerTable}
@@ -4732,12 +4771,12 @@ function MarketPillRow({ markets, activeMarket, onSelect }) {
 // Double-Double/Anytime TD) render as plain tabs in the bar too, same as
 // every other market -- the point of this mode is one consistent row, not
 // a mix of tab styles.
-function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleBar }) {
+function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleBar, underlined }) {
   const visible = sections.filter((s) => s.markets.length > 0);
 
   if (singleBar) {
     return (
-      <div className="market-bar">
+      <div className={`market-bar${underlined ? " market-bar--underlined" : ""}`}>
         {visible.map((section) => (
           <React.Fragment key={section.label}>
             {/* No section divider here on purpose. A divider is just another
@@ -4972,32 +5011,67 @@ function SampleStatsRow({ cards, glossary, compact, intro }) {
 // Deliberately has no hero line number or "drag the tab" caption -- the
 // draggable LineHandle on the chart itself is the single place the line value
 // is read from and set.
-function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, decimals = 1 }) {
+// Verdict / summary rail for prop-feed player detail (Screen #1).
+// Large hit-rate percentage + the three mono tiles the design calls for:
+// AVERAGE / LINE / CLEARS IT BY. `line` is display-only here — LineHandle on
+// the chart remains the single place the line is set (see plan note).
+function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, decimals = 1, line, sampleLabel }) {
+  const pct = Math.round(hitRate * 100);
   return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap",
-      gap: compact ? 20 : 32, padding: compact ? "10px 12px 6px" : "12px 20px 8px",
-    }}>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Season Avg</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{seasonAvg.toFixed(decimals)}</div>
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Graph Avg</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{graphAvg.toFixed(decimals)}</div>
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Hit Rate</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>
-          {Math.round(hitRate * 100)}%{" "}
-          <span className="tnum" style={{ fontSize: compact ? 10 : 11, color: "var(--dim)", fontWeight: 600 }}>({hits}/{total})</span>
+    <div style={{ padding: compact ? "14px 12px 10px" : "18px 20px 12px" }}>
+      <div style={{
+        display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap",
+        marginBottom: 14,
+      }}>
+        <div className="mono" style={{
+          fontSize: compact ? 42 : 56, fontWeight: 700, lineHeight: 1,
+          color: "var(--amber)", fontVariantNumeric: "tabular-nums",
+        }}>
+          {pct}%
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: compact ? 14 : 16, color: "var(--text)", fontWeight: 600 }}>
+            cleared {line != null ? Number(line).toFixed(decimals) : "—"} in {hits} of {total} games
+          </div>
+          {sampleLabel && (
+            <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, letterSpacing: "0.06em" }}>
+              {sampleLabel}
+            </div>
+          )}
         </div>
       </div>
-      <div style={{ textAlign: "center" }}>
-        <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5 }}>Edge</div>
-        <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: edge >= 0 ? "var(--green)" : "var(--red)" }}>
-          {`${edge >= 0 ? "+" : ""}${edge.toFixed(decimals)}`}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "flex-start", flexWrap: "wrap",
+        gap: compact ? 18 : 28,
+      }}>
+        <div style={{ textAlign: "left" }}>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>AVERAGE</div>
+          <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{graphAvg.toFixed(decimals)}</div>
         </div>
+        <div style={{ textAlign: "left" }}>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>LINE</div>
+          <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>
+            {line != null ? Number(line).toFixed(decimals) : "—"}
+          </div>
+        </div>
+        <div style={{ textAlign: "left" }}>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>CLEARS IT BY</div>
+          <div className="mono stat-value" style={{
+            fontSize: compact ? 16 : 19,
+            color: edge >= 0 ? "var(--green)" : "var(--red)",
+          }}>
+            {`${edge >= 0 ? "+" : ""}${edge.toFixed(decimals)}`}
+          </div>
+        </div>
+        {total > 0 && (
+          <div className="pp-mono" style={{
+            marginLeft: "auto", fontSize: 11, letterSpacing: "0.08em",
+            color: "var(--dim)", border: "1px solid var(--line)",
+            padding: "4px 10px", borderRadius: 999,
+          }}>
+            {total} GAME{total === 1 ? "" : "S"}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5544,8 +5618,18 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
     </CollapsibleSection>
   );
 
+  const centerBreadcrumbLabel = matchup
+    ? `${teamRoster.abbr || teamRoster.label} @ ${oppRoster.abbr || oppRoster.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
+    : "";
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <PlayerDetailBreadcrumb
+      onBack={() => {}}
+      centerLabel={centerBreadcrumbLabel}
+      watching={false}
+      onToggleWatch={() => {}}
+    />
     <MobilePlayerNav
       teamA={teamRoster}
       teamB={oppRoster}
@@ -5648,6 +5732,7 @@ function NFLPropsPage({ jumpTo, dataVersion }) {
         <div style={{ padding: compact ? "10px 12px 14px" : "12px 20px 18px" }}>
           <MarketSectionGrid
             singleBar
+            underlined
             sections={NFL_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
             activeMarket={market}
             onSelect={(id) => { setMarket(id); setLine(null); }}
@@ -7422,8 +7507,18 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
     );
   }
 
+  const centerBreadcrumbLabel = matchup
+    ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
+    : "";
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <PlayerDetailBreadcrumb
+      onBack={() => {}}
+      centerLabel={centerBreadcrumbLabel}
+      watching={false}
+      onToggleWatch={() => {}}
+    />
     {slateBanner}
     <MobilePlayerNav
       teamA={matchup.teamA}
@@ -7533,6 +7628,7 @@ function WNBAPropsPage({ jumpTo, dataVersion }) {
         <div style={{ padding: compact ? "10px 12px 14px" : "12px 20px 18px" }}>
           <MarketSectionGrid
             singleBar
+            underlined
             sections={WNBA_MARKET_SECTIONS.map((s) => ({ ...s, markets: playerMarkets.filter((m) => s.ids.includes(m.id)) }))}
             activeMarket={market}
             onSelect={(id) => { setMarket(id); setLine(null); }}
@@ -11240,6 +11336,7 @@ function MLBPropsPage({ jumpTo }) {
       <div style={{ padding: compact ? "10px 12px 14px" : "12px 20px 18px" }}>
         <MarketSectionGrid
           singleBar
+          underlined
           sections={
             isPitcher
               ? [{ label: "Pitching", markets: MLB_PITCHER_MARKETS }]
@@ -11803,8 +11900,18 @@ function MLBPropsPage({ jumpTo }) {
     </div>
   );
 
+  const centerBreadcrumbLabel = nextGame
+    ? `${teamAbbr || "TEAM"} @ ${(liveOppRoster && (liveOppRoster.abbr || liveOppRoster.label)) || "OPP"} · ${new Date(nextGame.date || Date.now()).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
+    : (market || "").toUpperCase();
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+    <PlayerDetailBreadcrumb
+      onBack={() => {}}
+      centerLabel={centerBreadcrumbLabel}
+      watching={false}
+      onToggleWatch={() => {}}
+    />
 
     <MobilePlayerNav
       teamA={liveTeamRoster}

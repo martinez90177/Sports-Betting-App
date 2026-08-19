@@ -22,11 +22,9 @@ const SECTION = {
   overflow: "hidden",
 };
 
-// Same heading motif as MatchupPage, so the two screens a card can open read as
-// one family. Both moved from a short vertical accent bar to the handoff's open
-// arch at the same time; see the note on SectionArch in MatchupPage.jsx for why
-// the bar had to go (it read as a stripe of the three-bar wordmark, which an
-// arch does not).
+// Section titles no longer carry the temporary arch motif from phase 4b.
+// The permanent lockup is the three ascending bars (item #15); until then
+// headings are plain text. Kept in sync with MatchupPage.
 function SectionTitle({ children, right }) {
   return (
     <div style={{
@@ -35,14 +33,6 @@ function SectionTitle({ children, right }) {
       background: "var(--surface-sunken)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 11, fontSize: 20, fontWeight: 600, color: "var(--text)", letterSpacing: "-0.01em" }}>
-        <span
-          aria-hidden="true"
-          style={{
-            width: 14, height: 9, flexShrink: 0,
-            border: "2px solid var(--amber)", borderBottom: "none",
-            borderRadius: "7px 7px 0 0",
-          }}
-        />
         {children}
       </div>
       {right}
