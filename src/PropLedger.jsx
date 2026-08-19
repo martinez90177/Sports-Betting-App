@@ -1548,6 +1548,8 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           isNarrow={isNarrow}
           max={allGames.length}
           includeH2h={false}
+          venueFilter={side === "home" || side === "away" ? side : "all"}
+          onSetVenueFilter={setSide}
         />
 
         <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
@@ -4336,7 +4338,10 @@ function CollapsibleSection({ title, storageKey, defaultOpen = false, children }
 // the games its label implies. They differ whenever a player has played fewer
 // games than the window: an L25 cell on a nine game log is a nine game sample,
 // and the label on its own conceals that.
-function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels, includeH2h = true }) {
+// venueFilter: "all" | "home" | "away" — Screen #1 At Home / On Road cells.
+// When set, the active underline moves to the venue cell; callers should also
+// filter the chart sample the same way.
+function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels, includeH2h = true, venueFilter = "all", onSetVenueFilter }) {
   const rate = (games) => {
     if (!games.length) return null;
     const vals = games.map(statValue);
@@ -4347,41 +4352,48 @@ function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLa
   // shape). AT HOME / ON ROAD are the design's new split cells (Screen #1).
   const homeGames = allGames.filter((g) => g.home === true);
   const awayGames = allGames.filter((g) => g.home === false);
+  const clearVenue = () => onSetVenueFilter && onSetVenueFilter("all");
+  const venueActive = venueFilter === "home" || venueFilter === "away";
   return [
     ...[5, 10, 15, 20, 25].map((n) => ({
-      key: `l${n}`, label: `L${n}`, active: !h2h && lastN === n,
+      key: `l${n}`, label: `L${n}`, active: !h2h && !venueActive && lastN === n,
       rate: rate(allGames.slice(-n)),
       count: allGames.slice(-n).length, asked: n,
-      onClick: () => { onSetH2h(false); onSetLastN(n); },
+      onClick: () => { onSetH2h(false); clearVenue(); onSetLastN(n); },
     })),
-    { key: "season", label: shortLabels ? "SZN" : "Season", active: !h2h && lastN === "all", rate: rate(allGames), count: allGames.length, asked: null, onClick: () => { onSetH2h(false); onSetLastN("all"); } },
+    { key: "season", label: shortLabels ? "SZN" : "Season", active: !h2h && !venueActive && lastN === "all", rate: rate(allGames), count: allGames.length, asked: null, onClick: () => { onSetH2h(false); clearVenue(); onSetLastN("all"); } },
     {
       key: "home",
       label: shortLabels ? "HM" : "At Home",
-      active: false,
+      active: venueFilter === "home",
       rate: rate(homeGames),
       count: homeGames.length,
       asked: null,
-      // Display-first this pass: clicking still leaves the sample window alone.
-      // A dedicated home/away filter state can light `active` and drive the
-      // chart in a follow-up without changing the rate math.
-      onClick: () => { onSetH2h(false); onSetLastN("all"); },
+      onClick: () => {
+        onSetH2h(false);
+        onSetLastN("all");
+        if (onSetVenueFilter) onSetVenueFilter(venueFilter === "home" ? "all" : "home");
+      },
     },
     {
       key: "away",
       label: shortLabels ? "AW" : "On Road",
-      active: false,
+      active: venueFilter === "away",
       rate: rate(awayGames),
       count: awayGames.length,
       asked: null,
-      onClick: () => { onSetH2h(false); onSetLastN("all"); },
+      onClick: () => {
+        onSetH2h(false);
+        onSetLastN("all");
+        if (onSetVenueFilter) onSetVenueFilter(venueFilter === "away" ? "all" : "away");
+      },
     },
     ...(includeH2h ? [{
       key: "h2h",
       label: !shortLabels && opponentAbbr ? `H2H vs ${opponentAbbr}` : "H2H",
       active: h2h, rate: rate(h2hGames),
       count: h2hGames.length, asked: null,
-      onClick: () => opponentAbbr && onSetH2h(true), disabled: !opponentAbbr,
+      onClick: () => { if (opponentAbbr) { clearVenue(); onSetH2h(true); } }, disabled: !opponentAbbr,
     }] : []),
   ];
 }
@@ -4396,8 +4408,8 @@ function hitRateColor(r) {
 // `includeH2h` is passed straight through to buildHitRateSplits: pages with no
 // head-to-head filter of their own opt out so the cell isn't rendered
 // permanently disabled. Defaults to true, so existing callers are unaffected.
-function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, isNarrow, max, includeH2h = true }) {
-  const splits = buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels: isNarrow, includeH2h });
+function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, isNarrow, max, includeH2h = true, venueFilter = "all", onSetVenueFilter }) {
+  const splits = buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels: isNarrow, includeH2h, venueFilter, onSetVenueFilter });
   const rateColor = hitRateColor;
   const cappedMax = Math.max(max, 1);
   const sliderValue = lastN === "all" ? cappedMax : Math.min(lastN, cappedMax);
@@ -5845,6 +5857,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           isNarrow={isNarrow}
           max={allGames.length}
           includeH2h={false}
+          venueFilter={side === "home" || side === "away" ? side : "all"}
+          onSetVenueFilter={setSide}
         />
 
         <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
@@ -7794,6 +7808,8 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           isNarrow={isNarrow}
           max={allGames.length}
           includeH2h={false}
+          venueFilter={side === "home" || side === "away" ? side : "all"}
+          onSetVenueFilter={setSide}
         />
 
         <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
@@ -11679,6 +11695,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         opponentAbbr={nextGame?.opp}
         isNarrow={isNarrow}
         max={allGames.length}
+        venueFilter={side === "home" || side === "away" ? side : "all"}
+        onSetVenueFilter={setSide}
       />
 
       <div style={{ padding: compact ? "12px" : "16px 20px 12px" }}>
