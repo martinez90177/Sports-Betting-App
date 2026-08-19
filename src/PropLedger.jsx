@@ -777,7 +777,7 @@ function PlayerPropContextBlocks({
   );
 }
 
-function NBAPropsPage({ jumpTo }) {
+function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NBA_MATCHUPS[0].id);
   const matchup = NBA_MATCHUPS.find((m) => m.id === matchupId);
@@ -1340,13 +1340,36 @@ function NBAPropsPage({ jumpTo }) {
     ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "PTS").toUpperCase()}`
     : "";
 
+  // Same id format family as feedPickId so a prop saved from the feed and
+  // from this page don't double-enter the slip under different keys.
+  const pagePickId = `nba-${playerId}-${market}-${effectiveLine}`;
+  const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  const buildPagePick = () => ({
+    id: pagePickId,
+    sport: "nba",
+    name: player.name,
+    team: player.team,
+    subtitle: `Over ${effectiveLine} ${market}`,
+    playerId,
+    marketId: market,
+    line: effectiveLine,
+    mainLine: effectiveLine,
+    direction: "over",
+    hitRate,
+    gamesOver: hits,
+    gamesCounted: values.length,
+    logValues: values.slice(),
+    addedAt: Date.now(),
+    marketLabel: market,
+  });
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <PlayerDetailBreadcrumb
-      onBack={() => { /* wired by parent / jumpTo later */ }}
+      onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={false}
-      onToggleWatch={() => {}}
+      watching={isPagePickAdded}
+      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
     />
     <MobilePlayerNav
       teamA={matchup.teamA}
@@ -1527,9 +1550,6 @@ function NBAPropsPage({ jumpTo }) {
           includeH2h={false}
         />
 
-        {/* Add to My Picks — uses the same feedPickId format once parent
-            threads pickIds/onTogglePick. Stub for now so the layout matches
-            Screen #1; full wiring is the next step. */}
         <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
           <button
             type="button"
@@ -1542,11 +1562,9 @@ function NBAPropsPage({ jumpTo }) {
               letterSpacing: "0.04em",
               textTransform: "uppercase",
             }}
-            onClick={() => {
-              // Parent will supply onTogglePick + pickFromRung wiring.
-            }}
+            onClick={() => onTogglePick && onTogglePick(buildPagePick())}
           >
-            + Add to My Picks
+            {isPagePickAdded ? "Remove from My Picks" : "+ Add to My Picks"}
           </button>
         </div>
       </div>
@@ -17943,20 +17961,42 @@ export default function PropLedger() {
       </div>
 
       {page === "nba" && (
-        <NBAPropsPage jumpTo={jumpTo && jumpTo.sport === "nba" ? jumpTo : null} />
+        <NBAPropsPage
+          jumpTo={jumpTo && jumpTo.sport === "nba" ? jumpTo : null}
+          pickIds={pickIds}
+          onTogglePick={togglePick}
+          onBack={() => setPage("feed")}
+        />
       )}
 
       {page === "wnba" && (
-        <WNBAPropsPage jumpTo={jumpTo && jumpTo.sport === "wnba" ? jumpTo : null} dataVersion={wnbaDataVersion} />
+        <WNBAPropsPage
+          jumpTo={jumpTo && jumpTo.sport === "wnba" ? jumpTo : null}
+          dataVersion={wnbaDataVersion}
+          pickIds={pickIds}
+          onTogglePick={togglePick}
+          onBack={() => setPage("feed")}
+        />
       )}
 
       {page === "nfl" && (
-        <NFLPropsPage jumpTo={jumpTo && jumpTo.sport === "nfl" ? jumpTo : null} dataVersion={nflDataVersion} />
+        <NFLPropsPage
+          jumpTo={jumpTo && jumpTo.sport === "nfl" ? jumpTo : null}
+          dataVersion={nflDataVersion}
+          pickIds={pickIds}
+          onTogglePick={togglePick}
+          onBack={() => setPage("feed")}
+        />
       )}
 
       {page === "mlb" && (
         <MLBPageErrorBoundary>
-          <MLBPropsPage jumpTo={jumpTo && jumpTo.sport === "mlb" ? jumpTo : null} />
+          <MLBPropsPage
+            jumpTo={jumpTo && jumpTo.sport === "mlb" ? jumpTo : null}
+            pickIds={pickIds}
+            onTogglePick={togglePick}
+            onBack={() => setPage("feed")}
+          />
         </MLBPageErrorBoundary>
       )}
 
