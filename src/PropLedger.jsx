@@ -1342,7 +1342,14 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
 
   // Same id format family as feedPickId so a prop saved from the feed and
   // from this page don't double-enter the slip under different keys.
-  const pagePickId = `nba-${playerId}-${market}-${effectiveLine}`;
+  // When the user has dragged the line handle (`line != null`), the ~suffix
+  // marks an alt; otherwise the id matches the feed's main-line id.
+  const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
+  const pagePickId = playerPagePickId(
+    "nba", playerId, market,
+    line != null ? effectiveLine : null,
+    line != null ? pageMainLine : null,
+  );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
   const buildPagePick = () => ({
     id: pagePickId,
@@ -1353,7 +1360,7 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     playerId,
     marketId: market,
     line: effectiveLine,
-    mainLine: effectiveLine,
+    mainLine: pageMainLine,
     direction: "over",
     hitRate,
     gamesOver: hits,
@@ -5677,7 +5684,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     ? `${teamRoster.abbr || teamRoster.label} @ ${oppRoster.abbr || oppRoster.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
     : "";
 
-  const pagePickId = `nfl-${playerId}-${market}-${effectiveLine}`;
+  const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
+  const pagePickId = playerPagePickId(
+    "nfl", playerId, market,
+    line != null ? effectiveLine : null,
+    line != null ? pageMainLine : null,
+  );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
   const buildPagePick = () => ({
     id: pagePickId,
@@ -5688,7 +5700,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     playerId,
     marketId: market,
     line: effectiveLine,
-    mainLine: effectiveLine,
+    mainLine: pageMainLine,
     direction: "over",
     hitRate,
     gamesOver: hits,
@@ -7609,7 +7621,12 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
     : "";
 
-  const pagePickId = `wnba-${playerId}-${market}-${effectiveLine}`;
+  const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
+  const pagePickId = playerPagePickId(
+    "wnba", playerId, market,
+    line != null ? effectiveLine : null,
+    line != null ? pageMainLine : null,
+  );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
   const buildPagePick = () => ({
     id: pagePickId,
@@ -7620,7 +7637,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     playerId,
     marketId: market,
     line: effectiveLine,
-    mainLine: effectiveLine,
+    mainLine: pageMainLine,
     direction: "over",
     hitRate,
     gamesOver: hits,
@@ -12050,7 +12067,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     ? `${teamAbbr || "TEAM"} @ ${(liveOppRoster && (liveOppRoster.abbr || liveOppRoster.label)) || "OPP"} · ${new Date(nextGame.date || Date.now()).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
     : (market || "").toUpperCase();
 
-  const pagePickId = `mlb-${playerId}-${market}-${effectiveLine}`;
+  const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
+  const pagePickId = playerPagePickId(
+    "mlb", playerId, market,
+    line != null ? effectiveLine : null,
+    line != null ? pageMainLine : null,
+  );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
   const buildPagePick = () => ({
     id: pagePickId,
@@ -12061,7 +12083,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     playerId,
     marketId: market,
     line: effectiveLine,
-    mainLine: effectiveLine,
+    mainLine: pageMainLine,
     direction: "over",
     hitRate,
     gamesOver: hits,
@@ -13333,6 +13355,15 @@ function feedPickId(sport, r, line) {
   const date = r.date ? `@${String(r.date).slice(0, 10)}` : "";
   const rung = line != null && line !== r.line ? `~${line}` : "";
   return `${sport}-${r.key}${dir}${date}${rung}`;
+}
+
+// Player-page pick id, aligned with feedPickId so a prop added from the feed
+// and the same prop added from the player detail page share one slip slot.
+// Feed rows use key `${sport}_${playerId}_${marketId}` (see build*FeedRows).
+function playerPagePickId(sport, playerId, market, line, mainLine) {
+  const key = `${sport}_${playerId}_${market}`;
+  const rung = line != null && mainLine != null && Number(line) !== Number(mainLine) ? `~${line}` : "";
+  return `${sport}-${key}${rung}`;
 }
 
 // The same rung suffix, applied to an id that already exists. The slip's
