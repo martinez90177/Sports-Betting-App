@@ -227,10 +227,17 @@ function ProbablePitchers({ game }) {
   );
 }
 
-export default function MatchupPage({ game, isMobile, onBack, onViewProps }) {
+export default function MatchupPage({ game, isMobile, onBack, onViewProps, getTopProps, onOpenProp }) {
   const [depth, setDepth] = useState(10);
   const [form, setForm] = useState({ away: [], home: [] });
   const [h2h, setH2h] = useState(null);
+  // "Props with a read" (card 138) -- a handful of notable props for this
+  // game, computed by PropLedger (see getTopPropsForMatchup) and handed down
+  // as a prop rather than fetched here: this file cannot import PropLedger.jsx
+  // (PropLedger lazy-imports GamesPage, which imports this file -- importing
+  // back would be circular), so the data arrives the same way onViewProps
+  // already does, as a callback.
+  const [topProps, setTopProps] = useState(undefined); // undefined = loading, null = unsupported, [] = none
 
   useEffect(() => {
     let cancelled = false;
@@ -250,6 +257,16 @@ export default function MatchupPage({ game, isMobile, onBack, onViewProps }) {
     });
     return () => { cancelled = true; };
   }, [game.sport, game.away.abbr, game.home.abbr]);
+
+  useEffect(() => {
+    if (!getTopProps) { setTopProps(null); return undefined; }
+    let cancelled = false;
+    setTopProps(undefined);
+    getTopProps(game.sport, game.away.abbr, game.home.abbr).then((reads) => {
+      if (!cancelled) setTopProps(reads || []);
+    }).catch(() => { if (!cancelled) setTopProps([]); });
+    return () => { cancelled = true; };
+  }, [getTopProps, game.sport, game.away.abbr, game.home.abbr]);
 
   // Matches the Games hero: accent-mixed rather than the reference's fixed
   // green, so both screens re-tint with the user's chosen accent.
@@ -273,12 +290,11 @@ export default function MatchupPage({ game, isMobile, onBack, onViewProps }) {
         padding: isMobile ? "14px 16px 20px" : "18px 22px 22px",
       }}>
         <div
-          className="gm-back"
+          className="gm-back pp-mono"
           role="button"
           tabIndex={0}
           onClick={onBack}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack(); } }}
-          className="gm-back pp-mono"
           style={{
             display: "inline-flex", alignItems: "center", gap: 7,
             fontSize: 11.5, letterSpacing: "0.1em", color: "var(--dim)", marginBottom: 18,
@@ -460,6 +476,54 @@ export default function MatchupPage({ game, isMobile, onBack, onViewProps }) {
             </div>
           </div>
         )}
+
+        {/* "Props with a read" (card 138). Same three-state discipline as
+             Head to Head just above: `null` (no callback wired -- shouldn't
+             happen in the real app, but a defensive default) or an empty
+             array both mean nothing to show, so the whole section drops
+             rather than rendering a heading over blank space. Loading gets
+             its own line instead of a flash of nothing while the per-player
+             game logs resolve. */}
+        {topProps === undefined ? (
+          <div style={SECTION}>
+            <SectionTitle>Props with a read</SectionTitle>
+            <div style={{ padding: "16px 28px", fontSize: 13, color: "var(--dim)" }}>Working out this game's props…</div>
+          </div>
+        ) : topProps && topProps.length > 0 ? (
+          <div style={SECTION}>
+            <SectionTitle>Props with a read</SectionTitle>
+            <div>
+              {topProps.map((r, i) => (
+                <div
+                  key={r.playerId}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenProp && onOpenProp(r.sport, r.playerId, r.market, { name: r.name, team: r.team })}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenProp && onOpenProp(r.sport, r.playerId, r.market, { name: r.name, team: r.team }); } }}
+                  className="gm-card"
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14,
+                    padding: "12px 28px", cursor: "pointer",
+                    borderTop: i === 0 ? "none" : "1px solid var(--line)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                    <PlayerAvatar name={r.name} team={r.team} sport={r.sport} size={30} surface="var(--panel)" />
+                    <span style={{ fontSize: 13.5, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {r.name} <span style={{ color: "var(--dim)" }}>{r.marketLabel.toLowerCase()} {r.line}</span>
+                    </span>
+                  </div>
+                  <span className="pp-mono tnum" style={{ fontSize: 12.5, color: "var(--dim)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    <span style={{ color: r.hitRate >= 0.6 ? "var(--pos)" : r.hitRate <= 0.4 ? "var(--neg)" : "var(--text)", fontWeight: 600 }}>
+                      {Math.round(r.hitRate * 100)}%
+                    </span>
+                    {" · "}{r.gamesOver} of {r.gamesCounted}{r.thin ? " · too few" : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

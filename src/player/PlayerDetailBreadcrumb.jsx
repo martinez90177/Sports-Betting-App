@@ -4,7 +4,7 @@ import React from "react";
 // Left: back control. Center: matchup + time + market. Right: + WATCH toggle.
 // Kept separate from the matchup-player breadcrumb (Screen #2) so the two
 // pages can evolve independently.
-export default function PlayerDetailBreadcrumb({ onBack, centerLabel, watching, onToggleWatch }) {
+export default function PlayerDetailBreadcrumb({ onBack, centerLabel, watching, onToggleWatch, extraAction }) {
   return (
     <div style={{
       display: "flex",
@@ -48,25 +48,27 @@ export default function PlayerDetailBreadcrumb({ onBack, centerLabel, watching, 
       }}>
         {centerLabel}
       </div>
-      <button
-        type="button"
-        onClick={onToggleWatch}
-        style={{
-          background: "none",
-          border: "none",
-          color: watching ? "var(--amber)" : "var(--dim)",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          fontSize: 12.5,
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-          padding: "4px 0",
-          flexShrink: 0,
-          fontWeight: watching ? 700 : 400,
-        }}
-      >
-        {watching ? "Watching" : "+ Watch"}
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+        {extraAction}
+        <button
+          type="button"
+          onClick={onToggleWatch}
+          style={{
+            background: "none",
+            border: "none",
+            color: watching ? "var(--amber)" : "var(--dim)",
+            cursor: "pointer",
+            fontFamily: "inherit",
+            fontSize: 12.5,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            padding: "4px 0",
+            fontWeight: watching ? 700 : 400,
+          }}
+        >
+          {watching ? "Watching" : "+ Watch"}
+        </button>
+      </div>
     </div>
   );
 }

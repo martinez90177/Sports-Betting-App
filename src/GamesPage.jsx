@@ -112,7 +112,7 @@ function SportTabs({ sport, onChange, isMobile }) {
 // The active date is marked by a short white bar *above* the label, not an
 // underline -- see dfull/D00001 and m2/X00001, where the bar sits flush with
 // the top edge of the row.
-function DateTabs({ tabs, activeKey, onChange, isMobile, caption }) {
+function DateTabs({ tabs, activeKey, onChange, isMobile, caption, counts }) {
   return (
     // Opaque background matters here: this row pins while cards scroll under it.
     <div style={{ borderBottom: "1px solid var(--line)", background: isMobile ? "var(--bg)" : "var(--surface-sunken)" }}>
@@ -158,8 +158,12 @@ function DateTabs({ tabs, activeKey, onChange, isMobile, caption }) {
               <div style={{
                 fontSize: isMobile ? 11.5 : 10, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.08em",
                 color: active ? "var(--amber)" : "var(--dim)", opacity: active ? 0.75 : 1,
+                whiteSpace: "nowrap",
               }}>
-                {t.sub}
+                {/* undefined = not fetched yet, null = fetch failed -- both
+                     read as the plain weekday rather than a wrong or invented
+                     count. Only a real, resolved number gets appended. */}
+                {counts && Number.isFinite(counts[t.key]) ? `${t.sub} · ${counts[t.key]} ${counts[t.key] === 1 ? "GAME" : "GAMES"}` : t.sub}
               </div>
             </div>
           );
@@ -194,56 +198,23 @@ function GamesSearchBar({ value, onChange, isMobile }) {
   );
 }
 
-function TeamSide({ game, side, isMobile, align, showScore }) {
-  const t = game[side];
-  const muted = game.isFinal;
-  const logo = (
-    <img
-      src={teamLogo(game.sport, t.abbr)}
-      alt=""
-      width={isMobile ? 26 : 28}
-      height={isMobile ? 26 : 28}
-      style={{
-        objectFit: "contain", flexShrink: 0,
-        opacity: muted ? 0.55 : 1,
-      }}
-      onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
-    />
-  );
-  const text = (
-    <div style={{ minWidth: 0, textAlign: align }}>
-      <div className="oswald" style={{
-        fontSize: isMobile ? 15.5 : 15, fontWeight: 700,
-        color: muted ? "var(--dim)" : "var(--text)",
-        lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-      }}>
-        {isMobile ? t.name : t.full}
-      </div>
-      {showScore && t.score != null ? (
-        <div className="mono tnum" style={{
-          fontSize: isMobile ? 20 : 22, fontWeight: 700,
-          color: muted ? "var(--dim-strong)" : "var(--text)",
-          marginTop: 3, letterSpacing: "-0.02em", lineHeight: 1.1,
-        }}>
-          {t.score}
-        </div>
-      ) : (
-        <div className="mono tnum" style={{
-          fontSize: isMobile ? 12 : 11.5,
-          color: muted ? "rgba(255,255,255,0.28)" : "var(--dim)",
-          marginTop: 4, letterSpacing: "0.02em",
-        }}>
-          {t.record}
-        </div>
-      )}
-    </div>
-  );
+// The second line of the Matchup cell.
+//
+// The card layout this table replaced carried records and live scores in its
+// two team columns; the row has one cell for both teams, so they move here
+// rather than being dropped with the cards. A record the provider omitted comes
+// back as "" (see gamesData's `rec`/`records[0].summary`), which rendered as an
+// invisible gap -- an em dash says "not published" instead.
+function MatchupSubline({ game, showScore }) {
+  const dash = (v) => (v === "" || v == null ? "—" : v);
+  const text = showScore
+    ? `${dash(game.away.score)} : ${dash(game.home.score)}`
+    : `${dash(game.away.record)} · ${dash(game.home.record)}`;
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: isMobile ? 8 : 11, minWidth: 0,
-      justifyContent: align === "right" ? "flex-end" : "flex-start",
+    <div className="pp-mono tnum" style={{
+      fontSize: 12.5, color: "var(--dim-strong)", marginTop: 5, whiteSpace: "nowrap",
     }}>
-      {align === "right" ? <>{text}{logo}</> : <>{logo}{text}</>}
+      {text}
     </div>
   );
 }
@@ -295,12 +266,25 @@ function statusCenterContent(game, isMobile) {
   };
 }
 
-function GameCard({ game, isMobile, onSelect }) {
+// Column template, shared by the header and every row so they cannot drift.
+const SLATE_COLS = "2.4fr 1.1fr 2.1fr 1fr";
+
+// What the reader gets by opening this row. The destination is already decided
+// by opensGamecast, so the label can name it without any new data.
+function researchLabel(game) {
+  if (game.isFinal) return "RECAP →";
+  if (opensGamecast(game.status)) return "GAMECAST →";
+  return "OPEN →";
+}
+
+function GameRow({ game, isMobile, onSelect, isLast, getPropsCount }) {
   const open = () => onSelect(game);
-  const status = game.status || GAME_STATUS.UPCOMING;
   const showScore = (game.isLive || game.isFinal) && (game.away.score != null || game.home.score != null);
   const center = statusCenterContent(game, isMobile);
   const muted = game.isFinal;
+  // Sync, no fetch -- see getPropsCountForGame's own note on why this is a
+  // count of props the game could offer, not a count of feed rows.
+  const propsCount = getPropsCount ? getPropsCount(game.sport, game.away.abbr, game.home.abbr) : null;
 
   return (
     <div
@@ -312,72 +296,79 @@ function GameCard({ game, isMobile, onSelect }) {
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
       style={{
         position: "relative", overflow: "hidden",
-        background: muted ? "rgba(255,255,255,0.02)" : "var(--panel)",
-        border: `1px solid ${center.live ? "rgba(59, 130, 246, 0.35)" : muted ? "rgba(255,255,255,0.04)" : "var(--line)"}`,
-        borderRadius: isMobile ? 14 : "var(--r-lg)",
-        padding: isMobile
-          ? (muted ? "11px 12px" : "14px 12px")
-          : (muted ? "13px 22px" : "16px 22px"),
-        minHeight: isMobile ? (muted ? 72 : 84) : (muted ? 80 : 96),
-        display: "flex", flexDirection: "column", justifyContent: "center",
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr auto" : SLATE_COLS,
+        alignItems: "center", gap: isMobile ? 10 : 14,
+        padding: isMobile ? "14px 16px" : "17px 26px",
+        borderBottom: isLast ? "none" : "1px solid var(--line)",
+        // Finals recede rather than disappear -- the reference dims the whole
+        // row instead of restyling it.
+        opacity: muted ? 0.6 : 1,
         boxSizing: "border-box",
-        opacity: muted ? 0.72 : 1,
-        transition: "opacity 0.2s ease, background 0.2s ease, border-color 0.2s ease",
+        transition: "opacity 0.2s ease, background 0.2s ease",
       }}
     >
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: isMobile ? 8 : 18 }}>
-        <TeamSide game={game} side="away" isMobile={isMobile} align="left" showScore={showScore} />
-
-        <div style={{
-          flexShrink: 0, textAlign: "center", minWidth: isMobile ? 68 : 96,
-          padding: isMobile ? "6px 7px" : "7px 12px",
-          background: center.live
-            ? "rgba(59, 130, 246, 0.12)"
-            : muted
-              ? "rgba(255,255,255,0.03)"
-              : "var(--surface-2)",
-          border: `1px solid ${center.live ? "rgba(59, 130, 246, 0.3)" : muted ? "rgba(255,255,255,0.05)" : "var(--line)"}`,
-          borderRadius: 8,
-        }}>
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+          <span className="pp-display" style={{
+            fontSize: isMobile ? 17 : 20, color: "var(--text)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}>
-            {center.live && (
-              <span style={{
-                width: 6, height: 6, borderRadius: "50%",
-                background: "var(--amber)",
-                boxShadow: "0 0 0 0 rgba(59, 130, 246, 0.5)",
-                animation: "gm-live-pulse 1.6s ease-out infinite",
-              }} />
-            )}
-            <div className="mono tnum" style={{
-              fontSize: isMobile ? 11.5 : 13, fontWeight: 700,
-              color: center.live ? "var(--amber)" : muted ? "var(--dim)" : "var(--text)",
-              whiteSpace: "nowrap",
-              letterSpacing: center.live || center.final ? "0.04em" : 0,
-            }}>
-              {center.primary}
-            </div>
-          </div>
-          {center.secondary && (
-            <div style={{
-              fontSize: isMobile ? 9.5 : 9.5, marginTop: 3,
-              color: center.live ? "rgba(147, 197, 253, 0.85)" : "var(--dim)",
-              textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600,
-              whiteSpace: "pre-line", lineHeight: 1.25,
-            }}>
-              {center.secondary}
-            </div>
-          )}
+            {game.away.name}
+          </span>
+          <span className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", flexShrink: 0 }}>at</span>
+          <span className="pp-display" style={{
+            fontSize: isMobile ? 17 : 20, color: "var(--text)",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {game.home.name}
+          </span>
         </div>
-
-        <TeamSide game={game} side="home" isMobile={isMobile} align="right" showScore={showScore} />
+        <MatchupSubline game={game} showScore={showScore} />
       </div>
+
+      <div className="pp-mono tnum" style={{
+        display: "flex", alignItems: "center", gap: 7,
+        fontSize: isMobile ? 12 : 13,
+        color: center.live ? "var(--accent-text)" : "var(--dim-strong)",
+        whiteSpace: "nowrap",
+      }}>
+        {center.live && (
+          <span style={{
+            width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+            background: "var(--amber)",
+            animation: "gm-live-pulse 1.6s ease-out infinite",
+          }} />
+        )}
+        {center.primary}
+        {center.secondary && center.live && ` · ${center.secondary}`}
+      </div>
+
+      {!isMobile && (
+        <div style={{ fontSize: 13, color: "var(--dim-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {/* Absent rather than "0 props" when the count function isn't
+               wired for this sport (see getPropsCountForGame -- only
+               mlb/wnba/nfl are supported, matching gamesData.js's own
+               SPORTS list). */}
+          {Number.isFinite(propsCount) && propsCount > 0
+            ? <span className="pp-mono">{propsCount} PROPS →</span>
+            : null}
+        </div>
+      )}
+
+      {!isMobile && (
+        <div className="pp-mono" style={{
+          textAlign: "right", fontSize: 11.5, letterSpacing: "0.1em",
+          color: muted ? "var(--dim)" : "var(--accent-text)", whiteSpace: "nowrap",
+        }}>
+          {researchLabel(game)}
+        </div>
+      )}
     </div>
   );
 }
 
-export default function GamesPage({ onViewProps }) {
+export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onOpenProp }) {
   const isMobile = useIsNarrow(720);
   const [sport, setSport] = useState("mlb");
   const [query, setQuery] = useState("");
@@ -400,9 +391,16 @@ export default function GamesPage({ onViewProps }) {
   const [nflWeek, setNflWeek] = useState(null);
   const [dayGames, setDayGames] = useState(null);
   const [pickedKey, setPickedKey] = useState(null);
+  // A failed fetch is its own answer. It used to be coerced to [] , so losing
+  // the network and a genuinely empty day both printed "No games scheduled for
+  // this date" -- the screen stated a fact it had no way to know. Held per
+  // sport+date so switching tabs clears it naturally.
+  const [loadError, setLoadError] = useState(null);
   const pollRef = useRef(null);
 
-  const tabs = useMemo(() => buildDateTabs(sport, nflWeek), [sport, nflWeek]);
+  // `.games` -- the slate fetchers answer { games, unreadable }, and this
+  // builds the NFL date tabs from the kickoff days its games actually contain.
+  const tabs = useMemo(() => buildDateTabs(sport, nflWeek?.games), [sport, nflWeek]);
 
   // Deriving the active key rather than storing it means switching sports
   // can't strand a selection on a date tab the new sport doesn't have.
@@ -411,39 +409,96 @@ export default function GamesPage({ onViewProps }) {
     return sport === "nfl" ? tabs[0]?.key : dayKey(new Date());
   }, [pickedKey, tabs, sport]);
 
-  // Centralized slate loader. Used on mount/date change and by the live poller.
+  // Per-day game counts for the date tabs (card 22's "Sun 16 / 12 GAMES").
+  // NFL's whole Week 1 is already loaded in `nflWeek`, so its counts are a
+  // synchronous filter -- no extra fetch. MLB/WNBA only ever load the active
+  // day's slate, so their other visible tabs need their own fetch; bounded to
+  // the tabs actually on screen (4), and reusing the same cached, TTL'd
+  // fetchMlbSlate/fetchWnbaSlate every other part of this page already calls,
+  // so a tab's count and its games can never disagree about what "today"
+  // returned. `undefined` (not 0) while a count hasn't resolved yet, so a
+  // slow tab reads as unknown rather than claiming zero games.
+  const nflTabCounts = useMemo(() => {
+    if (sport !== "nfl" || !nflWeek?.games) return {};
+    const counts = {};
+    tabs.forEach((t) => {
+      counts[t.key] = nflWeek.games.filter((g) => dayKey(new Date(g.startsAt)) === t.key).length;
+    });
+    return counts;
+  }, [sport, nflWeek, tabs]);
+
+  const [liveTabCounts, setLiveTabCounts] = useState({});
+  useEffect(() => {
+    if (sport === "nfl") return undefined;
+    let cancelled = false;
+    setLiveTabCounts({});
+    const fetcher = sport === "mlb" ? fetchMlbSlate : fetchWnbaSlate;
+    tabs.forEach((t) => {
+      fetcher(t.key).then((res) => {
+        if (cancelled) return;
+        setLiveTabCounts((prev) => ({ ...prev, [t.key]: res ? res.games.length : null }));
+      });
+    });
+    return () => { cancelled = true; };
+  }, [sport, tabs]);
+
+  const tabCounts = sport === "nfl" ? nflTabCounts : liveTabCounts;
+
+  // The one slate loader. Every path into the data -- mount, sport switch,
+  // date switch, the live poller and the retry control -- goes through here,
+  // so the retry cannot drift from the load it is retrying.
+  //
+  // Each fetcher answers { games, unreadable } or null for a failure (see the
+  // note above fetchMlbSlate). `silent` is the poller: it must never blank the
+  // list or raise an error banner over a slate that is already on screen, so a
+  // failed poll just leaves the last good answer alone.
   const loadSlate = React.useCallback((s, key, { silent = false } = {}) => {
     const opts = { force: silent }; // polling always bypasses short TTL
     if (s === "nfl") {
-      return fetchNflWeekOneSlate(opts).then((live) => {
-        if (live) setNflWeek(live);
-        return live;
+      if (!silent) { setNflWeek(null); setLoadError(null); }
+      return fetchNflWeekOneSlate(opts).then((res) => {
+        if (res) setNflWeek(res);
+        else if (!silent) setLoadError("nfl");
+        return res;
       });
     }
     if (!key) return Promise.resolve(null);
-    if (!silent) setDayGames(null);   // loading, not a placeholder slate
+    if (!silent) { setDayGames(null); setLoadError(null); }
     const load = s === "mlb" ? fetchMlbSlate(key, opts) : fetchWnbaSlate(key, opts);
-    return load.then((live) => {
-      if (live) setDayGames(live);
-      return live;
+    return load.then((res) => {
+      if (res) setDayGames(res);
+      else if (!silent) setLoadError(key);
+      return res;
     });
   }, []);
 
   useEffect(() => {
     if (sport !== "nfl") return undefined;
     let cancelled = false;
-    fetchNflWeekOneSlate().then((live) => { if (!cancelled && live) setNflWeek(live); });
+    setNflWeek(null);
+    setLoadError(null);
+    fetchNflWeekOneSlate().then((res) => {
+      if (cancelled) return;
+      if (res) setNflWeek(res);
+      else setLoadError("nfl");
+    });
     return () => { cancelled = true; };
   }, [sport]);
 
-  // Loading state first, then whatever the live feed actually returns. An
-  // empty array is a real answer ("no games today"); null is "still asking".
+  // Loading first, then whatever the feed actually returns. An empty games
+  // array is a real answer ("no games today"); null from the fetcher is a
+  // failure and gets its own state, not an empty slate.
   useEffect(() => {
     if (sport === "nfl" || !activeKey) return undefined;
     let cancelled = false;
     setDayGames(null);
+    setLoadError(null);
     const load = sport === "mlb" ? fetchMlbSlate(activeKey) : fetchWnbaSlate(activeKey);
-    load.then((live) => { if (!cancelled) setDayGames(live || []); });
+    load.then((res) => {
+      if (cancelled) return;
+      if (res) setDayGames(res);
+      else setLoadError(activeKey);
+    });
     return () => { cancelled = true; };
   }, [sport, activeKey]);
 
@@ -463,8 +518,8 @@ export default function GamesPage({ onViewProps }) {
     };
 
     const base = sport === "nfl"
-      ? (nflWeek || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
-      : (dayGames || []);
+      ? (nflWeek?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
+      : (dayGames?.games || []);
     const needsPoll = base.some((g) => isActiveStatus(g.status));
 
     clearPoll();
@@ -475,11 +530,16 @@ export default function GamesPage({ onViewProps }) {
     return clearPoll;
   }, [sport, activeKey, dayGames, nflWeek, loadSlate]);
 
-  const slateLoading = (sport === "nfl" ? nflWeek : dayGames) === null;
+  const slate = sport === "nfl" ? nflWeek : dayGames;
+  const slateFailed = !!loadError;
+  const slateLoading = slate === null && !slateFailed;
+  // Games the feed returned that could not be built into a row. Surfaced at the
+  // foot of the table rather than hidden -- see the footer below.
+  const unreadable = slate?.unreadable || 0;
   const games = useMemo(() => {
     const base = sport === "nfl"
-      ? (nflWeek || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
-      : (dayGames || []);
+      ? (nflWeek?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
+      : (dayGames?.games || []);
     const q = query.trim().toLowerCase();
     let list = base;
     if (q) {
@@ -510,9 +570,19 @@ export default function GamesPage({ onViewProps }) {
   // pull the game out from under an open page.
   const selected = useMemo(() => {
     if (!selectedId) return null;
-    const base = (sport === "nfl" ? nflWeek : dayGames) || [];
+    const base = (sport === "nfl" ? nflWeek?.games : dayGames?.games) || [];
     return base.find((g) => g.id === selectedId) || selectedSnap.current;
   }, [selectedId, sport, nflWeek, dayGames]);
+
+  // Re-runs the same loader the effects run, so the retry cannot diverge from
+  // the load it is retrying. Clearing the error first puts the screen back into
+  // its loading state, which is what stops a failed retry from looking like a
+  // successful empty day. Slate failures are not cached (see gamesData), so
+  // this really does go back to the network.
+  const retry = React.useCallback(() => {
+    setLoadError(null);
+    loadSlate(sport, activeKey);
+  }, [loadSlate, sport, activeKey]);
 
   const subtitle = useMemo(() => {
     if (sport === "nfl") return "NFL Week 1";
@@ -531,6 +601,8 @@ export default function GamesPage({ onViewProps }) {
         isMobile={isMobile}
         onBack={() => { selectedSnap.current = null; setSelectedId(null); }}
         onViewProps={onViewProps}
+        getTopProps={getTopProps}
+        onOpenProp={onOpenProp}
       />
     );
   }
@@ -574,6 +646,7 @@ export default function GamesPage({ onViewProps }) {
       onChange={setPickedKey}
       isMobile={isMobile}
       caption={sport === "nfl" ? "Week 1" : null}
+      counts={tabCounts}
     />
   );
 
@@ -609,30 +682,99 @@ export default function GamesPage({ onViewProps }) {
         <GamesSearchBar value={query} onChange={setQuery} isMobile={isMobile} />
       </div>
 
-      <div style={{
-        display: "flex", flexDirection: "column", gap: 10,
-        padding: isMobile ? "12px 8px 28px" : "12px 12px 14px",
-      }}>
-        {games.map((g) => (
-          <GameCard
+      <div style={{ padding: isMobile ? "12px 0 0" : "12px 0 0" }}>
+        {games.length > 0 && !isMobile && (
+          <div className="pp-mono" style={{
+            display: "grid", gridTemplateColumns: SLATE_COLS, alignItems: "center",
+            padding: "11px 26px", borderBottom: "1px solid var(--line)",
+            fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
+          }}>
+            <span>Matchup</span>
+            <span>Kickoff</span>
+            <span>Props worth a look</span>
+            <span style={{ textAlign: "right" }}>Research</span>
+          </div>
+        )}
+
+        {games.map((g, i) => (
+          <GameRow
             key={g.id}
             game={g}
             isMobile={isMobile}
+            isLast={i === games.length - 1}
             onSelect={(picked) => { selectedSnap.current = picked; setSelectedId(picked.id); }}
+            getPropsCount={getPropsCount}
           />
         ))}
-        {/* Three distinct states, because they mean different things: still
-             fetching, fetched and empty, and filtered to nothing. The page
-             used to show a fabricated slate during the first of these. */}
+
+        {/* Four distinct states, because they mean four different things:
+             still fetching, the fetch failed, fetched and genuinely empty, and
+             filtered to nothing by the search box. The failure used to be
+             coerced into the third, so a dropped connection claimed there were
+             no games today. */}
         {games.length === 0 && (
           <div style={{ padding: 28, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-            {query
-              ? "No games match that search."
-              : slateLoading
-              ? "Loading today's slate…"
-              : "No games scheduled for this date."}
+            {slateFailed ? (
+              <>
+                <div style={{ color: "var(--text)", marginBottom: 12 }}>
+                  Couldn&rsquo;t load {sport === "nfl" ? "the Week 1 slate" : "today’s slate"}.
+                </div>
+                <div
+                  className="gm-tab pp-mono"
+                  role="button"
+                  tabIndex={0}
+                  onClick={retry}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); retry(); } }}
+                  style={{
+                    display: "inline-block", padding: "9px 18px", cursor: "pointer",
+                    border: "1px solid var(--line-strong)", color: "var(--text)",
+                    fontSize: 11.5, letterSpacing: "0.1em",
+                  }}
+                >
+                  RETRY
+                </div>
+              </>
+            ) : query ? (
+              "No games match that search."
+            ) : slateLoading ? (
+              "Loading today’s slate…"
+            ) : (
+              "No games scheduled for this date."
+            )}
           </div>
         )}
+      </div>
+
+      {/* One disclaimer for the screen, at the foot of the table.
+           The unreadable count lives here too rather than in a banner over the
+           rows: what it qualifies is the list directly above it, the same place
+           a table footnote would go, and a banner would push the games down and
+           read as an alert about the whole page. */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+        flexWrap: "wrap",
+        padding: isMobile ? "16px" : "18px 28px",
+        borderTop: "1px solid var(--line)",
+        background: isMobile ? "transparent" : "var(--surface-sunken)",
+      }}>
+        <span style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.55, maxWidth: 620 }}>
+          {unreadable > 0 && (
+            <span style={{ color: "var(--text)" }}>
+              {unreadable} {unreadable === 1 ? "game" : "games"} couldn&rsquo;t be read and {unreadable === 1 ? "is" : "are"} not listed.{" "}
+            </span>
+          )}
+          Hit rates count finished games only, and every rate shows how many games it came
+          from. A research tool — no picks, no wagers.
+        </span>
+        <a
+          href="https://www.ncpgambling.org/help-treatment/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pp-mono"
+          style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--accent-text)", textDecoration: "none", whiteSpace: "nowrap" }}
+        >
+          RESPONSIBLE GAMBLING →
+        </a>
       </div>
       </div>
     </div>

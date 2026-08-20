@@ -408,6 +408,23 @@ export function opensGamecast(status) {
 // One request covers both surfaces: the card list needs teams/records/time,
 // and the Matchup Overview needs the probable starters -- hydrate=probablePitcher
 // + linescore returns them together, so opening a matchup costs no extra round trip.
+// The three slate fetchers below all answer with the same shape:
+//
+//   { games, unreadable }   loaded. `games` may be empty -- that is a real
+//                           answer ("no games today"), not a failure.
+//   null                    the fetch failed.
+//
+// `unreadable` counts games that came back but could not be built into a row,
+// almost always because a team abbreviation isn't in our maps. They used to be
+// dropped by `return null` + `.filter(Boolean)` and nothing said so: the slate
+// simply showed fewer games than the day had. That is the exact failure rule 4
+// in BUILD_ORDER.md was written about -- four of seven WNBA games invisible --
+// and it was still live here. The count travels with the games so the screen
+// can print it.
+//
+// A failure is deliberately not cached. It used to be (`store(ck, null)`),
+// which meant a retry inside the TTL replayed the failure without a request
+// and the retry control would look broken.
 export async function fetchMlbSlate(key, { force = false } = {}) {
   const ck = `mlb:${key}`;
   if (!force) {
@@ -419,10 +436,11 @@ export async function fetchMlbSlate(key, { force = false } = {}) {
       `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${key}&hydrate=probablePitcher,linescore`
     );
     const data = await res.json();
+    let unreadable = 0;
     const games = (data?.dates || []).flatMap((d) => d.games || []).map((g) => {
       const awayAbbr = MLB_ID_ABBR[g.teams?.away?.team?.id];
       const homeAbbr = MLB_ID_ABBR[g.teams?.home?.team?.id];
-      if (!awayAbbr || !homeAbbr) return null;
+      if (!awayAbbr || !homeAbbr) { unreadable += 1; return null; }
       const rec = (side) => {
         const r = g.teams?.[side]?.leagueRecord;
         return r ? `${r.wins}-${r.losses}` : "";
@@ -471,22 +489,24 @@ export async function fetchMlbSlate(key, { force = false } = {}) {
         isFinal,
       };
     }).filter(Boolean).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
-    return store(ck, games.length ? games : null);
+    return store(ck, { games, unreadable });
   } catch {
-    return store(ck, null);
+    return null;
   }
 }
 
 const ESPN_PATH = { wnba: "basketball/wnba", nfl: "football/nfl" };
 
+// Returns { games, unreadable } -- see the note on fetchMlbSlate.
 function espnSlate(sport, events) {
-  return (events || []).map((ev) => {
+  let unreadable = 0;
+  const games = (events || []).map((ev) => {
     const comp = ev.competitions?.[0];
     const away = comp?.competitors?.find((c) => c.homeAway === "away");
     const home = comp?.competitors?.find((c) => c.homeAway === "home");
     const awayAbbr = away?.team?.abbreviation;
     const homeAbbr = home?.team?.abbreviation;
-    if (!awayAbbr || !homeAbbr) return null;
+    if (!awayAbbr || !homeAbbr) { unreadable += 1; return null; }
 
     const status = espnStatus(comp);
     const isLive = status === GAME_STATUS.LIVE
@@ -530,6 +550,7 @@ function espnSlate(sport, events) {
       isFinal,
     };
   }).filter(Boolean).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+  return { games, unreadable };
 }
 
 export async function fetchWnbaSlate(key, { force = false } = {}) {
@@ -541,10 +562,9 @@ export async function fetchWnbaSlate(key, { force = false } = {}) {
   try {
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.wnba}/scoreboard?dates=${key.replace(/-/g, "")}`);
     const data = await res.json();
-    const games = espnSlate("wnba", data?.events);
-    return store(ck, games.length ? games : null);
+    return store(ck, espnSlate("wnba", data?.events));
   } catch {
-    return store(ck, null);
+    return null;
   }
 }
 
@@ -559,10 +579,9 @@ export async function fetchNflWeekOneSlate({ force = false } = {}) {
   try {
     const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nfl}/scoreboard?seasontype=2&week=1&dates=2026`);
     const data = await res.json();
-    const games = espnSlate("nfl", data?.events);
-    return store(ck, games.length ? games : null);
+    return store(ck, espnSlate("nfl", data?.events));
   } catch {
-    return store(ck, null);
+    return null;
   }
 }
 

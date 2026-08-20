@@ -914,24 +914,26 @@ select.select-sm:focus, select.select-sm:focus-visible {
    things a style attribute genuinely can't express live here -- :hover,
    scrollbar hiding, and the sticky date row. */
 
+/* One slate row. Still .gm-card because it is still the same control -- the
+   whole row is the button that opens a game -- but the slate moved from a list
+   of cards to the reference's table, so the box styling went with it. */
 .gm-card {
   cursor: pointer;
-  transition: border-color 0.14s ease, background 0.14s ease, transform 0.14s ease;
+  transition: background 0.14s ease;
 }
-/* Accent rail that wipes in from the left edge on hover. The reference card
-   has no hover affordance beyond a faint border change; this is the page's
+/* Accent rail that wipes in from the left edge on hover. The reference has no
+   hover affordance beyond a faint background change; this is the page's
    signature interaction and it follows the user's accent. */
 .gm-card::before {
   content: "";
   position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
   background: var(--amber);
-  transform: scaleY(0); transform-origin: center;
+  transform: scaleX(0); transform-origin: left;
   transition: transform 0.16s ease;
 }
 .gm-card:hover::before,
-.gm-card:focus-visible::before { transform: scaleY(1); }
-.gm-card:hover { border-color: var(--amber-ring); background: var(--surface-2); }
-.gm-card:active { transform: scale(0.997); }
+.gm-card:focus-visible::before { transform: scaleX(1); }
+.gm-card:hover { background: var(--surface-2); }
 .gm-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* Sport pills and date items both dim when idle and come up to full text
@@ -964,10 +966,14 @@ select.select-sm:focus, select.select-sm:focus-visible {
 .gm-form-row:nth-child(odd) { background: var(--row-stripe); }
 
 /* Live game pulse — subtle, not flashy */
+/* The halo is mixed from --amber rather than a fixed blue. The dot itself has
+   always used the accent, so a hardcoded ring meant that on any accent other
+   than the default blue the live indicator pulsed a different colour than it
+   was drawn in. */
 @keyframes gm-live-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.45); opacity: 1; }
-  70%  { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); opacity: 0.85; }
-  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); opacity: 1; }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--amber) 45%, transparent); opacity: 1; }
+  70%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--amber) 0%, transparent); opacity: 0.85; }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--amber) 0%, transparent); opacity: 1; }
 }
 
 /* Drops an element on phones. Used for copy that is nice-to-have on a wide
