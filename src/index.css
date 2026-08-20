@@ -409,10 +409,21 @@ select.select:focus, select.select:focus-visible {
 }
 .cta-btn {
   border-radius: var(--r-sm);
-  transition: transform .12s ease, box-shadow .15s ease, filter .15s ease;
+  transition: transform .12s ease, box-shadow .15s ease, filter .15s ease, background .15s ease, color .15s ease, border-color .15s ease;
 }
 .cta-btn:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 6px 18px var(--amber-glow); }
 .cta-btn:active { transform: translateY(0); }
+/* Player-page "Remove from My Picks" — outline so add vs remove is obvious */
+.cta-btn--added {
+  background: transparent !important;
+  color: var(--amber) !important;
+  border: 1px solid var(--amber) !important;
+  box-shadow: none !important;
+}
+.cta-btn--added:hover {
+  background: var(--amber-dim) !important;
+  filter: none;
+}
 .danger-btn {
   border: 1px solid var(--line);
   background: transparent;

@@ -1562,7 +1562,7 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
           <button
             type="button"
-            className="cta-btn"
+            className={isPagePickAdded ? "cta-btn cta-btn--added" : "cta-btn"}
             style={{
               width: "100%",
               height: 48,
@@ -5876,7 +5876,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
           <button
             type="button"
-            className="cta-btn"
+            className={isPagePickAdded ? "cta-btn cta-btn--added" : "cta-btn"}
             style={{
               width: "100%",
               height: 48,
@@ -7832,7 +7832,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         <div style={{ padding: compact ? "12px" : "16px 20px 20px" }}>
           <button
             type="button"
-            className="cta-btn"
+            className={isPagePickAdded ? "cta-btn cta-btn--added" : "cta-btn"}
             style={{
               width: "100%",
               height: 48,
@@ -11719,7 +11719,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       <div style={{ padding: compact ? "12px" : "16px 20px 12px" }}>
         <button
           type="button"
-          className="cta-btn"
+          className={isPagePickAdded ? "cta-btn cta-btn--added" : "cta-btn"}
           style={{
             width: "100%",
             height: 48,
