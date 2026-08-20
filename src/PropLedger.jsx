@@ -14075,6 +14075,12 @@ function FeedFormStrip({ r, direction, streak = 0, height = 22, barWidth = 4, ga
   const stripWidth = recent.length * barWidth + (recent.length - 1) * gap;
   const runWidth = runLength * barWidth + Math.max(0, runLength - 1) * gap;
 
+  // Counted straight off the same bars drawn above (not off r[sampleWindow],
+  // which can cover a longer window than the strip actually draws) -- the
+  // rule is counts-first, and this is the one count the strip can state
+  // without reaching outside what's on screen.
+  const hitCount = recent.filter((g) => feedIsHit(g.v, r.line, r.isBinary, direction)).length;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap, height }}>
@@ -14097,21 +14103,23 @@ function FeedFormStrip({ r, direction, streak = 0, height = 22, barWidth = 4, ga
           );
         })}
       </div>
+      {/* Sits under the trailing bars only, right-aligned like the run
+           itself when there is one -- the rule is what ties the words below
+           to the games above, so it has to line up with them exactly. */}
       {showRun && (
-        <>
-          {/* Sits under the trailing bars only, right-aligned like the run
-               itself -- the rule is what ties the words below to the games
-               above, so it has to line up with them exactly. */}
-          <div style={{ width: stripWidth, display: "flex", justifyContent: "flex-end" }}>
-            <div style={{ width: runWidth, height: 2, borderRadius: 1, background: runColor }} />
-          </div>
-          {/* Words, not a code. "6 straight" needs no key; the green/red is
-               already taught by the bars directly above it. */}
-          <div className="mono" style={{ fontSize: 9, fontWeight: 700, color: runColor, whiteSpace: "nowrap", lineHeight: 1 }}>
-            {Math.abs(streak)} straight
-          </div>
-        </>
+        <div style={{ width: stripWidth, display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ width: runWidth, height: 2, borderRadius: 1, background: runColor }} />
+        </div>
       )}
+      {/* Counts first: "N of M" is the sample the bars above actually draw,
+           shown every time (not gated on a streak) so a hit rate is never on
+           screen without its own sample size next to it. "K straight" rides
+           along on the same line when the trailing run is long enough to be
+           worth naming -- it needs no key of its own; the green/red is
+           already taught by the bars directly above it. */}
+      <div className="mono" style={{ fontSize: 9, fontWeight: 700, color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", lineHeight: 1 }}>
+        {hitCount} of {recent.length}{showRun ? ` · ${Math.abs(streak)} straight` : ""}
+      </div>
     </div>
   );
 }
@@ -14560,32 +14568,37 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     </div>
   );
 
+  // Reference (card 713) trails each row with a bare "→", not a bordered
+  // pill -- the whole proposition block is already a click target
+  // (propositionBlock above), so the row's own trailing action only needs
+  // to say "there's more this way," not restate "View Chart" in a button.
+  // Handler/title/keyboard behavior are unchanged from the old pill, just
+  // the visual weight -- a 44px-ish hit target via padding, no border or
+  // fill so it doesn't compete with ladderBtn's real pill beneath it.
   const chartBtn = r.playerId && (
     <div
-      className="oswald cta-btn"
+      role="button"
+      tabIndex={0}
       onClick={() => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team })}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team });
+        }
+      }}
       title={`Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page`}
       style={{
         cursor: "pointer",
         flexShrink: 0,
-        // Hugs its own text instead of stretching to fill the grid track,
-        // so the button stays a consistent size as the column widens and
-        // the row still ends on a clean right edge. (No effect in the
-        // narrow layout, where this sits in a flex row.)
         justifySelf: "end",
-        textAlign: "center",
-        padding: "8px 12px",
-        borderRadius: 4,
-        fontSize: 12,
-        fontWeight: 600,
-        letterSpacing: "0.02em",
-        border: "1px solid var(--amber)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "10px 6px",
+        fontSize: 15,
         color: "var(--amber)",
-        background: "var(--amber-dim)",
-        whiteSpace: "nowrap",
+        lineHeight: 1,
       }}
     >
-      View Chart →
+      ›
     </div>
   );
 
@@ -15612,7 +15625,14 @@ function buildMLBPitcherFeedRows(teamsData) {
 const FEED_SPORTS = [
   { id: "nfl", label: "NFL", available: true },
   { id: "mlb", label: "MLB", available: true },
-  { id: "nba", label: "NBA", available: true },
+  // `simulated`, not `available: false`. NBA rows render fine and can be
+  // added to picks like any other sport -- what's fake is the game log
+  // underneath them (buildNBAFeedRows -> genGames, a seeded generator, same
+  // one the single-player NBA page uses). Calling that "no data" would
+  // understate it: there's real UI and a real (if synthetic) number on
+  // every row, just not a real box score behind it. The tab stays fully
+  // clickable; only the qualifier differs from a genuinely unavailable sport.
+  { id: "nba", label: "NBA", available: true, simulated: true },
   { id: "wnba", label: "WNBA", available: true },
 ];
 
@@ -15821,6 +15841,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // page flow -- see feedActiveFilterCount below for the badge shown on its
   // trigger.
   const [feedFiltersOpen, setFeedFiltersOpen] = useState(false);
+  // MLB only -- `lineupConfirmed` is undefined on every other sport's rows
+  // (see the avatar dot's own comment above). Left on when switching away
+  // from MLB rather than force-reset: filteredRows only applies it when
+  // sport === "mlb", so it's inert elsewhere and switching back to MLB
+  // should restore the state the user actually set.
+  const [postedLineupsOnly, setPostedLineupsOnly] = useState(false);
   // Desktop table column sort -- clicking a FeedTableHeader column overrides
   // the Sort By dropdown's mode until cleared. null means "use the Sort By/
   // primary-hit-rate behavior below" (see sortedRows).
@@ -16172,6 +16198,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       rankLo,
       rankHi,
       teamFilter,
+      postedLineupsOnly,
       gameTeams: [
         ...new Set(
           activeMatchupOptions.filter((o) => selectedGameIds.has(o.id)).flatMap((o) => o.teams)
@@ -16179,7 +16206,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       ],
     }),
     [sport, selectedMarket, sampleWindow, direction, sortMode, sortDir, oddsMinX, oddsMaxX,
-     rankLo, rankHi, teamFilter, activeMatchupOptions, selectedGameIds]
+     rankLo, rankHi, teamFilter, postedLineupsOnly, activeMatchupOptions, selectedGameIds]
   );
 
   const applyFeedFiltersNow = React.useCallback((f) => {
@@ -16198,6 +16225,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     if (Number.isFinite(f.rankLo)) setRankLo(Math.min(Math.max(1, f.rankLo), rankCeil));
     if (Number.isFinite(f.rankHi)) setRankHi(Math.min(Math.max(1, f.rankHi), rankCeil));
     if (f.teamFilter) setTeamFilter(f.teamFilter);
+    if (typeof f.postedLineupsOnly === "boolean") setPostedLineupsOnly(f.postedLineupsOnly);
     setColumnSort(null);
     // Teams back to whatever matchup ids those teams appear in today.
     const teams = f.gameTeams || [];
@@ -16335,8 +16363,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     } else if (teamFilter !== "all" && r.team !== teamFilter) {
       return false;
     }
+    // MLB batters only -- pitcher rows carry no lineupConfirmed flag at all
+    // (a probable starter is a weaker claim than a posted batting order; see
+    // the avatar dot's own comment). Only exclude a row the app can actually
+    // say is *not* posted yet (lineupConfirmed === false); a row with no
+    // flag makes no claim either way, so this toggle has nothing to hide
+    // there and must let it through rather than wipe pitcher markets whole.
+    if (postedLineupsOnly && sport === "mlb" && r.lineupConfirmed === false) return false;
     return true;
-  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter]);
+  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
 
   // Badge shown on the Filters trigger -- counts only the controls tucked
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
@@ -16345,7 +16380,60 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedActiveFilterCount =
     (sortMode !== "matchup" ? 1 : 0) +
     (oddsMinX !== 4 || oddsMaxX !== 96 ? 1 : 0) +
-    (rankLo !== 1 || rankHi !== maxRank ? 1 : 0);
+    (rankLo !== 1 || rankHi !== maxRank ? 1 : 0) +
+    (sport === "mlb" && postedLineupsOnly ? 1 : 0);
+
+  // Removable readout of what's actually narrowing the feed right now --
+  // reads straight off feedFilters/live state rather than duplicating it, so
+  // a chip can never say something the filters themselves don't. Each
+  // chip's "x" undoes exactly one control; it doesn't touch the others,
+  // matching how the reset buttons already work inside the Filters panel.
+  const selectedMarketLabel = React.useMemo(
+    () => propGroups.flatMap((g) => g.markets).find((m) => m.id === selectedMarket)?.label,
+    [propGroups, selectedMarket]
+  );
+  const activeFilterChips = [];
+  if (selectedMarket && selectedMarket !== "all" && selectedMarketLabel) {
+    activeFilterChips.push({
+      key: "market",
+      label: `${selectedMarketLabel.toUpperCase()} · ${direction === "under" ? "UNDER" : "OVER"}`,
+      onRemove: () => setSelectedMarket("all"),
+    });
+  }
+  if (sampleWindow !== "l10") {
+    activeFilterChips.push({
+      key: "window",
+      label: sampleWindow === "all" ? "ALL GAMES" : `LAST ${sampleWindow.replace("l", "")}`,
+      onRemove: () => setSampleWindow("l10"),
+    });
+  }
+  if (showMatchupDropdown && selectedGameIds.size > 0) {
+    const chosen = activeMatchupOptions.filter((o) => selectedGameIds.has(o.id));
+    activeFilterChips.push({
+      key: "games",
+      label: chosen.length === 1 ? chosen[0].label || chosen[0].teams.join(" @ ") : `${chosen.length} GAMES`,
+      onRemove: () => setSelectedGameIds(new Set()),
+    });
+  } else if (!showMatchupDropdown && teamFilter !== "all") {
+    activeFilterChips.push({ key: "team", label: teamFilter, onRemove: () => setTeamFilter("all") });
+  }
+  if (sport === "mlb" && postedLineupsOnly) {
+    activeFilterChips.push({ key: "lineups", label: "POSTED LINEUPS", onRemove: () => setPostedLineupsOnly(false) });
+  }
+  if (oddsMinX !== 4 || oddsMaxX !== 96) {
+    activeFilterChips.push({
+      key: "odds",
+      label: `ODDS ${formatOdds(probToAmericanOdds(oddsSliderProb(oddsMaxX)), oddsFormat)} TO ${formatOdds(probToAmericanOdds(oddsSliderProb(oddsMinX)), oddsFormat)}`,
+      onRemove: () => { setOddsMinX(4); setOddsMaxX(96); },
+    });
+  }
+  if (rankLo !== 1 || rankHi !== maxRank) {
+    activeFilterChips.push({
+      key: "rank",
+      label: `RANK #${rankLo}–#${rankHi}`,
+      onRemove: () => { setRankLo(1); setRankHi(maxRank); },
+    });
+  }
 
   const activeSortMode = FEED_SORT_MODES.find((mo) => mo.id === sortMode);
 
@@ -16476,9 +16564,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   );
 
   // The games strip is itself a game picker, so on a phone the Games dropdown
-  // beside it would be a second control for the same job -- MLB gets the strip
-  // and drops the dropdown.
-  const showGamesStrip = sport === "mlb";
+  // beside it would be a second control for the same job -- whichever sport
+  // has one gets the strip and drops the dropdown.
+  //
+  // WNBA doesn't have one yet: unlike MLB/NFL, buildWNBAFeedRows has no
+  // "today's slate" grouping at all -- it iterates every rostered player
+  // independently and looks up each one's own next opponent, so there is no
+  // single list of "today's games" to build chips from without adding that
+  // grouping to the feed builder first. Real follow-up work, not a simple
+  // reuse the way NFL's dropdown-shaped data already was.
+  const showGamesStrip = sport === "mlb" || sport === "nfl";
+  const gamesStripLogoFn = sport === "nfl" ? nflTeamLogo : mlbTeamLogo;
 
   const resultCount = (
     <>
@@ -16540,7 +16636,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               options={activeMatchupOptions}
               selected={selectedGameIds}
               onChange={setSelectedGameIds}
-              logoFn={mlbTeamLogo}
+              logoFn={gamesStripLogoFn}
             />
           )}
           <div style={{ display: "flex", gap: 8 }}>
@@ -16598,7 +16694,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             key={s.id}
             className="oswald"
             onClick={() => s.available && setSport(s.id)}
-            title={s.available ? undefined : "Coming soon"}
+            title={s.available ? (s.simulated ? "Generated sample data, not a live feed" : undefined) : "Coming soon"}
             style={{
               cursor: s.available ? "pointer" : "not-allowed",
               padding: "8px 20px",
@@ -16613,6 +16709,11 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             }}
           >
             {s.label}
+            {s.simulated && (
+              <span className="pp-mono" style={{ marginLeft: 6, fontSize: 9.5, letterSpacing: "0.08em", color: "#4a5361" }}>
+                · SIMULATED DATA
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -16626,7 +16727,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           options={activeMatchupOptions}
           selected={selectedGameIds}
           onChange={setSelectedGameIds}
-          logoFn={mlbTeamLogo}
+          logoFn={gamesStripLogoFn}
         />
       )}
 
@@ -16683,7 +16784,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           <DirectionSwitcher value={direction} onChange={setDirection} />
         </div>
         <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={FEED_LABEL_STYLE}>SAMPLE SIZE</span>
+          <span className="oswald" style={FEED_LABEL_STYLE}>GAMES COUNTED</span>
           <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
         </div>
         <div style={FEED_FILTER_ROW_STYLE}>
@@ -16701,10 +16802,40 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       </div>
       {/* Live result count -- tells the user how much the filters above are
            actually costing them, Outlier-style ("showing N of M props")
-           instead of leaving them to count the list. */}
-      <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--dim)", marginBottom: 16 }}>
-        Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
-        <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{rows.length}</span> props
+           instead of leaving them to count the list. Active filter chips
+           ride the same line so each one's own "x" is right next to the
+           count it's shrinking -- removing a chip only ever undoes that one
+           control, same as the reset buttons inside the Filters panel. */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap",
+        gap: 8, fontSize: 11.5, color: "var(--dim)", marginBottom: 16,
+      }}>
+        <span>
+          Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
+          <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{rows.length}</span>
+        </span>
+        {activeFilterChips.map((c) => (
+          <span
+            key={c.key}
+            className="mono"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              fontSize: 11, fontWeight: 600, letterSpacing: "0.04em",
+              color: "var(--amber)", border: "1px solid var(--amber)",
+              borderRadius: 4, padding: "3px 8px",
+            }}
+          >
+            {c.label}
+            <span
+              role="button"
+              onClick={c.onRemove}
+              title="Remove this filter"
+              style={{ cursor: "pointer", fontWeight: 800 }}
+            >
+              ✕
+            </span>
+          </span>
+        ))}
       </div>
       </>
       )}
@@ -16927,15 +17058,34 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           />
         </div>
       </div>
+
+      {/* MLB only -- every other sport's rows carry no lineupConfirmed flag
+          at all (see the avatar dot's own comment), so there is nothing
+          honest this toggle could filter on for them. */}
+      {sport === "mlb" && (
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <div
+            className="chip"
+            onClick={() => setPostedLineupsOnly((v) => !v)}
+            title="Only show batters in today's confirmed lineup -- hides anyone still on a projected order"
+            style={postedLineupsOnly ? {
+              borderColor: "var(--amber)", color: "var(--amber)", background: "var(--amber-dim)",
+            } : undefined}
+          >
+            {postedLineupsOnly ? "✓ " : ""}Posted lineups only
+          </div>
+        </div>
+      )}
       </div>
       )}
 
       {/* Feed */}
-      {/* On a phone this pair -- the "+" explainer and the matchup/lineup key
-          below it -- is ~250px of one-time reading sitting between the
-          controls and the data, so it hides behind the "What am I looking
-          at?" disclosure. On desktop there's room for it to stay put. */}
-      {(!isNarrow || showFeedKey) && (
+      {/* Phone only now -- the "+" explainer and the matchup/lineup key sit
+          above the cards here, behind the "What am I looking at?"
+          disclosure. Desktop moved its copy of this to a footer bar below
+          the table (see just after the row list), matching the reference's
+          own table-foot legend instead of duplicating it up here too. */}
+      {(isNarrow && showFeedKey) && (
       <>
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10,
@@ -17052,6 +17202,51 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           >
             Show {Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} more ({visibleRows.length} of {sortedRows.length})
           </button>
+        </div>
+      )}
+
+      {/* Table-foot legend (desktop) -- the reference keeps this one bar at
+          the bottom of the table rather than splitting it above and below,
+          so it now carries everything a reader needs to decode a row: the
+          FORM bars' own fill (cleared/fell short -- stated nowhere else),
+          the lineup dot, the OPP RANK badge colors, and the "+" add-to-picks
+          affordance. Desktop only; the phone version stays above the cards
+          behind "What am I looking at?" (see that block's own comment). */}
+      {!isNarrow && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 18, flexWrap: "wrap",
+          marginTop: 14, padding: "12px 16px", background: "var(--panel2)", borderRadius: 6,
+          fontSize: 11.5, color: "var(--dim)",
+        }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 11, height: 11, borderRadius: 2, background: "var(--pos)" }} />
+            cleared the line
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 11, height: 11, borderRadius: 2, border: "1.5px solid var(--neg)", boxSizing: "border-box" }} />
+            fell short
+          </span>
+          {sport === "mlb" && (
+            <>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--pos)", boxSizing: "border-box" }} />
+                lineup posted
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--panel)", border: "1.5px solid var(--line-strong)", boxSizing: "border-box" }} />
+                projected
+              </span>
+            </>
+          )}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            opponent rank
+            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 800, background: "var(--green)", color: "#08131c" }}>easy</span>
+            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 800, background: "var(--neutral-badge-bg)", color: "var(--dim-strong)", border: "1px solid var(--line-strong)" }}>average</span>
+            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 800, background: "var(--red)", color: "#08131c" }}>tough</span>
+          </span>
+          <span>
+            <span className="mono" style={{ color: "var(--amber)" }}>+</span> adds to My Picks
+          </span>
         </div>
       )}
 
@@ -18172,8 +18367,13 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
       >
         My Picks
         {openPicks.length > 0 && (
+          // Count and combined odds together on the one badge, the way the
+          // reference's collapsed pill states both at a glance instead of
+          // making a click-through the only way to see what the count adds
+          // up to. combined is null only when openPicks is empty, which
+          // can't happen inside this guard.
           <span className="mono" style={{ background: "var(--amber)", color: "var(--accent-on)", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
-            {openPicks.length}
+            {openPicks.length}{combined != null ? ` · ${formatOdds(combined, oddsFormat)}` : ""}
           </span>
         )}
       </div>
