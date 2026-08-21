@@ -266,7 +266,7 @@ exactly that case.
 | Sport | Rosters | Game logs | Defence ranks |
 |---|---|---|---|
 | **NFL** | all 32, **hand-written → stale on trades** | **real**, ESPN, 2025 season | real |
-| **NBA** | **4 of 30** (Knicks, Spurs, Sixers, Heat) | **none — 100% synthetic** (`genGames`, seeded `mulberry32`) | **fake** (`TEAM_DEF`, seeded RNG) |
+| **NBA** | **4 of 30** (Knicks, Spurs, Sixers, Heat) | **none — 100% synthetic** (`genGames`, seeded `mulberry32`); needs **two** seasons, 2025-26 *and* 2024-25 | **fake** (`TEAM_DEF`, seeded RNG) |
 | **MLB** | 30, hand-written but thin: uniformly 1 SP + 9 batters | **real**, MLB Stats API, but `season=2026&gameType=R` only | real, per-market |
 | **WNBA** | live ESPN fetch + hand-written fallback (~10 teams) | **real**, ESPN, current season | real |
 
@@ -340,7 +340,29 @@ ESPN's gamelog endpoint already takes a season param — `fetchNFLPlayerGameLog`
 `P` postseason) — the current calls hardcode `season=2026&gameType=R`
 (`:9385`, `:9944`), so both need to become parameters rather than constants.
 
-"Last year" resolves to: NBA 2024-25 (ESPN `season=2025`), MLB 2025, WNBA 2025.
+**Which seasons, per sport — NBA needs TWO, the others need one.**
+
+ESPN numbers a season by the year it *ends*, so the 2025-26 NBA season is
+`season=2026`. Today (Aug 2026) is the NBA offseason: 2025-26 is finished, and
+2026-27 has not started.
+
+| Sport | Already real | To add |
+|---|---|---|
+| **NBA** | **nothing** | **both `season=2026` (2025-26) and `season=2025` (2024-25)** |
+| MLB | 2026, in progress | 2025 (`season=2025`, `gameType=R` **and** `P`) |
+| WNBA | 2026, in progress | 2025 |
+
+NBA is the one that needs two seasons, because it has no real logs at all — not
+"last year's" and not the most recent completed one. Loading only 2024-25 would
+leave the app showing a season-old picture as though it were current, which is
+worse than the generated data it replaces, because it would look real.
+
+**Do not hardcode the season number.** `season=2026` is already hardcoded for
+MLB at `:9385` and `:9944`, and it silently becomes wrong on 1 January. Resolve
+"current season" per sport from the date instead — NBA rolls in October, MLB in
+spring, WNBA in May — so the board does not need a code change every year. This
+matters more once two seasons are in play: "current" and "previous" have to be
+derived together or they drift apart.
 
 ### C. NBA's fake defence ranks
 
