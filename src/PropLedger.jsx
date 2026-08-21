@@ -18,6 +18,7 @@ import PalaceMark from "./PalaceMark.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
+import BoardPage from "./BoardPage.jsx";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
   MatchupBreadcrumb, MatchupVerdictBlock, GameLogTable, TheRead, MatchupSplits, ValueDistribution,
@@ -15275,7 +15276,11 @@ function feedRecentGames(games, values, n = FEED_FORM_GAMES) {
   const start = Math.max(0, values.length - n);
   return values.slice(start).map((v, i) => {
     const g = games[start + i] || {};
-    return { v, opp: g.opp, date: g.date };
+    // `home` rides along for the board's Home-only split. Left off, that split
+    // matched nothing and every row read "Too few · 0 games" -- which looks
+    // exactly like a player who never played at home, rather than like a
+    // field we forgot to carry.
+    return { v, opp: g.opp, date: g.date, home: g.home };
   });
 }
 
@@ -16005,6 +16010,14 @@ function buildMLBPitcherFeedRows(teamsData) {
   });
   return rows;
 }
+
+// One data disclaimer per surface, naming the season and the source the rows
+// actually came from. The board's rail prints this in its sunken well.
+const BOARD_DISCLAIMER = {
+  nfl: "Real 2025 regular-season game logs (ESPN Stats API). Not a live odds feed.",
+  wnba: "Live 2026 regular-season game logs (ESPN Stats API). Not a live odds feed.",
+  nba: "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed.",
+};
 
 const FEED_SPORTS = [
   { id: "nfl", label: "NFL", available: true },
@@ -19807,6 +19820,7 @@ export default function PropLedger() {
   // actually open.
   const landingRows = useMemo(() => (page === "landing" ? buildNFLFeedRows() : []), [page]);
 
+
   // Theme, accent colour and the default sportsbook used to be three pieces
   // of state here, each with its own localStorage key and persistence effect.
   // They now live in the settings store (src/settings.jsx), which also owns
@@ -20012,6 +20026,23 @@ export default function PropLedger() {
   // so this just hands each page a jumpTo object (nonce forces the effect
   // to fire even if the same prop is clicked twice in a row).
   const [jumpTo, setJumpTo] = useState(null);
+  // The board keeps its own sport, independent of the feed's: they are
+  // separate surfaces doing separate jobs, and switching league on one has no
+  // business moving the other.
+  //
+  // Declared down here rather than beside `landingRows` on purpose -- it reads
+  // nflDataVersion/wnbaDataVersion, which are `const` reducers declared above
+  // this line. Referencing them earlier is a temporal-dead-zone ReferenceError
+  // that builds clean and throws at runtime, which is this repo's signature
+  // failure (see docs/PROJECT_NOTES.md).
+  const [boardSport, setBoardSport] = useState("nfl");
+  const boardRows = useMemo(() => {
+    if (page !== "board") return [];
+    if (boardSport === "nba") return buildNBAFeedRows();
+    if (boardSport === "wnba") return buildWNBAFeedRows();
+    return buildNFLFeedRows();
+  }, [page, boardSport, nflDataVersion, wnbaDataVersion]);
+
   const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
     setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now(), meta });
     setPage(targetSport);
@@ -20215,6 +20246,7 @@ export default function PropLedger() {
               { id: "landing", label: "Home" },
               { id: "feed", label: "Prop Feed" },
               { id: "games", label: "Games" },
+              { id: "board", label: "The Board" },
               { id: "nfl", label: "NFL Props" },
               { id: "mlb", label: "MLB Props" },
               { id: "nba", label: "NBA Props" },
@@ -20280,6 +20312,19 @@ export default function PropLedger() {
             onOpenBoard={() => setPage("games")}
             onOpenFeed={() => setPage("feed")}
             onOpenNews={() => setPage("news")}
+            onOpenProp={goToProp}
+          />
+        </LazyPane>
+      )}
+      {page === "board" && (
+        <LazyPane minHeight={400}>
+          <BoardPage
+            rows={boardRows}
+            sport={boardSport}
+            sports={FEED_SPORTS}
+            onSetSport={setBoardSport}
+            marketGroups={PROP_GROUPS[boardSport] || []}
+            disclaimer={BOARD_DISCLAIMER[boardSport] || BOARD_DISCLAIMER.nfl}
             onOpenProp={goToProp}
           />
         </LazyPane>
