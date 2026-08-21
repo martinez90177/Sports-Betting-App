@@ -18470,8 +18470,8 @@ function CombinedLandedBlock({ picks }) {
   // Nothing to count from: at least one leg predates the saved log.
   if (c.legsMissingLog) {
     return (
-      <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
-        <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
+      <div style={{ border: "1px solid var(--line-strong)", padding: "10px 11px" }}>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
         <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
           At least one leg was saved without its game log, so there is no set of
           games all of these legs share. No combined rate is shown rather than
@@ -18486,8 +18486,8 @@ function CombinedLandedBlock({ picks }) {
   // theatre -- so the overlap is reported as too short and no rate is printed.
   if (c.tooShort) {
     return (
-      <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
-        <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
+      <div style={{ border: "1px solid var(--line-strong)", padding: "10px 11px" }}>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
         <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
           These legs only share {c.counted} finished {c.counted === 1 ? "game" : "games"} — too
           short to state a rate. The overlap is capped by whichever leg has the
@@ -18498,23 +18498,23 @@ function CombinedLandedBlock({ picks }) {
   }
 
   return (
-    <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
+    <div style={{ border: "1px solid var(--line-strong)", padding: "10px 11px" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
-        <span className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--dim)" }}>{label}</span>
+        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>{label}</span>
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {/* Same badge the ladder header carries, for the same reason: the
               count is the thing being qualified, so the label belongs on it
               rather than only in the sentence underneath. */}
           {c.thin && (
             <span
-              className="mono"
+              className="pp-mono"
               title={`These legs share only ${c.counted} games — fewer than 10`}
               style={{ fontSize: 9, letterSpacing: "0.1em", color: "var(--dim)", border: "1px solid var(--line-strong)", padding: "2px 5px" }}
             >
               THIN
             </span>
           )}
-          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap" }}>
+          <span className="pp-mono" style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
             {c.landed} of {c.counted}
           </span>
         </span>
@@ -18528,6 +18528,91 @@ function CombinedLandedBlock({ picks }) {
         Not the single rates multiplied together: these legs don't move
         independently, so that product would overstate this.
       </div>
+    </div>
+  );
+}
+
+// "Safer rungs for this slip" (card 4b). Two kinds of suggestion, computed
+// fresh from the live slip rather than cached:
+//
+// - A swap, for any leg still sitting on its posted line where one step in
+//   the safer direction (down for Over, up for Under) clears more often. A
+//   leg already moved off its main line gets no further swap suggestion --
+//   the user has already made that call once, and this isn't a nag to keep
+//   moving it.
+// - A removal, for any leg whose sample is thin (<10 games) -- the same
+//   threshold the ladder and CombinedLandedBlock already use.
+//
+// Renders nothing when neither kind applies, rather than an empty header
+// (rule 4: no surface states as present when it has nothing to say).
+function SaferRungsBlock({ picks, onChangeLine, onRemove }) {
+  const suggestions = [];
+
+  for (const p of picks) {
+    const lastName = (p.name || "").trim().split(/\s+/).pop() || p.name;
+
+    if (p.mainLine != null && p.line === p.mainLine) {
+      const rungs = rungsForPick(p);
+      const idx = rungs.findIndex((r) => r.line === p.line);
+      if (idx >= 0) {
+        const dir = p.direction === "under" ? 1 : -1;
+        const safer = rungs[idx + dir];
+        if (safer && safer.hitRate != null && p.hitRate != null && safer.hitRate > p.hitRate) {
+          suggestions.push({
+            key: `swap-${p.id}`,
+            label: `${lastName} ${p.direction === "under" ? "up" : "down"} to ${safer.line}`,
+            value: `${Math.round(safer.hitRate * 100)}%`,
+            valueColor: "var(--pos)",
+            action: "SWAP",
+            onClick: () => onChangeLine(p.id, safer),
+          });
+        }
+      }
+    }
+
+    if (p.gamesCounted != null && p.gamesCounted < 10) {
+      suggestions.push({
+        key: `remove-${p.id}`,
+        label: `Drop ${lastName}'s thin leg`,
+        value: `${p.gamesOver} of ${p.gamesCounted}`,
+        valueColor: "var(--dim-strong, var(--text))",
+        action: "REMOVE",
+        onClick: () => onRemove(p.id),
+      });
+    }
+  }
+
+  if (!suggestions.length) return null;
+
+  return (
+    <div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+        SAFER RUNGS FOR THIS SLIP
+      </div>
+      {suggestions.map((s, i) => (
+        <div
+          key={s.key}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+            padding: "13px 0", borderTop: i === 0 ? "none" : "1px solid var(--line)",
+          }}
+        >
+          <span style={{ fontSize: 13.5 }}>{s.label}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span className="pp-mono" style={{ fontVariantNumeric: "tabular-nums", fontSize: 14, fontWeight: 600, color: s.valueColor }}>
+              {s.value}
+            </span>
+            <button
+              type="button"
+              onClick={s.onClick}
+              className="pp-mono"
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, letterSpacing: "0.08em", color: "var(--accent-text, var(--amber))", padding: 0 }}
+            >
+              {s.action}
+            </button>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -18685,13 +18770,13 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
               </div>
 
               {openPicks.length > 0 && (
-                <div style={{ borderTop: "1px solid var(--line)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ borderTop: "1px solid var(--line)", padding: "18px", display: "flex", flexDirection: "column", gap: 16 }}>
                   {openPicks.length > 1 && <CombinedLandedBlock picks={openPicks} />}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em" }}>
-                      {openPicks.length > 1 ? "COMBINED PARLAY ODDS" : "ODDS"}
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                    <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+                      {openPicks.length > 1 ? "COMBINED PRICE" : "PRICE"}
                     </span>
-                    <span className="mono" style={{ fontSize: 16, fontWeight: 700, color: "var(--amber)" }}>
+                    <span className="pp-mono" style={{ fontVariantNumeric: "tabular-nums", fontSize: 20, fontWeight: 600 }}>
                       {formatOdds(combined, oddsFormat)}
                     </span>
                   </div>
@@ -18704,8 +18789,8 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                       names the overlapping legs and says which way the error
                       runs. See parlayCorrelationGroups. */}
                   {correlations.length > 0 && (
-                    <div style={{ border: "1px solid var(--line-strong)", borderRadius: 4, padding: "9px 10px" }}>
-                      <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--amber)", marginBottom: 4 }}>
+                    <div style={{ border: "1px solid var(--line-strong)", padding: "9px 10px" }}>
+                      <div className="pp-mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--amber)", marginBottom: 4 }}>
                         ⚠ CORRELATED LEGS
                       </div>
                       <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
@@ -18720,6 +18805,8 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                       </div>
                     </div>
                   )}
+
+                  <SaferRungsBlock picks={openPicks} onChangeLine={onChangeLine} onRemove={onRemove} />
 
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12 }}>
                     <span style={{ color: "var(--dim)" }}>Sportsbook: <span style={{ color: "var(--text)", fontWeight: 600 }}>{book.label}</span></span>
