@@ -1220,7 +1220,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getNBADefRank(market, gameOppAbbr) : null;
   const gameOppTier = gameOppDef ? defTier(gameOppDef.rank) : null;
-  const defCategoryLabel = nbaDefCategoryLabel(market);
+  // Once the real points-allowed table has loaded the rank is that, whatever
+  // market is selected, so the label has to say so rather than naming a
+  // per-market defensive category the number is not measuring.
+  const defCategoryLabel = nbaDefIsPointsAllowed(gameOppAbbr) ? "points allowed" : nbaDefCategoryLabel(market);
   const tierColor = (t) => (t === "soft" ? "var(--green)" : t === "tough" ? "var(--red)" : "var(--dim)");
 
   // Detailed rate-stat row: the same columns computed twice, once over the
@@ -1242,17 +1245,19 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // ranks defensively in whichever market is selected -- the same numbers the
   // game-log table's Def# column already shows, applied to tonight's opponent.
   //
-  // Deliberately no ALLOWS sentence here, unlike NFL/WNBA: TEAM_DEF /
-  // nbaDefCategoryCache are seeded RNG (see buildDefenseCategoryFor), not a
-  // real stat. The ranked pill already renders from that same seeded source
-  // -- a pre-existing choice this pass doesn't revisit -- but a sentence that
-  // states a specific number as fact ("MIA ALLOWS 6.8 REC/G") is a different
-  // claim than a pill, and it is the one thing these rules never allow for
-  // generated data.
+  // The ALLOWS sentence was withheld here while TEAM_DEF / nbaDefCategoryCache
+  // were seeded RNG: a pill stating a rank and a sentence stating a specific
+  // number as fact are different claims, and the second is the one these rules
+  // never allow for generated data. It is shown now, gated on
+  // nbaDefIsPointsAllowed -- so it appears only when the number behind it came
+  // from ESPN's standings, and the fallback stays silent exactly as before.
+  const gameAllowsLine = gameOppDef && nbaDefIsPointsAllowed(gameOppAbbr)
+    ? `${gameOppAbbr} ALLOWS ${gameOppDef.rating} PTS/G`
+    : null;
   const gameInfoBadge = gameOppDef && (
     <>
       <span style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
-        vs {gameOppAbbr} {defCategoryLabel}
+        {gameAllowsLine || `vs ${gameOppAbbr} ${defCategoryLabel}`}
       </span>
       <span className="mono tnum" style={{ fontWeight: 600, fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>
         {gameOppDef.rating}
@@ -13592,7 +13597,14 @@ const NBA_MARKET_DEF_LABEL = {
 };
 
 const nbaDefCategoryCache = {};
+// Real opponent points-allowed per game, from ESPN's standings, once it has
+// loaded. Same shape and same trade as the NFL and WNBA fixes above: one real
+// defensive number applied to every market, rather than a per-market seeded
+// table that looks more precise and is entirely invented.
+let nbaTeamDefReal = null;
+
 function getNBADefRank(market, opp) {
+  if (nbaTeamDefReal && nbaTeamDefReal[opp]) return nbaTeamDefReal[opp];
   const range = NBA_MARKET_DEF_RANGE[market];
   if (!range) return TEAM_DEF[opp]; // dd/td -- no single-stat defensive concept
   if (!nbaDefCategoryCache[market]) {
@@ -13601,8 +13613,57 @@ function getNBADefRank(market, opp) {
   }
   return nbaDefCategoryCache[market][opp];
 }
+
+// Once the real table has loaded, getNBADefRank ignores the market entirely
+// and returns points allowed per game -- so a market-specific label beside
+// that number would be a lie. Same caveat as nflDefIsPointsAllowed.
+function nbaDefIsPointsAllowed(opp) {
+  return !!(nbaTeamDefReal && nbaTeamDefReal[opp]);
+}
+
 function nbaDefCategoryLabel(market) {
   return NBA_MARKET_DEF_LABEL[market] || "overall defense";
+}
+
+// The NBA season for 2025-26 is complete, so this table is final -- a long
+// TTL, unlike the WNBA's 30 minutes against a live season.
+const NBA_TEAM_DEF_TTL_MS = 12 * 60 * 60 * 1000;
+async function fetchNBATeamDefense() {
+  const cacheKey = "nba_team_def_v1";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < NBA_TEAM_DEF_TTL_MS) return parsed.byTeam;
+    }
+  } catch {}
+
+  try {
+    const res = await fetch("https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=2026");
+    if (!res.ok) return null;
+    const data = await res.json();
+    const rows = [];
+    (data?.children || []).forEach((conf) => {
+      (conf?.standings?.entries || []).forEach((entry) => {
+        const abbr = nbaTeamAbbr(entry.team?.abbreviation);
+        const avgPA = entry.stats?.find((st) => st.name === "avgPointsAgainst")?.value;
+        if (abbr && avgPA != null) rows.push({ abbr, avgPA });
+      });
+    });
+    if (!rows.length) return null;
+
+    // Rank 1 is the toughest defence, i.e. fewest points allowed -- the same
+    // direction every other rank in this app uses.
+    rows.sort((a, b) => a.avgPA - b.avgPA);
+    rows.forEach((r, i) => { r.rank = i + 1; });
+    const byTeam = {};
+    rows.forEach((r) => { byTeam[r.abbr] = { rank: r.rank, rating: Math.round(r.avgPA * 10) / 10 }; });
+
+    try { sessionStorage.setItem(cacheKey, JSON.stringify({ byTeam, fetchedAt: Date.now() })); } catch {}
+    return byTeam;
+  } catch {
+    return null;
+  }
 }
 
 const WNBA_MARKET_CATEGORY = {
@@ -20267,6 +20328,12 @@ export default function PropLedger() {
         bumpNbaRefresh();
       });
     };
+
+    fetchNBATeamDefense().then((byTeam) => {
+      if (cancelled || !byTeam) return;
+      nbaTeamDefReal = byTeam;
+      bumpNbaRefresh();
+    });
 
     // The four hand-written teams first: they are on screen immediately, and
     // every one of them carries an espnId, so their generated logs can be
