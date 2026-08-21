@@ -49,19 +49,19 @@ responsive tweaks didn't cover. Expect 10–15 to be the same kind of work.
 | `84a7182` | Prop feed redesign (landing/board handoff, screen 3) — filter card, multi-select markets, grounded-at-zero graph with a draggable line |
 | `b3cb9b0` | Bug — WNBA player page threw instead of rendering its own "not on today's slate" guard. Pre-existing since `c539e5c` |
 | `7c9872c` | Prop feed redesign, part 2 — the table itself onto the handoff's `34/262/250/88/80/1fr` grid |
-|  | Feed table header stops sticking; the clip/auto breakpoint it needed goes with it |
-|  | Item 15 — the palace mark, in the header lockup and the favicon |
-|  | Windowed form-graph axis, scaling drag step, and Andrew Wiggins' headshot |
-|  | Item 9 revisit — mobile feed to the new handoff, plus  |
-|  | Item 10 — mobile prop detail: verdict figure, form-graph card, The read |
-|  | Items 12–14 — the My Picks drawer onto cards 5a, 5b and 5c |
-|  | Item 16 — the landing page, on real rows only |
-|  | Item 17 — the board, as its own surface |
-|  | Item 18 — Games redesign: the gamecast folds in under its row |
+| `e0af95d` | Feed table header stops sticking; the clip/auto breakpoint it needed goes with it |
+| `f8e960d` | Item 15 — the palace mark, in the header lockup and the favicon |
+| `9cae0e9` | Windowed form-graph axis, scaling drag step, and Andrew Wiggins' headshot |
+| `3c8714f` | Item 9 revisit — mobile feed to the new handoff, plus `MinSampleControl` |
+| `dccb765` | Item 10 — mobile prop detail: verdict figure, form-graph card, The read |
+| `7ba3f01` | Items 12–14 — the My Picks drawer onto cards 5a, 5b and 5c |
+| `ef9b6f9` | Item 16 — the landing page, on real rows only |
+| `52c7e0f` | Item 17 — the board, as its own surface |
+| `2118119` | Item 18 — Games redesign: the gamecast folds in under its row |
 
 **Item 11 ("mobile rows in 2a") was absorbed, not skipped.** Its only reference
-was the old , which the full handoff's
- redraws as three screens — feed, refine sheet, prop
+was the old `reference/mobile.html`, which the full handoff's
+`PropPalace Mobile.dc.html` redraws as three screens — feed, refine sheet, prop
 detail — none of which is a separate "rows in 2a" screen. The slate rows it was
 about are covered by item 18's Games redesign.
 
