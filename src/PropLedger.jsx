@@ -9171,7 +9171,9 @@ const CARDINALS_PLAYERS = [
   { id: "wetherholt", name: "JJ Wetherholt", team: "STL", pos: "2B", mlbId: 802139 },
   { id: "bjordan", name: "Blaze Jordan", team: "STL", pos: "3B", mlbId: 691458 },
   { id: "winn", name: "Masyn Winn", team: "STL", pos: "SS", mlbId: 691026 },
-  { id: "nootbaar", name: "Lars Nootbaar", team: "STL", pos: "LF", mlbId: 663457 },
+  // Nootbaar was traded to Arizona at the deadline; top prospect Báez was
+  // called up 8/15 and took over as the everyday left fielder immediately.
+  { id: "baez", name: "Joshua Báez", team: "STL", pos: "LF", mlbId: 695491 },
   { id: "nchurch", name: "Nathan Church", team: "STL", pos: "CF", mlbId: 701675 },
   { id: "jwalker", name: "Jordan Walker", team: "STL", pos: "RF", mlbId: 691023 },
   { id: "herrera", name: "Iván Herrera", team: "STL", pos: "DH", mlbId: 671056 },
