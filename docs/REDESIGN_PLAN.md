@@ -101,6 +101,31 @@ There are two design handoffs and they do not overlap. Items **1–15** are all 
   games-available-of-games-asked-for. They are the two numbers the percentage is
   the ratio of.
 
+### Decided 2026-08-21, on the full handoff (`design_handoff_proppalace_full/`)
+
+- **Games and the board are two separate pages and both ship.** The full
+  handoff draws them as two takes on one `/games` route and says to ask; Alex's
+  answer is that they do different jobs and both stay. **Games** keeps its own
+  route and its existing job — live matches, scores and box scores, so people
+  don't leave for ESPN/NBA.com/MLB.com mid-session — and takes screen 4's
+  redesign, including the gamecast folded in as an inline row expansion.
+  **The board** gets its own route, `board`, and takes screen 2 — prop
+  discovery, rows grouped under game headers behind a filter rail. Neither
+  absorbs the other. This supersedes the older plan's "decide later whether the
+  Games page folds into the board": it does not.
+- **No renaming needed.** "Games" and "The board" already say what each does.
+- **Prop detail ships on desktop and mobile.** The full handoff draws it only
+  at 390px, but the desktop version is not missing and must not be invented —
+  it is cards 447 and 248, built as items 1 and 2, and it is what the four
+  `…Props` pages already render. So: mobile takes screen 5's prop-detail
+  layout; desktop keeps 447/248 and is brought onto the same visual system.
+- **The palace mark is the logo.** Confirmed by Alex looking at it in the
+  mocks' top-left: five towers as a bar chart, green solid where they clear,
+  red outlined where they fall short, white dashed rule across, pennant on the
+  keep. Item 15 builds *this*, not the three ascending bars. It keeps the fixed
+  status colours and does **not** re-tint with the user's accent — the one
+  sanctioned exception to that rule.
+
 ## Still open
 
 - The form graph: whether bars move from margin-height to grounded-at-zero with

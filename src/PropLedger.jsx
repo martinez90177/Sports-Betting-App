@@ -14,6 +14,7 @@ import SettingsModal from "./SettingsModal.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar from "./PlayerAvatar.jsx";
+import PalaceMark from "./PalaceMark.jsx";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
   MatchupBreadcrumb, MatchupVerdictBlock, GameLogTable, TheRead, MatchupSplits, ValueDistribution,
@@ -20170,14 +20171,11 @@ export default function PropLedger() {
                 whiteSpace: "nowrap", cursor: "pointer",
               }}
             >
-              {/* Bars sit on a shared baseline (align-items: flex-end) at the
-                  handoff's 12 / 21 / 16 heights, rounded on the top edge only
-                  so they read as a rising bar chart rather than three pills. */}
-              <span style={{ display: "flex", alignItems: "flex-end", gap: 3 }} aria-hidden="true">
-                {[12, 21, 16].map((h) => (
-                  <span key={h} style={{ width: 6, height: h, background: "var(--amber)", borderRadius: "3px 3px 0 0" }} />
-                ))}
-              </span>
+              {/* The palace mark (see PalaceMark.jsx). Replaces the three
+                  ascending lapis bars that stood here. Its mast and pennant
+                  overflow above the towers, which the header has room for --
+                  don't wrap this in anything that clips. */}
+              <PalaceMark />
               <span>PROP PALACE</span>
             </h1>
             {/* Hidden on a phone: it wrapped to two lines directly under the
