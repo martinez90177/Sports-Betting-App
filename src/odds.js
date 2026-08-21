@@ -64,5 +64,8 @@ export function formatOdds(o, fmt = "american") {
   if (o == null || !Number.isFinite(o)) return "—";
   if (fmt === "decimal") return americanToDecimal(o).toFixed(2);
   if (fmt === "fractional") return toFractional(o);
-  return o > 0 ? `+${o}` : String(o);
+  // U+2212 MINUS SIGN, not the hyphen `String(o)` would give: at tabular-nums
+  // a hyphen is visibly shorter and sits lower than the `+` it alternates
+  // with down a column of prices. The design handoff calls for it by name.
+  return o > 0 ? `+${o}` : `−${Math.abs(o)}`;
 }

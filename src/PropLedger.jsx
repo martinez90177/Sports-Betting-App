@@ -14195,50 +14195,78 @@ function TodaysGamesStrip({ options, selected, onChange, logoFn, emptyLabel }) {
 // The header pins directly under it rather than at top:0 -- the rail is
 // opaque and sits at a higher z-index, so a header pinned to 0 would spend
 // the whole scroll hidden behind it.
+// FEED_LABEL is the handoff's one micro-label recipe for this table: Space
+// Mono 11px, 0.14em, uppercase, --dim. Every header cell uses it, so the
+// header reads as one row of labels rather than six separately-tuned ones.
+const FEED_LABEL = {
+  fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
+};
+
 function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
-  const col = (label, key, align = "center") => {
+  // The four rate columns are a nested `repeat(4, 1fr)` inside the last
+  // track, exactly as the rows are -- that's what keeps L5/L10/L20/SEASON
+  // sitting over their own cells at every width without a seventh, eighth,
+  // ninth and tenth top-level column to keep in sync.
+  const col = (label, key) => {
     const active = columnSort?.key === key;
-    const justify = align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start";
     return (
-      <div
+      <span
+        key={key}
         role="button"
         onClick={() => onSort(key)}
-        className="mono"
+        className="pp-mono"
         style={{
-          cursor: "pointer", textAlign: align, color: active ? "var(--amber)" : "var(--dim)",
-          fontWeight: active ? 700 : 600, fontSize: 11, display: "flex", alignItems: "center",
-          justifyContent: justify, gap: 3, userSelect: "none",
+          ...FEED_LABEL, textAlign: "center", cursor: "pointer", userSelect: "none",
+          color: active ? "var(--amber-ink, var(--amber))" : "var(--dim)",
         }}
       >
-        {label}
-        <span style={{ fontSize: 9 }}>{active ? (columnSort.dir === "desc" ? "↓" : "↑") : "↕"}</span>
-      </div>
+        {label} <span style={{ fontSize: 9 }}>{active ? (columnSort.dir === "desc" ? "▾" : "▴") : "↕"}</span>
+      </span>
     );
   };
   return (
     <div
       className="feed-grid feed-thead"
       style={{
-        paddingTop: 10, paddingBottom: 10, borderBottom: "1px solid var(--line)",
-        textTransform: "uppercase", letterSpacing: "0.04em",
+        paddingTop: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)",
         // `position` is deliberately not set here -- see .feed-thead in
         // index.css. It has to come from a media query, and an inline style
         // would win over one.
         top: stickyTop, zIndex: 3, background: "var(--surface-sunken)",
       }}
     >
-      <div /><div />
-      <div className="mono" style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600 }}>Proposition</div>
+      <span />
+      <span className="pp-mono" style={FEED_LABEL}>Proposition</span>
       {/* Not sortable: the strip is ten discrete results, not one value to
-           order by -- L5/L10 already sort the same information. */}
-      <div className="mono" style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600, textAlign: "center" }}>Form</div>
-      {col("Line", "line", "center")}
-      {col("Odds", "odds", "center")}
-      {col("L5", "l5", "center")}
-      {col("L10", "l10", "center")}
-      {col("L20", "l20", "center")}
-      {col("Season", "all", "center")}
-      <div />
+           order by -- L5/L10 already sort the same information. The label
+           states the window and what the bars are measured against, which is
+           the one thing the chart itself can't say. */}
+      <span className="pp-mono" style={FEED_LABEL}>Form · last 10 vs. line</span>
+      {/* Line and Odds are left-aligned, like the values under them. They
+           used to be centered along with the four rate columns; the design
+           reads them as fields, not figures in a matrix. */}
+      <span
+        role="button"
+        onClick={() => onSort("line")}
+        className="pp-mono"
+        style={{ ...FEED_LABEL, cursor: "pointer", userSelect: "none", color: columnSort?.key === "line" ? "var(--amber-ink, var(--amber))" : "var(--dim)" }}
+      >
+        Line <span style={{ fontSize: 9 }}>{columnSort?.key === "line" ? (columnSort.dir === "desc" ? "▾" : "▴") : "↕"}</span>
+      </span>
+      <span
+        role="button"
+        onClick={() => onSort("odds")}
+        className="pp-mono"
+        style={{ ...FEED_LABEL, cursor: "pointer", userSelect: "none", color: columnSort?.key === "odds" ? "var(--amber-ink, var(--amber))" : "var(--dim)" }}
+      >
+        Odds <span style={{ fontSize: 9 }}>{columnSort?.key === "odds" ? (columnSort.dir === "desc" ? "▾" : "▴") : "↕"}</span>
+      </span>
+      <span style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        {col("L5", "l5")}
+        {col("L10", "l10")}
+        {col("L20", "l20")}
+        {col("Season", "all")}
+      </span>
     </div>
   );
 }
@@ -14266,7 +14294,11 @@ function feedFormScale(recent, line, isBinary) {
 }
 
 function FeedFormStrip({
-  r, direction, streak = 0, height = FORM_PLOT_H, gap = 3,
+  // 60px bar row, 5px gaps, 54px right gutter for the line tag -- the
+  // handoff's "full-size treatment". The *scale* still divides FORM_PLOT_H
+  // (58), which is the figure the spec's arithmetic uses, so the tallest bar
+  // clears the top of the row by a hair instead of touching it.
+  r, direction, streak = 0, height = 60, gap = 5,
   line, onDragLine, onResetLine, adjusted,
 }) {
   const recent = r.recent;
@@ -14297,7 +14329,7 @@ function FeedFormStrip({
 
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ position: "relative", paddingRight: draggable ? 46 : 0 }}>
+      <div style={{ position: "relative", paddingRight: draggable ? 54 : 0 }}>
         <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap, height }}>
           {recent.map((g, i) => (
             <div
@@ -14317,8 +14349,11 @@ function FeedFormStrip({
           ))}
           {!r.isBinary && (
             <span style={{
-              position: "absolute", left: 0, right: draggable ? -46 : 0, bottom: lineY,
-              borderTop: `1.5px dashed ${adjusted ? "var(--amber)" : "var(--text)"}`,
+              position: "absolute", left: 0, right: draggable ? -54 : 0, bottom: lineY,
+              // White, not accent: at accent lightness the rule disappeared
+              // against the green fills. It goes accent-ink only once the
+              // reader has dragged it off the posted line.
+              borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink, var(--amber))" : "var(--text)"}`,
               pointerEvents: "none",
             }} />
           )}
@@ -14329,10 +14364,15 @@ function FeedFormStrip({
               title="Drag to move the line · double-click to reset"
               className="mono"
               style={{
-                position: "absolute", right: -46, bottom: lineY, transform: "translateY(50%)",
-                background: adjusted ? "var(--amber)" : "var(--panel2)",
-                color: adjusted ? "var(--accent-on)" : "var(--text)",
-                border: `1px solid ${adjusted ? "var(--amber)" : "var(--line-strong)"}`,
+                position: "absolute", right: -54, bottom: lineY, transform: "translateY(50%)",
+                // Solid accent by default, per the handoff -- it re-tints
+                // with the user's chosen hue and never encodes hit/miss.
+                // Off-market it inverts to accent-ink on the row ground, the
+                // same switch the dashed rule and the Line column make, so
+                // an adjusted row is legible as adjusted at a glance.
+                background: adjusted ? "transparent" : "var(--amber)",
+                color: adjusted ? "var(--amber-ink, var(--amber))" : "var(--accent-on)",
+                border: `1px solid ${adjusted ? "var(--amber)" : "var(--amber)"}`,
                 borderRadius: 3, padding: "3px 6px", fontSize: 10.5,
                 fontVariantNumeric: "tabular-nums", cursor: "ns-resize", userSelect: "none",
               }}
@@ -14354,7 +14394,7 @@ function FeedFormStrip({
       {/* Counts first: "N of M" is the sample the bars above actually draw,
            shown every time so a hit rate is never on screen without its own
            sample size next to it. */}
-      <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", marginTop: 7, fontVariantNumeric: "tabular-nums" }}>
+      <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
         {hitCount} of {recent.length}{showRun ? ` · ${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
       </div>
     </div>
@@ -14426,47 +14466,78 @@ function feedShortDate(date) {
 // Every rate carries the number of games behind it, the same way the player
 // page prints "60% (6/10)". The count is not decoration: a window labelled L20
 // on a nine game log is a nine game sample, and the label alone hides that.
-function FeedPctCell({ v, n, label }) {
+// The band in which a hit rate isn't worth colouring at all. Deliberately
+// lopsided and deliberately wide: an over at 60% is close enough to a coin
+// flip once the vig is counted that tinting it green read as an endorsement
+// the number hadn't earned, while 45% is already a clearly losing side. Both
+// endpoints sit *inside* the neutral band -- exactly 45% and exactly 65% are
+// grey. One helper for the whole feed so the desktop cells and the phone
+// card's headline figure can't drift onto different thresholds.
+const FEED_RATE_COLD = 0.45;
+const FEED_RATE_HOT = 0.65;
+function feedRateColor(v) {
+  if (v == null) return "var(--dim)";
+  if (v > FEED_RATE_HOT) return "var(--pos)";
+  if (v < FEED_RATE_COLD) return "var(--neg)";
+  return "var(--text-2, var(--text))";
+}
+
+// `active` marks the cell whose window matches the Games counted control --
+// the design fills exactly that one with --surface-2 and a --line border and
+// leaves the other three transparent, so the column the reader chose is
+// obvious without a second label saying so.
+function FeedPctCell({ v, n, label, active, minSample = 10 }) {
+  const shell = {
+    borderRadius: 4, padding: "8px 6px", textAlign: "center", boxSizing: "border-box",
+    background: active ? "var(--surface-2)" : "transparent",
+    border: `1px solid ${active ? "var(--line)" : "transparent"}`,
+  };
   if (v == null) {
     return (
-      <div style={{ textAlign: "center" }}>
-        <span className="mono" title="No games in this window" style={{ fontSize: 11.5, color: "var(--dim)" }}>—</span>
+      <div style={shell}>
+        <div className="pp-mono" title="No games in this window" style={{ fontSize: 15, color: "var(--dim)" }}>—</div>
       </div>
     );
   }
-  const good = v >= 0.55, bad = v <= 0.45;
-  // Tint strength scales with distance from 50% (a 95% hit rate reads
-  // stronger than a 56% one) instead of one fixed alpha for every
-  // "good" cell -- hierarchy comes from the tint itself, not just a
-  // threshold. Mixed off --pos/--neg rather than a fixed rgba() so it
-  // reads correctly on both a near-black and a white row.
-  const strength = Math.min(1, Math.abs(v - 0.5) * 2);
-  const alpha = Math.round(10 + strength * 20);
+  // "Thin samples get a verdict, not a number" (handoff, content rules): a
+  // cell with fewer games than its column can honestly speak for reads
+  // `too few` with an empty track instead of a percentage three games wide.
+  // `minSample` is 10 everywhere except L5, whose five games are the whole
+  // sample it claims -- without that exemption the L5 column would read
+  // `too few` on every row in the feed.
+  const tooFew = n != null && n < minSample;
+  // Green/red kept deliberately, against the handoff, which strips these
+  // cells to a neutral figure: Alex asked for the good-rate tinting to stay.
+  // The percentage carries it; the track below stays --accent, so a
+  // re-tinted accent still can't be mistaken for a hit/miss colour.
+  const pctColor = tooFew ? "var(--dim)" : feedRateColor(v);
   return (
-    <div style={{ textAlign: "center" }}>
-      <span className="mono tnum" style={{
-        display: "inline-block", padding: "3px 7px", borderRadius: "var(--r-sm)", fontSize: 11.5, fontWeight: 800,
-        background: good
-          ? `color-mix(in srgb, var(--pos) ${alpha}%, transparent)`
-          : bad
-          ? `color-mix(in srgb, var(--neg) ${alpha}%, transparent)`
-          : "var(--surface-2)",
-        color: good ? "var(--pos)" : bad ? "var(--neg)" : "var(--dim-strong)",
-      }}>
-        {Math.round(v * 100)}%
-      </span>
+    <div style={shell}>
+      <div
+        className="pp-mono"
+        title={tooFew ? `Only ${n} games — fewer than the ten this app will state a rate over` : undefined}
+        style={{ fontSize: tooFew ? 11.5 : 15, color: pctColor, whiteSpace: "nowrap" }}
+      >
+        {tooFew ? "too few" : `${Math.round(v * 100)}%`}
+      </div>
+      <div style={{ height: 3, borderRadius: 2, margin: "7px 6px 0", background: "var(--line)" }}>
+        <div style={{
+          height: 3, borderRadius: 2,
+          width: tooFew ? 0 : `${Math.round(v * 100)}%`,
+          background: "var(--amber)",
+        }} />
+      </div>
+      {/* `8 of 10`, not `10 of 10`: the sample is hits-of-games, the two
+          numbers the percentage above is actually the ratio of. The old cell
+          printed games-available of games-asked-for, which answered a
+          different question and left the hit count nowhere on the row. */}
       {n != null && (
         <div
-          className="mono tnum"
-          title={label && n < label ? `Only ${n} games available — fewer than the ${label} this column asks for` : `${n} games`}
-          style={{
-            fontSize: 9.5, marginTop: 2, letterSpacing: "0.02em",
-            // A short sample is flagged rather than hidden: under ten games the
-            // count is the thing worth reading, not the percentage.
-            color: n < 10 ? "var(--warn)" : "var(--dim)",
-          }}
+          className="pp-mono"
+          title={label && n < label ? `Only ${n} games available — fewer than the ${label} this column asks for` : `${n} games counted`}
+          style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 6, whiteSpace: "nowrap" }}
         >
-          {n}{label && n < label ? " of " + label : ""}
+          {Math.round(v * n)} of {n}
         </div>
       )}
     </div>
@@ -14654,7 +14725,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--neutral-badge-bg)";
   const tierFg = r.tier === "mid" ? "var(--dim-strong)" : "#08131c";
   const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
-  const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--text)");
+  const hrColor = feedRateColor;
   const odds = r[sampleWindow] == null ? null : probToAmericanOdds(r[sampleWindow]);
   // Overs keep the original `${sport}-${key}` id so picks saved to
   // localStorage before the Over/Under switcher existed still match; Unders
@@ -14665,7 +14736,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   const streak = feedStreak(r.values, r.line, r.isBinary, direction);
   const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
   const [formAnchor, setFormAnchor] = useState(null);
-  const avatarSize = isNarrow ? 34 : 40;
+  const avatarSize = isNarrow ? 34 : 38;
   const dotSize = Math.round(avatarSize * 0.3);
 
   // ---- draggable line (redesign handoff) ----
@@ -14792,32 +14863,29 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     onTogglePick(pickFromRung(sport, r, mainRung, { streak, cushion, sampleWindow, status }));
   };
 
+  // A 30px square, not the old 36px glowing circle: the redesign's table is
+  // flat -- no shadows, no glow, 4px radius on controls -- and a bordered
+  // square at the head of a row reads as part of the table rather than a
+  // floating button sitting on top of it. Picked flips to a solid accent
+  // fill with a check, which is the only filled control in the row.
   const addBtn = (
     <div
-      className="oswald"
+      className="pp-mono"
       role="button"
+      aria-pressed={isAdded}
       onClick={handleAddClick}
       title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
       style={{
         cursor: "pointer",
         flexShrink: 0,
-        width: 36, height: 36,
-        borderRadius: "50%",
+        width: 30, height: 30,
+        borderRadius: 4,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 17, fontWeight: 700,
-        border: `1.5px solid ${isAdded ? "var(--green)" : "var(--amber)"}`,
-        color: isAdded ? "var(--green)" : "var(--amber)",
-        background: isAdded ? "rgba(76,175,125,0.16)" : "var(--amber-dim)",
-        boxShadow: isAdded ? "0 0 0 3px rgba(76,175,125,0.12)" : "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)",
-        transition: "all .15s ease",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "translateY(-1px) scale(1.06)";
-        if (!isAdded) e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.3), 0 0 0 4px var(--amber-dim)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "translateY(0) scale(1)";
-        if (!isAdded) e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.25), 0 0 0 3px var(--amber-dim)";
+        fontSize: 15, lineHeight: 1,
+        border: `1px solid ${isAdded ? "var(--amber)" : "var(--line)"}`,
+        color: isAdded ? "var(--accent-on)" : "var(--amber-ink, var(--amber))",
+        background: isAdded ? "var(--amber)" : "transparent",
+        transition: "background-color .15s ease, border-color .15s ease",
       }}
     >
       {isAdded ? "✓" : "+"}
@@ -14852,48 +14920,26 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
       title={openChart ? `Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page` : undefined}
       style={{ minWidth: 0, cursor: openChart ? "pointer" : "default" }}
     >
-      <div className="oswald feed-prop-link-name" style={{ fontSize: isNarrow ? 14.5 : 14, color: "var(--text)" }}>
-        {r.name} <span style={{ color: "var(--dim)", fontWeight: 400 }}>({r.team})</span>
+      {/* Bricolage 600 at 17px for the name, with the team as a separate
+           Space Mono token beside it rather than parenthesised inside it --
+           the design's own hierarchy, and the note in the handoff says
+           Archivo 500 was tried here and rejected. The proposition below it
+           is uppercase mono in --text, not accent: it's the row's subject,
+           not a link, and colouring it accent made every row look active. */}
+      <div className="feed-prop-link-name" style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
+        <span className="pp-display" style={{ fontSize: isNarrow ? 15 : 17, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {r.name}
+        </span>
+        <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2, var(--dim))", flexShrink: 0 }}>
+          {r.team}
+        </span>
       </div>
-      <div style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 600, marginTop: 1 }}>
+      <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
         {r.subtitle}
       </div>
     </div>
   );
 
-  // Reference (card 713) trails each row with a bare "→", not a bordered
-  // pill -- the whole proposition block is already a click target
-  // (propositionBlock above), so the row's own trailing action only needs
-  // to say "there's more this way," not restate "View Chart" in a button.
-  // Handler/title/keyboard behavior are unchanged from the old pill, just
-  // the visual weight -- a 44px-ish hit target via padding, no border or
-  // fill so it doesn't compete with ladderBtn's real pill beneath it.
-  const chartBtn = r.playerId && (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team })}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team });
-        }
-      }}
-      title={`Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page`}
-      style={{
-        cursor: "pointer",
-        flexShrink: 0,
-        justifySelf: "end",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "10px 6px",
-        fontSize: 15,
-        color: "var(--amber)",
-        lineHeight: 1,
-      }}
-    >
-      ›
-    </div>
-  );
 
   // Rule 4 in miniature: a binary market has no line to move, so the control
   // renders disabled and says why rather than vanishing from half the rows and
@@ -14929,7 +14975,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     // Wraps as whole chips rather than mid-label: the Form column narrowed
     // the Proposition track enough that "OPP RANK" itself was breaking across
     // two lines once the streak and lineup badges joined the row.
-    <div style={{ fontSize: 10.5, color: "var(--dim-strong)", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 6px" }}>
+    // The design's third proposition line is a bare `VS TEX` in 10.5px
+    // --dim. This is that line, carrying the opponent-rank badge the mock's
+    // placeholder data had nothing to put in it -- real information the app
+    // already computes, in the design's own type size and colour.
+    <div className="pp-mono" style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.12em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 6px" }}>
       {/* No rank, no chip. Printing a placeholder here is what made a missing
            matchup read as an average one. */}
       {r.rank != null && (
@@ -15021,8 +15071,21 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div className="pp-mono" style={{ fontVariantNumeric: "tabular-nums", fontSize: 30, fontWeight: 600, lineHeight: 1, color: rate == null ? "var(--dim)" : hrColor(rate) }}>
-              {rate == null ? "—" : `${Math.round(rate * 100)}%`}
+            {/* Same thin-sample rule the desktop cells apply, so the two
+                layouts can't state different things about the same row: a
+                window that asks for ten games and has fewer prints the
+                verdict, not a percentage. L5 is exempt -- five games is the
+                whole sample it claims. */}
+            <div className="pp-mono" style={{
+              fontVariantNumeric: "tabular-nums", lineHeight: 1, fontWeight: 600,
+              fontSize: rate != null && gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? 5 : 10) ? 17 : 30,
+              color: rate == null || (gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? 5 : 10)) ? "var(--dim)" : hrColor(rate),
+            }}>
+              {rate == null
+                ? "—"
+                : gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? 5 : 10)
+                ? "too few"
+                : `${Math.round(rate * 100)}%`}
             </div>
             {gamesCounted != null && (
               <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>{gamesOver} of {gamesCounted}</div>
@@ -15071,73 +15134,77 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     );
   }
 
-  // Desktop: a real table row, grid-aligned against FeedTableHeader's exact
-  // column template -- replaces the old flex card (name block + a single
-  // combined odds/hit-rate block) so Line/Odds/L5/L10/L20/Season each get
-  // their own aligned, independently sortable column.
+  // Desktop: the handoff's six-column table row -- add / proposition / form /
+  // line / odds / the four rate cells as one nested grid. The avatar lives
+  // inside the proposition cell (where the design draws it) rather than in a
+  // track of its own, and the trailing chevron is gone: the proposition block
+  // beside it has always opened the same chart, so the chevron was a second
+  // control for one action holding a whole column open.
   return (
     <div
       className="feed-row feed-grid"
       style={{
-        paddingTop: 10, paddingBottom: 10,
+        paddingTop: 16, paddingBottom: 16,
         borderBottom: isLast ? "none" : "1px solid var(--line)",
       }}
     >
       {addBtn}
-      {avatarEl}
-      <div style={{ minWidth: 0 }}>
-        {propositionBlock}
-        {/* Outside the clickable block on purpose -- the opponent rank is
-            reference information, not part of the proposition, and including
-            it would make the click target sprawl over most of the row. */}
-        <div style={{ marginTop: 3 }}>{oppRankLine}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        {avatarEl}
+        <div style={{ minWidth: 0 }}>
+          {propositionBlock}
+          {/* Outside the clickable block on purpose -- the opponent rank is
+              reference information, not part of the proposition, and including
+              it would make the click target sprawl over most of the row. */}
+          <div style={{ marginTop: 3 }}>{oppRankLine}</div>
+          {/* The ladder toggle has no column of its own any more. It sits
+              here, under the prop it opens alt lines for, and only when the
+              Lines control is asking for them. */}
+          {ladderBtn && <div style={{ marginTop: 7 }}>{ladderBtn}</div>}
+        </div>
       </div>
       {formCell || <div />}
-      {/* Centered, like the four percentage cells that follow -- see
-           FeedTableHeader for why mixing center and right alignment across
-           these six columns is what made the gaps read as uneven. */}
-      <div style={{ textAlign: "center" }}>
-        <div className="mono" style={{ fontSize: 13, color: adjusted ? "var(--amber)" : "var(--text)" }}>
+      {/* Line and Odds read left-aligned, like fields, which is how the
+           design sets them -- only the four rate cells are a centered matrix. */}
+      <div>
+        <div className="pp-mono" style={{ fontSize: 15, color: adjusted ? "var(--amber-ink, var(--amber))" : "var(--text)" }}>
           {Number(lineVal).toFixed(1)}
         </div>
         {/* While the line is dragged off-market this says so and offers the
             way back, so an adjusted row is never mistaken for the posted
-            number. Otherwise it's the usual average-vs-line cushion. */}
+            number. Otherwise it's the usual average-vs-line cushion, in
+            --dim: it's context for the line above it, not a verdict, and
+            colouring it green/red made it compete with the rate cells. */}
         {adjusted ? (
           <div
             role="button"
             onClick={resetLine}
             title={`The posted line is ${Number(r.line).toFixed(1)} — click to put it back`}
-            className="mono"
-            style={{ fontSize: 10, fontWeight: 700, marginTop: 2, color: "var(--amber)", cursor: "pointer" }}
+            className="pp-mono"
+            style={{ fontSize: 11, marginTop: 4, color: "var(--amber-ink, var(--amber))", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             market {Number(r.line).toFixed(1)} · reset
           </div>
         ) : cushion !== null && (
           <div
-            className="mono"
+            className="pp-mono"
             title={`Averages ${cushion >= 0 ? "clear" : "short of"} the line by ${Math.abs(cushion).toFixed(1)} over the ${sampleWindow.toUpperCase()} sample`}
-            style={{ fontSize: 10, fontWeight: 700, marginTop: 2, color: cushion >= 0 ? "var(--pos)" : "var(--neg)" }}
+            style={{ fontSize: 11, marginTop: 4, color: "var(--dim)", whiteSpace: "nowrap" }}
           >
-            {cushion >= 0 ? "+" : "−"}{Math.abs(cushion).toFixed(1)}
+            {cushion >= 0 ? "+" : "−"}{Math.abs(cushion).toFixed(1)} avg
           </div>
         )}
       </div>
-      <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{odds == null ? "—" : formatOdds(odds, oddsFormat)}</div>
+      <div className="pp-mono" style={{ fontSize: 14, color: "var(--text-2, var(--dim))" }}>{odds == null ? "—" : formatOdds(odds, oddsFormat)}</div>
       {/* L5/L10 restate against a dragged line from the same log the bars
           draw; L20/Season cover a wider window than that log holds, so they
           stay as built rather than being recomputed off a shorter sample
           than they claim. */}
-      <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} />
-      <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} />
-      <FeedPctCell v={r.l20} n={r.n20} label={20} />
-      <FeedPctCell v={r.all} n={r.nAll} />
-      {/* Both actions share the last grid track rather than adding a seventh
-          column -- FeedTableHeader's template is the same six columns and the
-          two have to stay aligned. */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, justifySelf: "end" }}>
-        {chartBtn}
-        {ladderBtn}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+        <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={5} active={sampleWindow === "l5"} />
+        <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} active={sampleWindow === "l10"} />
+        <FeedPctCell v={r.l20} n={r.n20} label={20} active={sampleWindow === "l20"} />
+        <FeedPctCell v={r.all} n={r.nAll} active={sampleWindow === "all"} />
       </div>
     </div>
   );
@@ -17057,6 +17124,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // one because its rows come from a seeded generator rather than a slate --
   // there are no real games to chip.
   const showGamesStrip = sport === "mlb" || sport === "nfl" || sport === "wnba";
+  // One data disclaimer per screen (handoff, content rules), stating which
+  // season and which source this sport's logs actually come from rather than
+  // the design's single hard-coded "Real 2025 regular-season game logs" --
+  // that sentence is true of NFL here and of none of the other three.
+  const feedDataDisclaimer = sport === "mlb"
+    ? "Live 2026 regular-season game logs (MLB Stats API) for every team on today's real MLB slate. Not a live odds feed."
+    : sport === "nfl"
+    ? "Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed."
+    : sport === "wnba"
+    ? "Live 2026 regular-season game logs (ESPN Stats API), refreshed each session. Not a live odds feed."
+    : "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed.";
   const gamesStripLogoFn = sport === "nfl" ? nflTeamLogo
     : sport === "wnba" ? wnbaTeamLogo
     : mlbTeamLogo;
@@ -17846,40 +17924,49 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           );
         })}
       </div>
-      {sortedRows.length > visibleRows.length && (
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-          <button
-            type="button"
-            className="oswald cta-btn"
-            onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
-            style={{ cursor: "pointer", padding: "9px 22px", borderRadius: 6, fontSize: 13, fontWeight: 700 }}
-          >
-            Show {Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} more ({visibleRows.length} of {sortedRows.length})
-          </button>
+      {/* Table foot: the outlined accent LOAD MORE beside the data
+          disclaimer, on one line, rather than a centered filled CTA with the
+          disclaimer stranded further down. The button still names the exact
+          number it will add and how far through the list you are -- the
+          design's flat "LOAD 24 MORE PROPS" would be a lie on the last page. */}
+      {!isNarrow && (
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 20, flexWrap: "wrap" }}>
+          {sortedRows.length > visibleRows.length && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setVisibleCount((v) => v + FEED_PAGE_SIZE); } }}
+              className="pp-mono"
+              style={{
+                cursor: "pointer", flexShrink: 0,
+                fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
+                color: "var(--amber-ink, var(--amber))", border: "1px solid var(--amber)",
+                borderRadius: 4, padding: "10px 16px",
+              }}
+            >
+              Load {Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} more props
+              <span style={{ color: "var(--dim)" }}> · {visibleRows.length} of {sortedRows.length}</span>
+            </span>
+          )}
+          <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
+            {feedDataDisclaimer} Rates under 10 games read &ldquo;too few&rdquo;, not a percentage.
+          </span>
         </div>
       )}
 
-      {/* Table-foot legend (desktop) -- the reference keeps this one bar at
-          the bottom of the table rather than splitting it above and below,
-          so it now carries everything a reader needs to decode a row: the
-          FORM bars' own fill (cleared/fell short -- stated nowhere else),
-          the lineup dot, the OPP RANK badge colors, and the "+" add-to-picks
-          affordance. Desktop only; the phone version stays above the cards
-          behind "What am I looking at?" (see that block's own comment). */}
+      {/* Table-foot key (desktop). The three form-graph marks moved out of
+          here and into the result bar above the table, where the redesign
+          puts them -- keeping them in both places meant the same legend
+          twice on one screen. What's left is the part the design's
+          placeholder data had no equivalent for and nothing else explains:
+          the lineup dot, the OPP RANK badge colours, and the "+". */}
       {!isNarrow && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 18, flexWrap: "wrap",
           marginTop: 14, padding: "12px 16px", background: "var(--panel2)", borderRadius: 6,
           fontSize: 11.5, color: "var(--dim)",
         }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 11, height: 11, borderRadius: 2, background: "var(--pos)" }} />
-            cleared the line
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 11, height: 11, borderRadius: 2, border: "1.5px solid var(--neg)", boxSizing: "border-box" }} />
-            fell short
-          </span>
           {sport === "mlb" && (
             <>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -17904,15 +17991,25 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         </div>
       )}
 
-      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        {sport === "mlb"
-          ? "Live 2026 regular-season game logs (MLB Stats API) for every team on today's real MLB slate."
-          : sport === "nfl"
-          ? "Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed."
-          : sport === "wnba"
-          ? "Live 2026 regular-season game logs (ESPN Stats API), refreshed each session."
-          : "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed."}
-      </div>
+      {/* The desktop foot already carries this beside LOAD MORE (see above),
+          so it only renders on its own on the phone layout. */}
+      {isNarrow && (
+        <>
+          {sortedRows.length > visibleRows.length && (
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+              <button
+                type="button"
+                className="oswald cta-btn"
+                onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
+                style={{ cursor: "pointer", padding: "9px 22px", borderRadius: 6, fontSize: 13, fontWeight: 700 }}
+              >
+                Show {Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} more ({visibleRows.length} of {sortedRows.length})
+              </button>
+            </div>
+          )}
+          <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>{feedDataDisclaimer}</div>
+        </>
+      )}
     </div>
   );
 }
