@@ -5,7 +5,7 @@ has been decided. Read this before starting any item. It is committed to the
 repo on purpose: this project is worked on from more than one machine, and
 Claude's own memory does not travel between them.
 
-**Status as of 2026-08-21 — `master` at `2118119`. Items 1–18 are all shipped.**
+**Status as of 2026-08-21 — `master` at `d3dd10a`. Items 1–18 shipped; data track sections A and C complete.**
 
 ## The five tracks
 
@@ -13,7 +13,7 @@ Claude's own memory does not travel between them.
 |---|---|---|
 | **Redesign, items 1–15** | The numbered build order against the design cards | **All shipped.** |
 | **Items 16, 17 & 18** | Landing, board and the Games redesign, from the full handoff | **All shipped.** Its prop-feed screen shipped earlier, out of sequence |
-| **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | Not started |
+| **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | **A and C done.** B done for NBA; MLB/WNBA logs were already real. See below |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
 | **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
 
@@ -82,6 +82,49 @@ There are two design handoffs and they do not overlap. Items **1–15** are all 
 | `…_landing_board/PropPalace Landing.dc.html` | — | 16 |
 | `…_landing_board/PropPalace Board.dc.html` | — | 17 |
 | `…_landing_board/PropPalace Prop Feed.dc.html` | — | shipped out of sequence, see above |
+
+## Data track — state as of 2026-08-21
+
+| Sport | Rosters | Game logs | Defence ranks |
+|---|---|---|---|
+| **NFL** | **live** (`lib/rosters.js`) | real, ESPN, 2025 | real |
+| **NBA** | **live**, all 30 (`lib/rosters.js`) | **real**, ESPN, 2025-26 | **real**, ESPN standings |
+| **MLB** | live (statsapi `/roster/active`) | real, MLB Stats API | real, per-market |
+| **WNBA** | live (ESPN, since item 5b) | real, ESPN, current season | real |
+
+**Section A — live rosters: complete.** `src/lib/rosters.js` is one mechanism
+for all four leagues, generalising `fetchWNBATeamRoster`. NFL went from 32
+hand-written arrays to live (1,260 → 3,085 props); NBA from four teams to
+thirty. MLB and WNBA already fetched their own and were left alone.
+
+Team ids are a static map in that module and deliberately so: a roster changes
+on every transaction, a team id on a relocation. It is also forced — ESPN's
+league index (`/teams`) sends no CORS headers, so a browser cannot read it,
+while `/teams/{id}/roster` can. That worked from a terminal and failed from the
+app; found only by driving the real page.
+
+**Section B — game logs: done for NBA, already real elsewhere.** NBA now reads
+ESPN's gamelog endpoint, the same shape the WNBA code has parsed since item 5b.
+The feared 450-request backfill did not need a build-time prefetch: the
+existing per-player TTL + sessionStorage caching absorbed it, and the honesty
+gate means an unfetched player simply doesn't appear rather than appearing on
+generated numbers.
+
+**Section C — NBA defence ranks: complete.** Real opponent points-allowed per
+game from ESPN's standings, replacing `buildDefenseCategoryFor`'s seeded RNG.
+The ALLOWS sentence on the NBA player page is unlocked with it, gated so it
+only ever states a number that came from ESPN.
+
+**Knock-on effects, all done:** the `simulated` qualifier is off the NBA tab,
+NBA picks are gradable (`gradeKind: "nba"`, stamped only when the row came from
+a real log), and the NBA disclaimers name their season and source.
+
+**Still open on this track:** the three log-scoping decisions — playoffs
+marked and filterable, a per-team filter for traded players, and prior seasons
+behind an explicit season control with the `ALL`-means-current-season trap that
+comes with them. Those are one shared segmented control over the game log, not
+three, and none of them is built.
+
 
 ## Decisions already made — do not silently reverse these
 
