@@ -20,6 +20,10 @@ import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters } from "./lib/rosters.js";
+import {
+  LOG_SCOPE_DEFAULT, LogScopeControl, PlayoffTag,
+  scopeGames, scopeFilterCount, isPlayoffGame, hasLogScopeChoices,
+} from "./LogScope.jsx";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
   MatchupBreadcrumb, MatchupVerdictBlock, GameLogTable, TheRead, MatchupSplits, ValueDistribution,
@@ -433,7 +437,7 @@ const NBA_SLUG_BY_ESPN_ID = Object.fromEntries(
 // so the real total goes to dreb and oreb stays 0 rather than inventing a
 // split. The Total view -- the default, and the one anyone actually prices --
 // stays fully real; only the Off/Def toggle loses precision.
-function parseNBAGameLogResponse(data) {
+function parseNBAGameLogResponse(data, season) {
   const names = data?.names || [];
   const events = data?.events || {};
   const byEvent = {};
@@ -466,7 +470,13 @@ function parseNBAGameLogResponse(data) {
       return {
         date: (meta.gameDate || "").slice(0, 10),
         opp: nbaTeamAbbr(meta.opponent.abbreviation),
+        // The player's *own* team for this game, which is not derivable from
+        // the roster: a traded player's roster entry says where he is now, and
+        // says it about every game he ever played. ESPN carries it per event,
+        // so the per-team filter costs one field rather than a second fetch.
+        team: meta.team?.abbreviation ? nbaTeamAbbr(meta.team.abbreviation) : undefined,
         seasonType,
+        season,
         home: meta.atVs !== "@",
         minutes: num(stats.minutes),
         pts: num(stats.points),
@@ -492,7 +502,11 @@ async function fetchNBAPlayerGameLog(espnId, season = 2026) {
   const cached = nbaGameLogCache.get(key);
   if (cached && Date.now() - cached.fetchedAt < NBA_GAMELOG_TTL_MS) return cached.games;
 
-  const cacheKey = `nba_gamelog_v1_${key}`;
+  // v2: every game now carries `team` (the player's own team that game)
+  // and `season`. A leftover v1 payload has neither, so the log-scoping
+  // control would find nothing to offer and quietly not appear -- a filter
+  // missing entirely is harder to notice than one showing wrong numbers.
+  const cacheKey = `nba_gamelog_v2_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -509,7 +523,7 @@ async function fetchNBAPlayerGameLog(espnId, season = 2026) {
       `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${espnId}/gamelog?season=${season}`
     );
     if (!res.ok) return null;
-    const games = parseNBAGameLogResponse(await res.json());
+    const games = parseNBAGameLogResponse(await res.json(), season);
     if (!games.length) return null;
     const record = { games, fetchedAt: Date.now() };
     nbaGameLogCache.set(key, record);
@@ -1399,6 +1413,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const [minMinutes, setMinMinutes] = useState(0);
   const [maxMinutes, setMaxMinutes] = useState(40);
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
+  // The one control over the game log itself -- season, season type, team.
+  // Everything else on this page filters the games this leaves behind.
+  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -1472,6 +1489,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const compact = useIsNarrow(1100);
 
   const resetFilters = () => {
+    setLogScope(LOG_SCOPE_DEFAULT);
     setSide("all");
     setLastN(10);
     setOpponent("all");
@@ -1487,7 +1505,18 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // one has loaded, generated only for the four hand-written teams, empty for
   // a live-only player whose log hasn't landed.
   const player = useMemo(() => nbaPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
-  const allGames = useMemo(() => getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player)), [player, dataVersion]);
+
+  // The whole log, before scoping. Kept separate because the scope control has
+  // to read it to know what it can offer -- which teams are in there, whether
+  // there are playoff games at all -- and reading the scoped list would make
+  // the control's own options vanish the moment one was picked.
+  const logGames = useMemo(() => getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player)), [player, dataVersion]);
+
+  // Everything downstream reads allGames, so scoping here narrows the chart,
+  // the splits, the verdict, the per-game table and every sample-size label
+  // together -- rather than each surface being taught the filter separately
+  // and one of them being missed.
+  const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
   // NBA logs are generated from each player's static base line, so this is
@@ -1613,8 +1642,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       if (lastN !== 10) n += 1;
     }
     if (minMinutes !== 0 || maxMinutes !== 40) n += 1;
+    n += scopeFilterCount(logScope);
     return n;
-  }, [opponent, oppView, side, lastN, minMinutes, maxMinutes]);
+  }, [opponent, oppView, side, lastN, minMinutes, maxMinutes, logScope]);
 
   const splitCells = buildHitRateSplits({
     allGames,
@@ -1725,7 +1755,13 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // selector, so it carries only a bottom divider against the detailed stat
   // row underneath. paddingRight reserves room for the Filters button, which
   // floats in the card's absolute top-right corner on desktop.
-  const playerIdentityRow = (
+  //
+  // Gated on `player` rather than left bare, and the guard for a missing one
+  // lives below the last hook (see there). Building this element *evaluates*
+  // every prop, so `player.team` below throws before any later guard can run --
+  // the same crash the WNBA page shipped, from the same shape. Live rosters
+  // make it reachable: playerId can name someone the pool does not have.
+  const playerIdentityRow = !player ? null : (
     <PlayerIdentityRow
       compact={compact}
       team={player.team}
@@ -1763,6 +1799,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
   const filtersBody = (
     <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+      {/* First, because it is the outermost narrowing: it decides which games
+           exist at all, and every control below filters what it leaves. Renders
+           nothing for a player whose log offers no choice -- one team, one
+           season, no playoff games -- which is most of them. */}
+      <LogScopeSection games={logGames} sport="nba" scope={logScope} onChange={setLogScope} />
+
       {/* Sample size only exists in "any opponent" mode -- once a specific
            opponent is picked the predicate switches to the oppView branch,
            which ignores lastN entirely. Rendering it anyway would be a
@@ -1897,11 +1939,15 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
-            axisKey: `${g.opp}__${g.date}`,
+            // A third `__` segment, read by TeamAxisTick. Recharts keys a
+            // category axis by this string, so the mark has to travel inside
+            // it: the tick component is handed the axis value, not the row.
+            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
             value: statValue(g, market, rebSplit),
             date: g.date,
             minutes: g.minutes,
             home: g.home,
+            playoff: isPlayoffGame(g),
             defRank: TEAM_DEF[g.opp].rank,
           }))}
           // right clears LineHandle, which anchors to the container's right
@@ -1945,7 +1991,13 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             {filtered.map((g, i) => {
               const v = statValue(g, market, rebSplit);
               const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-              return <Cell key={i} fill={fill} />;
+              // Decision 1: a playoff game has to look like one. An outline
+              // rather than a colour, because every colour here is spoken for
+              // -- green/red already mean cleared/missed, and a playoff game is
+              // neither good nor bad, it is a different kind of game.
+              return isPlayoffGame(g)
+                ? <Cell key={i} fill={fill} stroke="var(--chart-ink)" strokeWidth={1.5} strokeDasharray="2 2" />
+                : <Cell key={i} fill={fill} />;
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
@@ -1991,7 +2043,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>{g.date}</div>
+                    <div>
+                      {g.date}
+                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
+                    </div>
                     <div>{g.opp}</div>
                     <div style={{ color: tierColor(tier) }}>#{def.rank}</div>
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
@@ -2146,6 +2201,42 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));
   }, [allGames, market, rebSplit, effectiveLine]);
+
+  // Below the last hook on purpose. An early return above a useMemo renders
+  // fewer hooks than the previous pass and React throws "Rendered fewer hooks
+  // than expected" instead of showing this -- the same placement, and the same
+  // reason, as the WNBA page's guard.
+  //
+  // Reachable because the pool is live: a jump, a stale selection, or a module
+  // reload can all leave playerId naming someone nbaPlayerPool() does not have.
+  // Nothing is substituted -- another player's chart under this name would be
+  // worse than saying so.
+  if (!player) {
+    const firstOnSlate = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
+    return (
+      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+        <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+          <div style={{ color: "var(--text)", marginBottom: 6 }}>
+            That player isn&rsquo;t in the NBA pool right now.
+          </div>
+          <div style={{ lineHeight: 1.5 }}>
+            Their game log hasn&rsquo;t loaded, or they are no longer on a roster this app can read.
+            Nothing has been substituted in their place.
+          </div>
+          {firstOnSlate && (
+            <button
+              type="button"
+              className="chip"
+              style={{ marginTop: 12 }}
+              onClick={() => { setPlayerId(firstOnSlate.id); setLine(null); setOpponent("all"); }}
+            >
+              Show {firstOnSlate.name} instead
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (viewMode === "matchup") {
     return (
@@ -2456,7 +2547,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Real 2025-26 regular-season game logs (ESPN Stats API). A player whose log has not loaded falls back to a seeded line and is marked ungradable in the slip.
+        Real 2025-26 game logs (ESPN Stats API), regular season and playoffs — playoff games are marked PO and can be filtered out under Scope. A player whose log has not loaded falls back to a seeded line and is marked ungradable in the slip.
       </div>
       <PlayerNewsModule playerName={player.name} headshotSrc={espnHeadshot(player.espnId)} sport="nba" team={player.team} />
     </div>
@@ -3674,6 +3765,14 @@ function estimateSnapPct(player, full) {
 function normalizeNFLGame(g, player) {
   const full = {
     date: g.date, opp: g.opp, home: g.home,
+    // Carried explicitly, because this function rebuilds a game from a field
+    // list rather than spreading it -- so anything not named here is dropped
+    // on the way to every NFL surface. That is how the log-scoping control
+    // came out invisible on the NFL page while the data behind it was already
+    // correct: parseNFLGameLogResponse set all three and this threw them away.
+    // A synthetic or hand-transcribed log has none of them, which is right:
+    // undefined means "not known", and logScopeOptions offers no control.
+    seasonType: g.seasonType, season: g.season, team: g.team,
     comp: g.comp || 0, att: g.att || 0, passYds: g.passYds || 0, passTd: g.passTd || 0, int: g.int || 0,
     rushAtt: g.rushAtt || 0, rushYds: g.rushYds || 0, rushTd: g.rushTd || 0,
     rec: g.rec || 0, tgt: g.tgt || 0, recYds: g.recYds || 0, recTd: g.recTd || 0,
@@ -3820,7 +3919,7 @@ function parseMadeAttempts(s) {
 // Turns ESPN's raw gamelog response (see fetchNFLPlayerGameLog) into the
 // same { date, opp, home, comp, att, passYds, ... } shape genSyntheticNFLGames
 // produces, oldest game first.
-function parseNFLGameLogResponse(data) {
+function parseNFLGameLogResponse(data, season) {
   const names = data?.names || [];
   const events = data?.events || {};
   const byEvent = {};
@@ -3847,10 +3946,13 @@ function parseNFLGameLogResponse(data) {
       const oppAbbr = meta.opponent?.abbreviation;
       const opp = NFL_ESPN_ABBR_FIX[oppAbbr] || oppAbbr || "???";
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+      const teamAbbr = meta.team?.abbreviation;
       const game = {
         date: (meta.gameDate || "").slice(0, 10),
         opp,
+        team: teamAbbr ? (NFL_ESPN_ABBR_FIX[teamAbbr] || teamAbbr) : undefined,
         seasonType,
+        season,
         home: meta.atVs !== "@",
       };
       Object.entries(NFL_STAT_NAME_MAP).forEach(([espnKey, ourKey]) => {
@@ -3900,7 +4002,11 @@ async function fetchNFLPlayerGameLog(espnId, season = currentNFLSeason()) {
   const cached = nflGameLogCache.get(key);
   if (fresh(cached)) return cached.games.length ? cached.games : null;
 
-  const cacheKey = `nfl_gamelog_v2_${key}`;
+  // v3: every game now carries `team` (the player's own team that game)
+  // and `season`. A leftover v2 payload has neither, so the log-scoping
+  // control would find nothing to offer and quietly not appear -- a filter
+  // missing entirely is harder to notice than one showing wrong numbers.
+  const cacheKey = `nfl_gamelog_v3_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -3918,7 +4024,7 @@ async function fetchNFLPlayerGameLog(espnId, season = currentNFLSeason()) {
     );
     if (!res.ok) return null;
     const data = await res.json();
-    const games = parseNFLGameLogResponse(data);
+    const games = parseNFLGameLogResponse(data, season);
     const record = { games, fetchedAt: Date.now() };
     nflGameLogCache.set(key, record);
     try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
@@ -5041,6 +5147,26 @@ function FilterSection({ title, action, shaded, children }) {
   );
 }
 
+// The log-scoping control in its panel section. Wrapped here rather than in
+// LogScope.jsx so the module stays free of this file's layout primitives and
+// can be read (and tested) as plain functions plus one presentational control.
+//
+// Returns null, section chrome included, when the log offers nothing to
+// choose. An empty titled box saying "Scope" would be worse than no box: it
+// implies a filter exists and has been left at its default, when in fact this
+// player has one team, one season and no playoff games.
+function LogScopeSection({ games, sport, scope, onChange }) {
+  if (!hasLogScopeChoices(games, sport)) return null;
+  return (
+    <FilterSection shaded title="Scope">
+      <LogScopeControl games={games} sport={sport} scope={scope} onChange={onChange} />
+      <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.5 }}>
+        Sets which games exist before any filter below runs.
+      </div>
+    </FilterSection>
+  );
+}
+
 // Searchable "Games with player" / "Games without player" list, grouped by
 // teammates vs opponents with a status dot per row (Outlier's pattern). It
 // reads and writes the same teammateChips array the chip row above does, so
@@ -5608,7 +5734,8 @@ function formatAxisDate(dateStr) {
 // packing both values into the one value recharts already hands back is
 // the only lookup that stays correct under any interval.
 function TeamAxisTick({ x, y, payload, logoFn, compact }) {
-  const [abbr, dateStr] = payload.value.split("__");
+  const [abbr, dateStr, mark] = payload.value.split("__");
+  const playoff = mark === "po";
   // Desktop logo shrunk from 28 -> 18px (PropsMadness reference uses a
   // small ~16px mark): smaller footprint per tick means more ticks fit
   // before axisTickInterval has to start skipping, and it relieves the
@@ -5625,6 +5752,11 @@ function TeamAxisTick({ x, y, payload, logoFn, compact }) {
       <text x={0} y={compact ? 35 : 47} textAnchor="middle" fill="var(--chart-ink-dim)" fontSize={compact ? 7 : 10} fontWeight={500}>
         {formatAxisDate(dateStr)}
       </text>
+      {playoff && (
+        <text x={0} y={compact ? 44 : 58} textAnchor="middle" fill="var(--chart-ink-dim)" fontSize={compact ? 6.5 : 8.5} fontWeight={700} letterSpacing={0.4}>
+          PO
+        </text>
+      )}
     </g>
   );
 }
@@ -5674,6 +5806,7 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
           <span className="oswald" style={{ fontSize: 13, letterSpacing: "0.03em", color: "var(--text)" }}>
             {d.home ? "vs" : "@"} {d.opp}
           </span>
+          {d.playoff && <PlayoffTag />}
         </span>
         <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", letterSpacing: "0.02em" }}>
           {new Date(`${d.date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}
@@ -6246,7 +6379,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // about how much room the *chart* has for per-bar labels.
   const compact = useIsNarrow(1100);
 
+  // The one control over the game log itself -- season, season type, team.
+  // Everything else on this page filters the games this leaves behind.
+  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
+
   const resetFilters = () => {
+    setLogScope(LOG_SCOPE_DEFAULT);
     setSide("all");
     setLastN(10);
     setOpponent("all");
@@ -6260,7 +6398,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // search result exists here even when he arrived on the live roster after
   // the hand-written arrays were written.
   const player = useMemo(() => nflPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
-  const allGames = useMemo(() => getNFLGames(player), [player, dataVersion]);
+  // Unscoped, so the scope control can see what the log offers; see the same
+  // pair on the NBA page.
+  const logGames = useMemo(() => getNFLGames(player), [player, dataVersion]);
+  const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
   // NFL_REAL_GAME_LOGS is filled by an effect on mount, hence the dataVersion
@@ -6379,8 +6520,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     if (opponent !== 'all') n += 1;
     if (lastN !== 10) n += 1;
     if (snapFilterActive) n += 1;
+    n += scopeFilterCount(logScope);
     return n;
-  }, [side, opponent, lastN, snapFilterActive]);
+  }, [side, opponent, lastN, snapFilterActive, logScope]);
 
   const splitCells = buildHitRateSplits({
     allGames,
@@ -6531,6 +6673,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
   const filtersBody = (
     <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+      {/* First, because it is the outermost narrowing: it decides which games
+           exist at all, and every control below filters what it leaves. Renders
+           nothing for a player whose log offers no choice -- one team, one
+           season, no playoff games -- which is most of them. */}
+      <LogScopeSection games={logGames} sport="nfl" scope={logScope} onChange={setLogScope} />
+
       <FilterSection title="Sample size">
         <SampleSizeGrid cells={splitCells} />
         <SampleSizeSlider total={allGames.length} lastN={lastN} onSetLastN={setLastN} />
@@ -6634,11 +6782,15 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
-            axisKey: `${g.opp}__${g.date}`,
+            // A third `__` segment, read by TeamAxisTick. Recharts keys a
+            // category axis by this string, so the mark has to travel inside
+            // it: the tick component is handed the axis value, not the row.
+            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
             value: statValueNFL(g, market),
             date: g.date,
             snapPct: g.snapPct,
             home: g.home,
+            playoff: isPlayoffGame(g),
             defRank: (getNFLDefRank(market, player.pos, g.opp) || {}).rank ?? null,
           }))}
           // right clears LineHandle, which anchors to the container's right
@@ -6694,7 +6846,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             {filtered.map((g, i) => {
               const v = statValueNFL(g, market);
               const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-              return <Cell key={i} fill={fill} />;
+              // Decision 1: a playoff game has to look like one. An outline
+              // rather than a colour, because every colour here is spoken for
+              // -- green/red already mean cleared/missed, and a playoff game is
+              // neither good nor bad, it is a different kind of game.
+              return isPlayoffGame(g)
+                ? <Cell key={i} fill={fill} stroke="var(--chart-ink)" strokeWidth={1.5} strokeDasharray="2 2" />
+                : <Cell key={i} fill={fill} />;
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
@@ -6742,7 +6900,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>{g.date}</div>
+                    <div>
+                      {g.date}
+                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
+                    </div>
                     <div>{g.opp}</div>
                     <div style={{ color: def ? tierColor(tier) : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
@@ -7206,7 +7367,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Real 2025 regular-season game logs (ESPN Stats API) for every player shown above — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.
+        Real 2025 game logs (ESPN Stats API) for every player shown above, regular season and playoffs — playoff games are marked PO and can be filtered out under Scope. The 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.
       </div>
       <PlayerNewsModule playerName={player.name} headshotSrc={nflHeadshot(player)} sport="nfl" team={player.team} />
     </div>
@@ -7935,7 +8096,13 @@ const WNBA_REAL_GAME_LOGS = {};
 // full real total goes to dreb (oreb: 0) rather than fabricate a split.
 // This keeps the "Total" rebounds view (the default, and by far the more
 // commonly used one) fully real; only the Off/Def toggle loses precision.
-function parseWNBAGameLogResponse(data) {
+// The WNBA season currently loaded. A named constant rather than a literal in
+// the URL so the season stamped on each game and the season actually fetched
+// cannot drift -- they were two separate edits away from disagreeing, and a
+// game labelled with the wrong year is worse than one labelled with none.
+const WNBA_LOG_SEASON = 2026;
+
+function parseWNBAGameLogResponse(data, season) {
   const names = data?.names || [];
   const events = data?.events || {};
   const byEvent = {};
@@ -7971,7 +8138,9 @@ function parseWNBAGameLogResponse(data) {
       return {
         date: (meta.gameDate || "").slice(0, 10),
         opp: meta.opponent.abbreviation,
+        team: meta.team?.abbreviation,
         seasonType,
+        season,
         home: meta.atVs !== "@",
         minutes: num(stats.minutes),
         pts: num(stats.points),
@@ -7997,7 +8166,11 @@ async function fetchWNBAPlayerGameLog(espnId) {
   const cached = wnbaGameLogCache.get(espnId);
   if (cached && Date.now() - cached.fetchedAt < WNBA_GAMELOG_TTL_MS) return cached.games;
 
-  const cacheKey = `wnba_gamelog_v2_${espnId}`;
+  // v3: every game now carries `team` (the player's own team that game)
+  // and `season`. A leftover v2 payload has neither, so the log-scoping
+  // control would find nothing to offer and quietly not appear -- a filter
+  // missing entirely is harder to notice than one showing wrong numbers.
+  const cacheKey = `wnba_gamelog_v3_${espnId}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -8011,11 +8184,11 @@ async function fetchWNBAPlayerGameLog(espnId) {
 
   try {
     const res = await fetch(
-      `https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/athletes/${espnId}/gamelog?season=2026`
+      `https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/athletes/${espnId}/gamelog?season=${WNBA_LOG_SEASON}`
     );
     if (!res.ok) return null;
     const data = await res.json();
-    const games = parseWNBAGameLogResponse(data);
+    const games = parseWNBAGameLogResponse(data, WNBA_LOG_SEASON);
     if (!games.length) return null;
     const record = { games, fetchedAt: Date.now() };
     wnbaGameLogCache.set(espnId, record);
@@ -8312,7 +8485,12 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // about how much room the *chart* has for per-bar labels.
   const compact = useIsNarrow(1100);
 
+  // The one control over the game log itself -- season, season type, team.
+  // Everything else on this page filters the games this leaves behind.
+  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
+
   const resetFilters = () => {
+    setLogScope(LOG_SCOPE_DEFAULT);
     setSide("all");
     setLastN(10);
     setOpponent("all");
@@ -8388,7 +8566,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // at all. Such a player is normally filtered out of the rails before they
   // can be selected, but the static fallback in the resolver above can still
   // surface one, and an empty array renders an empty chart instead of throwing.
-  const allGames = useMemo(() => getWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)) || [], [player, dataVersion]);
+  // Unscoped, so the scope control can see what the log offers; see the same
+  // pair on the NBA page.
+  const logGames = useMemo(() => getWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)) || [], [player, dataVersion]);
+  const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
   // Falls back to minutes/game when the market has no average yet defined for
@@ -8525,8 +8706,9 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     if (opponent !== 'all') n += 1;
     if (lastN !== 10) n += 1;
     if (minMinutes !== 0 || maxMinutes !== 40) n += 1;
+    n += scopeFilterCount(logScope);
     return n;
-  }, [side, opponent, lastN, minMinutes, maxMinutes]);
+  }, [side, opponent, lastN, minMinutes, maxMinutes, logScope]);
 
   const splitCells = buildHitRateSplits({
     allGames,
@@ -8719,6 +8901,12 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
   const filtersBody = (
     <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+      {/* First, because it is the outermost narrowing: it decides which games
+           exist at all, and every control below filters what it leaves. Renders
+           nothing for a player whose log offers no choice -- one team, one
+           season, no playoff games -- which is most of them. */}
+      <LogScopeSection games={logGames} sport="wnba" scope={logScope} onChange={setLogScope} />
+
       {/* Same section order and rhythm as the MLB panel: sample size leads
            unshaded, then the paired controls in a shaded 2-up. */}
       <FilterSection title="Sample size">
@@ -8812,11 +9000,15 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
-            axisKey: `${g.opp}__${g.date}`,
+            // A third `__` segment, read by TeamAxisTick. Recharts keys a
+            // category axis by this string, so the mark has to travel inside
+            // it: the tick component is handed the axis value, not the row.
+            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
             value: statValue(g, market, rebSplit),
             date: g.date,
             minutes: g.minutes,
             home: g.home,
+            playoff: isPlayoffGame(g),
           }))}
           // right clears LineHandle, which anchors to the container's right
           // edge: it needs right:8 + its 52px minimum, less the 6px the
@@ -8859,7 +9051,13 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             {filtered.map((g, i) => {
               const v = statValue(g, market, rebSplit);
               const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-              return <Cell key={i} fill={fill} />;
+              // Decision 1: a playoff game has to look like one. An outline
+              // rather than a colour, because every colour here is spoken for
+              // -- green/red already mean cleared/missed, and a playoff game is
+              // neither good nor bad, it is a different kind of game.
+              return isPlayoffGame(g)
+                ? <Cell key={i} fill={fill} stroke="var(--chart-ink)" strokeWidth={1.5} strokeDasharray="2 2" />
+                : <Cell key={i} fill={fill} />;
             })}
             <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
           </Bar>
@@ -8905,7 +9103,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>{g.date}</div>
+                    <div>
+                      {g.date}
+                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
+                    </div>
                     <div>{g.opp}</div>
                     <div style={{ color: def ? tierColor(tier) : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
@@ -9409,7 +9610,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Live 2026 regular-season game logs (ESPN Stats API) for the players shown above, refreshed each tab. Defensive matchup ranks are real opponent points allowed per game.
+        Live 2026 game logs (ESPN Stats API) for the players shown above, refreshed each tab; playoff games are marked PO and can be filtered out under Scope. Defensive matchup ranks are real opponent points allowed per game.
       </div>
       <PlayerNewsModule playerName={player.name} headshotSrc={wnbaHeadshot(player.espnId)} sport="wnba" team={player.team} status={statusOf(player)} />
     </div>
@@ -12739,11 +12940,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const chartData = filtered.map((g, i) => ({
     idx: i + 1,
     opp: g.opp,
-    axisKey: `${g.opp}__${g.date}`,
+    axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
     value: statValueFn(g),
     date: g.date,
     minutes: isPitcher ? formatOuts(g.outs) : g.pa,
     home: g.home,
+    playoff: isPlayoffGame(g),
     defRank: mlbDefForMarket(g.opp, market)?.rank ?? null,
     // undefined (not false) when there's nothing to preview or no boxscore
     // for the game, so an unknown lineup is never rendered as "sat out".
@@ -13391,7 +13593,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
                 return (
                   <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>{g.date}</div>
+                    <div>
+                      {g.date}
+                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
+                    </div>
                     <div>{g.opp}</div>
                     <div
                       title={def ? `#${def.rank} of ${def.of} in ${def.label} (${def.value})` : undefined}
@@ -15995,7 +16200,9 @@ function feedRecentGames(games, values, n = FEED_FORM_GAMES) {
     // matched nothing and every row read "Too few · 0 games" -- which looks
     // exactly like a player who never played at home, rather than like a
     // field we forgot to carry.
-    return { v, opp: g.opp, date: g.date, home: g.home };
+    // `po` rides along for the same reason `home` does: the form strip has to
+    // mark a playoff game, and it only ever sees this projection of the log.
+    return { v, opp: g.opp, date: g.date, home: g.home, po: g.seasonType === "post" };
   });
 }
 
@@ -16747,9 +16954,9 @@ function buildMLBPitcherFeedRows(teamsData) {
 // One data disclaimer per surface, naming the season and the source the rows
 // actually came from. The board's rail prints this in its sunken well.
 const BOARD_DISCLAIMER = {
-  nfl: "Real 2025 regular-season game logs (ESPN Stats API). Not a live odds feed.",
-  wnba: "Live 2026 regular-season game logs (ESPN Stats API). Not a live odds feed.",
-  nba: "Real 2025-26 regular-season game logs (ESPN Stats API). Not a live odds feed.",
+  nfl: "Real 2025 game logs (ESPN Stats API), regular season and playoffs. Not a live odds feed.",
+  wnba: "Live 2026 game logs (ESPN Stats API), regular season and playoffs. Not a live odds feed.",
+  nba: "Real 2025-26 game logs (ESPN Stats API), regular season and playoffs. Not a live odds feed.",
 };
 
 const FEED_SPORTS = [

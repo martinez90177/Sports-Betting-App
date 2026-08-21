@@ -119,11 +119,46 @@ only ever states a number that came from ESPN.
 NBA picks are gradable (`gradeKind: "nba"`, stamped only when the row came from
 a real log), and the NBA disclaimers name their season and source.
 
-**Still open on this track:** the three log-scoping decisions — playoffs
-marked and filterable, a per-team filter for traded players, and prior seasons
-behind an explicit season control with the `ALL`-means-current-season trap that
-comes with them. Those are one shared segmented control over the game log, not
-three, and none of them is built.
+**Section D — the NBA slate: done.** `NBA_MATCHUPS` was two invented pairings
+on invented dates, and the feed's opponent column read `games[games.length-1]`
+— who a player *last* played, so the defensive rank beside it rated a game
+already in the books. Both now read ESPN's schedule (`fetchNBALiveSlate`), and
+on 2026-08-21 that is opening night, 2026-10-20. The window is seven days, not
+the WNBA page's three, because it also answers "who does this player face next"
+for every feed row: three days covers three teams on opening night, seven
+covers all thirty. An offseason near-window falls back to the season opener,
+resolved from ESPN's own `/seasons/{year}/types/2` rather than a typed-in date.
+
+**Log scoping — built, as one control.** `src/LogScope.jsx`. All three
+decisions turned out to be the same primitive and are implemented as one:
+
+- **Season type** (All / Regular season / Playoffs). Playoff games count by
+  default and are marked wherever a game appears: a dashed outline on the chart
+  bar, `PO` under the axis tick, a `PO` tag in the game-log table row and the
+  chart tooltip, and a dot track under the feed's form strip (four pixels of bar
+  has no room for a tag).
+- **Team** (All / With <TEAM>…), derived from the log itself, from
+  `events[].team` on ESPN's gamelog — the player's own team *that game*, which
+  a roster cannot tell you. Verified: Jose Alvarado reads All 87 / With NYK 46 /
+  With NOP 41, and Kyle Anderson's log carries three.
+- **Season**, present in the data and hidden until there is a second season to
+  choose. This is how the `ALL`-means-current-season trap is closed *before*
+  2024-25 lands rather than after the first wrong number ships: `season`
+  defaults to the newest season in the log, so `ALL` can never silently become
+  multi-season.
+
+Applied at one point per page — `logGames` → `scopeGames` → `allGames` — so the
+chart, splits, verdict, per-game table and every sample-size label narrow
+together. Option counts are computed *with the other selections applied*, so
+"With NOP" reads 0 (in red) while Playoffs is active rather than promising 41.
+Live on the NBA, NFL and WNBA pages; MLB gets it when its `gameType=P` pull
+lands, since `gameType=R` is still hardcoded and there are no playoff games in
+that log to scope.
+
+**Still open on this track:** the 2024-25 NBA backfill (the season control
+appears on its own once it lands), MLB's postseason pull, and the WNBA feed's
+copy of the last-opponent bug the NBA slate work fixed —
+`buildWNBAFeedRows` still reads `games[games.length - 1].opp`.
 
 
 ## Decisions already made — do not silently reverse these

@@ -137,6 +137,7 @@ export default function FeedFormStrip({
   const showRun = shownRun >= 3;
   const runColor = shownRunHit ? "var(--pos)" : "var(--neg)";
 
+  const hasPlayoff = recent.some((g) => g.po);
   const draggable = !!onDragLine && !r.isBinary;
   // The tag is what makes the gutter necessary, so both follow the same flag.
   const showTag = !r.isBinary && (draggable || tag);
@@ -152,7 +153,7 @@ export default function FeedFormStrip({
           {recent.map((g, i) => (
             <div
               key={i}
-              title={`${g.opp ? `vs ${g.opp} · ` : ""}${g.v}`}
+              title={`${g.opp ? `vs ${g.opp} · ` : ""}${g.v}${g.po ? " · playoff game" : ""}`}
               style={{
                 flex: 1,
                 height: r.isBinary
@@ -200,6 +201,29 @@ export default function FeedFormStrip({
             </span>
           )}
         </div>
+        {/* Playoff games, marked. Decision 1 says a playoff game has to look
+             like one wherever a game appears, and these bars are four pixels
+             wide -- there is no room for the "PO" tag the chart axis and the
+             game-log table use, so it becomes a dot on its own track, on the
+             same flex layout as the bars so it sits exactly under one.
+
+             Rendered only when the window actually contains a playoff game,
+             so the overwhelming majority of rows keep their current height
+             and nothing shifts. */}
+        {hasPlayoff && (
+          <div style={{ display: "flex", gap, marginTop: 3 }} aria-hidden>
+            {recent.map((g, i) => (
+              <span key={i} style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+                <span style={{
+                  width: 3, height: 3, borderRadius: "50%",
+                  // Neutral ink: green and red are already spoken for by
+                  // cleared/missed on the bar directly above.
+                  background: g.po ? "var(--dim)" : "transparent",
+                }} />
+              </span>
+            ))}
+          </div>
+        )}
         {/* The run rule sits under the trailing bars only, so the words
              below tie to the games above. Laid out on the same flex track
              as the bars so it lines up exactly at any column width. */}

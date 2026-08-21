@@ -377,7 +377,7 @@ function HeroCard({ row, onOpen }) {
       </div>
 
       <div className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 14, lineHeight: 1.5 }}>
-        Real regular-season game logs. Not a live odds feed.
+        Real game logs, regular season and playoffs. Not a live odds feed.
       </div>
     </div>
   );
