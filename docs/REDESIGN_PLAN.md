@@ -5,14 +5,14 @@ has been decided. Read this before starting any item. It is committed to the
 repo on purpose: this project is worked on from more than one machine, and
 Claude's own memory does not travel between them.
 
-**Status as of 2026-08-21 — `master` at `76d027a`.**
+**Status as of 2026-08-21 — `master` at `7c9872c`.**
 
 ## The five tracks
 
 | Track | What it is | State |
 |---|---|---|
-| **Redesign, items 1–15** | The numbered build order against the design cards | **1–8 + 5b shipped.** Next: **item 9, mobile prop feed, card 3a** — paused on purpose, see below |
-| **Items 16 & 17** | Landing page + the board, from the real Claude Design handoff | Not started. 3 of 4 conflicts decided |
+| **Redesign, items 1–15** | The numbered build order against the design cards | **1–9 + 5b shipped.** In progress: **items 10–15**, commissioned as one run |
+| **Items 16 & 17** | Landing page + the board, from the real Claude Design handoff | Not started. 3 of 4 conflicts decided. **Its third screen, the prop feed, is built** — see below |
 | **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | Not started |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
 | **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
@@ -20,13 +20,18 @@ Claude's own memory does not travel between them.
 The tracks are independent. Redesign items follow Alex's order and are not to be
 resequenced; the data and monetisation tracks can run whenever.
 
-**Items 9 & 10 (mobile) are a different kind of item than 6–8 turned out to
-be.** 6–8 were mostly-built-already polish passes; 9/10 are a real,
-largely-unbuilt mobile redesign (new single-column touch cards, a "REFINE"
-bottom sheet) that the app's existing `isNarrow` responsive tweaks don't cover.
-Alex chose to stop after item 8 and pick 9/10 up as their own dedicated pass
-rather than fold them into the same session. Don't assume they're close to
-done the way 6–8 were — check current state fresh.
+**The landing/board handoff turned out to have three screens, not two.** Its
+third, `PropPalace Prop Feed.dc.html`, is a redesign of the already-shipped feed
+rather than a new surface, so it was built out of sequence on Alex's direct
+instruction (2026-08-21) rather than waiting behind items 10–15. It is done —
+`84a7182` and `7c9872c`. Conflicts 1 and 2 below were both resolved by that
+work: markets are multi-select everywhere on the feed, and the form graph is
+grounded at zero with a drawn line. Items 16 and 17 inherit both.
+
+**Item 9 was a real, largely-unbuilt mobile redesign**, not the
+mostly-built-already polish pass that 6–8 turned out to be — new single-column
+touch cards and a REFINE bottom sheet that the app's existing `isNarrow`
+responsive tweaks didn't cover. Expect 10–15 to be the same kind of work.
 
 ## Shipped so far
 
@@ -40,6 +45,27 @@ done the way 6–8 were — check current state fresh.
 | `b085e55` | Item 6 — Settings to card 647, Lapis as the new default accent |
 | — | Item 7 (News, card 4a) — found already fully built from earlier, pre-15-item-order work (`81ded6b`/`29a5572`). Confirmed live, no changes needed |
 | `76d027a` | Item 8 — alt lines and legs: safer-rung suggestions, restyled slip price/correlation block |
+| `d429677` | Item 9 — mobile prop feed to card 3a: single-column touch cards, REFINE sheet, sticky picks bar |
+| `84a7182` | Prop feed redesign (landing/board handoff, screen 3) — filter card, multi-select markets, grounded-at-zero graph with a draggable line |
+| `b3cb9b0` | Bug — WNBA player page threw instead of rendering its own "not on today's slate" guard. Pre-existing since `c539e5c` |
+| `7c9872c` | Prop feed redesign, part 2 — the table itself onto the handoff's `34/262/250/88/80/1fr` grid |
+
+### Which two folders hold what
+
+There are two design handoffs and they do not overlap. Items **1–15** are all in
+`design_handoff_proppalace_redesign/reference/`; items **16–17** are in
+`design_handoff_propplace_landing_board/`.
+
+| Reference file | Cards | Items |
+|---|---|---|
+| `…_redesign/reference/app-screens.html` | 2a | 1, 2, 4, 5, 6 |
+| `…_redesign/reference/news.html` | 4a | 7 |
+| `…_redesign/reference/alt-lines.html` | 4b | 8 |
+| `…_redesign/reference/mobile.html` | 3a mobile screens · 3b logo marks | 9, 10, 11 · 15 |
+| `…_redesign/reference/my-picks.html` | 5a / 5b / 5c | 12, 13, 14 |
+| `…_landing_board/PropPalace Landing.dc.html` | — | 16 |
+| `…_landing_board/PropPalace Board.dc.html` | — | 17 |
+| `…_landing_board/PropPalace Prop Feed.dc.html` | — | shipped out of sequence, see above |
 
 ## Decisions already made — do not silently reverse these
 
@@ -60,6 +86,20 @@ done the way 6–8 were — check current state fresh.
 - **NBA loads 2025-26 first**; 2024-25 deferred.
 - **Free tier is a rotating daily set** of real players, any tier — not a pinned
   list of low-profile names.
+- **The feed's rate cells keep their green/red tinting.** The landing/board
+  handoff strips them to a neutral figure; Alex overrode that on 2026-08-21 and
+  the tinting stays. The track under each figure stays `--accent`, so a
+  re-tinted accent still can't be confused with a hit/miss colour.
+- **The neutral band for that tinting is 45–65%**, set by Alex 2026-08-21.
+  Above 65 green, below 45 red, both endpoints grey. An over at 60% is close
+  enough to a coin flip after vig that green read as an endorsement the number
+  hadn't earned. One helper, `feedRateColor`, so desktop and phone can't drift.
+- **Thin samples print `too few`, not a percentage**, on both the desktop rate
+  cells and the phone card's headline figure. L5 is exempt — five games is the
+  whole sample that column claims.
+- **The feed's rate samples read hits-of-games** (`8 of 10`), not
+  games-available-of-games-asked-for. They are the two numbers the percentage is
+  the ratio of.
 
 ## Still open
 
@@ -267,14 +307,18 @@ asking.
 #5 prop feed (card 713) — **done, pushed as 1e3ec85** · **#5b WNBA game chips (see below)** ·
 #6 settings (card 647) — **done, `b085e55`** · #7 news (card 4a) — **found already
 built from earlier work, confirmed live, nothing new to commit** · #8 alt lines
-and legs (card 4b) — **done, `76d027a`** ·
-**#9 mobile prop feed · #10 mobile player page — next, paused here on purpose (see
-the five-tracks table above)** · #11 mobile rows in 2a · #12 slip · #13 ledger ·
-#14 report · #15 the three-bar mark across nav, favicon and lockups.
+and legs (card 4b) — **done, `76d027a`** · #9 mobile prop feed (card 3a) —
+**done, `d429677`** ·
+**#10 mobile player page · #11 mobile rows in 2a · #12 slip · #13 ledger ·
+#14 report · #15 the three-bar mark across nav, favicon and lockups · then #16
+landing and #17 board — all eight commissioned as one run by Alex on
+2026-08-21.**
 
-As of this pass, `b085e55` and `76d027a` are committed on `master` locally but
-**not yet pushed** — push only on Alex's explicit go-ahead per CLAUDE.md's git
-workflow.
+Item 10 is **part-built**: `PlayerFormVerdict` (mobile-only form squares, a
+"leans over/under" read and a confidence tier, wired into all four sport pages)
+shipped inside `84a7182`, having been swept in by a `git add -A` during the feed
+redesign rather than finished as its own item. Check what is actually on screen
+before assuming the rest of card 3a's player page is missing.
 
 5b is numbered rather than appended to the end: it completes card 713, which #5
 left one sport short. It does not displace #6 unless you want it to.
@@ -579,14 +623,23 @@ language conflicts.** The conflicts are all structural, and they are below.
 
 ## ⚠️ Four conflicts with already-shipped work
 
-Each contradicts a decision already made, built and pushed. **1 and 3 are now
-decided by Alex (2026-08-20) — build to them. 2 and 4 are still open.**
+Each contradicts a decision already made, built and pushed. All four are now
+settled: **1 and 3 decided by Alex (2026-08-20); 4 decided the same day; 2
+resolved by building it.** 1 and 2 are additionally **already built on the prop
+feed** (`84a7182`, `7c9872c`) — items 16 and 17 inherit both rather than
+re-deciding them.
 
 Multi-select markets (1) is worth calling out as a deliberate reversal of item
 5's single-market picker: not a mistake being corrected, a product call being
 changed by the person entitled to change it. Say so in the commit.
 
-### 1. Multi-select markets — DECIDED 2026-08-20: build it, everywhere
+### 1. Multi-select markets — DECIDED 2026-08-20 · **BUILT on the feed, `84a7182`**
+
+Shipped on the prop feed: `selectedMarkets` is an array, empty means all, and
+the saved-screen/share-link format stores it as a sorted comma-join so a
+single-market screen serialises to exactly the old value and the legacy `"all"`
+sentinel still decodes. The board (item 17) reuses the selection and
+serialisation logic and shares no UI with it, per the rule below.
 
 Alex's call: **multi-select wins, with no cap on how many.** The example he gave
 is the use case — select Pass + rush yds, Rush + rec yds *and* Receptions and see
@@ -668,7 +721,21 @@ already exist), never from the mock's football-only markup.
 > publicly and cannot be recalled.
 
 
-### 2. The form graph changes meaning (item 5, shipped everywhere)
+### 2. The form graph changes meaning — **RESOLVED, built `84a7182`**
+
+Built as the design specifies. `FeedFormStrip` is now grounded at zero on one
+linear pixel scale shared with the line (`scaleMax = max(maxValue,
+ceil(line + 1))`, `unit = 58 / scaleMax`, 4px floor), with the dashed rule at
+the line's true position — white by default, accent-ink once dragged. The
+line tag is a drag handle: half-value snapping, live bar recolouring, and the
+caption, trailing-run rule and L5/L10 cells all recomputed from the same game
+log. L20 and Season are deliberately **not** recomputed on a drag; the handoff
+says do that server-side and there is no such endpoint, and doing it from the
+row's shorter saved log would make them claim a sample they aren't using.
+
+The original statement of the conflict is kept below for context.
+
+#### Original note (superseded)
 
 The design's graph is **grounded at zero** — bar height is the player's actual
 stat that game — with a **dashed white rule** drawn across at the prop line, so
