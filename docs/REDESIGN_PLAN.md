@@ -849,31 +849,39 @@ ready to charge people.
 
 ## What it collides with — check these before building
 
-### 1. A hardcoded free-tier allowlist vs. live rosters (data track)
+### 1. Free tier vs. live rosters — RESOLVED by rotation
 
-`FREE_PLAYER_IDS` pins specific player ids. The data track replaces hand-written
-rosters with **live ESPN fetches**, precisely so trades and signings flow
-through. The moment that lands, a pinned free-tier player can be traded,
-waived or retired — and silently vanish, leaving the free tier showing **one
-player, or none**, with no error and no signal that the paywall just closed
-completely.
+The original spec pinned two low-profile players per sport, which would have
+broken against the data track: live ESPN rosters mean a pinned player can be
+traded or waived and silently vanish, emptying the free tier to one player or
+zero with no error.
 
-Fix it when building, not after: validate the allowlist against the live roster
-at load, and if a pinned id is missing, fall back to another player from the same
-team rather than showing nothing. A free tier that quietly empties itself looks
-like a broken app, not a sales pitch.
+**Alex scrapped that on 2026-08-21.** The free tier is now a small rotating
+daily set drawn from *today's actual rows*, any tier of player, stars included.
+Because nothing is pinned, there is no id that can go stale — the collision
+disappears rather than needing a workaround. Detail in
+[`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) §4.
 
-### 2. The landing page's hero card vs. the paywall (item 16)
+The one rule to keep: the set must be **deterministic per (sport, day)**, seeded
+from the date, never `Math.random()`. A set that reshuffles on refresh lets
+someone reroll until they get the player they wanted, and makes the free tier
+impossible to talk about publicly.
 
-Item 16 puts one **real** player card on the front page as the worked example —
-hit rate, splits, verdict, form graph — and it is seen by signed-out visitors.
-Under this plan almost every player is locked to them.
+### 2. The landing page's hero card vs. the paywall (item 16) — mostly resolved
 
-So the hero must be drawn from `FREE_PLAYER_IDS`, or the front door demonstrates
-the product with a blurred card. That constraint fights item 16's other rule
-(pick the strongest real row), since the free tier is deliberately low-profile
-players. Resolve it explicitly — probably "strongest row *among free-tier
-players*".
+Item 16 puts one **real** player card on the front page, seen by signed-out
+visitors, for whom almost everything is locked.
+
+Rotation largely solves this too: the hero draws from the day's free set, which
+now contains real, recognisable players rather than deliberate nobodies. The
+front page demonstrates the product on someone worth seeing, and it changes
+daily.
+
+Still to settle: whether the hero picks the **strongest row among the free set**
+(consistent with the paywall, and it rotates) or the front page is exempt from
+gating entirely (best possible shop window, but then the first thing a visitor
+clicks after signing up is locked). Lean to the former — a front page that
+advertises what it then withholds is the worse trade.
 
 ### 3. Rule 4 — already handled, keep it that way
 

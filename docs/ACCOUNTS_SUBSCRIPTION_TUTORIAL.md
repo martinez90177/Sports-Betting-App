@@ -28,9 +28,10 @@ Three deliverables, decided with Alex:
 
 1. **Accounts** — email + password, own backend on the Upstash Redis already in the project.
 2. **Subscription** — real Stripe Checkout + Billing Portal + webhook, running on test keys
-   until live keys are added. Free tier sees only a couple of deliberately *low-profile*
-   players in the Prop Feed and charts; everything else renders locked behind a lock badge,
-   so the paywall sells itself.
+   until live keys are added. Free tier sees a **small rotating daily set** of players —
+   any tier, stars included — in the Prop Feed and charts; everything else renders locked
+   behind a lock badge, so the paywall sells itself. (Revised 2026-08-21; the original
+   low-profile-benchwarmer allowlist is scrapped — see §4.)
 3. **Tutorial** — a video-game-style guided walkthrough with spotlight coach-marks on the
    real UI, launchable from Settings, that explains betting concepts to a total beginner and
    then releases them to explore.
@@ -112,17 +113,63 @@ Profile tab, from any locked row, and from the header when signed out.
 
 ## 4. Free-tier gating
 
-**`src/lib/freeTier.js`** — one explicit, curated allowlist:
+**`src/lib/freeTier.js`** — a small **rotating daily set**, not a hardcoded list.
+
+> **Revised 2026-08-21 by Alex:** the original spec pinned two deliberately
+> low-profile players per sport ("explicitly not Ohtani, Judge, Schwarber").
+> That is scrapped. The free tier now draws from **any tier of player**, stars
+> included — just a few of them.
+
+**Why rotation rather than a fixed list of names.** Three problems die at once:
+
+1. **A trial has to be evaluable.** Someone who can only ever see players they
+   have never heard of cannot judge whether the tool is any good. They watch it
+   work on an irrelevant player and leave. Showing real, recognisable names —
+   sometimes a star — is what actually demonstrates the product.
+2. **A hardcoded id breaks against live rosters.** The data track replaces
+   hand-written rosters with live ESPN fetches. A pinned player who is traded,
+   waived or retired silently disappears, and the free tier quietly empties to
+   one player or zero, with no error. Deriving the set from *today's actual
+   rows* cannot break that way.
+3. **A fixed list goes stale.** The same two names forever gives a returning
+   visitor nothing new. A daily rotation gives them a reason to come back, and
+   over a week the free tier has shown off far more of the product.
 
 ```js
-export const FREE_PLAYER_IDS = { mlb: [...], nfl: [...], nba: [...], wnba: [...] };
-export function isPlayerUnlocked(sport, playerId, isPremium) { ... }
+// How many players per sport are readable for free. One constant to retune.
+export const FREE_PLAYERS_PER_SPORT = 3;
+
+// Deterministic per (sport, day): every visitor sees the SAME free players on a
+// given date, and the set rotates at the day boundary.
+export function freePlayerIds(sport, rows, dayKey) { ... }
+export function isPlayerUnlocked(sport, playerId, isPremium, freeIds) { ... }
 ```
 
-Two ids per sport, hand-picked as bench/low-profile names from the existing rosters
-(`ALL_MLB_PLAYERS` at `src/PropLedger.jsx:8425` and the NFL/NBA/WNBA lists) — explicitly
-**not** PCA, Ohtani, Judge, Schwarber or Caminero. A single list means Alex can retune the
-free tier by editing one file.
+**Rules the implementation has to hold:**
+
+- **Deterministic, not random.** Seed `mulberry32` (already in `PropLedger.jsx`)
+  from a hash of `` `${sport}-${dayKey}` ``. Same day, same set, for everyone.
+  Never `Math.random()` — a set that reshuffles on refresh lets someone reroll
+  until they get the player they wanted, and makes the free tier undiscussable.
+- **Pick from the sport's full unfiltered row set for the day**, before any
+  market/team/game filter. Otherwise the free players change as the user filters,
+  which reads as a bug.
+- **Sort candidates by player id before picking**, so the choice does not depend
+  on the order rows happened to be built in.
+- **Prefer players with a real sample** (say `gamesCounted >= 10`). The free
+  preview is the sales pitch; it should show the product working, not a
+  `TOO FEW` card. Fall back to any player if too few qualify.
+- **Unlock the player, not the prop.** A free player is readable across all of
+  their markets, so their whole card works and the tour can spotlight it.
+- **`dayKey` comes from the existing ET day helper** (`currentMLBDayKey`, which
+  the WNBA slate already reuses), so the rotation flips on the same boundary as
+  the slates.
+- **Empty-slate fallback.** In an offseason, or if the day's rows are empty, the
+  set is simply empty — the paywall must render that as "nothing on today's
+  board" rather than an app that looks broken.
+
+Sizing: with three free players and ~1,500 MLB props, roughly 30 props are
+readable and the rest are visibly locked. Plenty behind the wall.
 
 **`src/Paywall.jsx`** — `LockedOverlay` (blur + lock glyph + "Premium") and `UpgradeModal`
 (what Premium unlocks, price, Upgrade → Checkout, "Already subscribed? Sign in").
