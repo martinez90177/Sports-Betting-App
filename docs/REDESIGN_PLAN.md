@@ -5,14 +5,14 @@ has been decided. Read this before starting any item. It is committed to the
 repo on purpose: this project is worked on from more than one machine, and
 Claude's own memory does not travel between them.
 
-**Status as of 2026-08-21 — `master` at `7c9872c`.**
+**Status as of 2026-08-21 — `master` at `2118119`. Items 1–18 are all shipped.**
 
 ## The five tracks
 
 | Track | What it is | State |
 |---|---|---|
-| **Redesign, items 1–15** | The numbered build order against the design cards | **1–9 + 5b shipped.** In progress: **items 10–15**, commissioned as one run |
-| **Items 16 & 17** | Landing page + the board, from the real Claude Design handoff | Not started. 3 of 4 conflicts decided. **Its third screen, the prop feed, is built** — see below |
+| **Redesign, items 1–15** | The numbered build order against the design cards | **All shipped.** |
+| **Items 16, 17 & 18** | Landing, board and the Games redesign, from the full handoff | **All shipped.** Its prop-feed screen shipped earlier, out of sequence |
 | **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | Not started |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
 | **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
@@ -49,6 +49,22 @@ responsive tweaks didn't cover. Expect 10–15 to be the same kind of work.
 | `84a7182` | Prop feed redesign (landing/board handoff, screen 3) — filter card, multi-select markets, grounded-at-zero graph with a draggable line |
 | `b3cb9b0` | Bug — WNBA player page threw instead of rendering its own "not on today's slate" guard. Pre-existing since `c539e5c` |
 | `7c9872c` | Prop feed redesign, part 2 — the table itself onto the handoff's `34/262/250/88/80/1fr` grid |
+|  | Feed table header stops sticking; the clip/auto breakpoint it needed goes with it |
+|  | Item 15 — the palace mark, in the header lockup and the favicon |
+|  | Windowed form-graph axis, scaling drag step, and Andrew Wiggins' headshot |
+|  | Item 9 revisit — mobile feed to the new handoff, plus  |
+|  | Item 10 — mobile prop detail: verdict figure, form-graph card, The read |
+|  | Items 12–14 — the My Picks drawer onto cards 5a, 5b and 5c |
+|  | Item 16 — the landing page, on real rows only |
+|  | Item 17 — the board, as its own surface |
+|  | Item 18 — Games redesign: the gamecast folds in under its row |
+
+**Item 11 ("mobile rows in 2a") was absorbed, not skipped.** Its only reference
+was the old , which the full handoff's
+ redraws as three screens — feed, refine sheet, prop
+detail — none of which is a separate "rows in 2a" screen. The slate rows it was
+about are covered by item 18's Games redesign.
+
 
 ### Which two folders hold what
 
