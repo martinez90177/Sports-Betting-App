@@ -701,7 +701,12 @@ a quick change — see [[nba-feed-is-four-teams]].
 
 - The `· SIMULATED DATA` badge on the NBA sport tab comes off (item 5 added it).
 - NBA can get its allows-line, currently withheld because the numbers are RNG.
-- NBA can join the Games slate — `gamesData.js`'s `SPORTS` list omits it today.
+- ~~NBA can join the Games slate~~ — done. NBA is the fourth tab, on the same
+  day-slate mechanism as MLB and WNBA, and `getTopPropsForMatchup` /
+  `getPropsCountForGame` are wired for it. Because the page answers "what is on
+  now" rather than "what can I research", the offseason is handled differently
+  from the prop feed: opening night is an extra **date tab**, labelled as such,
+  beside a Today tab that still honestly reads 0 games — not a substitution.
 - The NBA feed's data disclaimer ("Sample data only — generated…") gets rewritten.
 
 ## Verification

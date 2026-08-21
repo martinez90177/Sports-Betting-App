@@ -34,13 +34,27 @@ const NFL_LOGO_SLUG = {
   LAC: "lac", LV: "lv", DEN: "den",
 };
 
+// The app's NBA abbreviations are ESPN's *long* ones (NYK, SAS, GSW, NOP, UTA,
+// WAS); ESPN's scoreboard reports six of them short. nbaAbbr below is what
+// reconciles the two -- get it wrong and a team silently loses its logo and
+// its name at the same time.
+const NBA_LOGO_SLUG = {
+  ATL: "atl", BKN: "bkn", BOS: "bos", CHA: "cha", CHI: "chi", CLE: "cle",
+  DAL: "dal", DEN: "den", DET: "det", GSW: "gs", HOU: "hou", IND: "ind",
+  LAC: "lac", LAL: "lal", MEM: "mem", MIA: "mia", MIL: "mil", MIN: "min",
+  NOP: "no", NYK: "ny", OKC: "okc", ORL: "orl", PHI: "phi", PHX: "phx",
+  POR: "por", SAC: "sac", SAS: "sa", TOR: "tor", UTA: "utah", WAS: "wsh",
+};
+
 export const mlbTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/mlb/500/${MLB_LOGO_SLUG[abbr] || String(abbr).toLowerCase()}.png`;
+export const nbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/nba/500/${NBA_LOGO_SLUG[abbr] || String(abbr).toLowerCase()}.png`;
 export const wnbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/wnba/500/${WNBA_LOGO_SLUG[abbr] || String(abbr).toLowerCase()}.png`;
 export const nflTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/nfl/500/${NFL_LOGO_SLUG[abbr] || String(abbr).toLowerCase()}.png`;
 
 export function teamLogo(sport, abbr) {
   if (sport === "wnba") return wnbaTeamLogo(abbr);
   if (sport === "nfl") return nflTeamLogo(abbr);
+  if (sport === "nba") return nbaTeamLogo(abbr);
   return mlbTeamLogo(abbr);
 }
 
@@ -98,7 +112,25 @@ export const NFL_TEAMS_BY_ABBR = {
   LV: { city: "Las Vegas", name: "Raiders" }, DEN: { city: "Denver", name: "Broncos" },
 };
 
-const TEAMS_BY_SPORT = { mlb: MLB_TEAMS_BY_ABBR, wnba: WNBA_TEAMS_BY_ABBR, nfl: NFL_TEAMS_BY_ABBR };
+export const NBA_TEAMS_BY_ABBR = {
+  ATL: { city: "Atlanta", name: "Hawks" }, BKN: { city: "Brooklyn", name: "Nets" },
+  BOS: { city: "Boston", name: "Celtics" }, CHA: { city: "Charlotte", name: "Hornets" },
+  CHI: { city: "Chicago", name: "Bulls" }, CLE: { city: "Cleveland", name: "Cavaliers" },
+  DAL: { city: "Dallas", name: "Mavericks" }, DEN: { city: "Denver", name: "Nuggets" },
+  DET: { city: "Detroit", name: "Pistons" }, GSW: { city: "Golden State", name: "Warriors" },
+  HOU: { city: "Houston", name: "Rockets" }, IND: { city: "Indiana", name: "Pacers" },
+  LAC: { city: "LA", name: "Clippers" }, LAL: { city: "Los Angeles", name: "Lakers" },
+  MEM: { city: "Memphis", name: "Grizzlies" }, MIA: { city: "Miami", name: "Heat" },
+  MIL: { city: "Milwaukee", name: "Bucks" }, MIN: { city: "Minnesota", name: "Timberwolves" },
+  NOP: { city: "New Orleans", name: "Pelicans" }, NYK: { city: "New York", name: "Knicks" },
+  OKC: { city: "Oklahoma City", name: "Thunder" }, ORL: { city: "Orlando", name: "Magic" },
+  PHI: { city: "Philadelphia", name: "76ers" }, PHX: { city: "Phoenix", name: "Suns" },
+  POR: { city: "Portland", name: "Trail Blazers" }, SAC: { city: "Sacramento", name: "Kings" },
+  SAS: { city: "San Antonio", name: "Spurs" }, TOR: { city: "Toronto", name: "Raptors" },
+  UTA: { city: "Utah", name: "Jazz" }, WAS: { city: "Washington", name: "Wizards" },
+};
+
+const TEAMS_BY_SPORT = { mlb: MLB_TEAMS_BY_ABBR, wnba: WNBA_TEAMS_BY_ABBR, nfl: NFL_TEAMS_BY_ABBR, nba: NBA_TEAMS_BY_ABBR };
 
 export function teamInfo(sport, abbr) {
   const t = (TEAMS_BY_SPORT[sport] || {})[abbr];
@@ -110,6 +142,7 @@ export const SPORTS = [
   { id: "mlb", label: "MLB" },
   { id: "wnba", label: "WNBA" },
   { id: "nfl", label: "NFL" },
+  { id: "nba", label: "NBA" },
 ];
 
 // ------------------------------------------------------------ date utils
@@ -132,6 +165,10 @@ function addDays(d, n) {
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Exported so a caller building an extra date tab by hand labels it the same
+// way buildDateTabs does -- two spellings of "Oct" side by side in one tab
+// strip is exactly the kind of seam nobody notices until it ships.
+export const MONTH_SHORT = MONTH;
 
 // "TODAY", "SUNDAY", or "AUG 11" -- the card's day line. Matches the two
 // treatments in the references: the web app writes "TODAY", the iOS app
@@ -495,7 +532,16 @@ export async function fetchMlbSlate(key, { force = false } = {}) {
   }
 }
 
-const ESPN_PATH = { wnba: "basketball/wnba", nfl: "football/nfl" };
+const ESPN_PATH = { wnba: "basketball/wnba", nfl: "football/nfl", nba: "basketball/nba" };
+
+// ESPN's scoreboard reports six NBA teams by a short abbreviation that this
+// app does not use anywhere else. Left unmapped, each one falls through
+// teamInfo to `{ full: abbr }` and through NBA_LOGO_SLUG to a lowercase guess
+// -- so "SA" would render as a team called SA with a broken logo rather than
+// the Spurs, on a fifth of the league. Same map as PropLedger's NBA_ESPN_ABBR;
+// duplicated here for the same reason the three logo builders above are.
+const NBA_ESPN_ABBR = { GS: "GSW", NO: "NOP", NY: "NYK", SA: "SAS", UTAH: "UTA", WSH: "WAS" };
+const nbaAbbr = (a) => NBA_ESPN_ABBR[a] || a;
 
 // Returns { games, unreadable } -- see the note on fetchMlbSlate.
 function espnSlate(sport, events) {
@@ -504,8 +550,10 @@ function espnSlate(sport, events) {
     const comp = ev.competitions?.[0];
     const away = comp?.competitors?.find((c) => c.homeAway === "away");
     const home = comp?.competitors?.find((c) => c.homeAway === "home");
-    const awayAbbr = away?.team?.abbreviation;
-    const homeAbbr = home?.team?.abbreviation;
+    const rawAway = away?.team?.abbreviation;
+    const rawHome = home?.team?.abbreviation;
+    const awayAbbr = sport === "nba" && rawAway ? nbaAbbr(rawAway) : rawAway;
+    const homeAbbr = sport === "nba" && rawHome ? nbaAbbr(rawHome) : rawHome;
     if (!awayAbbr || !homeAbbr) { unreadable += 1; return null; }
 
     const status = espnStatus(comp);
@@ -566,6 +614,55 @@ export async function fetchWnbaSlate(key, { force = false } = {}) {
   } catch {
     return null;
   }
+}
+
+// One NBA day, same shape as the WNBA fetcher above.
+//
+// Deliberately *not* given the prop feed's offseason opener fallback. This page
+// answers "what is on today", and in August the honest answer is nothing --
+// substituting a slate two months out would put "no games today" and a full
+// card of games on the same screen. What the page does instead is offer the
+// opener as a date to jump to (see GamesPage's nbaOpenerKey), which is a
+// different statement: here is where the season starts.
+export async function fetchNbaSlate(key, { force = false } = {}) {
+  const ck = `nba:${key}`;
+  if (!force) {
+    const hit = cached(ck, { live: true });
+    if (hit !== undefined) return hit;
+  }
+  try {
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nba}/scoreboard?dates=${key.replace(/-/g, "")}`);
+    const data = await res.json();
+    return store(ck, espnSlate("nba", data?.events));
+  } catch {
+    return null;
+  }
+}
+
+// The first day of the regular season, as YYYY-MM-DD, or null.
+//
+// Read from ESPN's own season record rather than typed in here, so it is right
+// next October without an edit. Cached for the tab: it cannot change during a
+// session, and this is called on every sport switch.
+let nbaOpenerCache;
+export async function fetchNbaOpenerDay() {
+  if (nbaOpenerCache !== undefined) return nbaOpenerCache;
+  try {
+    const sb = await (await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nba}/scoreboard`)).json();
+    const year = sb?.leagues?.[0]?.season?.year;
+    if (!year) { nbaOpenerCache = null; return null; }
+    const type = await (await fetch(
+      `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/${year}/types/2`
+    )).json();
+    // "2026-10-20T07:00Z" is ESPN's own ET day boundary for that date, so this
+    // is a slice, not a timezone conversion.
+    nbaOpenerCache = type?.startDate ? String(type.startDate).slice(0, 10) : null;
+  } catch {
+    // Not cached as null on failure -- a retry inside the session should be
+    // able to try again rather than replay the failure.
+    return null;
+  }
+  return nbaOpenerCache;
 }
 
 // Pinned to week=1 on purpose -- PropLedger's own fetchNFLWeekSlate derives
@@ -823,16 +920,21 @@ export async function fetchRecentForm(sport, abbr, n) {
         .filter((e) => e.competitions?.[0]?.status?.type?.completed)
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, n);
+      // ESPN answers this route with its *short* NBA abbreviations even when
+      // asked by the long one, so a raw `=== abbr` comparison finds nobody for
+      // the six teams that differ -- and `mine` being undefined renders every
+      // row as an 0-0 loss rather than as an error. Normalised on both sides.
+      const norm = (a) => (sport === "nba" && a ? nbaAbbr(a) : a);
       rows = finals.map((e) => {
         const comp = e.competitions[0];
-        const mine = comp.competitors.find((c) => c.team?.abbreviation === abbr);
-        const theirs = comp.competitors.find((c) => c.team?.abbreviation !== abbr);
+        const mine = comp.competitors.find((c) => norm(c.team?.abbreviation) === abbr);
+        const theirs = comp.competitors.find((c) => norm(c.team?.abbreviation) !== abbr);
         const d = new Date(e.date);
         const us = Number(mine?.score?.value ?? mine?.score ?? 0);
         const them = Number(theirs?.score?.value ?? theirs?.score ?? 0);
         return {
           date: `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`,
-          opp: theirs?.team?.abbreviation || "",
+          opp: norm(theirs?.team?.abbreviation) || "",
           home: mine?.homeAway === "home",
           us,
           them,

@@ -3,7 +3,8 @@ import MatchupPage from "./MatchupPage.jsx";
 import GamecastPage from "./GamecastPage.jsx";
 import {
   SPORTS, teamLogo, dayKey, dayLabel, timeLabel, buildDateTabs,
-  fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate,
+  fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate, fetchNbaSlate, fetchNbaOpenerDay,
+  MONTH_SHORT,
   GAME_STATUS, statusSortKey, isActiveStatus, opensGamecast,
 } from "./lib/gamesData.js";
 
@@ -25,6 +26,17 @@ const LEAGUE_MARK = {
   mlb: "https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png",
   wnba: "https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png",
   nfl: "https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png",
+  nba: "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png",
+};
+
+// The day-slate sports: one fetch per date, same shape, differing only in
+// endpoint. NFL is absent because it is a week competition and loads its whole
+// slate at once. A lookup rather than the chain of ternaries this replaced --
+// there were three of them, and adding a fourth sport meant finding all three.
+const DAY_SLATE = {
+  mlb: fetchMlbSlate,
+  wnba: fetchWnbaSlate,
+  nba: fetchNbaSlate,
 };
 
 function useIsNarrow(px) {
@@ -407,16 +419,52 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   const [loadError, setLoadError] = useState(null);
   const pollRef = useRef(null);
 
+  // Opening night, when the NBA season has not started yet. Null the rest of
+  // the year, and null for every other sport.
+  //
+  // This is the offseason problem the prop feed also has, answered differently
+  // because the page is different: the feed researches props and can honestly
+  // lead with a slate two months out, while this page answers "what is on now"
+  // and must not put "no games today" and a full card on the same screen. So
+  // the opener becomes an extra date *tab* -- labelled with its own date, next
+  // to a Today tab that still says nothing is on -- rather than a substitution.
+  const [nbaOpenerKey, setNbaOpenerKey] = useState(null);
+  useEffect(() => {
+    if (sport !== "nba") { setNbaOpenerKey(null); return undefined; }
+    let cancelled = false;
+    fetchNbaOpenerDay().then((day) => {
+      if (cancelled || !day) return;
+      // Only ahead of us. Mid-season this resolves to a date already played,
+      // and a tab pointing back at October would be worse than no tab.
+      if (day > dayKey(new Date())) setNbaOpenerKey(day);
+    });
+    return () => { cancelled = true; };
+  }, [sport]);
+
   // `.games` -- the slate fetchers answer { games, unreadable }, and this
   // builds the NFL date tabs from the kickoff days its games actually contain.
-  const tabs = useMemo(() => buildDateTabs(sport, nflWeek?.games), [sport, nflWeek]);
+  const tabs = useMemo(() => {
+    const base = buildDateTabs(sport, nflWeek?.games);
+    if (!nbaOpenerKey || base.some((t) => t.key === nbaOpenerKey)) return base;
+    const d = new Date(`${nbaOpenerKey}T12:00:00`);
+    return [...base, {
+      key: nbaOpenerKey,
+      label: `${MONTH_SHORT[d.getMonth()]} ${String(d.getDate()).padStart(2, "0")}`,
+      sub: "Opening night",
+    }];
+  }, [sport, nflWeek, nbaOpenerKey]);
 
   // Deriving the active key rather than storing it means switching sports
   // can't strand a selection on a date tab the new sport doesn't have.
   const activeKey = useMemo(() => {
     if (pickedKey && tabs.some((t) => t.key === pickedKey)) return pickedKey;
-    return sport === "nfl" ? tabs[0]?.key : dayKey(new Date());
-  }, [pickedKey, tabs, sport]);
+    if (sport === "nfl") return tabs[0]?.key;
+    // Offseason: open on the date that has games rather than on an empty
+    // today. The tab is labelled with its own date, so this reads as a
+    // selection the reader can see and change, not as a claim about today.
+    if (nbaOpenerKey) return nbaOpenerKey;
+    return dayKey(new Date());
+  }, [pickedKey, tabs, sport, nbaOpenerKey]);
 
   // Per-day game counts for the date tabs (card 22's "Sun 16 / 12 GAMES").
   // NFL's whole Week 1 is already loaded in `nflWeek`, so its counts are a
@@ -441,7 +489,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     if (sport === "nfl") return undefined;
     let cancelled = false;
     setLiveTabCounts({});
-    const fetcher = sport === "mlb" ? fetchMlbSlate : fetchWnbaSlate;
+    const fetcher = DAY_SLATE[sport];
     tabs.forEach((t) => {
       fetcher(t.key).then((res) => {
         if (cancelled) return;
@@ -473,7 +521,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     }
     if (!key) return Promise.resolve(null);
     if (!silent) { setDayGames(null); setLoadError(null); }
-    const load = s === "mlb" ? fetchMlbSlate(key, opts) : fetchWnbaSlate(key, opts);
+    const load = DAY_SLATE[s](key, opts);
     return load.then((res) => {
       if (res) setDayGames(res);
       else if (!silent) setLoadError(key);
@@ -502,7 +550,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     let cancelled = false;
     setDayGames(null);
     setLoadError(null);
-    const load = sport === "mlb" ? fetchMlbSlate(activeKey) : fetchWnbaSlate(activeKey);
+    const load = DAY_SLATE[sport](activeKey);
     load.then((res) => {
       if (cancelled) return;
       if (res) setDayGames(res);
@@ -595,6 +643,10 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
 
   const subtitle = useMemo(() => {
     if (sport === "nfl") return "NFL Week 1";
+    if (nbaOpenerKey && activeKey === nbaOpenerKey) {
+      const d = new Date(`${activeKey}T12:00:00`);
+      return `Opening night · ${d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}`;
+    }
     const d = activeKey ? new Date(`${activeKey}T12:00:00`) : new Date();
     return d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   }, [sport, activeKey]);

@@ -20690,9 +20690,9 @@ function buildNewsInjuryWire(pool, affectsByPlayer, watchingKeys) {
 // code the way mlbStatus.js did, PropLedger just hands these down as
 // callback props, the same pattern goToProp/goToGameProps already use.
 //
-// Only mlb/wnba/nfl are wired: gamesData.js's live slate never lists NBA
-// (see SPORTS in lib/gamesData.js), so a real NBA game never reaches
-// MatchupPage or GamesPage in the first place.
+// All four sports are wired. NBA joined once its rosters and game logs became
+// real -- before that a "notable prop" for an NBA game would have been a
+// seeded random number presented as a scouting read on a real matchup.
 
 const NFL_DEFAULT_MARKET_BY_POS = { QB: "passYds", RB: "rushYds", WR: "rec", TE: "rec", K: "fgm" };
 
@@ -20761,6 +20761,17 @@ async function getTopPropsForMatchup(sport, awayAbbr, homeAbbr, { limit = 4 } = 
     }).filter(Boolean);
     return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
   }
+  if (sport === "nba") {
+    // Sliced per team for the same reason MLB is: an unsliced combined list
+    // lets one deep roster crowd the other team out before ranking runs.
+    const players = [...nbaSortByMinutes(nbaRosterFor(awayAbbr)).slice(0, 8), ...nbaSortByMinutes(nbaRosterFor(homeAbbr)).slice(0, 8)];
+    const reads = players.map((p) => playerPropRead({
+      sport, player: p, market: "pts", marketLabel: "Points",
+      games: getNBAGames(p, ALL_NBA_PLAYERS.indexOf(p)) || [],
+      statValue: (g) => statValue(g, "pts"),
+    })).filter(Boolean);
+    return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
+  }
   return [];
 }
 
@@ -20781,6 +20792,15 @@ function getPropsCountForGame(sport, awayAbbr, homeAbbr) {
   if (sport === "nfl") {
     const players = [...(NFL_TEAM_ROSTERS[awayAbbr]?.players || []), ...(NFL_TEAM_ROSTERS[homeAbbr]?.players || [])];
     return players.reduce((sum, p) => sum + NFL_MARKETS.filter((m) => m.pos.includes(p.pos)).length, 0);
+  }
+  if (sport === "nba") {
+    // Only players who actually have a game log. Unlike the other three this
+    // is a live 30-team roster, so counting everyone on it would promise props
+    // for two-way players whose logs the feed drops -- a count that overstates
+    // by a third is worse than one that is a beat slower to settle.
+    const players = [...nbaRosterFor(awayAbbr), ...nbaRosterFor(homeAbbr)]
+      .filter((p) => nbaPlayerHasData(p, ALL_NBA_PLAYERS.indexOf(p)));
+    return players.length * MARKETS.length;
   }
   return 0;
 }
