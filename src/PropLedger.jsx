@@ -283,7 +283,10 @@ const HEAT_PLAYERS = [
   { id: "thardaway", name: "Tim Hardaway Jr.", team: "MIA", pos: "SG", espnId: "2528210", nbaId: "203501",
     base: { pts: 15, oreb: 0.4, dreb: 2.6, ast: 1.8, stl: 0.7, blk: 0.2, fg3m: 2.8, fg3a: 7.0, ftm: 1.8, fta: 2.1, tov: 1.1 },
     var:  { pts: 5,   oreb: 0.4, dreb: 1.2, ast: 0.9, stl: 0.5, blk: 0.2, fg3m: 1.5, fg3a: 2.1, ftm: 1.1, fta: 1.3, tov: 0.7 } },
-  { id: "wiggins", name: "Andrew Wiggins", team: "MIA", pos: "SF", espnId: "3064514", nbaId: "203952",
+  // espnId was 3064514, which is Julius Randle -- Wiggins' page showed
+  // Randle's face. Verified against ESPN's athlete endpoint, along with every
+  // other espnId in the NBA, WNBA and NFL pools; this was the only one wrong.
+  { id: "wiggins", name: "Andrew Wiggins", team: "MIA", pos: "SF", espnId: "3059319", nbaId: "203952",
     base: { pts: 15, oreb: 0.6, dreb: 3.6, ast: 2.0, stl: 0.9, blk: 0.5, fg3m: 1.6, fg3a: 4.2, ftm: 2.0, fta: 2.4, tov: 1.2 },
     var:  { pts: 5,   oreb: 0.5, dreb: 1.5, ast: 1.1, stl: 0.6, blk: 0.4, fg3m: 1.0, fg3a: 1.6, ftm: 1.2, fta: 1.4, tov: 0.7 } },
   { id: "giannis", name: "Giannis Antetokounmpo", team: "MIA", pos: "PF", espnId: "3032977", nbaId: "203507",
@@ -14275,30 +14278,97 @@ function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
 // The row's last ten games as bars, oldest to newest, with the prop line
 // drawn across them as a dashed rule.
 //
-// Bar height is the game's **actual stat value** on one linear pixel scale
-// shared with the line, not its distance from the line. That's the fix the
-// redesign handoff calls for, and it's why the dashed rule can sit at the
-// line's true position: bars and line are on the same axis, so a 3-hit game
-// is visibly three times a 1-hit game and the line lands where it belongs
-// for a 0.5 hits prop and a 5.5 strikeouts prop alike. (The previous
-// margin-scaled version could not draw a line at all -- "distance from the
-// line" has no position *for* the line.)
+// ---- The axis ----
+//
+// **Windowed, not grounded at zero.** The axis brackets the range the games
+// and the line actually occupy -- `lo = min(values, line)`, `hi = max(values,
+// line)` -- padded 18% on each side, and everything is drawn on a pedestal so
+// the shortest bar is still 8px of visible bar rather than a sliver.
+//
+// This is the third scaling this component has had, and the reasoning behind
+// each replacement is worth keeping so none of them gets reinstated by
+// accident:
+//
+//   1. Height as *margin from the line*, floored at 30%. Compressed both
+//      directions to magnitude, so a 12-catch game and a 0-catch game could
+//      render at similar heights on opposite colours -- and it could not draw
+//      a line at all, because "distance from the line" has no position *for*
+//      the line.
+//   2. Height as the raw stat value from a zero baseline. Correct in the
+//      small-number markets it was checked against (hits, strikeouts, points)
+//      and badly wrong in the large ones: on a 257.5 passing-yards prop every
+//      game sits between 240 and 280, so ten bars all landed within a few
+//      pixels of each other and the graph said nothing. Zero-basing spends
+//      the whole plot on empty axis nobody's games occupy.
+//   3. This one. The trade is real and worth stating: bar height is no longer
+//      proportional to the stat, so a 3-hit game is not visibly three times a
+//      1-hit game. What it buys is that *margin over and under the line* --
+//      the thing the graph exists to show -- stays legible whether the line
+//      is 0.5 hits or 257.5 passing yards. Alex chose this trade knowingly on
+//      2026-08-21; the handoff's own note is "a zero-based axis buries the
+//      variation".
+//
+// Because the axis is windowed, the bars alone can't be read as quantities --
+// which is why every row still prints its counts underneath and the per-game
+// values stay in the hover popover.
+//
+// ---- The drag step ----
+//
+// `step` widens with the magnitude of the market: 0.5 under 25, 1 under 100,
+// 5 at 100 and above. Half-yard increments on a passing-yards line meant a
+// forty-step drag to ask a question worth asking.
+//
+// Steps are anchored on the *market* line rather than on 0.5, so the posted
+// line is always on the grid and a small drag can return to it exactly. (The
+// mock anchors on 0.5, which for a 257.5 line puts the nearest rungs at 255.5
+// and 260.5 -- the posted number itself unreachable without a reset.)
 //
 // Binary markets have no magnitude to scale, so their bars stay full height
 // and no line is drawn.
 const FORM_PLOT_H = 58;
+// Floor under every bar. A zero-value game has to remain a visible mark: an
+// absent bar reads as missing data, which is the one thing it must never say.
+const FORM_PEDESTAL = 8;
+
 function feedFormScale(recent, line, isBinary) {
-  if (isBinary) return { scaleMax: 1, unit: FORM_PLOT_H };
-  const maxVal = recent.length ? Math.max(...recent.map((g) => g.v)) : 0;
-  const scaleMax = Math.max(maxVal, Math.ceil(line + 1), 1);
-  return { scaleMax, unit: FORM_PLOT_H / scaleMax };
+  const plot = FORM_PLOT_H - FORM_PEDESTAL;
+  if (isBinary) {
+    return { unit: plot, y: () => FORM_PLOT_H, step: 0.5, dragMax: 1, axisMin: 0, span: 1 };
+  }
+  const vals = (recent || []).map((g) => g.v);
+  // `line` is included in both bounds on purpose: a line outside the range of
+  // every game still has to be drawable, and its rule has to land inside the
+  // plot rather than clipped against an edge.
+  const lo0 = Math.min(line, ...vals);
+  const hi0 = Math.max(line, ...vals);
+  // The 0.6 floor keeps a flat row -- ten identical values, or a single game
+  // -- from collapsing to a zero-width span and dividing by nothing.
+  const pad = Math.max((hi0 - lo0) * 0.18, 0.6);
+  const axisMin = lo0 - pad;
+  const span = (hi0 + pad) - axisMin;
+  // Whole numbers only -- a deliberate departure from the mock, which uses
+  // 0.5 under 25. Every line this app posts is an X.5 and steps are taken off
+  // that line, so a 0.5 step would put half the rungs on whole numbers:
+  // 2.5 -> 3.0 -> 3.5 -> 4.0. A whole-number line can push, which is the whole
+  // reason the half-value rule exists -- and the mock states that rule itself,
+  // a few lines above its own step table. 1 keeps 0.5 -> 1.5 -> 2.5; 5 keeps
+  // 257.5 -> 262.5.
+  const step = hi0 >= 100 ? 5 : 1;
+  return {
+    axisMin, span, step,
+    unit: plot / span,
+    y: (v) => FORM_PEDESTAL + Math.round(((v - axisMin) / span) * plot),
+    // One step of headroom above the best game, so the reader can ask "what
+    // if it were higher than he's ever gone" and see every bar go red.
+    dragMax: (vals.length ? Math.max(...vals) : line) + step,
+  };
 }
 
 function FeedFormStrip({
   // 60px bar row, 5px gaps, 54px right gutter for the line tag -- the
-  // handoff's "full-size treatment". The *scale* still divides FORM_PLOT_H
-  // (58), which is the figure the spec's arithmetic uses, so the tallest bar
-  // clears the top of the row by a hair instead of touching it.
+  // handoff's "full-size treatment". The axis itself is plotted over
+  // FORM_PLOT_H (58), the figure the spec's arithmetic uses, so the tallest
+  // bar clears the top of the row by a hair instead of touching it.
   r, direction, streak = 0, height = 60, gap = 5,
   line, onDragLine, onResetLine, adjusted,
 }) {
@@ -14308,7 +14378,7 @@ function FeedFormStrip({
   // posted. Falling back to r.line keeps every non-draggable caller working
   // unchanged.
   const lineVal = line == null ? r.line : line;
-  const { scaleMax, unit } = feedFormScale(recent, lineVal, r.isBinary);
+  const { y: barY } = feedFormScale(recent, lineVal, r.isBinary);
 
   const hits = recent.map((g) => feedIsHit(g.v, lineVal, r.isBinary, direction));
   const hitCount = hits.filter(Boolean).length;
@@ -14326,7 +14396,10 @@ function FeedFormStrip({
   const runColor = shownRunHit ? "var(--pos)" : "var(--neg)";
 
   const draggable = !!onDragLine && !r.isBinary;
-  const lineY = Math.round(lineVal * unit);
+  // The rule sits at the line's own position on the same windowed axis the
+  // bars are drawn on, so "clears the line" is literally "taller than the
+  // dashes" at every market size.
+  const lineY = barY(lineVal);
 
   return (
     <div style={{ width: "100%" }}>
@@ -14340,7 +14413,7 @@ function FeedFormStrip({
                 flex: 1,
                 height: r.isBinary
                   ? Math.max(4, Math.round((hits[i] ? 1 : 0.35) * height))
-                  : Math.max(4, Math.round(g.v * unit)),
+                  : barY(g.v),
                 borderRadius: "2px 2px 0 0",
                 boxSizing: "border-box",
                 background: hits[i] ? "var(--pos)" : "transparent",
@@ -14753,15 +14826,26 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     e.preventDefault();
     e.stopPropagation();
     const recent = r.recent || [];
-    const { scaleMax, unit } = feedFormScale(recent, r.line, r.isBinary);
+    // Measured against the *market* line, not the live one, so the axis and
+    // the step don't shift under the handle mid-drag as the value moves.
+    const { unit, step, dragMax } = feedFormScale(recent, r.line, r.isBinary);
     const startY = e.clientY;
     const startVal = lineVal;
+    // Both limits are expressed as a whole number of steps off the market
+    // line, and the clamp is applied to *that* rather than to the value.
+    // Clamping the value directly is what let the handle stop on 288.0 at the
+    // top of a passing-yards axis -- a whole-number line, which this app never
+    // posts because one can push, and which the half-value snapping exists
+    // specifically to prevent.
+    const maxSteps = Math.floor((dragMax - r.line) / step);
+    const minSteps = Math.ceil((0.25 - r.line) / step);
     const move = (ev) => {
       const raw = startVal + (startY - ev.clientY) / unit;
-      // Half-values only: a whole-number line can push, which this app never
-      // posts. Clamped inside the drawn axis so the handle can't leave it.
-      const snapped = Math.max(0.5, Math.min(scaleMax - 0.5, Math.round(raw + 0.5) - 0.5));
-      setDragLine(snapped);
+      // Snapped to whole steps *off the market line*, which keeps every rung a
+      // half-value and keeps the posted number itself on the grid, so a small
+      // drag can land back on it exactly.
+      const steps = Math.min(maxSteps, Math.max(minSteps, Math.round((raw - r.line) / step)));
+      setDragLine(r.line + steps * step);
     };
     const up = () => {
       window.removeEventListener("mousemove", move);
