@@ -51,6 +51,6 @@ sat on a feature branch while the shared link kept serving stale code from `mast
    as a visible state, never as an absent row.
 
 Naming trap behind rule 2: the CSS variable `--amber` is **not** amber. It is the
-user's accent colour (`--accent-color`, default blue `#2f8cf5`), re-tinted from the
+user's accent colour (`--accent-color`, default Lapis `#3b5bdb`), re-tinted from the
 Settings colour wheel. Availability colours must be literal hexes or their own tokens
 (`--status-*`), never `--amber`/`--accent`, or health reads as the accent.

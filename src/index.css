@@ -69,8 +69,10 @@
      this falls through to the tuned blue below. Everything accent-
      coloured in the app reads --amber, so overriding --accent-color
      re-tints the whole UI in one place; --amber-dim/-glow are mixed
-     from it rather than hardcoded rgba() so they follow any hue. */
-  --amber: var(--accent-color, #2f8cf5);
+     from it rather than hardcoded rgba() so they follow any hue.
+     #3b5bdb is Lapis, the redesign's new default (card 647) -- also
+     the three-bar mark's colour, see item #15 in docs/REDESIGN_PLAN.md. */
+  --amber: var(--accent-color, #3b5bdb);
   --amber-dim: color-mix(in srgb, var(--amber) 14%, transparent);
   --amber-glow: color-mix(in srgb, var(--amber) 28%, transparent);
   --amber-ring: color-mix(in srgb, var(--amber) 35%, transparent);
@@ -153,10 +155,12 @@
   --text: #171a20;
   --text-2: #464f5c;
   --dim: #5b6472;
-  /* Same accent wiring as the dark block, but falling back to a
-     deeper blue -- dark mode's #2f8cf5 washes out against white
-     panels. A user-picked --accent-color overrides both themes. */
-  --amber: var(--accent-color, #1a68e0);
+  /* Same accent wiring as the dark block. Lapis (#3b5bdb) is dark
+     enough to read on white panels unlike the old fallback, so unlike
+     that one this needs no separate deeper tuning per theme -- both
+     themes fall back to the same hex. A user-picked --accent-color
+     overrides both. */
+  --amber: var(--accent-color, #3b5bdb);
   --amber-dim: color-mix(in srgb, var(--amber) 10%, transparent);
   --amber-glow: color-mix(in srgb, var(--amber) 22%, transparent);
   --amber-ring: color-mix(in srgb, var(--amber) 28%, transparent);

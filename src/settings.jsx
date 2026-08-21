@@ -240,9 +240,7 @@ export function SettingsProvider({ children }) {
   // --accent-color drives --amber (and everything derived from it) through a
   // CSS fallback. The property is only ever *set* once the user has actually
   // picked a colour; until then it stays unset so `var(--accent-color, ...)`
-  // falls through to each theme's own tuned blue. Those differ deliberately:
-  // dark mode's #2f8cf5 is too light to read on light mode's near-white
-  // panels.
+  // falls through to the default Lapis in index.css, same in both themes.
   const { accentColor, uiScale, reduceMotion } = settings.display;
   useEffect(() => {
     const root = document.documentElement;

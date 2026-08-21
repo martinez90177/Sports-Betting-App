@@ -110,30 +110,43 @@ function Field({ label, hint, children }) {
   );
 }
 
-// The segmented pill used for every either/or in here. Built on the existing
-// .chip class so it picks up the accent and both themes for free.
+// The segmented control used for every either/or in here. Bordered
+// rectangles butted together (card 647's Theme control) rather than the
+// rounded, spaced-out .chip look -- one shared primitive so Theme, Odds
+// format, Display size and the Betting toggles all read as one family of
+// control instead of two competing styles in the same dialog.
 function Segmented({ options, value, onChange, ariaLabel }) {
   return (
-    <div role="radiogroup" aria-label={ariaLabel} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      {options.map((o) => (
-        <div
-          key={o.id}
-          role="radio"
-          aria-checked={value === o.id}
-          tabIndex={0}
-          onClick={() => onChange(o.id)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onChange(o.id);
-            }
-          }}
-          className={`chip${value === o.id ? " active" : ""}`}
-          style={{ flex: "1 1 0", minWidth: 76, textAlign: "center", cursor: "pointer" }}
-        >
-          {o.label}
-        </div>
-      ))}
+    <div role="radiogroup" aria-label={ariaLabel} style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+      {options.map((o) => {
+        const active = value === o.id;
+        return (
+          <div
+            key={o.id}
+            role="radio"
+            aria-checked={active}
+            tabIndex={0}
+            onClick={() => onChange(o.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onChange(o.id);
+              }
+            }}
+            style={{
+              flex: "1 1 0", minWidth: 76, textAlign: "center", cursor: "pointer",
+              padding: "10px 16px", fontSize: 13.5,
+              border: active ? "1px solid var(--amber)" : "1px solid var(--line)",
+              background: active ? "var(--amber)" : "transparent",
+              color: active ? "var(--accent-on)" : "var(--dim)",
+              fontWeight: active ? 600 : 400,
+              transition: "background-color .15s ease, border-color .15s ease, color .15s ease",
+            }}
+          >
+            {o.label}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -205,7 +218,39 @@ function MoneyInput({ value, onChange, placeholder, prefix = "$" }) {
 
 // ---------- sections ----------
 
-function DisplaySection({ settings }) {
+// The three example chips under "What the accent touches" (card 647). Fixed
+// colors, not accent-driven -- the whole point of the block is showing that
+// cleared/short stay green/red at every accent, so CLEARED and SHORT must
+// render in --pos/--neg regardless of which hue ACCENT is currently sitting
+// at. #08131c is the same dark ink the app already uses for text on a solid
+// accent fill by default (see ACCENT_ON_DARK in settings.jsx) -- reused
+// literally here since it's paired with --pos, a fixed color, not the accent.
+function AccentTouchesExample() {
+  return (
+    <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+      <span className="pp-mono" style={{
+        fontSize: 11, letterSpacing: "0.06em", color: "#08131c",
+        background: "var(--pos)", padding: "4px 9px",
+      }}>
+        CLEARED
+      </span>
+      <span className="pp-mono" style={{
+        fontSize: 11, letterSpacing: "0.06em", color: "var(--neg)",
+        border: "1.5px solid var(--neg)", padding: "3px 9px",
+      }}>
+        SHORT
+      </span>
+      <span className="pp-mono" style={{
+        fontSize: 11, letterSpacing: "0.06em", color: "var(--accent-on)",
+        background: "var(--amber)", padding: "4px 9px",
+      }}>
+        ACCENT
+      </span>
+    </div>
+  );
+}
+
+function DisplaySection({ settings, isNarrow }) {
   const { theme, accentColor, oddsFormat, uiScale, timeZone } = settings.display;
   const set = (k, v) => settings.set("display", k, v);
 
@@ -215,59 +260,89 @@ function DisplaySection({ settings }) {
   // fractional prices contain slashes ("3/2 / 5/9" reads as nonsense).
   const sampleOdds = `${formatOdds(150, oddsFormat)} and ${formatOdds(-180, oddsFormat)}`;
 
-  return (
-    <>
+  const left = (
+    <div>
       <Field label="Theme" hint="Auto follows your device's light/dark setting as it changes.">
         <Segmented options={THEMES} value={theme} onChange={(v) => set("theme", v)} ariaLabel="Theme" />
       </Field>
 
-      <Field label="Odds format" hint={`Applied everywhere odds appear. Currently showing ${sampleOdds}.`}>
-        <Segmented options={ODDS_FORMATS} value={oddsFormat} onChange={(v) => set("oddsFormat", v)} ariaLabel="Odds format" />
-      </Field>
-
-      <Field label="Display size" hint="Scales the whole interface, not just text.">
-        <Segmented options={UI_SCALE} value={uiScale} onChange={(v) => set("uiScale", v)} ariaLabel="Display size" />
-      </Field>
-
-      <Field label="Time zone" hint="Game times are shown in this zone.">
-        <select className="select" value={timeZone} onChange={(e) => set("timeZone", e.target.value)} style={{ width: "100%" }}>
-          {TIME_ZONES.map((z) => (
-            <option key={z.id} value={z.id}>{z.label}</option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Motion">
+      <div style={{ borderTop: "1px solid var(--line)", paddingTop: 22, marginBottom: 22 }}>
         <Toggle
           checked={settings.reduceMotion}
           onChange={(v) => set("reduceMotion", v)}
           label="Reduce motion"
           hint="Turns off transitions and animations. Starts from your device setting."
         />
-      </Field>
+      </div>
 
-      <Field label="Accent color" hint="Used for active tabs, buttons, and chart highlights.">
-        <React.Suspense fallback={<div style={{ minHeight: 180 }} />}>
-          <ColorWheel value={accentColor} onChange={(v) => set("accentColor", v)} />
-        </React.Suspense>
-        {/* Passing null clears --accent-color entirely rather than setting it
-            back to the blue hex -- that's what lets each theme fall back to
-            its own tuned default again (see SettingsProvider). */}
-        {accentColor && (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => set("accentColor", null)}
-            onKeyDown={(e) => { if (e.key === "Enter") set("accentColor", null); }}
-            style={{
-              marginTop: 12, textAlign: "center", fontSize: 11.5,
-              color: "var(--dim)", cursor: "pointer", textDecoration: "underline",
-            }}
-          >
-            Reset to default
-          </div>
-        )}
-      </Field>
+      <div style={{ borderTop: "1px solid var(--line)", paddingTop: 22 }}>
+        <SectionTitle>What the accent touches</SectionTitle>
+        <div style={{ fontSize: 13, color: "var(--text-2, var(--dim))", lineHeight: 1.65 }}>
+          Active tabs, buttons, links and the wordmark. It never colours a hit
+          rate — cleared and missed stay green and red at every accent, so
+          the data reads the same whichever colour you pick.
+        </div>
+        <AccentTouchesExample />
+      </div>
+    </div>
+  );
+
+  const right = (
+    <div>
+      <SectionTitle>Accent colour</SectionTitle>
+      <React.Suspense fallback={<div style={{ minHeight: 220 }} />}>
+        <ColorWheel value={accentColor} onChange={(v) => set("accentColor", v)} isDefault={!accentColor} />
+      </React.Suspense>
+      {/* Passing null clears --accent-color entirely rather than setting it
+          back to the Lapis hex -- that's what lets a later default change
+          (like this one) reach existing users instead of freezing everyone
+          onto whatever hex happened to be default when they first opened
+          Settings (see SettingsProvider). */}
+      {accentColor && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => set("accentColor", null)}
+          onKeyDown={(e) => { if (e.key === "Enter") set("accentColor", null); }}
+          style={{
+            marginTop: 14, textAlign: "center", fontSize: 11.5,
+            color: "var(--dim)", cursor: "pointer", textDecoration: "underline",
+          }}
+        >
+          Reset to default
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: isNarrow ? 0 : 40 }}>
+        {left}
+        {right}
+      </div>
+
+      {/* Below the fold: app-only display controls the design doesn't cover
+          (card 647 shows only Theme, Reduce motion, the accent explainer and
+          the wheel). Kept rather than dropped per the standing rule -- see
+          docs/REDESIGN_PLAN.md's "Context" section. */}
+      <div style={{ borderTop: "1px solid var(--line)", marginTop: 30, paddingTop: 22 }}>
+        <Field label="Odds format" hint={`Applied everywhere odds appear. Currently showing ${sampleOdds}.`}>
+          <Segmented options={ODDS_FORMATS} value={oddsFormat} onChange={(v) => set("oddsFormat", v)} ariaLabel="Odds format" />
+        </Field>
+
+        <Field label="Display size" hint="Scales the whole interface, not just text.">
+          <Segmented options={UI_SCALE} value={uiScale} onChange={(v) => set("uiScale", v)} ariaLabel="Display size" />
+        </Field>
+
+        <Field label="Time zone" hint="Game times are shown in this zone.">
+          <select className="select" value={timeZone} onChange={(e) => set("timeZone", e.target.value)} style={{ width: "100%" }}>
+            {TIME_ZONES.map((z) => (
+              <option key={z.id} value={z.id}>{z.label}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
     </>
   );
 }
@@ -617,8 +692,11 @@ export default function SettingsModal({ open, onClose, isNarrow, sportsbooks }) 
             paddingBottom: "max(12px, env(safe-area-inset-bottom))",
           }
         : {
+            // Wide enough for the 220px rail plus card 647's two-up Display
+            // grid (each column needs room for the 220px accent wheel)
+            // without either column feeling cramped.
             top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-            width: "min(860px, 94vw)", height: "min(640px, 86vh)",
+            width: "min(940px, 94vw)", height: "min(660px, 86vh)",
             borderRadius: 16,
           },
     [isNarrow]
@@ -626,14 +704,13 @@ export default function SettingsModal({ open, onClose, isNarrow, sportsbooks }) 
 
   if (!open) return null;
 
-  const rail = (
-    <div
-      style={
-        isNarrow
-          ? { display: "flex", gap: 6, overflowX: "auto", padding: "10px 14px", borderBottom: "1px solid var(--line)" }
-          : { width: 186, flexShrink: 0, borderRight: "1px solid var(--line)", padding: 12, overflowY: "auto" }
-      }
-    >
+  // Desktop rail matches card 647 exactly: a 220px column with the "Settings"
+  // title at its top and a 3px left border marking the active section,
+  // rather than the narrow rail's icon + pill-background tabs. Mobile keeps
+  // its own horizontal scrolling strip untouched -- that's a phone pattern
+  // the design doesn't cover, not a restyle target here.
+  const rail = isNarrow ? (
+    <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "10px 14px", borderBottom: "1px solid var(--line)" }}>
       {SECTIONS.map((s) => {
         const active = section === s.id;
         return (
@@ -647,8 +724,7 @@ export default function SettingsModal({ open, onClose, isNarrow, sportsbooks }) 
             className="oswald"
             style={{
               display: "flex", alignItems: "center", gap: 9,
-              padding: isNarrow ? "8px 13px" : "9px 11px",
-              marginBottom: isNarrow ? 0 : 3,
+              padding: "8px 13px",
               borderRadius: "var(--r-sm, 4px)",
               whiteSpace: "nowrap", cursor: "pointer",
               fontSize: 13, fontWeight: 600, letterSpacing: "0.02em",
@@ -657,6 +733,31 @@ export default function SettingsModal({ open, onClose, isNarrow, sportsbooks }) 
             }}
           >
             <span aria-hidden="true" style={{ fontSize: 12, opacity: 0.9 }}>{s.icon}</span>
+            {s.label}
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid var(--line)", padding: "22px 0", overflowY: "auto" }}>
+      <div className="pp-display" style={{ fontSize: 22, padding: "0 22px 18px" }}>Settings</div>
+      {SECTIONS.map((s) => {
+        const active = section === s.id;
+        return (
+          <div
+            key={s.id}
+            role="tab"
+            aria-selected={active}
+            tabIndex={0}
+            onClick={() => setSection(s.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSection(s.id); } }}
+            style={{
+              padding: "11px 22px", cursor: "pointer",
+              borderLeft: active ? "3px solid var(--amber)" : "3px solid transparent",
+              fontSize: 14,
+              color: active ? "var(--amber)" : "var(--dim)",
+            }}
+          >
             {s.label}
           </div>
         );
@@ -688,29 +789,50 @@ export default function SettingsModal({ open, onClose, isNarrow, sportsbooks }) 
           ...placement,
         }}
       >
-        <div
-          style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "15px 18px", borderBottom: "1px solid var(--line)", flexShrink: 0,
-          }}
-        >
-          <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>SETTINGS</span>
+        {/* The narrow header carries the title since its rail has no room
+            for one; the wide rail prints "Settings" itself (card 647), so
+            the wide dialog only needs the close control, floated over the
+            two-column row below rather than sharing a redundant title bar. */}
+        {isNarrow && (
           <div
-            onClick={requestClose}
-            role="button"
-            tabIndex={0}
-            aria-label="Close Settings"
-            onKeyDown={(e) => { if (e.key === "Enter") requestClose(); }}
-            style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "15px 18px", borderBottom: "1px solid var(--line)", flexShrink: 0,
+            }}
           >
-            ×
+            <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>SETTINGS</span>
+            <div
+              onClick={requestClose}
+              role="button"
+              tabIndex={0}
+              aria-label="Close Settings"
+              onKeyDown={(e) => { if (e.key === "Enter") requestClose(); }}
+              style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}
+            >
+              ×
+            </div>
           </div>
-        </div>
+        )}
 
-        <div style={{ display: "flex", flexDirection: isNarrow ? "column" : "row", flex: 1, minHeight: 0 }}>
+        <div style={{ display: "flex", flexDirection: isNarrow ? "column" : "row", flex: 1, minHeight: 0, position: "relative" }}>
+          {!isNarrow && (
+            <div
+              onClick={requestClose}
+              role="button"
+              tabIndex={0}
+              aria-label="Close Settings"
+              onKeyDown={(e) => { if (e.key === "Enter") requestClose(); }}
+              style={{
+                position: "absolute", top: 14, right: 16, zIndex: 1,
+                cursor: "pointer", color: "var(--dim)", fontSize: 22, lineHeight: 1,
+              }}
+            >
+              ×
+            </div>
+          )}
           {rail}
-          <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "18px 20px" }}>
-            {section === "display" && <DisplaySection settings={settings} />}
+          <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: isNarrow ? "18px 20px" : "26px 30px 30px" }}>
+            {section === "display" && <DisplaySection settings={settings} isNarrow={isNarrow} />}
             {section === "betting" && <BettingSection settings={settings} sportsbooks={sportsbooks} />}
             {section === "account" && <AccountSection />}
             {section === "about" && <AboutSection settings={settings} />}

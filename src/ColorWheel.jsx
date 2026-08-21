@@ -41,16 +41,22 @@ function hexToHsl(hex) {
   return rgbToHsl(...rgb);
 }
 
+// Order and hexes match the redesign handoff's Settings card (647) exactly.
+// Lapis leads the row because it's the new app-wide default accent -- see
+// --amber's fallback in index.css -- so the preset a reset lands on is the
+// same one drawn first here.
 export const ACCENT_PRESETS = [
-  { label: "Blue", hex: "#2f8cf5" },
+  { label: "Lapis", hex: "#3b5bdb" },
+  { label: "Gold", hex: "#c9a24a" },
   { label: "Purple", hex: "#8b5cf6" },
   { label: "Green", hex: "#22c55e" },
   { label: "Red", hex: "#ef4444" },
-  { label: "Amber", hex: "#f5a623" },
   { label: "Pink", hex: "#ec4899" },
 ];
 
-const WHEEL_SIZE = 200;
+const PRESET_BY_HEX = new Map(ACCENT_PRESETS.map((p) => [p.hex.toLowerCase(), p.label]));
+
+const WHEEL_SIZE = 220;
 
 function drawWheel(canvas) {
   const size = WHEEL_SIZE;
@@ -91,7 +97,7 @@ function drawWheel(canvas) {
 // canvas paint to a single one-time draw (see drawWheel) -- the thumb and
 // slider are separate absolutely-positioned elements so dragging only ever
 // updates cheap inline styles, never repaints the wheel itself.
-export default function ColorWheel({ value, onChange }) {
+export default function ColorWheel({ value, onChange, isDefault }) {
   const canvasRef = useRef(null);
   const wheelBoxRef = useRef(null);
   const sliderRef = useRef(null);
@@ -180,11 +186,22 @@ export default function ColorWheel({ value, onChange }) {
         }}
       >
         <canvas ref={canvasRef} style={{ width: WHEEL_SIZE, height: WHEEL_SIZE, borderRadius: "50%", display: "block" }} />
+        {/* Radial wash toward white at the center, layered on top of the
+            per-pixel canvas rather than baked into it -- matches the design's
+            same two-layer technique (card 647) and keeps the canvas paint a
+            one-time cost, see drawWheel. Purely cosmetic: hue/sat picking
+            still reads pointer position, not this layer. */}
+        <div
+          style={{
+            position: "absolute", inset: 0, borderRadius: "50%", pointerEvents: "none",
+            background: "radial-gradient(circle at 50% 50%, #ffffff 0%, rgba(255,255,255,0) 62%)",
+          }}
+        />
         <div
           style={{
             position: "absolute", left: thumbX, top: thumbY, width: 18, height: 18,
             transform: "translate(-50%, -50%)", borderRadius: "50%",
-            background: hslToHex(hue, sat, 50), border: "2px solid #fff",
+            background: hslToHex(hue, sat, 50), border: "3px solid #fff",
             boxShadow: "0 0 0 1px rgba(0,0,0,0.4), 0 1px 4px rgba(0,0,0,0.5)",
             pointerEvents: "none",
           }}
@@ -215,7 +232,7 @@ export default function ColorWheel({ value, onChange }) {
       </div>
 
       {/* Presets */}
-      <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "center" }}>
+      <div style={{ display: "flex", gap: 12, marginTop: 22, justifyContent: "center" }}>
         {ACCENT_PRESETS.map((p) => (
           <div
             key={p.hex}
@@ -233,12 +250,20 @@ export default function ColorWheel({ value, onChange }) {
         ))}
       </div>
 
-      {/* Live preview + hex readout */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 6, background: hex, border: "1px solid var(--line)", flexShrink: 0 }} />
-        <div className="mono" style={{ fontSize: 13, color: "var(--text)", letterSpacing: "0.03em" }}>
+      {/* Live preview + hex readout. The caption names the matched preset,
+          and calls out "the default" only when this is the accent no one
+          has actually chosen yet -- an explicitly picked Lapis reads as just
+          "Lapis", the same as any other preset. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 22, flexWrap: "wrap", justifyContent: "center" }}>
+        <div style={{ width: 30, height: 30, background: hex, border: "1px solid var(--line)", flexShrink: 0 }} />
+        <div className="pp-mono" style={{ fontSize: 15, color: "var(--text)", letterSpacing: "0.04em" }}>
           {hex.toUpperCase()}
         </div>
+        {PRESET_BY_HEX.has(hex.toLowerCase()) && (
+          <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>
+            · {PRESET_BY_HEX.get(hex.toLowerCase()).toUpperCase()}{isDefault ? ", THE DEFAULT" : ""}
+          </div>
+        )}
       </div>
     </div>
   );
