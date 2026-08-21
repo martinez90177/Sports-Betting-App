@@ -1,9 +1,9 @@
-# Handoff: PropPalace — Landing page + Board
+# Handoff: PropPalace — Landing, Board, Prop Feed
 
 ## Overview
 
 PropPalace is a sports-prop **research** tool. It sells no picks; its premise is
-never overstating what the data supports. Two desktop screens are specified here:
+never overstating what the data supports. Three desktop screens are specified here:
 
 1. **Landing page** — the front door. Today the app opens straight into a filter
    rail, which suits the daily user and disorients everyone else. The landing page
@@ -11,13 +11,20 @@ never overstating what the data supports. Two desktop screens are specified here
    hands off to the board.
 2. **The board** (`/games`) — the real working surface behind the landing page's
    primary CTA. Full slate for a date, filter rail, prop rows grouped by game.
+3. **Prop feed** (`/feed`) — a **redesign of an existing shipped screen**, not a
+   new one. The live feed works but looks unfinished next to the other two: control
+   clusters floating centered down the page, and green/red badges on rate cells that
+   collide with the app's color rules. Functionality is preserved; the styling is
+   brought onto the same system, and one new interaction is added (see "Draggable
+   line" below).
 
-A third surface — **player / prop detail** — is implied by the board (clicking a
-prop row) but is NOT designed yet. Do not invent it; ask before building it.
+A fourth surface — **player / prop detail** — is implied by both the board and the
+feed (clicking a row) but is NOT designed yet. Do not invent it; ask before
+building it.
 
 ## About the design files
 
-The two `.dc.html` files in this bundle are **design references authored in HTML**.
+The three `.dc.html` files in this bundle are **design references authored in HTML**.
 They are prototypes showing intended look and behavior — not production code to
 copy. The task is to **recreate them in the target codebase's own environment**
 (React + its existing stylesheet, per the brief) using its established patterns.
@@ -374,6 +381,148 @@ Row click should route to the (undesigned) player/prop detail view.
 
 ---
 
+## Screen 3 — Prop feed (redesign)
+
+**File:** `PropPalace Prop Feed.dc.html`. Width 1280px. This screen already exists
+in the product; the task is to restyle it onto this system and add the draggable
+line. **Every existing function must survive the redesign:** league tabs, slate
+chips, market selection, over/under, games-counted window, main/alt lines,
+Filters and Screens buttons, sortable rate columns, add-to-picks, and the My Picks
+tray.
+
+### What was wrong with the current screen
+
+Three problems drove the redesign — fixing them is the point, so do not
+reintroduce any of them:
+
+1. **Scattered controls.** Sport tabs, game chips, a market dropdown, and four
+   labelled control groups each sat centered on their own row, so the eye
+   zig-zagged down 300px of chrome before reaching data.
+2. **Green/red rate badges.** Every rate cell was a pill tinted green for a high
+   rate and red for a low one. That directly violates the color rules: green and
+   red mean *cleared the line* and *fell short*, nothing else. A green 70% badge is
+   green meaning "good bet."
+3. **A rate could contradict its own sample.** Caption and rate cells were fed by
+   different sources and disagreed on the same 10-game window.
+
+### Structure
+
+**Header** — same nav, `PROP FEED` active. Below it, page title `Prop feed`
+(Bricolage 34px) with the subhead "HIT RATES WITH THE GAMES BEHIND THEM · EVERY ROW
+STATES ITS SAMPLE" in Space Mono `--text-2`, and a search field right-aligned
+(280px, `--surface-1`, 4px radius) for players or teams.
+
+**League tabs** — a real tab strip on a `--line` bottom border: NFL / MLB / NBA /
+WNBA, Space Mono 13px `0.12em` uppercase, active in `--text` over a `2px --accent`
+underline, inactive `--dim`. NBA carries a small `simulated` note in `--dim`.
+
+**Filter card** — one `--surface-1` card, `1px --line`, 6px radius, replacing all
+the floating clusters. Two bands:
+
+- *Slate* band (own `--line` bottom border): a `SLATE` micro-label, then one chip
+  per game — 20px crest slot + matchup + kickoff time — multi-select, selected chips
+  taking a `--surface-2` fill and `--accent` border. An `ALL OF TODAY'S GAMES` link
+  in `--accent-ink` clears the selection.
+- *Controls* band: **Markets** as a full-width multi-select chip row (Hits, Total
+  bases, Runs + RBIs, Strikeouts, Home run, Stolen base, Walks — MLB set; drive
+  from data per league), with an `ALL MARKETS` link to clear. Then three segmented
+  controls sharing one style (4px radius, `1px --line`, active segment solid
+  `--accent` with `--accent-on` text): **Side** (Over/Under), **Games counted**
+  (L5/L10/L20/ALL), **Lines** (Main line only / Show alt lines). `Filters` and
+  `Screens` buttons sit right-aligned as outlined `--text-2` buttons.
+
+Market selection is **multi-select** — this was a single-choice dropdown and was
+explicitly changed. Empty selection = all markets.
+
+**Result bar** — `Showing 9 of 353 props` in Space Mono, an active-filter pill in
+`--accent-ink` outlined `--accent` summarizing the selection (`Hits + Total bases ·
+Over`, collapsing to `3 markets · Over` past two), and the three-item form-graph
+legend right-aligned.
+
+### The table
+
+**Column grid, header and rows:** `34px 262px 250px 88px 80px 1fr`, `gap: 14px`,
+`padding: 16px`. Header strip is `--surface-sunken` with `6px 6px 0 0` radius:
+`(add) / PROPOSITION / FORM · LAST 10 VS. LINE / LINE / ODDS /` then a nested
+`repeat(4, 1fr)` of `L5 / L10 / L20 / SEASON`, each clickable to sort (arrow `↕`,
+active `▾` in `--accent-ink`).
+
+1. **Add** — 30px square, 4px radius, `+` in `--accent-ink` on a `--line` border;
+   picked flips to a solid `--accent` fill with `✓` and increments My Picks.
+2. **Proposition** — 38px circular headshot with the availability dot (none when
+   unknown), then player name in **Bricolage Grotesque 600, 17px** (Archivo 500 was
+   tried and rejected as unattractive here), team in Space Mono `--text-2`, the prop
+   in Space Mono 12.5px uppercase `--text`, and the matchup in 10.5px `--dim`.
+3. **Form** — the big interactive graph, below.
+4. **Line** — the live line value in Space Mono 15px. Beneath it `+0.8 avg` in
+   `--dim`; when the line has been dragged off-market this becomes `market 0.5 ·
+   reset` in `--accent-ink` and clicking it restores the market line.
+5. **Odds** — Space Mono 14px `--text-2`, using a true minus sign (−233).
+6. **Rates** — four equal cells, 4px radius. Each: the percentage in Space Mono
+   15px, a 3px `--line` track with an `--accent` fill at the rate, and the sample
+   (`7 of 10`) beneath in `--dim`. The cell matching the selected *games counted*
+   window gets a `--surface-2` fill and `--line` border; the rest are transparent.
+   **No green/red anywhere in these cells.** A player without enough logged games
+   reads `too few` with an empty track.
+
+**Foot** — `LOAD 24 MORE PROPS` outlined accent button beside the disclaimer:
+"Real 2025 regular-season game logs. Not a live odds feed. Rates under 10 games
+read 'too few', not a percentage."
+
+**My Picks** — fixed bottom-right pill, solid `--accent`, with a white counter
+badge showing the pick count.
+
+### The row form graph — scaling and the draggable line
+
+The feed's graph is the full-size treatment (60px bar row, `gap: 5px`, 54px
+right gutter for the line tag) and it is **quantitatively scaled**, not decorative.
+This took two passes to get right; both failure modes are worth stating:
+
+- ❌ Heights as `offset + value × k` (e.g. `30 + v*10`). A 1-hit and a 3-hit game
+  looked nearly identical and neither related to the line's position.
+- ❌ Hit/miss tested as `value > 0`. Correct only for a 0.5 line; wrong for 5.5.
+
+**Correct model** — one linear pixel scale per row:
+
+```
+scaleMax = max(max(gameValues), ceil(marketLine + 1))
+unit     = 58 / scaleMax                  // px per stat unit
+barHeight(v) = max(round(v * unit), 4)    // 4px floor so a zero game still shows
+lineY        = round(lineValue * unit)    // dashed rule, same scale
+cleared      = v > lineValue
+```
+
+So bar height is the actual stat value, the dashed line sits exactly at the prop
+line on the same axis, and the whole thing works unchanged for a 0.5 hits line or
+a 5.5 strikeouts line.
+
+**Draggable line — the new interaction.** The line tag is a drag handle
+(`cursor: ns-resize`):
+
+- Dragging it vertically moves the line, snapped to **half-values only** (0.5,
+  1.5, 2.5 … — never a whole number, since a whole-number line can push), clamped
+  to `0.5 … scaleMax − 0.5`. Drive it from `mousedown` + window-level `mousemove`/`mouseup`
+  so the drag survives leaving the tag.
+- Every bar **recolors live** against the new line: above it → solid green fill;
+  at or below it → red 1.5px outline, no fill.
+- The form caption and the **L5 and L10 rate cells recompute from the same game
+  log**, so a user can ask "what if this were 1.5?" and watch the hit rate move.
+  (L20 and Season come from a wider log than the graph holds — recompute them
+  server-side against the dragged line rather than leaving them stale.)
+- While off-market, the tag and its dashed rule switch to `--accent-ink` and the
+  Line column reads `market 0.5 · reset`, so an adjusted row is never mistaken for
+  the real number. Double-click the tag, or click that note, to reset.
+- The line value shown on the tag is `toFixed(1)`.
+
+Beneath the bars: the 2px trailing-run rule under the run of same-colored bars,
+then the caption in Space Mono 12px — `8 of 10 · 3 straight` (or `· 3 cold` for a
+miss run), colored green or red to match the run.
+
+**Derive the caption and the L5/L10 cells from the same game-log array.** They
+disagreed in an earlier build, which the content rules forbid outright.
+
+---
+
 ## Interactions & behavior
 
 Implemented in the mocks:
@@ -429,7 +578,8 @@ Derive the rate and the sample from the same query so they can never disagree.
 |---|---|
 | `PropPalace Landing.dc.html` | Landing page design reference |
 | `PropPalace Board.dc.html` | Board page design reference |
+| `PropPalace Prop Feed.dc.html` | Prop feed redesign reference (incl. draggable line) |
 | `image-slot.js` | Prototype-only image drop scaffolding — do not port |
 
-Both HTML files open directly in a browser. Read them for exact values; read this
+All three HTML files open directly in a browser. Read them for exact values; read this
 README for intent and for the rules that the markup alone can't tell you.

@@ -1774,6 +1774,15 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           line={effectiveLine}
           sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
         />
+        {isNarrow && (
+          <PlayerFormVerdict
+            values={values}
+            effectiveLine={effectiveLine}
+            total={values.length}
+            hitRate={hitRate}
+            sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
+          />
+        )}
 
         {/* Playoffs is the one view that can legitimately come back empty --
              say so rather than leaving an axis with no bars under it. */}
@@ -5442,6 +5451,56 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
   );
 }
 
+// Card 3a's mobile-only verdict extras: form squares plus a plain-language
+// "leans over/under" read and a confidence tier. Every one of `values`,
+// `effectiveLine`, `hits`, `total`, `hitRate` and `sampleLabel` is exactly
+// what the MetricRail row directly above this already receives -- no new
+// computation, just a second, simpler restatement of the same verdict for a
+// screen with no room for MetricRail's AVERAGE/LINE/CLEARS IT BY row.
+// Desktop keeps that row as its only verdict readout; this is mobile-only
+// (see each page's `{isNarrow && <PlayerFormVerdict .../>}`).
+function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel }) {
+  if (!total) return null;
+  const leans = hitRate >= 0.5 ? "over" : "under";
+  const confidenceTier = sampleLabel === "STRONG SAMPLE" ? 3 : sampleLabel === "FAIR SAMPLE" ? 2 : 1;
+  const confidenceWord = sampleLabel ? sampleLabel.split(" ")[0] : "THIN";
+  return (
+    <div style={{ padding: "0 16px 20px", textAlign: "center", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: 5, flexWrap: "wrap" }}>
+        {values.map((v, i) => (
+          <span
+            key={i}
+            style={{
+              width: 22, height: 22, boxSizing: "border-box",
+              background: v > effectiveLine ? "var(--pos)" : "transparent",
+              border: v > effectiveLine ? "none" : "1.5px solid var(--neg)",
+            }}
+          />
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 8 }}>oldest to newest · filled cleared the line</div>
+
+      <div style={{ marginTop: 18 }}>
+        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.14em", color: "var(--accent-text, var(--amber))" }}>THE READ</div>
+        <div className="pp-display" style={{ fontSize: 22, marginTop: 6, fontWeight: 600 }}>Leans {leans}</div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 12 }}>
+          {[1, 2, 3].map((i) => (
+            <span key={i} style={{ width: 40, height: 4, background: i <= confidenceTier ? "var(--amber)" : "var(--panel2)" }} />
+          ))}
+        </div>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.1em", color: "var(--dim)", marginTop: 8 }}>CONFIDENCE · {confidenceWord}</div>
+        <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.5, marginTop: 10 }}>
+          {confidenceTier === 1
+            ? `Only ${total} games behind this — a lean, not a lock.`
+            : confidenceTier === 2
+              ? `${total} games is a fair read, not a certainty.`
+              : `${total} games is a strong sample for this market.`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
@@ -6383,6 +6442,15 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           line={effectiveLine}
           sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
         />
+        {isNarrow && (
+          <PlayerFormVerdict
+            values={values}
+            effectiveLine={effectiveLine}
+            total={values.length}
+            hitRate={hitRate}
+            sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
+          />
+        )}
 
         {chartBlock}
 
@@ -8555,6 +8623,15 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           line={effectiveLine}
           sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
         />
+        {isNarrow && (
+          <PlayerFormVerdict
+            values={values}
+            effectiveLine={effectiveLine}
+            total={values.length}
+            hitRate={hitRate}
+            sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
+          />
+        )}
 
         {chartBlock}
 
@@ -12316,6 +12393,15 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
 
       {sampleStatsRow}
       {metricRail}
+      {isNarrow && (
+        <PlayerFormVerdict
+          values={values}
+          effectiveLine={effectiveLine}
+          total={values.length}
+          hitRate={hitRate}
+          sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
+        />
+      )}
 
       {/* Teammate filter summary. The Filters panel is closed by default, so
            without this the only trace of an active With/Without filter is the
@@ -13462,7 +13548,13 @@ const PROP_QUICK_PICKS = {
 // `fill` makes the trigger span its container instead of hugging its label --
 // used by the phone control block, where it shares one line with the Filters
 // button and needs to take whatever space is left over.
-function PropTypePicker({ groups, value, onChange, fill = false }) {
+// Multi-select: any number of markets can be checked at once (combined rows
+// from all of them), or exactly one, the same as before -- both are just
+// different sizes of the same `values` array. Empty means "all props", same
+// meaning "all" used to carry as a string. Picking an item toggles it and
+// keeps the panel open, since checking several is now a normal thing to do
+// in one visit; only the backdrop/Escape/"All Props" close it.
+function PropTypePicker({ groups, values, onChange, fill = false }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const deferredSearch = React.useDeferredValue(search);
@@ -13483,7 +13575,7 @@ function PropTypePicker({ groups, value, onChange, fill = false }) {
   }, [open]);
 
   const allMarkets = useMemo(() => groups.flatMap((g) => g.markets), [groups]);
-  const activeMarket = allMarkets.find((m) => m.id === value);
+  const activeMarkets = allMarkets.filter((m) => values.includes(m.id));
   const q = deferredSearch.trim().toLowerCase();
   const visibleGroups = q
     ? groups
@@ -13495,6 +13587,17 @@ function PropTypePicker({ groups, value, onChange, fill = false }) {
   // list would be a contradiction.
   const showAllOption = !q;
 
+  const toggle = (id) => onChange(values.includes(id) ? values.filter((x) => x !== id) : [...values, id]);
+
+  // Button label: nothing picked -> "All Props" (matches the empty-selection
+  // meaning); one picked -> its own label; several -> joined up to two, then
+  // a count, so the trigger never grows wider than the panel it opens.
+  const buttonLabel = activeMarkets.length === 0
+    ? "All Props"
+    : activeMarkets.length <= 2
+      ? activeMarkets.map((m) => m.label).join(" + ")
+      : `${activeMarkets.length} props`;
+
   return (
     <div ref={panelRef} style={{ position: "relative", display: fill ? "block" : "inline-block" }}>
       <button
@@ -13503,15 +13606,15 @@ function PropTypePicker({ groups, value, onChange, fill = false }) {
         onClick={() => setOpen((v) => !v)}
         style={{
           cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
-          border: `1px solid ${open ? "var(--amber)" : "var(--line)"}`,
+          border: `1px solid ${open || activeMarkets.length ? "var(--amber)" : "var(--line)"}`,
           background: open ? "var(--amber-dim)" : "var(--panel)",
-          color: open ? "var(--amber)" : "var(--text)",
+          color: open || activeMarkets.length ? "var(--amber)" : "var(--text)",
           display: "flex", alignItems: "center", gap: 8,
           ...(fill ? { width: "100%", boxSizing: "border-box", justifyContent: "space-between" } : null),
         }}
       >
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {value === "all" ? "All Props" : activeMarket ? activeMarket.label : "Choose a prop"}
+          {buttonLabel}
         </span>
         <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>▾</span>
       </button>
@@ -13537,11 +13640,11 @@ function PropTypePicker({ groups, value, onChange, fill = false }) {
           {showAllOption && (
             <div
               role="button"
-              onClick={() => { onChange("all"); setOpen(false); }}
+              onClick={() => { onChange([]); setOpen(false); }}
               style={{
                 padding: "9px 12px", cursor: "pointer", fontSize: 13, fontWeight: 700,
-                color: value === "all" ? "var(--amber)" : "var(--text)",
-                background: value === "all" ? "var(--amber-dim)" : "transparent",
+                color: activeMarkets.length === 0 ? "var(--amber)" : "var(--text)",
+                background: activeMarkets.length === 0 ? "var(--amber-dim)" : "transparent",
                 borderBottom: "1px solid var(--line)",
               }}
             >
@@ -13553,20 +13656,26 @@ function PropTypePicker({ groups, value, onChange, fill = false }) {
               <div style={{ padding: "8px 12px 3px", fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 {g.label}
               </div>
-              {g.markets.map((m) => (
-                <div
-                  key={m.id}
-                  role="button"
-                  onClick={() => { onChange(m.id); setOpen(false); setSearch(""); }}
-                  style={{
-                    padding: "8px 12px", cursor: "pointer", fontSize: 13,
-                    color: m.id === value ? "var(--amber)" : "var(--text)",
-                    background: m.id === value ? "var(--amber-dim)" : "transparent",
-                  }}
-                >
-                  {m.label}
-                </div>
-              ))}
+              {g.markets.map((m) => {
+                const checked = values.includes(m.id);
+                return (
+                  <div
+                    key={m.id}
+                    role="button"
+                    aria-pressed={checked}
+                    onClick={() => toggle(m.id)}
+                    style={{
+                      padding: "8px 12px", cursor: "pointer", fontSize: 13,
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                      color: checked ? "var(--amber)" : "var(--text)",
+                      background: checked ? "var(--amber-dim)" : "transparent",
+                    }}
+                  >
+                    {m.label}
+                    {checked && <span className="mono" style={{ fontSize: 12 }}>✓</span>}
+                  </div>
+                );
+              })}
             </div>
           ))}
           {!showAllOption && !visibleGroups.length && (
@@ -14121,76 +14230,119 @@ function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
   );
 }
 
-// The row's last ten games as a strip of slim bars, oldest to newest --
-// Outlier's reference table puts a flat tick under each percentage for the
-// same purpose. This encodes one thing more than a tick does: bar height is
-// the game's distance from the line, normalised against the row's own biggest
-// margin. So "hit 7 of 10" and "hit 7 of 10, but three of them by a mile"
-// stop looking identical, which is exactly what a raw percentage hides.
-// Binary markets have no distance to measure, so their bars are full height.
-function FeedFormStrip({ r, direction, streak = 0, height = 22, barWidth = 4, gap = 2 }) {
+// The row's last ten games as bars, oldest to newest, with the prop line
+// drawn across them as a dashed rule.
+//
+// Bar height is the game's **actual stat value** on one linear pixel scale
+// shared with the line, not its distance from the line. That's the fix the
+// redesign handoff calls for, and it's why the dashed rule can sit at the
+// line's true position: bars and line are on the same axis, so a 3-hit game
+// is visibly three times a 1-hit game and the line lands where it belongs
+// for a 0.5 hits prop and a 5.5 strikeouts prop alike. (The previous
+// margin-scaled version could not draw a line at all -- "distance from the
+// line" has no position *for* the line.)
+//
+// Binary markets have no magnitude to scale, so their bars stay full height
+// and no line is drawn.
+const FORM_PLOT_H = 58;
+function feedFormScale(recent, line, isBinary) {
+  if (isBinary) return { scaleMax: 1, unit: FORM_PLOT_H };
+  const maxVal = recent.length ? Math.max(...recent.map((g) => g.v)) : 0;
+  const scaleMax = Math.max(maxVal, Math.ceil(line + 1), 1);
+  return { scaleMax, unit: FORM_PLOT_H / scaleMax };
+}
+
+function FeedFormStrip({
+  r, direction, streak = 0, height = FORM_PLOT_H, gap = 3,
+  line, onDragLine, onResetLine, adjusted,
+}) {
   const recent = r.recent;
   if (!recent || !recent.length) return null;
-  const margins = recent.map((g) => Math.abs(g.v - r.line));
-  const maxMargin = Math.max(...margins, 1e-6);
+  // `line` is the live (possibly dragged) value; r.line is what the market
+  // posted. Falling back to r.line keeps every non-draggable caller working
+  // unchanged.
+  const lineVal = line == null ? r.line : line;
+  const { scaleMax, unit } = feedFormScale(recent, lineVal, r.isBinary);
 
-  // A streak isn't separate information from this strip -- it *is* the
-  // trailing run of same-colored bars. It used to be restated beside the
-  // player's name as an "H6" pill, which meant a second chip to decode and a
-  // number with no visible connection to the bars it came from. Underlining
-  // the run in place and labelling it in words says the same thing where the
-  // evidence already is. Clamped to the strip's width: the streak is counted
-  // over the full log, so a 14-game run can exceed the ten bars drawn.
-  const runLength = Math.min(Math.abs(streak), recent.length);
-  const showRun = Math.abs(streak) >= 3;
-  const runColor = streak > 0 ? "var(--pos)" : "var(--neg)";
-  const stripWidth = recent.length * barWidth + (recent.length - 1) * gap;
-  const runWidth = runLength * barWidth + Math.max(0, runLength - 1) * gap;
+  const hits = recent.map((g) => feedIsHit(g.v, lineVal, r.isBinary, direction));
+  const hitCount = hits.filter(Boolean).length;
 
-  // Counted straight off the same bars drawn above (not off r[sampleWindow],
-  // which can cover a longer window than the strip actually draws) -- the
-  // rule is counts-first, and this is the one count the strip can state
-  // without reaching outside what's on screen.
-  const hitCount = recent.filter((g) => feedIsHit(g.v, r.line, r.isBinary, direction)).length;
+  // The trailing run is recomputed from these bars rather than taken from
+  // `streak` whenever the line has been dragged -- a streak counted against
+  // the posted line would contradict the bars now on screen.
+  let runLength = 1;
+  for (let i = hits.length - 2; i >= 0 && hits[i] === hits[hits.length - 1]; i--) runLength++;
+  const runHit = hits[hits.length - 1];
+  const useLiveRun = adjusted || streak == null;
+  const shownRun = useLiveRun ? runLength : Math.min(Math.abs(streak), recent.length);
+  const shownRunHit = useLiveRun ? runHit : streak > 0;
+  const showRun = shownRun >= 3;
+  const runColor = shownRunHit ? "var(--pos)" : "var(--neg)";
+
+  const draggable = !!onDragLine && !r.isBinary;
+  const lineY = Math.round(lineVal * unit);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", gap, height }}>
-        {recent.map((g, i) => {
-          const isHit = feedIsHit(g.v, r.line, r.isBinary, direction);
-          // Floor of 30% so a game that only just missed the line is still a
-          // visible bar rather than a hairline that reads as missing data.
-          const frac = r.isBinary ? 1 : 0.3 + 0.7 * (margins[i] / maxMargin);
-          return (
+    <div style={{ width: "100%" }}>
+      <div style={{ position: "relative", paddingRight: draggable ? 46 : 0 }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap, height }}>
+          {recent.map((g, i) => (
             <div
               key={i}
+              title={`${g.opp ? `vs ${g.opp} · ` : ""}${g.v}`}
               style={{
-                width: barWidth,
-                height: Math.max(3, Math.round(height * frac)),
-                borderRadius: 1.5,
-                background: isHit ? "var(--pos)" : "var(--neg)",
-                opacity: 0.45 + 0.55 * ((i + 1) / recent.length),
+                flex: 1,
+                height: r.isBinary
+                  ? Math.max(4, Math.round((hits[i] ? 1 : 0.35) * height))
+                  : Math.max(4, Math.round(g.v * unit)),
+                borderRadius: "2px 2px 0 0",
+                boxSizing: "border-box",
+                background: hits[i] ? "var(--pos)" : "transparent",
+                border: hits[i] ? "none" : "1.5px solid var(--neg)",
               }}
             />
-          );
-        })}
-      </div>
-      {/* Sits under the trailing bars only, right-aligned like the run
-           itself when there is one -- the rule is what ties the words below
-           to the games above, so it has to line up with them exactly. */}
-      {showRun && (
-        <div style={{ width: stripWidth, display: "flex", justifyContent: "flex-end" }}>
-          <div style={{ width: runWidth, height: 2, borderRadius: 1, background: runColor }} />
+          ))}
+          {!r.isBinary && (
+            <span style={{
+              position: "absolute", left: 0, right: draggable ? -46 : 0, bottom: lineY,
+              borderTop: `1.5px dashed ${adjusted ? "var(--amber)" : "var(--text)"}`,
+              pointerEvents: "none",
+            }} />
+          )}
+          {draggable && (
+            <span
+              onMouseDown={onDragLine}
+              onDoubleClick={onResetLine}
+              title="Drag to move the line · double-click to reset"
+              className="mono"
+              style={{
+                position: "absolute", right: -46, bottom: lineY, transform: "translateY(50%)",
+                background: adjusted ? "var(--amber)" : "var(--panel2)",
+                color: adjusted ? "var(--accent-on)" : "var(--text)",
+                border: `1px solid ${adjusted ? "var(--amber)" : "var(--line-strong)"}`,
+                borderRadius: 3, padding: "3px 6px", fontSize: 10.5,
+                fontVariantNumeric: "tabular-nums", cursor: "ns-resize", userSelect: "none",
+              }}
+            >
+              {Number(lineVal).toFixed(1)}
+            </span>
+          )}
         </div>
-      )}
+        {/* The run rule sits under the trailing bars only, so the words
+             below tie to the games above. Laid out on the same flex track
+             as the bars so it lines up exactly at any column width. */}
+        {showRun && (
+          <div style={{ display: "flex", gap, marginTop: 5 }}>
+            <span style={{ flex: recent.length - shownRun }} />
+            <span style={{ flex: shownRun, height: 2, borderRadius: 1, background: runColor }} />
+          </div>
+        )}
+      </div>
       {/* Counts first: "N of M" is the sample the bars above actually draw,
-           shown every time (not gated on a streak) so a hit rate is never on
-           screen without its own sample size next to it. "K straight" rides
-           along on the same line when the trailing run is long enough to be
-           worth naming -- it needs no key of its own; the green/red is
-           already taught by the bars directly above it. */}
-      <div className="mono" style={{ fontSize: 9, fontWeight: 700, color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", lineHeight: 1 }}>
-        {hitCount} of {recent.length}{showRun ? ` · ${Math.abs(streak)} straight` : ""}
+           shown every time so a hit rate is never on screen without its own
+           sample size next to it. */}
+      <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", marginTop: 7, fontVariantNumeric: "tabular-nums" }}>
+        {hitCount} of {recent.length}{showRun ? ` · ${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
       </div>
     </div>
   );
@@ -14205,8 +14357,11 @@ function FeedFormStrip({ r, direction, streak = 0, height = 22, barWidth = 4, ga
 // positioned popover would be clipped by the wrapper at exactly the widths
 // where the table layout is most cramped. (Above 900px the wrapper switches
 // to `overflow-x: clip`, which doesn't have that side effect.)
-function FeedFormPopover({ r, direction, anchor }) {
+function FeedFormPopover({ r, direction, anchor, line }) {
   const recent = r.recent || [];
+  // Graded against the live (possibly dragged) line so the popover's per-game
+  // colours match the bars it was opened from.
+  const lineVal = line == null ? r.line : line;
   const width = 190;
   // Clamped so a strip near either edge of the viewport doesn't push the
   // panel half off-screen.
@@ -14231,7 +14386,7 @@ function FeedFormPopover({ r, direction, anchor }) {
         Last {recent.length} · {r.subtitle}
       </div>
       {recent.slice().reverse().map((g, i) => {
-        const isHit = feedIsHit(g.v, r.line, r.isBinary, direction);
+        const isHit = feedIsHit(g.v, lineVal, r.isBinary, direction);
         return (
           <div key={i} className="mono" style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 10.5, padding: "2px 0" }}>
             <span style={{ color: "var(--dim)" }}>{feedShortDate(g.date)}</span>
@@ -14500,6 +14655,55 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   const avatarSize = isNarrow ? 34 : 40;
   const dotSize = Math.round(avatarSize * 0.3);
 
+  // ---- draggable line (redesign handoff) ----
+  // null means "sitting on the posted line". Any other value is a what-if the
+  // reader dragged to, and every number in the row that depends on the line
+  // recomputes against it -- bars, the run, the caption, and the L5/L10 rate
+  // cells, all from this same game log, so they can never disagree.
+  const [dragLine, setDragLine] = useState(null);
+  const lineVal = dragLine == null ? r.line : dragLine;
+  const adjusted = dragLine != null && dragLine !== r.line;
+
+  const startLineDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const recent = r.recent || [];
+    const { scaleMax, unit } = feedFormScale(recent, r.line, r.isBinary);
+    const startY = e.clientY;
+    const startVal = lineVal;
+    const move = (ev) => {
+      const raw = startVal + (startY - ev.clientY) / unit;
+      // Half-values only: a whole-number line can push, which this app never
+      // posts. Clamped inside the drawn axis so the handle can't leave it.
+      const snapped = Math.max(0.5, Math.min(scaleMax - 0.5, Math.round(raw + 0.5) - 0.5));
+      setDragLine(snapped);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  const resetLine = (e) => {
+    if (e) e.stopPropagation();
+    setDragLine(null);
+  };
+
+  // Rates recomputed against the dragged line, from the row's own log. Only
+  // the windows the log actually covers can be honestly restated: `r.values`
+  // is the saved window, so L20/Season stay as built rather than being
+  // recomputed off a shorter log than they claim to cover.
+  const liveRate = (n) => {
+    if (!adjusted || !Array.isArray(r.values) || !r.values.length) return null;
+    const w = windowValues(r.values, n);
+    if (!w.length) return null;
+    const hit = w.filter((v) => feedIsHit(v, lineVal, r.isBinary, direction)).length;
+    return { rate: hit / w.length, n: w.length };
+  };
+  const live5 = liveRate("l5");
+  const live10 = liveRate("l10");
+
   const avatarEl = (
     <div style={{ position: "relative", width: avatarSize, height: avatarSize, flexShrink: 0 }}>
       {/* `backing` is a flat team-color disc behind the photo, inset to the
@@ -14743,14 +14947,21 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   const openForm = (e) => setFormAnchor(e.currentTarget.getBoundingClientRect());
   const formCell = r.recent && r.recent.length > 0 && (
     <div
-      style={{ display: "flex", justifyContent: "center" }}
+      style={{ minWidth: 0 }}
       onMouseEnter={openForm}
       onMouseLeave={() => setFormAnchor(null)}
-      onClick={(e) => setFormAnchor((a) => (a ? null : e.currentTarget.getBoundingClientRect()))}
-      title={`Last ${r.recent.length} games — bar height is the margin against the line`}
+      title={`Last ${r.recent.length} games — bar height is the stat value, the dashed rule is the line`}
     >
-      <FeedFormStrip r={r} direction={direction} streak={streak} />
-      {formAnchor && <FeedFormPopover r={r} direction={direction} anchor={formAnchor} />}
+      <FeedFormStrip
+        r={r}
+        direction={direction}
+        streak={streak}
+        line={lineVal}
+        adjusted={adjusted}
+        onDragLine={startLineDrag}
+        onResetLine={resetLine}
+      />
+      {formAnchor && <FeedFormPopover r={r} direction={direction} anchor={formAnchor} line={lineVal} />}
     </div>
   );
 
@@ -14873,8 +15084,23 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
            FeedTableHeader for why mixing center and right alignment across
            these six columns is what made the gaps read as uneven. */}
       <div style={{ textAlign: "center" }}>
-        <div className="mono" style={{ fontSize: 13, color: "var(--text)" }}>{r.line}</div>
-        {cushion !== null && (
+        <div className="mono" style={{ fontSize: 13, color: adjusted ? "var(--amber)" : "var(--text)" }}>
+          {Number(lineVal).toFixed(1)}
+        </div>
+        {/* While the line is dragged off-market this says so and offers the
+            way back, so an adjusted row is never mistaken for the posted
+            number. Otherwise it's the usual average-vs-line cushion. */}
+        {adjusted ? (
+          <div
+            role="button"
+            onClick={resetLine}
+            title={`The posted line is ${Number(r.line).toFixed(1)} — click to put it back`}
+            className="mono"
+            style={{ fontSize: 10, fontWeight: 700, marginTop: 2, color: "var(--amber)", cursor: "pointer" }}
+          >
+            market {Number(r.line).toFixed(1)} · reset
+          </div>
+        ) : cushion !== null && (
           <div
             className="mono"
             title={`Averages ${cushion >= 0 ? "clear" : "short of"} the line by ${Math.abs(cushion).toFixed(1)} over the ${sampleWindow.toUpperCase()} sample`}
@@ -14885,8 +15111,12 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
         )}
       </div>
       <div className="mono" style={{ textAlign: "center", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{odds == null ? "—" : formatOdds(odds, oddsFormat)}</div>
-      <FeedPctCell v={r.l5} n={r.n5} label={5} />
-      <FeedPctCell v={r.l10} n={r.n10} label={10} />
+      {/* L5/L10 restate against a dragged line from the same log the bars
+          draw; L20/Season cover a wider window than that log holds, so they
+          stay as built rather than being recomputed off a shorter sample
+          than they claim. */}
+      <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} />
+      <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} />
       <FeedPctCell v={r.l20} n={r.n20} label={20} />
       <FeedPctCell v={r.all} n={r.nAll} />
       {/* Both actions share the last grid track rather than adding a seventh
@@ -15927,10 +16157,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // already reading the board.
   const bettingDefaults = useBettingSettings();
   // Replaces the old flat category chip row (All/Core/Power/...), which
-  // filtered down to a *bucket* of markets -- this lands on one real prop
-  // directly, matching how Outlier's feed always shows a single market at a
-  // time. See PropTypePicker/PROP_GROUPS/PROP_QUICK_PICKS above.
-  const [selectedMarket, setSelectedMarket] = useState(() => PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null);
+  // filtered down to a *bucket* of markets -- this lands on real props
+  // directly, one or several at once. See
+  // PropTypePicker/PROP_GROUPS/PROP_QUICK_PICKS above.
+  //
+  // An array, not a single id: markets can be multi-selected (combined rows
+  // from all of them) as well as single, per the prop-feed redesign handoff
+  // (design_handoff_propplace_landing_board). Empty means "all markets".
+  // Starts on the sport's default single market rather than empty, matching
+  // this feed's long-standing "always opens on one real market" behavior --
+  // multi-select is something you add to that, not the new default.
+  const [selectedMarkets, setSelectedMarkets] = useState(() => {
+    const first = PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null;
+    return first ? [first] : [];
+  });
   const [sampleWindow, setSampleWindow] = useState(() => bettingDefaults.sampleWindow);
   // Which side of the line the whole feed is priced from. Rows are built
   // Over-only; "under" runs them through flipFeedRowToUnder so the hit rates,
@@ -15946,7 +16186,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // ladder's own inputs change underneath it -- a ladder counted over L10 must
   // not stay on screen labelled L5.
   const [expandedKey, setExpandedKey] = useState(null);
-  React.useEffect(() => { setExpandedKey(null); }, [sport, selectedMarket, sampleWindow, direction, linesMode]);
+  React.useEffect(() => { setExpandedKey(null); }, [sport, selectedMarkets, sampleWindow, direction, linesMode]);
   const [sortMode, setSortMode] = useState("matchup");
   const [sortDir, setSortDir] = useState("desc");
   const [showSortInfo, setShowSortInfo] = useState(false);
@@ -16375,17 +16615,24 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     [liveRows, direction]
   );
   const propGroups = PROP_GROUPS[sport] || [];
-  // Display name of the selected prop, for the preset chip summary -- the
-  // stored value is a market id ("pts_reb_ast"), which is not what someone
-  // wants to read on a saved-screen card.
-  const activeMarketLabel = useMemo(
-    () => propGroups.flatMap((g) => g.markets).find((m) => m.id === selectedMarket)?.label || null,
-    [propGroups, selectedMarket]
+  // Display name(s) of the selected prop(s), for the preset chip summary --
+  // the stored value is market ids ("pts_reb_ast"), which is not what someone
+  // wants to read on a saved-screen card. Joined the same way everywhere a
+  // multi-selection needs a short label: up to two markets spelled out, more
+  // than that collapses to a count.
+  const activeMarketLabels = useMemo(
+    () => propGroups.flatMap((g) => g.markets).filter((m) => selectedMarkets.includes(m.id)).map((m) => m.label),
+    [propGroups, selectedMarkets]
   );
+  const activeMarketLabel = activeMarketLabels.length === 0
+    ? null
+    : activeMarketLabels.length <= 2
+      ? activeMarketLabels.join(" + ")
+      : `${activeMarketLabels.length} props`;
 
   const maxRank = feedTeamCount(sport);
   React.useEffect(() => {
-    setSelectedMarket(PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null);
+    { const first = PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null; setSelectedMarkets(first ? [first] : []); }
     setRankLo(1);
     setRankHi(feedTeamCount(sport));
     setTeamFilter("all");
@@ -16403,7 +16650,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedFilters = useMemo(
     () => ({
       sport,
-      market: selectedMarket,
+      // Stored as one comma-joined, sorted string rather than the live array
+      // -- presets.js's equality check and share-link encoder/decoder both
+      // treat every filter field as a plain string, and a sorted join means
+      // the same *set* of markets compares equal regardless of pick order.
+      // A single market keeps writing the exact same value it always did
+      // (no comma), so an old saved screen or share link still applies
+      // cleanly as a one-element selection.
+      market: [...selectedMarkets].sort().join(","),
       sampleWindow,
       direction,
       sortMode,
@@ -16420,12 +16674,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         ),
       ],
     }),
-    [sport, selectedMarket, sampleWindow, direction, sortMode, sortDir, oddsMinX, oddsMaxX,
+    [sport, selectedMarkets, sampleWindow, direction, sortMode, sortDir, oddsMinX, oddsMaxX,
      rankLo, rankHi, teamFilter, postedLineupsOnly, activeMatchupOptions, selectedGameIds]
   );
 
   const applyFeedFiltersNow = React.useCallback((f) => {
-    if (f.market !== undefined) setSelectedMarket(f.market);
+    // A legacy single-market value (no comma) splits into its own
+    // one-element array; a multi-market value splits into several -- the
+    // inverse of feedFilters.market's join above. "all" is the *old*
+    // sentinel for "every market" (what the single-select picker's "All
+    // Props" option used to write); both it and the new empty string mean
+    // the same thing now, an empty selection.
+    if (f.market !== undefined) {
+      setSelectedMarkets(!f.market || f.market === "all" ? [] : String(f.market).split(",").filter(Boolean));
+    }
     if (f.sampleWindow) setSampleWindow(f.sampleWindow);
     if (f.direction) setDirection(f.direction);
     if (f.sortMode) setSortMode(f.sortMode);
@@ -16538,8 +16800,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // re-run its own sort on *every* render (a keystroke, a hover, an
   // unrelated state change) regardless of whether the actual row set changed.
   const marketRows = useMemo(
-    () => (selectedMarket && selectedMarket !== "all" ? rows.filter((r) => r.marketId === selectedMarket) : rows),
-    [rows, selectedMarket]
+    () => (selectedMarkets.length ? rows.filter((r) => selectedMarkets.includes(r.marketId)) : rows),
+    [rows, selectedMarkets]
   );
 
   // Odds range: the left handle (oddsMinX) maps to the highest probability
@@ -16603,16 +16865,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // a chip can never say something the filters themselves don't. Each
   // chip's "x" undoes exactly one control; it doesn't touch the others,
   // matching how the reset buttons already work inside the Filters panel.
-  const selectedMarketLabel = React.useMemo(
-    () => propGroups.flatMap((g) => g.markets).find((m) => m.id === selectedMarket)?.label,
-    [propGroups, selectedMarket]
-  );
   const activeFilterChips = [];
-  if (selectedMarket && selectedMarket !== "all" && selectedMarketLabel) {
+  if (activeMarketLabel) {
     activeFilterChips.push({
       key: "market",
-      label: `${selectedMarketLabel.toUpperCase()} · ${direction === "under" ? "UNDER" : "OVER"}`,
-      onRemove: () => setSelectedMarket("all"),
+      label: `${activeMarketLabel.toUpperCase()} · ${direction === "under" ? "UNDER" : "OVER"}`,
+      onRemove: () => setSelectedMarkets([]),
     });
   }
   if (sampleWindow !== "l10") {
@@ -16703,7 +16961,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const [visibleCount, setVisibleCount] = useState(FEED_PAGE_SIZE);
   React.useEffect(() => {
     setVisibleCount(FEED_PAGE_SIZE);
-  }, [sport, selectedMarket, sampleWindow, direction, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
+  }, [sport, selectedMarkets, sampleWindow, direction, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
   const visibleRows = sortedRows.slice(0, visibleCount);
 
   // Measured live rather than hardcoded -- the rail wraps onto more lines
@@ -16834,7 +17092,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // · Last 10 games") -- built from the same three pieces of state the
   // desktop header shows as separate controls, so it can never say something
   // the actual filtering isn't doing.
-  const refineMarketLabel = propGroups.flatMap((g) => g.markets).find((m) => m.id === selectedMarket)?.label || "Props";
+  const refineMarketLabel = activeMarketLabel || "All props";
   const refineWindowLabel = sampleWindow === "l5" ? "Last 5 games" : sampleWindow === "l20" ? "Last 20 games" : sampleWindow === "all" ? "Season" : "Last 10 games";
   const refineSummary = `${refineMarketLabel} · ${direction === "under" ? "Under" : "Over"} · ${refineWindowLabel}`;
 
@@ -16933,80 +17191,75 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         </div>
       ) : (
       <>
-      {/* Sport switcher */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {FEED_SPORTS.map((s) => (
-          <div
-            key={s.id}
-            className="oswald"
-            onClick={() => s.available && setSport(s.id)}
-            title={s.available ? (s.simulated ? "Generated sample data, not a live feed" : undefined) : "Coming soon"}
-            style={{
-              cursor: s.available ? "pointer" : "not-allowed",
-              padding: "8px 20px",
-              borderRadius: 4,
-              fontSize: 13,
-              fontWeight: 600,
-              letterSpacing: "0.03em",
-              border: `1px solid ${sport === s.id ? "var(--amber)" : "var(--line)"}`,
-              background: sport === s.id ? "var(--amber-dim)" : "var(--panel)",
-              color: !s.available ? "#4a5361" : sport === s.id ? "var(--amber)" : "var(--dim)",
-              opacity: s.available ? 1 : 0.6,
-            }}
-          >
-            {s.label}
-            {s.simulated && (
-              <span className="pp-mono" style={{ marginLeft: 6, fontSize: 9.5, letterSpacing: "0.08em", color: "#4a5361" }}>
-                · SIMULATED DATA
-              </span>
-            )}
-          </div>
-        ))}
+      {/* Page header. The design also puts a "search players or teams"
+          field here, but the app already has one in its global header --
+          two search boxes on one screen would be two places to type the
+          same thing, so this uses the existing one rather than adding a
+          second. */}
+      <div style={{ marginBottom: 18 }}>
+        <h1 className="pp-display" style={{ fontSize: 34, margin: 0, letterSpacing: "-0.01em", fontWeight: 600 }}>Prop feed</h1>
+        <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2, var(--dim))", marginTop: 8 }}>
+          Hit rates with the games behind them · every row states its sample
+        </div>
       </div>
 
-      {/* Today's games, moved up here right under the sport switcher so
-          it's one of the first things visible instead of sitting below the
-          whole filter stack. MLB only for now -- see the note by
-          showGamesStrip's definition. */}
-      {showGamesStrip && (
-        <TodaysGamesStrip
-          options={activeMatchupOptions}
-          selected={selectedGameIds}
-          onChange={setSelectedGameIds}
-          logoFn={gamesStripLogoFn}
-          emptyLabel={gamesStripEmptyLabel}
-        />
-      )}
-
-      {/* Prop-type picker -- searchable grouped dropdown of every real
-           market for this sport, plus pinned quick-pick chips. Replaces the
-           old flat category chip row (All/Core/Power/...), which filtered
-           down to a bucket of markets rather than landing on one real prop. */}
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-        <PropTypePicker groups={propGroups} value={selectedMarket} onChange={setSelectedMarket} />
+      {/* League tabs -- a real underlined tab strip on a shared bottom rule,
+          replacing the row of centered pill chips. */}
+      <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", marginBottom: 20 }}>
+        {FEED_SPORTS.map((s) => {
+          const active = sport === s.id;
+          return (
+            <div
+              key={s.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => s.available && setSport(s.id)}
+              title={s.available ? (s.simulated ? "Generated sample data, not a live feed" : undefined) : "Coming soon"}
+              className="pp-mono"
+              style={{
+                display: "flex", alignItems: "baseline", gap: 8,
+                cursor: s.available ? "pointer" : "not-allowed",
+                padding: "12px 18px", marginBottom: -1,
+                fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase",
+                color: !s.available ? "#4a5361" : active ? "var(--text)" : "var(--dim)",
+                borderBottom: `2px solid ${active ? "var(--amber)" : "transparent"}`,
+                opacity: s.available ? 1 : 0.6,
+              }}
+            >
+              {s.label}
+              {s.simulated && (
+                <span style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>simulated</span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Sticky filter rail -- Games/Team, Sample Size always visible;
-           Sort By/Odds Range/Defense Rank Range collapse behind Filters
-           (see feedActiveFilterCount below) since they're reached for less
-           often. MLB and NFL show a multi-select Games popover (any number
-           of today's/this week's games at once) instead of a flat team
-           list, since picking a team only ever matters in relation to who
-           they're actually playing. NBA/WNBA keep the plain TEAM dropdown. */}
-      {/* Sticky only in the table layout. This rail has always been styled
-          sticky but never actually stuck (see the overflow-x note in
-          index.css); now that it does, pinning it on a phone would cost
-          ~18% of the viewport -- it wraps to three lines at 375px -- and
-          buy nothing, since the card layout has no column header to keep
-          it company. */}
+      {/* One filter card instead of four control clusters each centered on
+          its own row. Two bands: the slate (game chips) and the controls
+          (markets, side, window, lines, Filters/Screens). */}
       <div ref={filterRailRef} style={{
-        display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "flex-end", gap: 16,
-        marginBottom: 10, position: isNarrow ? "static" : "sticky", top: 0, zIndex: 15, background: "var(--bg)",
-        paddingTop: 8, paddingBottom: 12,
+        background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, marginBottom: 16,
       }}>
-        {showMatchupDropdown ? (
-          <div style={FEED_FILTER_ROW_STYLE}>
-            <span className="oswald" style={FEED_LABEL_STYLE}>GAMES</span>
+        {/* Slate band. Sports with a real slate get game chips; NBA (seeded
+            rows, no real games) and any sport whose slate hasn't loaded keep
+            the dropdown/team select instead, in the same band. */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "14px 16px", borderBottom: "1px solid var(--line)",
+        }}>
+          <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", marginRight: 4 }}>
+            Slate
+          </span>
+          {showGamesStrip ? (
+            <TodaysGamesStrip
+              options={activeMatchupOptions}
+              selected={selectedGameIds}
+              onChange={setSelectedGameIds}
+              logoFn={gamesStripLogoFn}
+              emptyLabel={gamesStripEmptyLabel}
+            />
+          ) : showMatchupDropdown ? (
             <GamesMultiSelect
               options={activeMatchupOptions}
               selected={selectedGameIds}
@@ -17014,52 +17267,91 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
               logoFn={gamesStripLogoFn}
             />
-          </div>
-        ) : (
-          <div style={FEED_FILTER_ROW_STYLE}>
-            <span className="oswald" style={FEED_LABEL_STYLE}>TEAM</span>
+          ) : (
             <select className="select" style={{ width: FEED_CONTROL_WIDTH }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
               <option value="all">All teams</option>
               {teamOptions.map((t) => (
                 <option key={t} value={t}>{t}</option>
               ))}
             </select>
+          )}
+        </div>
+
+        {/* Controls band */}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 24, padding: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 100%" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+              <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>
+                Markets
+              </span>
+              <span
+                role="button"
+                onClick={() => setSelectedMarkets([])}
+                className="pp-mono"
+                style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
+              >
+                All markets
+              </span>
+            </div>
+            {/* Quick-pick chips for the common markets, multi-select. The
+                full grouped list stays behind the picker beside them --
+                every sport has more markets than fit as chips. */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9, alignItems: "center" }}>
+              {(PROP_QUICK_PICKS[sport] || []).map((id) => {
+                const m = propGroups.flatMap((g) => g.markets).find((x) => x.id === id);
+                if (!m) return null;
+                const on = selectedMarkets.includes(id);
+                return (
+                  <span
+                    key={id}
+                    role="button"
+                    aria-pressed={on}
+                    onClick={() => setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== id) : [...selectedMarkets, id])}
+                    className="pp-mono"
+                    style={{
+                      fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
+                      background: on ? "var(--amber)" : "transparent",
+                      color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
+                      border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+                    }}
+                  >
+                    {m.label}
+                  </span>
+                );
+              })}
+              <PropTypePicker groups={propGroups} values={selectedMarkets} onChange={setSelectedMarkets} />
+            </div>
           </div>
-        )}
-        <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={FEED_LABEL_STYLE}>SIDE</span>
-          <DirectionSwitcher value={direction} onChange={setDirection} />
-        </div>
-        <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={FEED_LABEL_STYLE}>GAMES COUNTED</span>
-          <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
-        </div>
-        <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={FEED_LABEL_STYLE}>LINES</span>
-          <LinesModeSwitcher value={linesMode} onChange={setLinesMode} />
-        </div>
-        <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={{ ...FEED_LABEL_STYLE, opacity: 0 }}>·</span>
-          {filtersButton}
-        </div>
-        <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={{ ...FEED_LABEL_STYLE, opacity: 0 }}>·</span>
-          {screensButton}
+
+          <div>
+            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>Side</div>
+            <DirectionSwitcher value={direction} onChange={setDirection} />
+          </div>
+          <div>
+            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>Games counted</div>
+            <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
+          </div>
+          <div>
+            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>Lines</div>
+            <LinesModeSwitcher value={linesMode} onChange={setLinesMode} />
+          </div>
+          <div style={{ display: "flex", gap: 10, marginLeft: "auto" }}>
+            {filtersButton}
+            {screensButton}
+          </div>
         </div>
       </div>
-      {/* Live result count -- tells the user how much the filters above are
-           actually costing them, Outlier-style ("showing N of M props")
-           instead of leaving them to count the list. Active filter chips
-           ride the same line so each one's own "x" is right next to the
-           count it's shrinking -- removing a chip only ever undoes that one
-           control, same as the reset buttons inside the Filters panel. */}
+
+      {/* Result bar: how much the filters are costing, the active-filter
+          pill, and the form-graph legend that teaches the three marks used
+          in every row's chart. */}
       <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap",
-        gap: 8, fontSize: 11.5, color: "var(--dim)", marginBottom: 16,
+        display: "flex", alignItems: "center", flexWrap: "wrap",
+        gap: 12, fontSize: 11.5, color: "var(--dim)", marginBottom: 16,
       }}>
-        <span>
-          Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
-          <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{rows.length}</span>
+        <span className="mono">
+          Showing <span style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
+          <span style={{ color: "var(--text)", fontWeight: 700 }}>{rows.length}</span> props
         </span>
         {activeFilterChips.map((c) => (
           <span
@@ -17069,7 +17361,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               display: "inline-flex", alignItems: "center", gap: 6,
               fontSize: 11, fontWeight: 600, letterSpacing: "0.04em",
               color: "var(--amber)", border: "1px solid var(--amber)",
-              borderRadius: 4, padding: "3px 8px",
+              borderRadius: 999, padding: "4px 10px",
             }}
           >
             {c.label}
@@ -17083,6 +17375,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             </span>
           </span>
         ))}
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <span style={{ width: 7, height: 14, background: "var(--pos)", borderRadius: 2 }} />cleared the line
+          </span>
+          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box" }} />fell short
+          </span>
+          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            <span style={{ width: 14, borderTop: "1.5px dashed var(--text)" }} />the line
+          </span>
+        </span>
       </div>
       </>
       )}
@@ -17129,7 +17432,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <PropTypePicker groups={propGroups} value={selectedMarket} onChange={setSelectedMarket} fill />
+                <PropTypePicker groups={propGroups} values={selectedMarkets} onChange={setSelectedMarkets} fill />
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>{screensButton}</div>

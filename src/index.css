@@ -504,9 +504,12 @@ select.select:focus, select.select:focus-visible {
 .feed-grid {
   display: grid;
   align-items: center;
+  /* The FORM track (4th) is much wider than the rest now: it holds a real
+     plotted chart with a draggable line handle hanging off its right edge,
+     not the old 40px-wide strip of hairline bars. See FeedFormStrip. */
   grid-template-columns:
-    40px 40px minmax(130px, 2fr)
-    minmax(64px, 0.6fr)
+    40px 40px minmax(130px, 1.6fr)
+    minmax(210px, 1.9fr)
     minmax(56px, 0.6fr) minmax(70px, 0.75fr)
     minmax(56px, 0.5fr) minmax(56px, 0.5fr) minmax(56px, 0.5fr)
     minmax(60px, 0.55fr)

@@ -129,7 +129,9 @@ export function decodeShareLink(hash) {
     name: str(payload.n) || "Shared screen",
     filters: {
       sport: f.sport,
-      market: str(f.market, 60),
+      // 300, not 60: this can now be several comma-joined market ids (see
+      // PropFeedPage's feedFilters), not just one.
+      market: str(f.market, 300),
       sampleWindow: WINDOWS.has(f.sampleWindow) ? f.sampleWindow : "l10",
       direction: DIRECTIONS.has(f.direction) ? f.direction : "over",
       sortMode: str(f.sortMode, 40) || "matchup",
