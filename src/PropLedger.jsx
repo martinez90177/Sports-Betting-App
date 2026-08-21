@@ -23,6 +23,7 @@ import { fetchLeagueRosters } from "./lib/rosters.js";
 import {
   LOG_SCOPE_DEFAULT, LogScopeControl, PlayoffTag,
   scopeGames, scopeFilterCount, isPlayoffGame, hasLogScopeChoices,
+  usePriorSeasonLog, mergeSeasonLogs,
 } from "./LogScope.jsx";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
@@ -1516,47 +1517,34 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // a live-only player whose log hasn't landed.
   const player = useMemo(() => nbaPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
 
-  // Last season, fetched only for the player actually on screen.
-  //
-  // This is the 2024-25 backfill the plan defers, done the cheap way. A
-  // league-wide pull would be another ~500 requests for data that, by decision
-  // 3, may never enter a recent-form window: prior seasons exist for
-  // consistency research, role/minutes filtering, and spotting an offseason
-  // jump -- all of which happen on one player's page, one player at a time. So
-  // it is one extra request per player viewed rather than five hundred on load.
-  //
-  // Deliberately kept out of NBA_REAL_GAME_LOGS. That map feeds the prop feed,
-  // which has no scope control, so merging there would silently make every
-  // feed hit rate multi-season -- decision 3 violated everywhere at once with
-  // nothing on screen changing, which is the exact trap the plan names.
-  const [priorSeasonLog, setPriorSeasonLog] = useState(null);
-  React.useEffect(() => {
-    setPriorSeasonLog(null);
-    const espnId = player && player.espnId;
-    if (!espnId) return undefined;
-    let cancelled = false;
-    fetchNBAPlayerGameLog(espnId, currentNBASeason() - 1).then((games) => {
-      if (!cancelled && games && games.length) setPriorSeasonLog(games);
-    });
-    return () => { cancelled = true; };
-  }, [player && player.espnId]);
+  // This season's log. Kept separate from the scoped view below because the
+  // scope control has to read the whole thing to know what it can offer --
+  // which teams are in there, whether there are playoff games at all -- and
+  // reading the scoped list would make the control's own options vanish the
+  // moment one was picked.
+  const currentSeasonLog = useMemo(
+    () => getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player)),
+    [player, dataVersion]
+  );
 
-  // The whole log, before scoping. Kept separate because the scope control has
-  // to read it to know what it can offer -- which teams are in there, whether
-  // there are playoff games at all -- and reading the scoped list would make
-  // the control's own options vanish the moment one was picked.
-  //
-  // Both seasons live in here together; scopeGames defaults to the newest one,
-  // so L5 still means the last five games of the current season and the older
-  // games are reachable only by choosing them.
-  const logGames = useMemo(() => {
-    const current = getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player));
-    // A generated log has no season stamp, and mixing one with a real prior
-    // season would produce a season control offering "2024-25" against
-    // invented numbers. Only real logs get the prior season attached.
-    if (!priorSeasonLog || !current.length || current[0].season == null) return current;
-    return [...priorSeasonLog, ...current].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  }, [player, dataVersion, priorSeasonLog]);
+  // Last season, for this player only. Deliberately kept out of
+  // NBA_REAL_GAME_LOGS: that map feeds the prop feed, which has no scope
+  // control, so merging there would silently make every feed hit rate
+  // multi-season -- decision 3 violated everywhere at once with nothing on
+  // screen changing, which is the exact trap the plan names.
+  const priorSeasonLog = usePriorSeasonLog(
+    currentSeasonLog,
+    player && player.espnId,
+    (season) => fetchNBAPlayerGameLog(player.espnId, season)
+  );
+
+  // Both seasons in one list. They never blend on screen: scopeGames defaults
+  // to the newest, so L5 still means the last five games of this season, and
+  // last season is reachable only by picking it or "All seasons".
+  const logGames = useMemo(
+    () => mergeSeasonLogs(currentSeasonLog, priorSeasonLog),
+    [currentSeasonLog, priorSeasonLog]
+  );
 
   // Everything downstream reads allGames, so scoping here narrows the chart,
   // the splits, the verdict, the per-game table and every sample-size label
@@ -6444,9 +6432,25 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // search result exists here even when he arrived on the live roster after
   // the hand-written arrays were written.
   const player = useMemo(() => nflPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
-  // Unscoped, so the scope control can see what the log offers; see the same
-  // pair on the NBA page.
-  const logGames = useMemo(() => getNFLGames(player), [player, dataVersion]);
+  // This season's log, then last season's for this player alone, then the two
+  // as one list -- the same three steps as the NBA page. See usePriorSeasonLog
+  // for why the season asked for is derived from the log rather than the
+  // calendar: this page's "current" is often already last season, because
+  // fetchNFLPlayerGameLogForDisplay falls back when the new one has no games.
+  const currentSeasonLog = useMemo(() => getNFLGames(player), [player, dataVersion]);
+  const priorSeasonLog = usePriorSeasonLog(
+    currentSeasonLog,
+    player && NFL_ESPN_ID[player.id] ? NFL_ESPN_ID[player.id] : player && player.espnId,
+    (season) => fetchNFLPlayerGameLog(NFL_ESPN_ID[player.id] || player.espnId, season)
+  );
+  const logGames = useMemo(
+    // normalizeNFLGame is what turns an ESPN row into the shape this page
+    // reads, and the prior season has not been through it. Applied here rather
+    // than inside the fetcher because it needs the player (snap share is
+    // estimated per position).
+    () => mergeSeasonLogs(currentSeasonLog, priorSeasonLog && priorSeasonLog.map((g) => normalizeNFLGame(g, player))),
+    [currentSeasonLog, priorSeasonLog, player]
+  );
   const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
@@ -8227,21 +8231,22 @@ function parseWNBAGameLogResponse(data, season) {
 // needing a full page reload.
 const WNBA_GAMELOG_TTL_MS = 15 * 60 * 1000;
 const wnbaGameLogCache = new Map();
-async function fetchWNBAPlayerGameLog(espnId) {
-  const cached = wnbaGameLogCache.get(espnId);
+async function fetchWNBAPlayerGameLog(espnId, season = WNBA_LOG_SEASON) {
+  const key = `${espnId}:${season}`;
+  const cached = wnbaGameLogCache.get(key);
   if (cached && Date.now() - cached.fetchedAt < WNBA_GAMELOG_TTL_MS) return cached.games;
 
   // v3: every game now carries `team` (the player's own team that game)
   // and `season`. A leftover v2 payload has neither, so the log-scoping
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
-  const cacheKey = `wnba_gamelog_v3_${espnId}`;
+  const cacheKey = `wnba_gamelog_v3_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Date.now() - parsed.fetchedAt < WNBA_GAMELOG_TTL_MS) {
-        wnbaGameLogCache.set(espnId, parsed);
+        wnbaGameLogCache.set(key, parsed);
         return parsed.games;
       }
     }
@@ -8249,14 +8254,14 @@ async function fetchWNBAPlayerGameLog(espnId) {
 
   try {
     const res = await fetch(
-      `https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/athletes/${espnId}/gamelog?season=${WNBA_LOG_SEASON}`
+      `https://site.web.api.espn.com/apis/common/v3/sports/basketball/wnba/athletes/${espnId}/gamelog?season=${season}`
     );
     if (!res.ok) return null;
     const data = await res.json();
-    const games = parseWNBAGameLogResponse(data, WNBA_LOG_SEASON);
+    const games = parseWNBAGameLogResponse(data, season);
     if (!games.length) return null;
     const record = { games, fetchedAt: Date.now() };
-    wnbaGameLogCache.set(espnId, record);
+    wnbaGameLogCache.set(key, record);
     try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
     return games;
   } catch {
@@ -8631,9 +8636,21 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // at all. Such a player is normally filtered out of the rails before they
   // can be selected, but the static fallback in the resolver above can still
   // surface one, and an empty array renders an empty chart instead of throwing.
-  // Unscoped, so the scope control can see what the log offers; see the same
-  // pair on the NBA page.
-  const logGames = useMemo(() => getWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)) || [], [player, dataVersion]);
+  // Same three steps as the NBA page. The WNBA season is in progress, so
+  // "current" here really is this year and the prior season is a finished one.
+  const currentSeasonLog = useMemo(
+    () => getWNBAGames(player, ALL_WNBA_PLAYERS.indexOf(player)) || [],
+    [player, dataVersion]
+  );
+  const priorSeasonLog = usePriorSeasonLog(
+    currentSeasonLog,
+    player && player.espnId,
+    (season) => fetchWNBAPlayerGameLog(player.espnId, season)
+  );
+  const logGames = useMemo(
+    () => mergeSeasonLogs(currentSeasonLog, priorSeasonLog),
+    [currentSeasonLog, priorSeasonLog]
+  );
   const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
@@ -12684,12 +12701,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId, isPitcher]);
 
-  // The whole log as fetched, before scoping -- the scope control reads this
-  // to know what it can offer. `allGames` below is the scoped view every other
-  // number on the page derives from. Same pair as the other three sport pages.
-  const [logGames, setLogGames] = useState([]);
+  // This season's log, as fetched. Unlike the other three sports this is state
+  // rather than a memo, because MLB's is a live network fetch that re-polls
+  // while the page is open.
+  const [currentSeasonLog, setCurrentSeasonLog] = useState([]);
   const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
-  const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
   const [gameLogUpdatedAt, setGameLogUpdatedAt] = useState(null);
 
   // Load the player's live game log on mount/player switch, then keep
@@ -12702,7 +12718,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       (isPitcher ? fetchMLBPitcherGameLog(player.mlbId) : fetchMLBGameLog(player.mlbId))
         .then((games) => {
           if (cancelled) return;
-          setLogGames(games);
+          setCurrentSeasonLog(games);
           setGameLogUpdatedAt(Date.now());
         })
         .catch(() => {});
@@ -12711,6 +12727,27 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     const interval = setInterval(load, MLB_GAMELOG_TTL_MS);
     return () => { cancelled = true; clearInterval(interval); };
   }, [player.mlbId, isPitcher]);
+
+  // Last season, for this player alone -- one request when the page opens, not
+  // a league-wide backfill. Batters and pitchers read different endpoints, so
+  // the fetch follows whichever this player is, the same way the current
+  // season's does above.
+  const priorSeasonLog = usePriorSeasonLog(
+    currentSeasonLog,
+    player && `${player.mlbId}:${isPitcher ? "p" : "b"}`,
+    (season) => (isPitcher
+      ? fetchMLBPitcherGameLog(player.mlbId, season)
+      : fetchMLBGameLog(player.mlbId, season))
+  );
+
+  // Both seasons in one list; they never blend on screen. scopeGames defaults
+  // to the newest, so every window on this page still means this season unless
+  // the reader picks otherwise.
+  const logGames = useMemo(
+    () => mergeSeasonLogs(currentSeasonLog, priorSeasonLog),
+    [currentSeasonLog, priorSeasonLog]
+  );
+  const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
 
   // Whenever the selected player switches between a batter and the starting
   // pitcher, make sure the active market still applies to them.

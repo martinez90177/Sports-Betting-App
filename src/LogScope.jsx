@@ -30,7 +30,65 @@
 // has no postseason games and gets no season-type control. This costs nothing
 // for the overwhelming majority and appears exactly where it is meaningful.
 
+import { useEffect, useMemo, useState } from "react";
+
 export const LOG_SCOPE_DEFAULT = { seasonType: "all", team: "all", season: "current" };
+
+// The newest season present in a log, or null when the log carries no season
+// stamps at all (a generated one).
+export function newestSeason(games) {
+  const years = (games || []).map((g) => g.season).filter((v) => v != null).map(Number).filter(Number.isFinite);
+  return years.length ? Math.max(...years) : null;
+}
+
+// Loads the season before the newest one in `games`, for the player currently
+// on screen and nobody else.
+//
+// Per player rather than per league, because of what prior seasons are *for*.
+// Decision 3 keeps them out of every recent-form window, so they exist only for
+// consistency research, minutes and role filtering, and spotting an offseason
+// jump -- all of which happen on one player's page, one player at a time. A
+// league-wide backfill would be hundreds of requests for data most sessions
+// never look at.
+//
+// The season asked for is derived from the log in hand, not from the calendar.
+// That matters for the NFL, where a player's "current" log may already be last
+// season (fetchNFLPlayerGameLogForDisplay falls back when the new season has
+// no games yet) -- asking for currentSeason - 1 there would skip a year.
+//
+// `playerKey` is what identity the fetch belongs to; changing it clears the
+// previous player's prior season immediately rather than leaving it on screen
+// under the new name.
+export function usePriorSeasonLog(games, playerKey, fetchForSeason) {
+  const [prior, setPrior] = useState(null);
+  const newest = newestSeason(games);
+
+  useEffect(() => {
+    setPrior(null);
+    if (!playerKey || newest == null || !fetchForSeason) return undefined;
+    let cancelled = false;
+    Promise.resolve(fetchForSeason(newest - 1))
+      .then((older) => { if (!cancelled && older && older.length) setPrior(older); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // fetchForSeason is a fresh closure every render; the identity that
+    // actually decides what to fetch is playerKey + newest.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerKey, newest]);
+
+  return prior;
+}
+
+// One log out of two, oldest game first.
+//
+// Refuses to merge into a log with no season stamps -- a generated log mixed
+// with a real prior season would put a "2024-25" option on screen next to
+// invented numbers, and the reader has no way to tell which is which.
+export function mergeSeasonLogs(current, prior) {
+  if (!prior || !prior.length) return current;
+  if (!current || !current.length || current[0].season == null) return current;
+  return [...prior, ...current].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
 
 // A game with no seasonType predates the tagging (generated logs, MLB's
 // gameType=R pull) and is regular season by construction -- every parser that
@@ -45,14 +103,20 @@ const SEASON_TYPE_LABEL = {
   post: "Playoffs",
 };
 
-// ESPN numbers a season by the year it ends, so 2026 is the 2025-26 season.
-// Rendered that way rather than as a bare number, which reads as a calendar
-// year and is off by one for every winter league.
+// How a season number is spoken, which differs by sport and is easy to get
+// backwards.
+//
+// The NBA is the only one that spans a new year, and ESPN numbers it by the
+// year it *ends* -- so 2026 is the 2025-26 season and a bare "2026" would be
+// off by one. MLB and the WNBA are single-calendar-year seasons. The NFL also
+// crosses into January, but ESPN numbers it by the year it *starts*, so
+// season=2025 is simply the 2025 season; hyphenating it produced "2024-25" for
+// a season played in 2025, which is wrong in the other direction.
 export function seasonLabel(season, sport) {
   const n = Number(season);
   if (!Number.isFinite(n)) return String(season);
-  if (sport === "mlb" || sport === "wnba") return String(n);
-  return `${n - 1}-${String(n).slice(2)}`;
+  if (sport === "nba") return `${n - 1}-${String(n).slice(2)}`;
+  return String(n);
 }
 
 // What this log can be scoped by. Returns only the controls that have
@@ -105,11 +169,19 @@ export function logScopeOptions(games, sport, scope) {
       )
     : [];
 
+  // Newest first, then each older season on its own, then an explicit
+  // "All seasons" at the end.
+  //
+  // The order and the default are the decision-3 rule made visible: seasons
+  // never blend unless someone says so. The current season is selected, each
+  // prior one is a separate choice, and combining them is a third choice a
+  // reader has to make deliberately -- not something that happens to their
+  // Last 10 because a second season finished loading.
   const seasonKeys = Object.keys(seasonCounts).sort((a, b) => Number(b) - Number(a));
   const seasons = seasonKeys.length > 1
-    ? [{ id: "current", label: seasonLabel(seasonKeys[0], sport), n: countWith({ season: "current" }) }].concat(
-        seasonKeys.slice(1).map((y) => ({ id: y, label: seasonLabel(y, sport), n: countWith({ season: y }) }))
-      )
+    ? [{ id: "current", label: seasonLabel(seasonKeys[0], sport), n: countWith({ season: "current" }) }]
+        .concat(seasonKeys.slice(1).map((y) => ({ id: y, label: seasonLabel(y, sport), n: countWith({ season: y }) })))
+        .concat([{ id: "all", label: "All seasons", n: countWith({ season: "all" }) }])
     : [];
 
   return { seasonTypes, teams, seasons, currentSeason: seasonKeys[0] ?? null };
@@ -128,7 +200,7 @@ export function scopeGames(games, scope) {
   // year, not last.
   let out = list;
   const seasons = new Set(list.map((g) => g.season).filter((v) => v != null));
-  if (seasons.size > 1) {
+  if (seasons.size > 1 && s.season !== "all") {
     if (s.season === "current" || s.season == null) {
       const newest = Math.max(...[...seasons].map(Number));
       out = out.filter((g) => Number(g.season) === newest);
@@ -220,8 +292,8 @@ export function LogScopeControl({ games, sport, scope, onChange }) {
       <ScopeRow
         label="Season"
         options={opts.seasons}
-        value={s.season === "current" ? (opts.seasons[0] || {}).id : s.season}
-        onChange={(id) => onChange({ ...s, season: id === (opts.seasons[0] || {}).id ? "current" : id })}
+        value={s.season || "current"}
+        onChange={(id) => onChange({ ...s, season: id })}
       />
       <ScopeRow
         label="Games counted"

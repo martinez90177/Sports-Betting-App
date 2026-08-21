@@ -141,11 +141,11 @@ decisions turned out to be the same primitive and are implemented as one:
   `events[].team` on ESPN's gamelog — the player's own team *that game*, which
   a roster cannot tell you. Verified: Jose Alvarado reads All 87 / With NYK 46 /
   With NOP 41, and Kyle Anderson's log carries three.
-- **Season**, present in the data and hidden until there is a second season to
-  choose. This is how the `ALL`-means-current-season trap is closed *before*
-  2024-25 lands rather than after the first wrong number ships: `season`
-  defaults to the newest season in the log, so `ALL` can never silently become
-  multi-season.
+- **Season** — current season (selected), each prior season as its own choice,
+  then an explicit **All seasons**. Seasons never blend unless a reader says so,
+  which is decision 3 made visible rather than merely enforced: combining them
+  is a deliberate third choice, not something that happens to a Last 10 because
+  a second season finished loading.
 
 Applied at one point per page — `logGames` → `scopeGames` → `allGames` — so the
 chart, splits, verdict, per-game table and every sample-size label narrow
@@ -160,28 +160,43 @@ shape (`wnbaNextGameForTeam`): its OPP RANK badge was rating the defence of a
 game already played. Verified against the live slate — every pairing on screen
 is symmetric and matches ESPN's next game for that team.
 
-**Prior seasons: done for the NBA, the cheap way.** The plan sized this as a
-league-wide backfill and deferred it. It is instead fetched *per player viewed*
-— one extra request when a player page opens, not five hundred on load — which
-is the right shape given decision 3: prior seasons exist for consistency
+**Prior seasons: done for all four sports, the cheap way.** The plan sized this
+as a league-wide backfill and deferred it. It is instead fetched *per player
+viewed* — one extra request when a player page opens, not hundreds on load —
+which is the right shape given decision 3: prior seasons exist for consistency
 research, role/minutes filtering and spotting an offseason jump, all of which
-happen on one player's page at a time, and by decision 3 they may never enter a
-recent-form window at all.
+happen on one player's page at a time, and they may never enter a recent-form
+window at all.
 
-It is deliberately kept out of `NBA_REAL_GAME_LOGS`, which feeds the prop feed:
-the feed has no scope control, so merging there would make every feed hit rate
-silently multi-season. Verified both ways on Pete Nance — his page defaults to
-2025-26 (47 games, MIL 47 / PHI 0) with 2024-25 (13 games, PHI 7 / MIL 6)
-reachable only by choosing it, and his feed row still reads 26 of 47. ESPN
-confirms 47 and 13, with four and two preseason games correctly dropped.
+One hook, `usePriorSeasonLog`, on all four pages. The season it asks for comes
+from the log in hand, not the calendar — which matters on the NFL page, where
+"current" is often already last season because
+`fetchNFLPlayerGameLogForDisplay` falls back when the new one has no games yet;
+asking for `currentSeason - 1` there would have skipped a year.
 
-Season numbers are now derived per sport (`currentNBASeason`,
-`currentMLBSeason`, the existing `currentNFLSeason`) rather than written down,
-so none of them silently goes stale at a season rollover.
+It is deliberately kept out of the module-level log maps that feed the prop
+feed. The feed has no scope control, so merging there would make every feed hit
+rate silently multi-season. Verified both ways: Dak Prescott's page defaults to
+2025 (17 games) with 2024 (8) and All seasons (25) selectable, and his feed row
+still reads 9 of 17.
 
-**Still open on this track:** prior seasons for MLB, NFL and WNBA. The
-mechanism is built and proven on the NBA page; each is the same effect pointed
-at its own fetcher, and none is blocking anything.
+Verified against the source APIs, per sport:
+
+| Player | Current | Prior | Source says |
+|---|---|---|---|
+| Derrick White (NBA) | 2025-26 · 84 | 2024-25 · 87 | 77+7 and 76+11, preseason dropped |
+| Dak Prescott (NFL) | 2025 · 17 | 2024 · 8 | 17 and 8 |
+| Tyler Stephenson (MLB) | 2026 · 100 | 2025 · 90 | 100, and 88 R + 2 F |
+| Chloe Bibby (WNBA) | 2026 · 4 | 2025 · 14 | traded — team row narrows with the season |
+
+Season numbers are derived per sport (`currentNBASeason`, `currentMLBSeason`,
+the existing `currentNFLSeason`) rather than written down, so none goes stale
+at a rollover. `seasonLabel` speaks each sport's own convention: the NBA is
+numbered by the year it ends (2026 → "2025-26"), the NFL by the year it starts
+(2025 → "2025"), MLB and the WNBA are single years. Getting that backwards
+printed "2024-25" over a season played in 2025.
+
+**Nothing is left open on this track.**
 
 
 ## Decisions already made — do not silently reverse these
