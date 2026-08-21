@@ -493,11 +493,21 @@ function parseNBAGameLogResponse(data, season) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+// ESPN numbers a season by the year it *ends*, so the 2025-26 season is 2026.
+// Derived rather than written down: `season = 2026` was a default parameter,
+// and it would have started asking for a season that no longer exists the
+// moment 2026-27 tipped off in October.
+function currentNBASeason(now = new Date()) {
+  // October is when the NBA rolls over. Before it, the newest season with
+  // games in it is the one that ends this calendar year.
+  return now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
+}
+
 // The NBA season is not in progress in August, so the log for a given season
 // is finished and cannot change -- a long TTL, unlike the WNBA's 15 minutes.
 const NBA_GAMELOG_TTL_MS = 12 * 60 * 60 * 1000;
 const nbaGameLogCache = new Map();
-async function fetchNBAPlayerGameLog(espnId, season = 2026) {
+async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
   const key = `${espnId}:${season}`;
   const cached = nbaGameLogCache.get(key);
   if (cached && Date.now() - cached.fetchedAt < NBA_GAMELOG_TTL_MS) return cached.games;
@@ -1506,11 +1516,47 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // a live-only player whose log hasn't landed.
   const player = useMemo(() => nbaPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
 
+  // Last season, fetched only for the player actually on screen.
+  //
+  // This is the 2024-25 backfill the plan defers, done the cheap way. A
+  // league-wide pull would be another ~500 requests for data that, by decision
+  // 3, may never enter a recent-form window: prior seasons exist for
+  // consistency research, role/minutes filtering, and spotting an offseason
+  // jump -- all of which happen on one player's page, one player at a time. So
+  // it is one extra request per player viewed rather than five hundred on load.
+  //
+  // Deliberately kept out of NBA_REAL_GAME_LOGS. That map feeds the prop feed,
+  // which has no scope control, so merging there would silently make every
+  // feed hit rate multi-season -- decision 3 violated everywhere at once with
+  // nothing on screen changing, which is the exact trap the plan names.
+  const [priorSeasonLog, setPriorSeasonLog] = useState(null);
+  React.useEffect(() => {
+    setPriorSeasonLog(null);
+    const espnId = player && player.espnId;
+    if (!espnId) return undefined;
+    let cancelled = false;
+    fetchNBAPlayerGameLog(espnId, currentNBASeason() - 1).then((games) => {
+      if (!cancelled && games && games.length) setPriorSeasonLog(games);
+    });
+    return () => { cancelled = true; };
+  }, [player && player.espnId]);
+
   // The whole log, before scoping. Kept separate because the scope control has
   // to read it to know what it can offer -- which teams are in there, whether
   // there are playoff games at all -- and reading the scoped list would make
   // the control's own options vanish the moment one was picked.
-  const logGames = useMemo(() => getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player)), [player, dataVersion]);
+  //
+  // Both seasons live in here together; scopeGames defaults to the newest one,
+  // so L5 still means the last five games of the current season and the older
+  // games are reachable only by choosing them.
+  const logGames = useMemo(() => {
+    const current = getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player));
+    // A generated log has no season stamp, and mixing one with a real prior
+    // season would produce a season control offering "2024-25" against
+    // invented numbers. Only real logs get the prior season attached.
+    if (!priorSeasonLog || !current.length || current[0].season == null) return current;
+    return [...priorSeasonLog, ...current].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }, [player, dataVersion, priorSeasonLog]);
 
   // Everything downstream reads allGames, so scoping here narrows the chart,
   // the splits, the verdict, the per-game table and every sample-size label
