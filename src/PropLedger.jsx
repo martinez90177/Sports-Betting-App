@@ -549,6 +549,321 @@ function nbaPlayerPool() {
   return [...byId.values()];
 }
 
+// ---------------------------------------------------------------------------
+// The NBA slate -- real games, off the real schedule
+// ---------------------------------------------------------------------------
+// NBA_MATCHUPS up at the top of this file is two invented pairings on invented
+// dates: "Knicks @ Spurs, 2026-10-04" is not a game that exists. Every other
+// sport here stopped doing that long ago -- the WNBA page reads ESPN's
+// scoreboard, MLB reads statsapi -- and this is that same mechanism pointed at
+// the NBA slug. It is what puts the real opening-night card on the page.
+//
+// The offseason is the case this has to get right, because it is the case we
+// are in. ESPN's scoreboard answers "what is on today", and through August
+// that is nothing -- and from early October it is *preseason*, which no book
+// prices and which parseNBAGameLogResponse already refuses to count. Showing a
+// preseason game as tonight's prop slate would be the same lie as showing an
+// invented one.
+//
+// So when the near window comes back empty, the slate falls back to the season
+// opener, and resolves that date from ESPN rather than from a date typed in
+// here: `.../seasons/{year}/types/2` is the league's own record of when the
+// regular season starts (2026-10-20 for 2026-27). Nothing about the fallback
+// is pinned to this season, so it still works next October without an edit.
+
+const NBA_TEAM_FULL_NAME = {
+  ATL: "Atlanta Hawks", BKN: "Brooklyn Nets",
+  BOS: "Boston Celtics", CHA: "Charlotte Hornets",
+  CHI: "Chicago Bulls", CLE: "Cleveland Cavaliers",
+  DAL: "Dallas Mavericks", DEN: "Denver Nuggets",
+  DET: "Detroit Pistons", GSW: "Golden State Warriors",
+  HOU: "Houston Rockets", IND: "Indiana Pacers",
+  LAC: "LA Clippers", LAL: "Los Angeles Lakers",
+  MEM: "Memphis Grizzlies", MIA: "Miami Heat",
+  MIL: "Milwaukee Bucks", MIN: "Minnesota Timberwolves",
+  NOP: "New Orleans Pelicans", NYK: "New York Knicks",
+  OKC: "Oklahoma City Thunder", ORL: "Orlando Magic",
+  PHI: "Philadelphia 76ers", PHX: "Phoenix Suns",
+  POR: "Portland Trail Blazers", SAC: "Sacramento Kings",
+  SAS: "San Antonio Spurs", TOR: "Toronto Raptors",
+  UTA: "Utah Jazz", WAS: "Washington Wizards",
+};
+
+// One team's players, out of the merged pool -- live roster once it has
+// loaded, the four hand-written teams before that, and an empty list rather
+// than an invented one for a team we have neither for.
+function nbaRosterFor(abbr) {
+  return nbaPlayerPool().filter((p) => p.team === abbr);
+}
+
+// Roster rails read top-down by workload, the same order the WNBA rails use.
+// Null minutes sort last rather than to zero: a player whose log has not
+// loaded is unknown, not a benchwarmer.
+function nbaMinutesPerGame(player) {
+  const games = getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player));
+  if (!games || !games.length) return null;
+  return games.reduce((a, g) => a + (g.minutes || 0), 0) / games.length;
+}
+
+function nbaSortByMinutes(players) {
+  return [...players].sort((a, b) => {
+    const ma = nbaMinutesPerGame(a);
+    const mb = nbaMinutesPerGame(b);
+    if (ma === null && mb === null) return 0;
+    if (ma === null) return 1;
+    if (mb === null) return -1;
+    return mb - ma;
+  });
+}
+
+// ESPN keys `dates=` off the US schedule, so the window has to be built in
+// Eastern. `toISOString()` reports UTC, which from 8pm ET onward has already
+// rolled to tomorrow -- the exact bug fetchWNBALiveSlate's v3 cache key exists
+// to flush, and the one that skips the games being played that very evening.
+function nbaEtDayKey(offsetDays = 0) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t) => Number(parts.find((p) => p.type === t)?.value);
+  const d = new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+const NBA_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard";
+
+// Games only -- no players. Rosters are attached at read time by
+// nbaMatchupsWithRosters rather than baked in here, for two reasons: the slate
+// is cached to sessionStorage, and a roster frozen into that cache would
+// outlive the roster fetch still in flight beside it; and the same cached
+// slate has to serve a caller whose pool has since loaded thirty teams.
+function parseNBASlate(data, unreadable) {
+  return (data?.events || [])
+    // Preseason is not a slate anyone can bet, and the game-log parser already
+    // drops it. Filtering here keeps the two halves of the app agreeing on
+    // what counts as a game.
+    .filter((ev) => String(ev?.season?.slug || "") !== "preseason")
+    .map((ev) => {
+      const comp = ev.competitions?.[0];
+      const competitors = comp?.competitors || [];
+      const home = competitors.find((c) => c.homeAway === "home");
+      const away = competitors.find((c) => c.homeAway === "away");
+      const homeAbbr = home?.team?.abbreviation ? nbaTeamAbbr(home.team.abbreviation) : null;
+      const awayAbbr = away?.team?.abbreviation ? nbaTeamAbbr(away.team.abbreviation) : null;
+      // Rule 4: an event we cannot read is reported, never dropped silently.
+      if (!homeAbbr || !awayAbbr) {
+        unreadable.push(ev?.id || ev?.name || "unknown event");
+        return null;
+      }
+      const venue = comp?.venue;
+      const city = venue?.address
+        ? [venue.address.city, venue.address.state].filter(Boolean).join(", ")
+        : "";
+      const nick = (abbr) => (NBA_TEAM_FULL_NAME[abbr] || abbr).split(" ").pop();
+      return {
+        id: `${awayAbbr}-${homeAbbr}-${ev.id}`,
+        espnEventId: ev.id,
+        label: `${nick(awayAbbr)} @ ${nick(homeAbbr)}`,
+        teamA: { abbr: awayAbbr, label: NBA_TEAM_FULL_NAME[awayAbbr] || awayAbbr },
+        teamB: { abbr: homeAbbr, label: NBA_TEAM_FULL_NAME[homeAbbr] || homeAbbr },
+        date: ev.date,
+        seasonType: espnSeasonType(ev?.season?.slug || ev?.season?.type),
+        status: comp?.status?.type?.description || "Scheduled",
+        state: String(comp?.status?.type?.state || "").toLowerCase(),
+        venue: venue?.fullName || "",
+        city,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+// Where to look when today has nothing. Returns YYYYMMDD keys to anchor a
+// window on, drawn from ESPN's own calendar of dates-with-games, never earlier
+// than today and never earlier than the regular season's first day.
+//
+// Both bounds matter. The season-start bound is what skips three weeks of
+// October preseason. The today bound is what stops a mid-season gap -- the
+// All-Star break is four days with no games -- from resolving backwards onto
+// an opener that has already been played.
+//
+// Candidates are thinned to one per week because each is tried as a seven-day
+// window: four consecutive calendar days would re-read the same week four
+// times, where four weekly anchors walk a month.
+// Resolves to { keys, failed }. The `failed` flag is the point: an empty list
+// because ESPN published no schedule and an empty list because the request
+// never landed are different answers, and collapsing them to `[]` would have
+// the page report a quiet offseason when what actually happened is that the
+// fetch died.
+async function nbaFallbackDateKeys() {
+  const todayKey = nbaEtDayKey(0);
+  let calendar = [];
+  let seasonYear = null;
+  try {
+    const res = await fetch(NBA_SCOREBOARD);
+    const data = await res.json();
+    calendar = data?.leagues?.[0]?.calendar || [];
+    seasonYear = data?.leagues?.[0]?.season?.year || null;
+  } catch {
+    return { keys: [], failed: true };
+  }
+
+  let startKey = null;
+  if (seasonYear) {
+    try {
+      const res = await fetch(
+        `https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/${seasonYear}/types/2`
+      );
+      const type = await res.json();
+      // "2026-10-20T07:00Z" is ESPN's own ET day boundary for that date, so
+      // this is a slice, not a timezone conversion.
+      if (type?.startDate) startKey = String(type.startDate).slice(0, 10).replace(/-/g, "");
+    } catch {
+      // No season record: the calendar alone still reaches the next date with
+      // games, it may just land on a preseason one -- which parseNBASlate
+      // empties and the loop below walks past.
+    }
+  }
+
+  const floor = startKey && startKey > todayKey ? startKey : todayKey;
+  const all = calendar
+    .map((iso) => String(iso).slice(0, 10).replace(/-/g, ""))
+    .filter((k) => k >= floor);
+  const keys = [];
+  let last = null;
+  for (const k of all) {
+    if (last && dayKeyGap(last, k) < NBA_SLATE_DAYS) continue;
+    keys.push(k);
+    last = k;
+    if (keys.length === 4) break;
+  }
+  return { keys, failed: false };
+}
+
+// Whole days between two YYYYMMDD keys.
+function dayKeyGap(a, b) {
+  const at = Date.UTC(+a.slice(0, 4), +a.slice(4, 6) - 1, +a.slice(6, 8));
+  const bt = Date.UTC(+b.slice(0, 4), +b.slice(4, 6) - 1, +b.slice(6, 8));
+  return Math.round((bt - at) / 86400000);
+}
+
+// YYYYMMDD, n days on from another YYYYMMDD.
+function dayKeyPlus(key, n) {
+  const d = new Date(Date.UTC(+key.slice(0, 4), +key.slice(4, 6) - 1, +key.slice(6, 8)));
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+// A week, not the WNBA page's three days. The window has two jobs and the
+// second one sets its width: it fills the game picker, and it answers "who
+// does this player face next" for every row in the feed. Three days covers
+// most of the league in-season and exactly three teams on opening night --
+// which would leave 27 teams' worth of props showing a blank opponent while
+// the schedule sat right there saying otherwise. Seven days from opening night
+// is 52 games and all 30 teams.
+const NBA_SLATE_DAYS = 7;
+
+const NBA_SCHEDULE_TTL_MS = 60 * 60 * 1000;
+let nbaScheduleCache = null;
+
+// Resolves to { matchups, unreadable, fetchFailed, scope, fetchedAt }.
+//
+// `scope` is "slate" when these are the next three days' games and "opener"
+// when the season has not started and this is the first card of the year. The
+// page prints the difference: "Opening night" is a true statement about a
+// slate two months out, and "Tonight" would not be.
+async function fetchNBALiveSlate() {
+  // v2: the window widened from three days to seven (see NBA_SLATE_DAYS). A
+  // leftover v1 payload is a three-day slate, which reads as "these 27 teams
+  // have no next game" -- the same stale-shape trap the WNBA cache key
+  // documents, so it has to be missed rather than served.
+  const cacheKey = "nba_live_slate_v2";
+  const now = Date.now();
+  if (nbaScheduleCache && now - nbaScheduleCache.fetchedAt < NBA_SCHEDULE_TTL_MS) return nbaScheduleCache;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (now - parsed.fetchedAt < NBA_SCHEDULE_TTL_MS) {
+        nbaScheduleCache = parsed;
+        return parsed;
+      }
+    }
+  } catch {}
+
+  const unreadable = [];
+  let matchups = [];
+  let fetchFailed = false;
+  let scope = "slate";
+
+  const window = async (fromKey) => {
+    const res = await fetch(`${NBA_SCOREBOARD}?dates=${fromKey}-${dayKeyPlus(fromKey, NBA_SLATE_DAYS - 1)}&limit=200`);
+    return parseNBASlate(await res.json(), unreadable);
+  };
+
+  try {
+    matchups = await window(nbaEtDayKey(0));
+  } catch {
+    fetchFailed = true;
+  }
+
+  if (!fetchFailed && !matchups.length) {
+    scope = "opener";
+    const { keys, failed } = await nbaFallbackDateKeys();
+    if (failed) fetchFailed = true;
+    for (const key of keys) {
+      try {
+        const found = await window(key);
+        if (found.length) { matchups = found; break; }
+      } catch {
+        fetchFailed = true;
+        break;
+      }
+    }
+    // Nothing in four tries is a real answer -- an offseason with no schedule
+    // published yet -- not a failure. The page says so rather than falling
+    // back to the invented pairings.
+    if (!matchups.length) scope = "slate";
+  }
+
+  const record = { matchups, unreadable, fetchFailed, scope, fetchedAt: now };
+  nbaScheduleCache = record;
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  return record;
+}
+
+// Attaches the current pool's players to a slate. Pure, and re-run whenever
+// the pool changes, so a slate read back from sessionStorage before the
+// rosters landed fills itself in the moment they do.
+function nbaMatchupsWithRosters(matchups) {
+  return (matchups || []).map((m) => ({
+    ...m,
+    teamA: { ...m.teamA, players: nbaRosterFor(m.teamA.abbr) },
+    teamB: { ...m.teamB, players: nbaRosterFor(m.teamB.abbr) },
+  }));
+}
+
+// A team's next scheduled game on the loaded slate -- the earliest, since
+// parseNBASlate sorts by date. This is what the feed's
+// opponent column should have been reading all along: games[games.length - 1]
+// is who a player *last* played, so every "vs SAC, rank 24" on the NBA feed
+// was rating the defence of a game already in the books. Null when no slate
+// has loaded -- the caller then has nothing to say about the next game, which
+// is the honest state, rather than the last one relabelled as the next.
+function nbaNextGameForTeam(abbr) {
+  const slate = (nbaScheduleCache && nbaScheduleCache.matchups) || [];
+  const game = slate.find((m) => m.teamA?.abbr === abbr || m.teamB?.abbr === abbr);
+  if (!game) return null;
+  const isAway = game.teamA?.abbr === abbr;
+  return {
+    opp: isAway ? game.teamB.abbr : game.teamA.abbr,
+    home: !isAway,
+    date: game.date,
+    label: game.label,
+    seasonType: game.seasonType,
+  };
+}
+
 function genGames(player, seedOffset) {
   const rng = mulberry32(1000 + seedOffset);
   const games = [];
@@ -574,6 +889,37 @@ function genGames(player, seedOffset) {
     games.push({ date: d.toISOString().slice(0, 10), opp, home, minutes, pts, oreb, dreb, ast, stl, blk, fg3m, fg3a, ftm, fta, tov });
   }
   return games;
+}
+
+// Runs `worker` over `items` with at most `limit` in flight at once.
+//
+// This exists because "kick off every fetch at once" stopped being survivable
+// the moment live rosters replaced the hand-written pools. Four NBA teams is
+// 20 game-log requests; thirty teams is about 500, and the NFL's is nearer
+// 3,000 -- and a browser answers that with net::ERR_INSUFFICIENT_RESOURCES,
+// which arrives as a rejected fetch. Every one of those rejections is caught
+// and turned into "no log for this player", so the failure mode was an
+// arbitrary slice of the league quietly having no data, plus every *other*
+// request the tab wanted -- the schedule, the defence table -- starved behind
+// them. Nothing on screen said any of it had happened.
+//
+// Deliberately not Promise.all over batches: one slow request would hold up
+// its whole batch. Workers pull from a shared cursor instead, so the pool
+// stays full.
+// Six is a compromise, not a measurement: high enough that ~500 NBA logs
+// finish in well under a minute on a warm cache, low enough that the schedule
+// and defence fetches beside them are never queued behind hundreds of others.
+const LOG_FETCH_CONCURRENCY = 6;
+
+async function runPooled(items, limit, worker) {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor++];
+      try { await worker(item); } catch { /* one failure never stops the pool */ }
+    }
+  });
+  await Promise.all(runners);
 }
 
 // Simple string hash used to deterministically decide things like "did these
@@ -1004,8 +1350,42 @@ function PlayerPropContextBlocks({
 
 function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const [showContext, setShowContext] = useState(false);
+
+  // The real schedule, over the invented pairings. NBA_MATCHUPS stays as the
+  // cold-start fallback only -- it is what is on screen for the one frame
+  // before ESPN answers, and if ESPN never answers it is visibly a stub rather
+  // than a blank page.
+  const [liveSlate, setLiveSlate] = useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    fetchNBALiveSlate().then((res) => { if (!cancelled && res) setLiveSlate(res); });
+    return () => { cancelled = true; };
+  }, []);
+  const liveMatchups = liveSlate && liveSlate.matchups && liveSlate.matchups.length
+    ? liveSlate.matchups
+    : null;
+
+  // Rosters are attached here rather than inside the slate so a live-only
+  // player who arrives on a later roster fetch turns up on the rails without
+  // the slate being refetched -- dataVersion is what re-runs this.
+  const rawMatchups = useMemo(
+    () => (liveMatchups ? nbaMatchupsWithRosters(liveMatchups) : NBA_MATCHUPS),
+    [liveMatchups, dataVersion]
+  );
+
+  // Players with no game log are dropped once, here, so the selector, the
+  // rails and the chart all agree on who exists. Dropping a player never drops
+  // the game: a matchup that filters down to nobody still appears on the
+  // slate, it just has no players to list yet.
+  const matchups = useMemo(() => rawMatchups.map((m) => ({
+    ...m,
+    teamA: { ...m.teamA, players: nbaSortByMinutes((m.teamA.players || []).filter((p) => nbaPlayerHasData(p, ALL_NBA_PLAYERS.indexOf(p)))) },
+    teamB: { ...m.teamB, players: nbaSortByMinutes((m.teamB.players || []).filter((p) => nbaPlayerHasData(p, ALL_NBA_PLAYERS.indexOf(p)))) },
+  })), [rawMatchups, dataVersion]);
+  const matchupsByDate = useMemo(() => groupMatchupsByDate(matchups), [matchups]);
+
   const [matchupId, setMatchupId] = useState(NBA_MATCHUPS[0].id);
-  const matchup = NBA_MATCHUPS.find((m) => m.id === matchupId);
+  const matchup = matchups.find((m) => m.id === matchupId) || matchups[0];
   const [playerId, setPlayerId] = useState(NBA_MATCHUPS[0].teamA.players[0].id);
   const [market, setMarket] = useState("pts");
   // Screen #2 (card 248) mode flip -- see the note on NFLPropsPage's viewMode
@@ -1026,6 +1406,40 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const chartWidth = useElementWidth(chartRef);
   const isNarrow = useIsNarrow();
 
+  // What a jump asked for, held so the slate-arrival effect below can tell
+  // "the slate moved under the current selection" apart from "the feed named
+  // someone this page cannot resolve".
+  const jumpRequest = React.useRef(null);
+
+  // Once the real slate lands, move off the static default -- its id does not
+  // exist in the live list. A pending jump is re-resolved against the live
+  // slate rather than discarded: the fetch resolves a moment *after* the feed
+  // hands this page a player, so unconditionally selecting the first game's
+  // first player here would overwrite the player just clicked.
+  React.useEffect(() => {
+    if (!liveMatchups) return;
+    if (matchups.some((m) => m.id === matchupId)) return;
+    const first = matchups.find((m) => m.teamA.players.length || m.teamB.players.length) || matchups[0];
+    if (!first) return;
+    const pending = jumpRequest.current;
+    if (pending) {
+      const live = matchups.find(
+        (m) => m.teamA.players.some((p) => p.id === pending.id) || m.teamB.players.some((p) => p.id === pending.id)
+      );
+      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(null); setOpponent("all"); return; }
+      // Not on this slate. Move the game forward so the rails aren't showing a
+      // stale card, but leave the player alone.
+      setMatchupId(first.id);
+      return;
+    }
+    setMatchupId(first.id);
+    const firstPlayer = (first.teamA.players[0] || first.teamB.players[0]);
+    if (firstPlayer) setPlayerId(firstPlayer.id);
+    setLine(null);
+    setOpponent("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchups, liveMatchups]);
+
   React.useEffect(() => {
     if (!jumpTo) return;
     // A jump names a player, never a game, so the matchup has to be derived
@@ -1035,10 +1449,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     // playerOnTeamA goes false for a player in neither roster, which silently
     // makes the *opponent* rank, the soft/tough verdict, the venue and the tip
     // time describe a game this player isn't in.
-    const jumpMatchup = NBA_MATCHUPS.find(
+    const jumpMatchup = matchups.find(
       (m) => m.teamA.players.some((p) => p.id === jumpTo.playerId) || m.teamB.players.some((p) => p.id === jumpTo.playerId)
     );
     if (jumpMatchup) setMatchupId(jumpMatchup.id);
+    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null };
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(null);
@@ -1881,7 +2296,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
            -- the dropdown was a second way to do the same thing. */}
       <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20, width: compact ? "100%" : "auto" }}>
         <GameSelect
-          groups={NBA_MATCHUPS_BY_DATE}
+          groups={matchupsByDate}
           value={matchupId}
           logoFn={nbaTeamLogo}
           compact={compact}
@@ -16034,12 +16449,19 @@ function buildNBAFeedRows() {
     // A live-roster player whose real log hasn't loaded has no games at all.
     // Skipped, exactly as the NFL builder skips one -- never generated for.
     if (!games.length) return;
-    const nextOpp = games[games.length - 1].opp;
+    // The scheduled opponent, not the last one played. This used to read
+    // games[games.length - 1].opp, which is who this player faced most
+    // recently -- so the feed's opponent column and its defensive rank were
+    // both describing a game already in the books, and on opening night they
+    // would have described one from last season. Null until the slate loads,
+    // and the row then carries no opponent rather than the wrong one.
+    const nextGame = nbaNextGameForTeam(player.team);
+    const nextOpp = nextGame ? nextGame.opp : null;
     MARKETS.forEach((m) => {
       const isBinary = m.id === "dd" || m.id === "td";
-      const def = getNBADefRank(m.id, nextOpp);
-      const rank = def.rank;
-      const tier = defTier(rank);
+      const def = nextOpp ? getNBADefRank(m.id, nextOpp) : null;
+      const rank = def ? def.rank : null;
+      const tier = rank == null ? null : defTier(rank);
       const values = games.map((g) => statValue(g, m.id));
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = isBinary ? 0.5 : fairFeedLine(values);
@@ -16055,6 +16477,7 @@ function buildNBAFeedRows() {
         avatarFallback: nbaHeadshot(player.nbaId),
         name: player.name,
         team: player.team,
+        date: nextGame ? nextGame.date : null,
         marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
@@ -20317,9 +20740,9 @@ export default function PropLedger() {
       bumpNflRefresh();
       // Their logs, once we know who they are. Keyed by our slug so a player
       // the hand-written pool already had keeps the id his saved picks use.
-      NFL_LIVE_PLAYERS.forEach((player) => {
+      runPooled(NFL_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, (player) => {
         if (NFL_REAL_GAME_LOGS[player.id] || !player.espnId) return;
-        fetchNFLPlayerGameLogForDisplay(player.espnId).then((games) => {
+        return fetchNFLPlayerGameLogForDisplay(player.espnId).then((games) => {
           if (cancelled || !games) return;
           NFL_REAL_GAME_LOGS[player.id] = games;
           bumpNflRefresh();
@@ -20327,10 +20750,10 @@ export default function PropLedger() {
       });
     });
 
-    ALL_NFL_PLAYERS.forEach((player) => {
+    runPooled(ALL_NFL_PLAYERS, LOG_FETCH_CONCURRENCY, (player) => {
       const espnId = NFL_ESPN_ID[player.id];
       if (!espnId) return;
-      fetchNFLPlayerGameLogForDisplay(espnId).then((games) => {
+      return fetchNFLPlayerGameLogForDisplay(espnId).then((games) => {
         if (cancelled || !games) return;
         NFL_REAL_GAME_LOGS[player.id] = games;
         bumpNflRefresh();
@@ -20353,7 +20776,7 @@ export default function PropLedger() {
 
     const loadLog = (player) => {
       if (!player.espnId || NBA_REAL_GAME_LOGS[String(player.espnId)]) return;
-      fetchNBAPlayerGameLog(player.espnId).then((games) => {
+      return fetchNBAPlayerGameLog(player.espnId).then((games) => {
         if (cancelled || !games) return;
         NBA_REAL_GAME_LOGS[String(player.espnId)] = games;
         bumpNbaRefresh();
@@ -20366,10 +20789,19 @@ export default function PropLedger() {
       bumpNbaRefresh();
     });
 
+    // The schedule. Every NBA surface that names an opponent or a game date
+    // reads nbaScheduleCache through nbaNextGameForTeam, so this bump is what
+    // turns "no opponent yet" into the real one -- on 2026-08-21 that is
+    // opening night, 2026-10-20.
+    fetchNBALiveSlate().then((slate) => {
+      if (cancelled || !slate) return;
+      bumpNbaRefresh();
+    });
+
     // The four hand-written teams first: they are on screen immediately, and
     // every one of them carries an espnId, so their generated logs can be
     // replaced with real ones before the league-wide fetch even returns.
-    ALL_NBA_PLAYERS.forEach(loadLog);
+    runPooled(ALL_NBA_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog);
 
     fetchLeagueRosters("nba", {
       slugFor: (p) => NBA_SLUG_BY_ESPN_ID[p.espnId],
@@ -20385,7 +20817,7 @@ export default function PropLedger() {
       }));
       NBA_ROSTER_COVERAGE = { teamsLoaded: res.teamsLoaded, teamsTotal: res.teamsTotal };
       bumpNbaRefresh();
-      NBA_LIVE_PLAYERS.forEach(loadLog);
+      runPooled(NBA_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog);
     });
 
     return () => { cancelled = true; };
