@@ -139,6 +139,53 @@ function matchupTimeLabel(dateStr) {
   return new Date(dateStr).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+// Has this game finished? Used to drop a matchup from the feed's game-chip
+// picker once it is over: its props are already settled, so offering it as a
+// filter hands the reader something they can no longer research or bet.
+//
+// Reads the three sports' own status vocabularies rather than one shared enum,
+// because each fetcher stores what its provider returned:
+//   MLB   `status` = MLB Stats API detailedState ("Final", "Game Over",
+//         "Completed Early", also "Postponed"/"Suspended")
+//   NFL   `status` = ESPN type.description ("Final", "Final/OT")
+//   WNBA  `state`  = ESPN type.state ("pre" | "in" | "post")
+//
+// ESPN's `state` is checked first where present because it is a three-value
+// enum rather than free text. A postponed or suspended game counts as gone
+// too: it isn't being played today either, so the same reasoning applies.
+//
+// Unknown/missing status deliberately reads as NOT concluded -- a game we
+// cannot classify stays on the picker. Dropping it would silently remove a
+// real, playable game, and rule 4 says a thing we can't read surfaces rather
+// than disappears.
+function gameHasConcluded(game) {
+  if (!game) return false;
+  const state = String(game.state || "").toLowerCase();
+  if (state === "post") return true;
+  if (state === "pre" || state === "in") return false;
+  const s = String(game.status || "").toLowerCase();
+  if (!s) return false;
+  return s.includes("final")
+    || s.includes("game over")
+    || s.includes("completed")
+    || s.includes("postponed")
+    || s.includes("suspended")
+    || s.includes("cancel");
+}
+
+// Is this ISO timestamp on the viewer's own calendar day? The WNBA slate
+// fetcher pulls a three-day window (it exists to answer "who does this player
+// face next"), so the chip row has to narrow it to today itself.
+function isTodayLocal(dateStr) {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+}
+
 // Every slate time on this page is rendered in the *viewer's* local zone, not
 // Eastern -- so a bare "7:10 PM" is already correct for whoever is reading it,
 // and a hardcoded "ET" would be an outright lie on the west coast. The zone
@@ -6966,7 +7013,15 @@ let wnbaScheduleCache = null;
 // with the data so the page can distinguish "quiet slate" from "we failed to
 // read four games", which a bare array cannot express.
 async function fetchWNBALiveSlate() {
-  const cacheKey = "wnba_live_slate_v1";
+  // v2: matchups gained `status`/`state` so the feed's game chips can drop a
+  // concluded game. A leftover v1 payload carries neither, which would read
+  // as "nothing has finished" for the rest of the hour -- the same stale-shape
+  // trap documented on mlb_day_slate_v3.
+  // v3: the date window is now resolved in Eastern rather than UTC (see
+  // etDayKey below). A v2 payload was fetched with a window that, after 8pm
+  // ET, began a day late and omitted that evening's games entirely -- so it
+  // has to be discarded rather than served for the rest of its hour.
+  const cacheKey = "wnba_live_slate_v3";
   const now = Date.now();
   if (wnbaScheduleCache && now - wnbaScheduleCache.fetchedAt < WNBA_SCHEDULE_TTL_MS) {
     return wnbaScheduleCache;
@@ -6987,9 +7042,23 @@ async function fetchWNBALiveSlate() {
   // their game with an empty player list on the very first load.
   try { await fetchWNBAAllRosters(); } catch {}
 
-  const fmt = (d) => d.toISOString().slice(0, 10).replace(/-/g, "");
-  const today = new Date();
-  const dayAfter = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
+  // The window is built in Eastern, not UTC. `toISOString()` was the bug this
+  // replaces: it reports UTC, so from 8pm ET onward "today" had already rolled
+  // to tomorrow's date and the range started a day late -- silently skipping
+  // every game being played that very evening, which is exactly when someone
+  // researching tonight's props is looking. ESPN keys `dates=` off the US
+  // schedule, and MLB's own currentMLBDayKey already resolves its day this way.
+  const etDayKey = (offsetDays) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date());
+    const get = (t) => Number(parts.find((p) => p.type === t)?.value);
+    const d = new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
+    d.setUTCDate(d.getUTCDate() + offsetDays);
+    return d.toISOString().slice(0, 10).replace(/-/g, "");
+  };
+  const fromKey = etDayKey(0);
+  const toKey = etDayKey(2);
   let matchups = [];
   // Events the parser could not read at all. Collected rather than swallowed so
   // the page can say "3 games could not be loaded" instead of quietly showing a
@@ -6998,7 +7067,7 @@ async function fetchWNBALiveSlate() {
   let fetchFailed = false;
   try {
     const res = await fetch(
-      `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${fmt(today)}-${fmt(dayAfter)}`
+      `https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard?dates=${fromKey}-${toKey}`
     );
     const data = await res.json();
     matchups = (data?.events || [])
@@ -7032,6 +7101,13 @@ async function fetchWNBALiveSlate() {
           teamA: { abbr: awayAbbr, label: WNBA_TEAM_FULL_NAME[awayAbbr] || awayAbbr, players: wnbaRosterFor(awayAbbr) },
           teamB: { abbr: homeAbbr, label: WNBA_TEAM_FULL_NAME[homeAbbr] || homeAbbr, players: wnbaRosterFor(homeAbbr) },
           date: ev.date,
+          // Carried so the feed's game chips can drop a game once it has
+          // finished -- a concluded game's props are settled and can't be
+          // researched or bet, so leaving it on the picker offers something
+          // that no longer exists. `state` is ESPN's own pre/in/post, which
+          // is stabler to branch on than the human-readable description.
+          status: comp?.status?.type?.description || "Scheduled",
+          state: (comp?.status?.type?.state || "").toLowerCase(),
           venue: venue?.fullName || "",
           city,
         };
@@ -13807,7 +13883,7 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill 
 // second slate source and no second filtering path, so the two controls can't
 // drift apart. Sport-agnostic on purpose: NFL/NBA/WNBA only need another call
 // site with a different logoFn.
-function TodaysGamesStrip({ options, selected, onChange, logoFn }) {
+function TodaysGamesStrip({ options, selected, onChange, logoFn, emptyLabel }) {
   const scrollRef = React.useRef(null);
   const activeRef = React.useRef(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -13873,7 +13949,27 @@ function TodaysGamesStrip({ options, selected, onChange, logoFn }) {
     activeRef.current.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
   }, [soleSelectedId]);
 
-  if (options.length === 0) return null;
+  // An empty rail says so rather than vanishing. Returning null here used to
+  // be harmless because the only way to get an empty list was a slate that
+  // hadn't loaded -- now that concluded games are filtered out, "no games
+  // left today" is a normal end-of-evening state, and an absent row would
+  // read as a broken picker instead of a finished slate (rule 4).
+  if (options.length === 0) {
+    if (!emptyLabel) return null;
+    return (
+      <div
+        className="mono"
+        style={{
+          display: "flex", justifyContent: "center", alignItems: "center",
+          padding: "12px 16px", marginBottom: 12,
+          border: "1px solid var(--line)", borderRadius: 6,
+          fontSize: 11.5, letterSpacing: "0.06em", color: "var(--dim)",
+        }}
+      >
+        {emptyLabel}
+      </div>
+    );
+  }
 
   // Arrows sit in their own gutters beside the rail rather than floating over
   // the cards -- an arrow parked on top of a game card both hides the matchup
@@ -15953,6 +16049,24 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     return () => { cancelled = true; clearInterval(interval); };
   }, [sport]);
 
+  // WNBA's slate, for the game chips. fetchWNBALiveSlate is the same cached
+  // call the WNBA player page already makes, so switching to this tab
+  // usually resolves off the warm cache rather than a second request. Held
+  // whole (not just .matchups) because fetchFailed/unreadable travel with it
+  // and the chip row has to tell "no games today" apart from "we couldn't
+  // read the schedule".
+  const [wnbaSlate, setWnbaSlate] = useState(null);
+  React.useEffect(() => {
+    if (sport !== "wnba") return;
+    let cancelled = false;
+    const load = () => {
+      fetchWNBALiveSlate().then((res) => { if (!cancelled && res) setWnbaSlate(res); });
+    };
+    load();
+    const interval = setInterval(load, WNBA_SCHEDULE_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [sport]);
+
   // MLB rows depend on live data -- today's real MLB slate (see
   // fetchMLBDaySlate, one fetch for the whole league) plus each playing
   // team's per-player game logs and probable pitcher, handed to the pure
@@ -16128,8 +16242,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         // formats its own label, so it gets the raw ISO and the tag separately.
         startsAt: g.date,
         note: gameNumber ? `Gm ${gameNumber}` : "",
+        concluded: gameHasConcluded(g),
       };
-    });
+    })
+    // Mapped first, filtered after: `id` is index-based against the full
+    // slate, and mlbGameNumber/mlbGameSuffix both read the whole slate to
+    // work out doubleheader halves. Filtering first would renumber every id
+    // the moment an early game went final -- and those ids are what
+    // selectedGameIds holds.
+    .filter((o) => !o.concluded);
   }, [mlbSlate]);
 
   // Matchup dropdown options for NFL -- one per game in the current week's
@@ -16144,11 +16265,33 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       time: matchupTimeLabel(g.date),
       startsAt: g.date,
       note: "",
-    }));
+      concluded: gameHasConcluded(g),
+    })).filter((o) => !o.concluded);
   }, [nflSlate]);
 
-  const activeMatchupOptions = sport === "mlb" ? mlbMatchupOptions : sport === "nfl" ? nflMatchupOptions : [];
-  const showMatchupDropdown = sport === "mlb" || sport === "nfl";
+  // WNBA game chips. fetchWNBALiveSlate exists to answer "who does this player
+  // face next", so it pulls a three-day window -- narrowed to today here,
+  // because a chip row that silently mixed in Thursday's games would be making
+  // a wider claim than MLB's identically-shaped row does.
+  const wnbaMatchupOptions = useMemo(() => {
+    const matchups = (wnbaSlate && wnbaSlate.matchups) || [];
+    return matchups
+      .filter((m) => isTodayLocal(m.date) && !gameHasConcluded(m))
+      .map((m, i) => ({
+        id: `${m.teamA.abbr}-${m.teamB.abbr}-${i}`,
+        teams: [m.teamA.abbr, m.teamB.abbr],
+        label: `${m.teamA.label} @ ${m.teamB.label}`,
+        time: matchupTimeLabel(m.date),
+        startsAt: m.date,
+        note: "",
+      }));
+  }, [wnbaSlate]);
+
+  const activeMatchupOptions = sport === "mlb" ? mlbMatchupOptions
+    : sport === "nfl" ? nflMatchupOptions
+    : sport === "wnba" ? wnbaMatchupOptions
+    : [];
+  const showMatchupDropdown = sport === "mlb" || sport === "nfl" || sport === "wnba";
 
   const baseRows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
   // Flipping here rather than at each display site means every downstream
@@ -16567,14 +16710,46 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // beside it would be a second control for the same job -- whichever sport
   // has one gets the strip and drops the dropdown.
   //
-  // WNBA doesn't have one yet: unlike MLB/NFL, buildWNBAFeedRows has no
-  // "today's slate" grouping at all -- it iterates every rostered player
-  // independently and looks up each one's own next opponent, so there is no
-  // single list of "today's games" to build chips from without adding that
-  // grouping to the feed builder first. Real follow-up work, not a simple
-  // reuse the way NFL's dropdown-shaped data already was.
-  const showGamesStrip = sport === "mlb" || sport === "nfl";
-  const gamesStripLogoFn = sport === "nfl" ? nflTeamLogo : mlbTeamLogo;
+  // All three live sports now have one. NBA is the only holdout, and stays
+  // one because its rows come from a seeded generator rather than a slate --
+  // there are no real games to chip.
+  const showGamesStrip = sport === "mlb" || sport === "nfl" || sport === "wnba";
+  const gamesStripLogoFn = sport === "nfl" ? nflTeamLogo
+    : sport === "wnba" ? wnbaTeamLogo
+    : mlbTeamLogo;
+
+  // What the chip row says when it has nothing to show. Three different
+  // facts, never collapsed into one: the schedule is still loading, we
+  // couldn't read it, or it really is empty because every game has finished
+  // (or none was scheduled). A blank row would state none of them.
+  const gamesStripEmptyLabel = (() => {
+    const loading = sport === "mlb" ? !mlbSlate : sport === "nfl" ? !nflSlate : !wnbaSlate;
+    if (loading) return "LOADING TODAY'S GAMES…";
+    if (sport === "wnba" && wnbaSlate && wnbaSlate.fetchFailed) {
+      return "COULDN'T LOAD TODAY'S WNBA SCHEDULE";
+    }
+    return sport === "nfl"
+      ? "NO GAMES LEFT THIS WEEK — EVERY GAME HAS FINISHED"
+      : "NO GAMES LEFT TODAY — EVERY GAME HAS FINISHED";
+  })();
+
+  // A game that finishes while you're looking at it leaves its id behind in
+  // selectedGameIds after dropping out of activeMatchupOptions. Left alone
+  // that empties the feed -- every row fails the `inSelectedGame` join -- and
+  // the active filter chip has no option to name itself from, so the reader
+  // gets a blank board and no cause. Pruning to ids that still exist returns
+  // the feed to "all games", which is at least a state the UI can explain.
+  // Only prunes once options have actually arrived, so the first render (when
+  // the slate is still null) can't wipe a selection restored from a preset.
+  React.useEffect(() => {
+    if (!activeMatchupOptions.length) return;
+    setSelectedGameIds((prev) => {
+      if (!prev.size) return prev;
+      const live = new Set(activeMatchupOptions.map((o) => o.id));
+      const kept = [...prev].filter((id) => live.has(id));
+      return kept.length === prev.size ? prev : new Set(kept);
+    });
+  }, [activeMatchupOptions]);
 
   const resultCount = (
     <>
@@ -16637,6 +16812,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               selected={selectedGameIds}
               onChange={setSelectedGameIds}
               logoFn={gamesStripLogoFn}
+              emptyLabel={gamesStripEmptyLabel}
             />
           )}
           <div style={{ display: "flex", gap: 8 }}>
@@ -16661,8 +16837,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 options={activeMatchupOptions}
                 selected={selectedGameIds}
                 onChange={setSelectedGameIds}
-                allLabel={sport === "mlb" ? "All of today's games" : "All of this week's games"}
-                logoFn={sport === "mlb" ? mlbTeamLogo : nflTeamLogo}
+                allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
+                logoFn={gamesStripLogoFn}
                 fill
               />
             ) : (
@@ -16728,6 +16904,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           selected={selectedGameIds}
           onChange={setSelectedGameIds}
           logoFn={gamesStripLogoFn}
+          emptyLabel={gamesStripEmptyLabel}
         />
       )}
 
@@ -16764,8 +16941,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               options={activeMatchupOptions}
               selected={selectedGameIds}
               onChange={setSelectedGameIds}
-              allLabel={sport === "mlb" ? "All of today's games" : "All of this week's games"}
-              logoFn={sport === "mlb" ? mlbTeamLogo : nflTeamLogo}
+              allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
+              logoFn={gamesStripLogoFn}
             />
           </div>
         ) : (
