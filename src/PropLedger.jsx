@@ -7533,10 +7533,29 @@ async function fetchWNBATeamAvailability(abbr) {
 // pick with no gameDate is permanently unsettleable (see gradePick). Falls
 // back to the static list so the offline slate still dates its picks.
 function wnbaGameDateForTeam(abbr, playerId) {
-  const live = (wnbaScheduleCache && wnbaScheduleCache.matchups) || [];
-  const game = live.find((m) => m.teamA?.abbr === abbr || m.teamB?.abbr === abbr);
+  const game = wnbaNextGameForTeam(abbr);
   if (game && game.date) return game.date;
   return matchupDateForPlayer(WNBA_MATCHUPS, playerId);
+}
+
+// A team's next scheduled game on the live slate, or null. The WNBA twin of
+// nbaNextGameForTeam, and it exists for the same reason: the feed's opponent
+// column was reading games[games.length - 1].opp, which is who a player *last*
+// played -- so the OPP RANK badge beside it was rating the defence of a game
+// already finished. Null rather than a guess when no slate has loaded; the
+// caller then says nothing about the next game instead of saying the wrong
+// thing about it.
+function wnbaNextGameForTeam(abbr) {
+  const live = (wnbaScheduleCache && wnbaScheduleCache.matchups) || [];
+  const game = live.find((m) => m.teamA?.abbr === abbr || m.teamB?.abbr === abbr);
+  if (!game) return null;
+  const isAway = game.teamA?.abbr === abbr;
+  return {
+    opp: isAway ? game.teamB?.abbr : game.teamA?.abbr,
+    home: !isAway,
+    date: game.date,
+    label: game.label,
+  };
 }
 
 // ---------- WNBA starters ----------
@@ -14413,11 +14432,15 @@ function buildWNBAFeedRows() {
   pool.forEach((player, pi) => {
     const games = getWNBAGames(player, pi);
     if (!games || !games.length) return;
-    const nextOpp = games[games.length - 1].opp;
+    // The scheduled opponent, not the last one played -- see
+    // wnbaNextGameForTeam. Null until the slate loads, and the row then carries
+    // no opponent rather than the wrong one.
+    const nextGame = wnbaNextGameForTeam(player.team);
+    const nextOpp = nextGame ? nextGame.opp : null;
     const gameDate = wnbaGameDateForTeam(player.team, player.id);
     wnbaPlayerMarkets(player).forEach((m) => {
       const isBinary = m.id === "dd" || m.id === "td";
-      const def = getWNBADefRank(m.id, nextOpp);
+      const def = nextOpp ? getWNBADefRank(m.id, nextOpp) : null;
       const rank = def ? def.rank : null;
       const tier = rank == null ? null : defTier(rank);
       const values = games.map((g) => statValue(g, m.id));

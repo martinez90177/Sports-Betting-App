@@ -155,10 +155,15 @@ Live on the NBA, NFL and WNBA pages; MLB gets it when its `gameType=P` pull
 lands, since `gameType=R` is still hardcoded and there are no playoff games in
 that log to scope.
 
+The WNBA feed carried the same last-opponent bug and is fixed with the same
+shape (`wnbaNextGameForTeam`): its OPP RANK badge was rating the defence of a
+game already played. Verified against the live slate — every pairing on screen
+is symmetric and matches ESPN's next game for that team.
+
 **Still open on this track:** the 2024-25 NBA backfill (the season control
-appears on its own once it lands), MLB's postseason pull, and the WNBA feed's
-copy of the last-opponent bug the NBA slate work fixed —
-`buildWNBAFeedRows` still reads `games[games.length - 1].opp`.
+appears on its own once it lands) and MLB's postseason pull (`gameType=R` is
+still hardcoded at `:9385`/`:9944`, so MLB has no playoff games to scope and no
+per-game team for a traded player).
 
 
 ## Decisions already made — do not silently reverse these
