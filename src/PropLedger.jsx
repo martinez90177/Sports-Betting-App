@@ -16244,13 +16244,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         note: gameNumber ? `Gm ${gameNumber}` : "",
         concluded: gameHasConcluded(g),
       };
-    })
-    // Mapped first, filtered after: `id` is index-based against the full
-    // slate, and mlbGameNumber/mlbGameSuffix both read the whole slate to
-    // work out doubleheader halves. Filtering first would renumber every id
-    // the moment an early game went final -- and those ids are what
-    // selectedGameIds holds.
-    .filter((o) => !o.concluded);
+    });
+    // Concluded games are flagged, not dropped, and the whole slate is mapped
+    // with its original indices: `id` is index-based, and mlbGameNumber /
+    // mlbGameSuffix both read the full slate to identify doubleheader halves.
+    // Dropping here would renumber every id the moment an early game went
+    // final -- and those ids are what selectedGameIds holds.
   }, [mlbSlate]);
 
   // Matchup dropdown options for NFL -- one per game in the current week's
@@ -16266,7 +16265,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       startsAt: g.date,
       note: "",
       concluded: gameHasConcluded(g),
-    })).filter((o) => !o.concluded);
+    }));
   }, [nflSlate]);
 
   // WNBA game chips. fetchWNBALiveSlate exists to answer "who does this player
@@ -16276,7 +16275,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const wnbaMatchupOptions = useMemo(() => {
     const matchups = (wnbaSlate && wnbaSlate.matchups) || [];
     return matchups
-      .filter((m) => isTodayLocal(m.date) && !gameHasConcluded(m))
+      .filter((m) => isTodayLocal(m.date))
       .map((m, i) => ({
         id: `${m.teamA.abbr}-${m.teamB.abbr}-${i}`,
         teams: [m.teamA.abbr, m.teamB.abbr],
@@ -16284,13 +16283,38 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         time: matchupTimeLabel(m.date),
         startsAt: m.date,
         note: "",
+        concluded: gameHasConcluded(m),
       }));
   }, [wnbaSlate]);
 
-  const activeMatchupOptions = sport === "mlb" ? mlbMatchupOptions
+  // Every one of today's games, finished ones included. The picker below only
+  // offers the unfinished ones, but the finished ones still have to be known:
+  // they are how the feed works out whose props are already settled.
+  const allMatchupOptions = sport === "mlb" ? mlbMatchupOptions
     : sport === "nfl" ? nflMatchupOptions
     : sport === "wnba" ? wnbaMatchupOptions
     : [];
+  const activeMatchupOptions = useMemo(
+    () => allMatchupOptions.filter((o) => !o.concluded),
+    [allMatchupOptions]
+  );
+
+  // Teams whose day is done: they appear in a finished game and in no
+  // unfinished one. Computed as "has no game left" rather than "was in a
+  // finished game" because of MLB doubleheaders -- with game 1 final and
+  // game 2 still to come, the team is very much still playing, and the
+  // simpler test would wrongly bin game 2's props along with game 1's.
+  const finishedTeams = useMemo(() => {
+    const stillPlaying = new Set(
+      allMatchupOptions.filter((o) => !o.concluded).flatMap((o) => o.teams)
+    );
+    return new Set(
+      allMatchupOptions
+        .filter((o) => o.concluded)
+        .flatMap((o) => o.teams)
+        .filter((t) => !stillPlaying.has(t))
+    );
+  }, [allMatchupOptions]);
   const showMatchupDropdown = sport === "mlb" || sport === "nfl" || sport === "wnba";
 
   const baseRows = sport === "nba" ? nbaRows : sport === "wnba" ? wnbaRows : sport === "nfl" ? nflRows : mlbRows;
@@ -16298,9 +16322,25 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // consumer -- the odds-range filter, the sort comparators, FeedPctCell,
   // the splits strip, the odds column, the My Picks payload -- keeps reading
   // plain r.l5/r.l10/r.all and is automatically direction-correct.
+  // Props belonging to a team whose day is over leave the feed entirely --
+  // not just the picker. Once the game is played the prop is settled: it can't
+  // be researched and it can't be bet, so listing it invites someone to study
+  // a number whose answer is already known. Dropped at the source rather than
+  // inside filteredRows so the "Showing N of M" denominator counts only props
+  // that are actually still live; leaving them in M would overstate the board
+  // by most of its rows late in a slate.
+  //
+  // NBA is untouched: its rows come from a seeded generator with no real slate
+  // behind them, so there is no game to have concluded. Nothing is dropped
+  // when the slate hasn't loaded either -- finishedTeams is empty then, which
+  // is the safe direction (show everything) rather than the destructive one.
+  const liveRows = useMemo(
+    () => (finishedTeams.size ? baseRows.filter((r) => !finishedTeams.has(r.team)) : baseRows),
+    [baseRows, finishedTeams]
+  );
   const rows = useMemo(
-    () => (direction === "under" ? baseRows.map(flipFeedRowToUnder) : baseRows),
-    [baseRows, direction]
+    () => (direction === "under" ? liveRows.map(flipFeedRowToUnder) : liveRows),
+    [liveRows, direction]
   );
   const propGroups = PROP_GROUPS[sport] || [];
   // Display name of the selected prop, for the preset chip summary -- the
@@ -17323,7 +17363,16 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} stickyTop={filterRailHeight} />}
         {sortedRows.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-            {sport === "mlb" && mlbLoading ? "Loading live MLB matchup data…" : "No props match these filters yet."}
+            {/* "No props match these filters" is the wrong sentence when the
+                filters are innocent and the real cause is that every game has
+                been played -- it sends the reader off loosening controls that
+                were never the problem. Only claim it when some live prop
+                actually exists to be filtered. */}
+            {sport === "mlb" && mlbLoading
+              ? "Loading live MLB matchup data…"
+              : rows.length === 0 && finishedTeams.size > 0
+              ? "Every game on today's slate has finished. Tomorrow's board arrives once the new slate is posted."
+              : "No props match these filters yet."}
           </div>
         )}
         {/* Per-row rather than only at the app root: these rows are built from
