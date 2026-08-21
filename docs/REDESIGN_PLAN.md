@@ -1,4 +1,82 @@
+# PropPalace — working plan
+
+The single source of truth for what is being built, what has shipped, and what
+has been decided. Read this before starting any item. It is committed to the
+repo on purpose: this project is worked on from more than one machine, and
+Claude's own memory does not travel between them.
+
+**Status as of 2026-08-21 — `master` at `da93481`.**
+
+## The five tracks
+
+| Track | What it is | State |
+|---|---|---|
+| **Redesign, items 1–15** | The numbered build order against the design cards | **1–5 + 5b shipped.** Next: **item 6, Settings, card 647** |
+| **Items 16 & 17** | Landing page + the board, from the real Claude Design handoff | Not started. 3 of 4 conflicts decided |
+| **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | Not started |
+| **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
+| **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
+
+The tracks are independent. Redesign items follow Alex's order and are not to be
+resequenced; the data and monetisation tracks can run whenever.
+
+## Shipped so far
+
+| Commit | What |
+|---|---|
+| `5b6ce33` | Items 1–4 — player detail, matchup card, matchup overview, games slate |
+| `1e3ec85` | Item 5 — prop feed to card 713 |
+| `ee3c461` | Item 5b — WNBA game chips, concluded games drop from the picker |
+| `52954f1` | Feed drops props whose game has already been played |
+| `eba554f` | Made the project portable — this plan, the notes, the design handoff |
+
+## Decisions already made — do not silently reverse these
+
+- **Multi-select markets** on both feed and board, uncapped. A deliberate
+  reversal of item 5's single-market picker. Share the pure selection/
+  serialisation logic, share **zero** UI.
+- **Sport switcher on the board**, all four sports. NFL in the mock was only an
+  example.
+- **The board is an addition.** It replaces neither the Games tab nor the prop
+  feed. **Keep all three separate; do not merge them in any way.** The board's
+  job is discovery — deciding *what* to research; the feed's job is working
+  through props already chosen.
+- **Playoffs count**, are visibly marked, and are filterable (All / Regular
+  season / Playoffs).
+- **Traded players keep their whole log**, plus a per-team filter.
+- **Current season always outranks previous.** `L5` means five games of the
+  *current* season. Watch the `ALL` trap documented in the data track.
+- **NBA loads 2025-26 first**; 2024-25 deferred.
+- **Free tier is a rotating daily set** of real players, any tier — not a pinned
+  list of low-profile names.
+
+## Still open
+
+- The form graph: whether bars move from margin-height to grounded-at-zero with
+  a drawn line at the prop value. Touches every feed row, so it is its own
+  change — easier to judge once the landing page exists.
+- Whether the landing page's hero card takes the strongest row *among the free
+  set*, or the front page is exempt from gating.
+- Whether the Games page later folds into the board.
+
+## Standing rules
+
+The design files are the target **layout**, not just vocabulary; where the app
+and the design disagree, the design wins. Sections 1a/1b/1c are rejected
+directions. The logo is three ascending bars in lapis — no arch motif anywhere.
+
+Verify every change **live in the browser with an error listener armed**: a
+passing `npm run build` proves nothing about runtime here, because Vite does not
+check that identifiers exist. Walk **all four sports**, not just the one just
+touched. Counts before percentages, always with the sample size. Availability on
+`--status-*` only, never the accent. Nothing is ever silently dropped.
+
+---
+
 # Items 1–4 — design as the target layout
+
+> Historical section. Items 1–4 shipped in `5b6ce33`; the notes below are the
+> original working context and are kept for reference.
 
 ## The MLB fix
 

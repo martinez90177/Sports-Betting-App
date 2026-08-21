@@ -4,10 +4,11 @@
 
 Two committed documents carry the context that isn't in the code:
 
-- **[`docs/REDESIGN_PLAN.md`](docs/REDESIGN_PLAN.md)** — the working plan. The
-  numbered build order, which items have shipped, what is next, the decisions
-  already made (and the few still open), plus the separate data track for live
-  rosters and real game logs. **Read it before starting any redesign item.**
+- **[`docs/REDESIGN_PLAN.md`](docs/REDESIGN_PLAN.md)** — the working plan, and
+  the single source of truth. Opens with an overview of all five tracks, what
+  has shipped, the decisions already taken, and what is still open. **Read it
+  first, before any work on a numbered item — do not rely on memory for what
+  item N is.**
 - **[`docs/PROJECT_NOTES.md`](docs/PROJECT_NOTES.md)** — durable facts about the
   project that the repo and git history don't record.
 - **[`docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md)**
