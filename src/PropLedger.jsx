@@ -383,6 +383,149 @@ const REB_SPLITS = [
   { id: "def", label: "Defensive" },
 ];
 
+// ---------------------------------------------------------------------------
+// Real NBA game logs (data track, sections A + B)
+// ---------------------------------------------------------------------------
+// NBA was the only sport in this app with no real data at all: four
+// hand-written teams and a seeded RNG behind every number. ESPN publishes the
+// same gamelog shape for the NBA that the WNBA code has read since item 5b, so
+// this is that fetcher pointed at a different slug -- not a new mechanism.
+//
+// Combined with live rosters (lib/rosters.js) it replaces both halves at once:
+// who is on a team, and what they actually did.
+
+// ESPN's abbreviations don't all match this app's. Six differ; the rest are
+// identical, so this maps only those six rather than restating thirty pairs.
+// Wrong here and a real opponent silently drops out of every defence lookup.
+const NBA_ESPN_ABBR = { GS: "GSW", NO: "NOP", NY: "NYK", SA: "SAS", UTAH: "UTA", WSH: "WAS" };
+const nbaTeamAbbr = (espnAbbr) => NBA_ESPN_ABBR[espnAbbr] || espnAbbr;
+
+const NBA_REAL_GAME_LOGS = {};
+let NBA_LIVE_PLAYERS = [];
+let NBA_ROSTER_COVERAGE = null;
+
+const NBA_SLUG_BY_ESPN_ID = Object.fromEntries(
+  ALL_NBA_PLAYERS.filter((p) => p.espnId).map((p) => [String(p.espnId), p.id])
+);
+
+// Same shape as parseWNBAGameLogResponse, and the same compromise on rebounds:
+// ESPN reports a combined "totalRebounds" with no offensive/defensive split,
+// so the real total goes to dreb and oreb stays 0 rather than inventing a
+// split. The Total view -- the default, and the one anyone actually prices --
+// stays fully real; only the Off/Def toggle loses precision.
+function parseNBAGameLogResponse(data) {
+  const names = data?.names || [];
+  const events = data?.events || {};
+  const byEvent = {};
+  (data?.seasonTypes || []).forEach((st) => {
+    (st.categories || []).forEach((cat) => {
+      (cat.events || []).forEach((ev) => {
+        const meta = events[ev.eventId];
+        if (!meta) return;
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {} };
+        (ev.stats || []).forEach((val, idx) => {
+          const key = names[idx];
+          if (key) byEvent[ev.eventId].stats[key] = val;
+        });
+      });
+    });
+  });
+
+  const known = new Set(TEAMS);
+  return Object.values(byEvent)
+    // All-Star and exhibition games list opponents that aren't NBA teams, and
+    // those abbreviations aren't in TEAM_DEF at all -- dropped here rather
+    // than left to break every downstream defence lookup.
+    .filter(({ meta }) => known.has(nbaTeamAbbr(meta.opponent?.abbreviation)))
+    .map(({ meta, stats }) => {
+      const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+      const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
+      const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
+      return {
+        date: (meta.gameDate || "").slice(0, 10),
+        opp: nbaTeamAbbr(meta.opponent.abbreviation),
+        home: meta.atVs !== "@",
+        minutes: num(stats.minutes),
+        pts: num(stats.points),
+        oreb: 0,
+        dreb: num(stats.totalRebounds),
+        ast: num(stats.assists),
+        stl: num(stats.steals),
+        blk: num(stats.blocks),
+        fg3m, fg3a, ftm, fta,
+        tov: num(stats.turnovers),
+      };
+    })
+    .filter((g) => g.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// The NBA season is not in progress in August, so the log for a given season
+// is finished and cannot change -- a long TTL, unlike the WNBA's 15 minutes.
+const NBA_GAMELOG_TTL_MS = 12 * 60 * 60 * 1000;
+const nbaGameLogCache = new Map();
+async function fetchNBAPlayerGameLog(espnId, season = 2026) {
+  const key = `${espnId}:${season}`;
+  const cached = nbaGameLogCache.get(key);
+  if (cached && Date.now() - cached.fetchedAt < NBA_GAMELOG_TTL_MS) return cached.games;
+
+  const cacheKey = `nba_gamelog_v1_${key}`;
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Date.now() - parsed.fetchedAt < NBA_GAMELOG_TTL_MS) {
+        nbaGameLogCache.set(key, parsed);
+        return parsed.games;
+      }
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(
+      `https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${espnId}/gamelog?season=${season}`
+    );
+    if (!res.ok) return null;
+    const games = parseNBAGameLogResponse(await res.json());
+    if (!games.length) return null;
+    const record = { games, fetchedAt: Date.now() };
+    nbaGameLogCache.set(key, record);
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+    return games;
+  } catch {
+    return null;
+  }
+}
+
+// Real log first, generated second, nothing third.
+//
+// The third case is the one that matters: a player who exists only because the
+// live roster listed him has no hand-written projection to generate from, and
+// inventing one would put made-up numbers on screen under a real name. He gets
+// an empty log until his real one lands, and every consumer already drops a
+// player with no games rather than rendering a blank row.
+function getNBAGames(player, seedOffset) {
+  if (!player) return [];
+  const real = player.espnId && NBA_REAL_GAME_LOGS[String(player.espnId)];
+  if (real && real.length) return real;
+  if (player.liveOnly || !player.base) return [];
+  return genGames(player, seedOffset);
+}
+
+function nbaPlayerHasData(player, seedOffset = 0) {
+  const g = getNBAGames(player, seedOffset);
+  return !!(g && g.length);
+}
+
+// The pool every NBA surface reads: hand-written four teams as the cold-start
+// fallback, live rosters over the top. Same shape as nflPlayerPool.
+function nbaPlayerPool() {
+  if (!NBA_LIVE_PLAYERS.length) return ALL_NBA_PLAYERS;
+  const byId = new Map(ALL_NBA_PLAYERS.map((p) => [p.id, p]));
+  NBA_LIVE_PLAYERS.forEach((p) => byId.set(p.id, { ...(byId.get(p.id) || {}), ...p }));
+  return [...byId.values()];
+}
+
 function genGames(player, seedOffset) {
   const rng = mulberry32(1000 + seedOffset);
   const games = [];
@@ -836,7 +979,7 @@ function PlayerPropContextBlocks({
   );
 }
 
-function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
+function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NBA_MATCHUPS[0].id);
   const matchup = NBA_MATCHUPS.find((m) => m.id === matchupId);
@@ -901,8 +1044,12 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     setLine(null);
   };
 
-  const player = ALL_NBA_PLAYERS.find((p) => p.id === playerId);
-  const allGames = useMemo(() => genGames(player, ALL_NBA_PLAYERS.indexOf(player)), [player]);
+  // Resolved from the merged pool so a player who arrived on the live roster
+  // exists here too, and his games come from getNBAGames -- real ESPN log when
+  // one has loaded, generated only for the four hand-written teams, empty for
+  // a live-only player whose log hasn't landed.
+  const player = useMemo(() => nbaPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
+  const allGames = useMemo(() => getNBAGames(player, ALL_NBA_PLAYERS.indexOf(player)), [player, dataVersion]);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
   // NBA logs are generated from each player's static base line, so this is
@@ -910,7 +1057,7 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const railStats = useMemo(() => {
     const m = new Map();
     [...(matchup?.teamA?.players || []), ...(matchup?.teamB?.players || [])].forEach((p) => {
-      m.set(p.id, railSeasonAvg(genGames(p, ALL_NBA_PLAYERS.indexOf(p)), (g) => statValue(g, market, rebSplit)));
+      m.set(p.id, railSeasonAvg(getNBAGames(p, ALL_NBA_PLAYERS.indexOf(p)), (g) => statValue(g, market, rebSplit)));
     });
     return m;
   }, [matchup, market, rebSplit]);
@@ -1866,7 +2013,7 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     </div>
 
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Sample data only — built to test the filtering and layout before wiring in a real stats/odds feed.
+        Real 2025-26 regular-season game logs (ESPN Stats API). A player whose log has not loaded falls back to a seeded line and is marked ungradable in the slip.
       </div>
       <PlayerNewsModule playerName={player.name} headshotSrc={espnHeadshot(player.espnId)} sport="nba" team={player.team} />
     </div>
@@ -15458,6 +15605,9 @@ const PICK_GRADE_SOURCES = {
   mlb_pitcher: { fetchLog: (id) => fetchMLBPitcherGameLog(id), value: statValueMLBPitcher },
   nfl: { fetchLog: (id, p) => fetchNFLPlayerGameLog(id, nflSeasonForDate(p.gameDate) ?? currentNFLSeason()), value: statValueNFL },
   wnba: { fetchLog: (id) => fetchWNBAPlayerGameLog(id), value: statValue },
+  // Added once NBA logs became real. Same reader as the WNBA: both are
+  // basketball and share market ids, so a points prop grades identically.
+  nba: { fetchLog: (id) => fetchNBAPlayerGameLog(id), value: statValue },
 };
 
 // Picks saved before the Ledger existed carry only {id, sport, name, team,
@@ -15787,8 +15937,11 @@ function oddsSliderProb(x) {
 // the numbers stay consistent between the two views.
 function buildNBAFeedRows() {
   const rows = [];
-  ALL_NBA_PLAYERS.forEach((player, pi) => {
-    const games = genGames(player, pi);
+  nbaPlayerPool().forEach((player, pi) => {
+    const games = getNBAGames(player, pi);
+    // A live-roster player whose real log hasn't loaded has no games at all.
+    // Skipped, exactly as the NFL builder skips one -- never generated for.
+    if (!games.length) return;
     const nextOpp = games[games.length - 1].opp;
     MARKETS.forEach((m) => {
       const isBinary = m.id === "dd" || m.id === "td";
@@ -15827,10 +15980,14 @@ function buildNBAFeedRows() {
         values, line, isBinary, variance,
         direction: "over", matchupScore: rank,
         recent: feedRecentGames(games, values),
-        // Deliberately no gradeKind/gradeId: these games come from genGames,
-        // a seeded RNG, so there is no real result to settle a pick against.
-        // The Ledger surfaces NBA picks as unsettleable rather than inventing
-        // one -- see gradePick.
+        // Gradable now that the log is a real ESPN box score. Stamped only
+        // when this row actually came from one: a player still on the seeded
+        // fallback (`espnId` present but no real log fetched) gets no
+        // gradeKind, so the Ledger keeps surfacing him as unsettleable rather
+        // than settling a pick against a generated number.
+        ...(player.espnId && NBA_REAL_GAME_LOGS[String(player.espnId)]
+          ? { gradeKind: "nba", gradeId: player.espnId }
+          : {}),
       });
     });
   });
@@ -16077,20 +16234,18 @@ function buildMLBPitcherFeedRows(teamsData) {
 const BOARD_DISCLAIMER = {
   nfl: "Real 2025 regular-season game logs (ESPN Stats API). Not a live odds feed.",
   wnba: "Live 2026 regular-season game logs (ESPN Stats API). Not a live odds feed.",
-  nba: "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed.",
+  nba: "Real 2025-26 regular-season game logs (ESPN Stats API). Not a live odds feed.",
 };
 
 const FEED_SPORTS = [
   { id: "nfl", label: "NFL", available: true },
   { id: "mlb", label: "MLB", available: true },
-  // `simulated`, not `available: false`. NBA rows render fine and can be
-  // added to picks like any other sport -- what's fake is the game log
-  // underneath them (buildNBAFeedRows -> genGames, a seeded generator, same
-  // one the single-player NBA page uses). Calling that "no data" would
-  // understate it: there's real UI and a real (if synthetic) number on
-  // every row, just not a real box score behind it. The tab stays fully
-  // clickable; only the qualifier differs from a genuinely unavailable sport.
-  { id: "nba", label: "NBA", available: true, simulated: true },
+  // NBA carried a `simulated` qualifier here until its logs became real.
+  // It is gone rather than left on: the rows are built from ESPN box scores
+  // now, exactly like the other three, and a badge saying otherwise would be
+  // its own kind of wrong number. The four hand-written teams can still fall
+  // back to genGames if a log fetch fails, which the feed's disclaimer says.
+  { id: "nba", label: "NBA", available: true },
   { id: "wnba", label: "WNBA", available: true },
 ];
 
@@ -16260,7 +16415,7 @@ const FEED_LABEL_STYLE = { fontSize: 12, fontWeight: 600, color: "var(--dim)", l
 const FEED_FILTER_ROW_STYLE = { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 };
 const FEED_CONTROL_WIDTH = 190;
 
-function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, sport, setSport }) {
+function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport }) {
   const isNarrow = useIsNarrow(560);
   // Settings > Betting seeds the two controls below. Read once as an initial
   // value, for the same reason feedSport is: changing a default should decide
@@ -16398,7 +16553,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // back to a sport rebuilds it fresh rather than caching across switches --
   // a reasonable trade given these are synchronous, already-in-memory
   // computations (no network fetch), not the MLB fetch below.
-  const nbaRows = useMemo(() => (sport === "nba" ? buildNBAFeedRows() : []), [sport]);
+  const nbaRows = useMemo(() => (sport === "nba" ? buildNBAFeedRows() : []), [sport, nbaDataVersion]);
   // wnbaDataVersion/nflDataVersion bump when their real per-player game logs
   // and defense rankings finish loading (see the effects in PropLedger) --
   // without them in the dependency array, these would compute once on mount
@@ -17174,13 +17329,21 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       : NFL_ROSTER_COVERAGE.teamsLoaded < NFL_ROSTER_COVERAGE.teamsTotal
         ? ` Live rosters loaded for ${NFL_ROSTER_COVERAGE.teamsLoaded} of ${NFL_ROSTER_COVERAGE.teamsTotal} teams; the rest fall back to hand-written squad lists.`
         : "";
+  const nbaRosterNote = sport !== "nba" ? ""
+    : !NBA_ROSTER_COVERAGE
+      ? " Live rosters haven't loaded yet, so this is the four hand-written teams on seeded game logs."
+      : NBA_ROSTER_COVERAGE.teamsLoaded < NBA_ROSTER_COVERAGE.teamsTotal
+        ? ` Live rosters loaded for ${NBA_ROSTER_COVERAGE.teamsLoaded} of ${NBA_ROSTER_COVERAGE.teamsTotal} teams.`
+        : "";
   const feedDataDisclaimer = sport === "mlb"
     ? "Live 2026 regular-season game logs (MLB Stats API) for every team on today's real MLB slate. Not a live odds feed."
     : sport === "nfl"
     ? `Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.${nflRosterNote}`
     : sport === "wnba"
     ? "Live 2026 regular-season game logs (ESPN Stats API), refreshed each session. Not a live odds feed."
-    : "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed.";
+    : sport === "nba"
+    ? `Real 2025-26 regular-season game logs (ESPN Stats API). Not a live odds feed.${nbaRosterNote}`
+    : "Sample data only — built to test filtering and layout before a real feed was wired in.";
   const gamesStripLogoFn = sport === "nfl" ? nflTeamLogo
     : sport === "wnba" ? wnbaTeamLogo
     : mlbTeamLogo;
@@ -19396,9 +19559,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                     const note = pickIsLegacy(p)
                       ? "Saved before results were tracked — won't be graded."
                       : !p.gradeKind || !p.gradeId
-                        ? (p.sport === "nba"
-                            ? "NBA data here is simulated — can't be graded."
-                            : "No real game log for this player — can't be graded.")
+                        ? "No real game log for this player — can't be graded."
                         : pickGameIsFinal(p)
                           ? "Waiting on the box score."
                           : !rungs.length
@@ -19587,9 +19748,8 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                   {dollarsPerUnit
                     ? `Dollar figures use the unit size in Settings (1u = $${dollarsPerUnit.toFixed(2)}) and are worked out from the units on the fly, so changing it never rewrites a settled result.`
                     : "Set a bankroll in Settings to see this in dollars as well."}{" "}
-                  Picks with no real log behind them (NBA is simulated data)
-                  stay in the slip marked as ungradable and never enter this
-                  record.
+                  Picks with no real log behind them stay in the slip marked
+                  as ungradable and never enter this record.
                 </div>
                 {settledPicks.length > 0 && (
                   <div
@@ -19657,7 +19817,7 @@ function buildNewsPlayerPool() {
     sport: "nfl", playerId: p.id, name: p.name, team: p.team, position: p.pos,
     espnId: p.espnId || NFL_ESPN_ID[p.id] || null, headshotSrc: nflHeadshot(p),
   }));
-  ALL_NBA_PLAYERS.forEach((p) => add({
+  nbaPlayerPool().forEach((p) => add({
     sport: "nba", playerId: p.id, name: p.name, team: p.team, position: p.pos,
     espnId: p.espnId, headshotSrc: p.espnId ? espnHeadshot(p.espnId) : null,
     fallbackSrc: p.nbaId ? nbaHeadshot(p.nbaId) : null,
@@ -20088,6 +20248,51 @@ export default function PropLedger() {
     return () => { cancelled = true; };
   }, []);
 
+  // NBA: the sport that had no real data at all until this. Live rosters give
+  // us who is on each team; ESPN's gamelog gives us what they did. Both are the
+  // same mechanisms the other sports already use, pointed at a new slug.
+  //
+  // Season 2026 is the 2025-26 campaign -- the most recent completed one, which
+  // is what the plan says to load first. It is finished, so its logs cannot
+  // change and the cache TTL is long.
+  const [nbaDataVersion, bumpNbaRefresh] = React.useReducer((c) => c + 1, 0);
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadLog = (player) => {
+      if (!player.espnId || NBA_REAL_GAME_LOGS[String(player.espnId)]) return;
+      fetchNBAPlayerGameLog(player.espnId).then((games) => {
+        if (cancelled || !games) return;
+        NBA_REAL_GAME_LOGS[String(player.espnId)] = games;
+        bumpNbaRefresh();
+      });
+    };
+
+    // The four hand-written teams first: they are on screen immediately, and
+    // every one of them carries an espnId, so their generated logs can be
+    // replaced with real ones before the league-wide fetch even returns.
+    ALL_NBA_PLAYERS.forEach(loadLog);
+
+    fetchLeagueRosters("nba", {
+      slugFor: (p) => NBA_SLUG_BY_ESPN_ID[p.espnId],
+    }).then((res) => {
+      if (cancelled || !res) return;
+      NBA_LIVE_PLAYERS = res.players.map((p) => ({
+        id: p.id || `nba_${p.espnId}`,
+        name: p.name,
+        team: nbaTeamAbbr(p.team),
+        pos: p.pos,
+        espnId: p.espnId,
+        liveOnly: !p.id,
+      }));
+      NBA_ROSTER_COVERAGE = { teamsLoaded: res.teamsLoaded, teamsTotal: res.teamsTotal };
+      bumpNbaRefresh();
+      NBA_LIVE_PLAYERS.forEach(loadLog);
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
   // Same pattern again for WNBA -- live season, so both the game logs and
   // the defense ranking use short TTLs and can refresh more than once per
   // tab (see fetchWNBAPlayerGameLog/fetchWNBATeamDefense).
@@ -20145,7 +20350,7 @@ export default function PropLedger() {
     if (boardSport === "nba") return buildNBAFeedRows();
     if (boardSport === "wnba") return buildWNBAFeedRows();
     return buildNFLFeedRows();
-  }, [page, boardSport, nflDataVersion, wnbaDataVersion]);
+  }, [page, boardSport, nflDataVersion, wnbaDataVersion, nbaDataVersion]);
 
   const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
     setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now(), meta });
@@ -20194,7 +20399,7 @@ export default function PropLedger() {
       key: `nfl_${p.id}`, sport: "nfl", sportLabel: "NFL", label: p.name, playerId: p.id, market: "passYds",
       searchText: `${p.name} ${p.team}`.toLowerCase(),
     }));
-    ALL_NBA_PLAYERS.forEach((p) => entries.push({
+    nbaPlayerPool().forEach((p) => entries.push({
       key: `nba_${p.id}`, sport: "nba", sportLabel: "NBA", label: p.name, playerId: p.id, market: "pts",
       searchText: `${p.name} ${p.team}`.toLowerCase(),
     }));
@@ -20367,6 +20572,7 @@ export default function PropLedger() {
 
       {page === "nba" && (
         <NBAPropsPage
+          dataVersion={nbaDataVersion}
           jumpTo={jumpTo && jumpTo.sport === "nba" ? jumpTo : null}
           pickIds={pickIds}
           onTogglePick={togglePick}
@@ -20406,7 +20612,7 @@ export default function PropLedger() {
       )}
 
       {page === "feed" && (
-        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} sport={feedSport} setSport={setFeedSport} />
+        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} />
       )}
 
       {page === "landing" && (
