@@ -7857,7 +7857,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // computed at all when this player's log is the seeded fallback rather than a
   // real one, because splitting generated numbers would look exactly like a
   // finding and be worth nothing.
-  const playerLogIsReal = !!(player.espnId && WNBA_REAL_GAME_LOGS[String(player.espnId)]);
+  //
+  // Optional-chained deliberately: `player` is undefined whenever the selected
+  // id isn't on tonight's slate (the jumpMissed case), and every hook below has
+  // to keep running for the guard that renders that state to be reached at all.
+  const playerLogIsReal = !!(player?.espnId && WNBA_REAL_GAME_LOGS[String(player.espnId)]);
   const absences = useMemo(() => absentTeammates.map((p) => {
     const dates = p.espnId ? teammateGameDates[String(p.espnId)] : null;
     let split;
@@ -7981,7 +7985,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // selector, so it carries only a bottom divider against the detailed stat
   // row underneath. paddingRight reserves room for the Filters button, which
   // floats in the card's absolute top-right corner on desktop.
-  const playerIdentityRow = (
+  // Built only when there is a player. Both places that read it render below
+  // the `if (!player)` guard, but constructing the element evaluates every prop
+  // eagerly right here -- which is what used to throw before the guard ran.
+  const playerIdentityRow = !player ? null : (
     <PlayerIdentityRow
       compact={compact}
       team={player.team}
@@ -8245,42 +8252,6 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     </div>
   ) : null;
 
-  if (!player) {
-    const missedName = jumpMissed ? (jumpRequest.current && jumpRequest.current.name) || "That player" : null;
-    const firstOnSlate = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
-    return (
-      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
-        {slateBanner}
-        <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
-          {jumpMissed ? (
-            <>
-              <div style={{ color: "var(--text)", marginBottom: 6 }}>
-                {missedName} isn&rsquo;t on a WNBA game we can read today.
-              </div>
-              <div style={{ lineHeight: 1.5 }}>
-                They were in the feed, so their game log loaded there, but no game on today&rsquo;s
-                slate lists them and there is no season log for them here. Nothing has been
-                substituted &mdash; another player&rsquo;s chart under their name would be worse
-                than this message.
-              </div>
-              {firstOnSlate && (
-                <button
-                  type="button"
-                  className="chip"
-                  style={{ marginTop: 12 }}
-                  onClick={() => selectPlayer(firstOnSlate.id)}
-                >
-                  Show {firstOnSlate.name} instead
-                </button>
-              )}
-            </>
-          ) : (
-            "No WNBA player game logs have loaded yet."
-          )}
-        </div>
-      </div>
-    );
-  }
 
   const centerBreadcrumbLabel = matchup
     ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
@@ -8401,6 +8372,48 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));
   }, [allGames, market, rebSplit, effectiveLine]);
+
+  // Placed here, below the last hook in this component, and not up beside the
+  // slate banner where it reads more naturally: an early return above a
+  // `useMemo` renders fewer hooks than the previous pass and React throws
+  // "Rendered fewer hooks than expected" instead of showing this message. The
+  // guard was unreachable for exactly that reason.
+  if (!player) {
+    const missedName = jumpMissed ? (jumpRequest.current && jumpRequest.current.name) || "That player" : null;
+    const firstOnSlate = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
+    return (
+      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+        {slateBanner}
+        <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+          {jumpMissed ? (
+            <>
+              <div style={{ color: "var(--text)", marginBottom: 6 }}>
+                {missedName} isn&rsquo;t on a WNBA game we can read today.
+              </div>
+              <div style={{ lineHeight: 1.5 }}>
+                They were in the feed, so their game log loaded there, but no game on today&rsquo;s
+                slate lists them and there is no season log for them here. Nothing has been
+                substituted &mdash; another player&rsquo;s chart under their name would be worse
+                than this message.
+              </div>
+              {firstOnSlate && (
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ marginTop: 12 }}
+                  onClick={() => selectPlayer(firstOnSlate.id)}
+                >
+                  Show {firstOnSlate.name} instead
+                </button>
+              )}
+            </>
+          ) : (
+            "No WNBA player game logs have loaded yet."
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (viewMode === "matchup") {
     return (
