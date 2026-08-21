@@ -4897,38 +4897,6 @@ function useElementWidth(ref) {
   return width;
 }
 
-// Same idea for height, for stacking one sticky element beneath another:
-// the Prop Feed's table header pins below its filter rail, and the rail's
-// height isn't a constant to hardcode -- it wraps onto a second (or third)
-// line as the window narrows, and grows once a sport's Games multi-select
-// has real games in it.
-//
-// Belt and braces on purpose, because being stale here isn't cosmetic: too
-// small a value tucks the pinned header underneath the opaque rail. The
-// ResizeObserver catches content-driven growth, but its callbacks are
-// delivered in the frame loop, so a window that isn't compositing can sit
-// on one indefinitely; the resize listener is a plain event and fires
-// regardless. Math.ceil because a fractional height would round down into
-// a 1px overlap.
-function useElementHeight(ref) {
-  const [height, setHeight] = React.useState(0);
-  React.useLayoutEffect(() => {
-    if (!ref.current) return;
-    const el = ref.current;
-    const update = () => setHeight(Math.ceil(el.getBoundingClientRect().height));
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    window.addEventListener("resize", update);
-    // Web fonts landing after first paint reflow the rail's controls.
-    if (document.fonts?.ready) document.fonts.ready.then(update).catch(() => {});
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", update);
-    };
-  }, [ref]);
-  return height;
-}
 
 // How many px each per-game logo+abbreviation+date tick needs to avoid
 // overlapping its neighbors -- used to derive how many ticks actually fit
@@ -14195,10 +14163,14 @@ function TodaysGamesStrip({ options, selected, onChange, logoFn, emptyLabel }) {
 // this was modeled on also shows IP%/H2H/prior-season columns, which are
 // left out here rather than faked -- there's no real implied-probability
 // price or per-row prior-season game log behind this feed's data today.
-// `stickyTop` is the measured height of PropFeedPage's sticky filter rail.
-// The header pins directly under it rather than at top:0 -- the rail is
-// opaque and sits at a higher z-index, so a header pinned to 0 would spend
-// the whole scroll hidden behind it.
+//
+// The header does NOT stick. It used to pin under the filter rail on the way
+// down the page, which meant a bar of column labels riding over the rows and
+// cutting whichever row it happened to be crossing in half. Alex called it on
+// 2026-08-21 after watching it scroll. It is a plain first row of the table
+// now, and the design draws it that way too -- a `--surface-sunken` strip at
+// the top of the card, not a floating one.
+//
 // FEED_LABEL is the handoff's one micro-label recipe for this table: Space
 // Mono 11px, 0.14em, uppercase, --dim. Every header cell uses it, so the
 // header reads as one row of labels rather than six separately-tuned ones.
@@ -14206,7 +14178,7 @@ const FEED_LABEL = {
   fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
 };
 
-function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
+function FeedTableHeader({ columnSort, onSort }) {
   // The four rate columns are a nested `repeat(4, 1fr)` inside the last
   // track, exactly as the rows are -- that's what keeps L5/L10/L20/SEASON
   // sitting over their own cells at every width without a seventh, eighth,
@@ -14233,10 +14205,7 @@ function FeedTableHeader({ columnSort, onSort, stickyTop = 0 }) {
       className="feed-grid feed-thead"
       style={{
         paddingTop: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)",
-        // `position` is deliberately not set here -- see .feed-thead in
-        // index.css. It has to come from a media query, and an inline style
-        // would win over one.
-        top: stickyTop, zIndex: 3, background: "var(--surface-sunken)",
+        background: "var(--surface-sunken)",
       }}
     >
       <span />
@@ -17129,11 +17098,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   }, [sport, selectedMarkets, sampleWindow, direction, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
   const visibleRows = sortedRows.slice(0, visibleCount);
 
-  // Measured live rather than hardcoded -- the rail wraps onto more lines
-  // as the window narrows, and the table header pins directly beneath it.
-  const filterRailRef = React.useRef(null);
-  const filterRailHeight = useElementHeight(filterRailRef);
-
   // Phone-only: the legend and the "+ adds a prop" explainer are one-time
   // reading, but they were sitting between the controls and the data on every
   // visit -- ~250px of instructions above the first row. Collapsed behind a
@@ -17414,7 +17378,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       {/* One filter card instead of four control clusters each centered on
           its own row. Two bands: the slate (game chips) and the controls
           (markets, side, window, lines, Filters/Screens). */}
-      <div ref={filterRailRef} style={{
+      <div style={{
         background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, marginBottom: 16,
       }}>
         {/* Slate band. Sports with a real slate get game chips; NBA (seeded
@@ -17951,7 +17915,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           the viewport (it decides whether the sticky header below can pin
           to the viewport at all). */}
       <div className="feed-table-wrap">
-        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} stickyTop={filterRailHeight} />}
+        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} />}
         {sortedRows.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
             {/* "No props match these filters" is the wrong sentence when the

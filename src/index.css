@@ -450,37 +450,30 @@ select.select:focus, select.select:focus-visible {
    also read as "selected" next to the accent-filled add button. */
 .feed-row:hover { background: var(--surface-2); }
 
-/* The panel around the feed's header + rows. The overflow mode here is
-   load-bearing for FeedTableHeader's `position: sticky`: sticky offsets
-   resolve against the nearest ancestor *scroll container*, and both `auto`
-   and the `hidden` this used to be make one. That's why the header never
-   actually stuck -- it pinned to the top of this box, which just scrolls
-   away with the page, instead of to the viewport.
+/* The panel around the feed's header + rows.
 
-   `clip` is the way out: it clips overflow (so the rounded corners still
-   cut the header and last row cleanly) without establishing a scroll
-   container, leaving sticky to resolve against the viewport. It's only
-   safe above the breakpoint below, where the .feed-grid minimums fit and
-   there's nothing to scroll to; under it the columns genuinely overflow and
-   reaching View Chart needs a real scrollbar, so `auto` wins and the header
-   gives up sticking. Browsers without `overflow: clip` drop the declaration
-   and inherit `auto` -- a non-sticky header, i.e. exactly today's behaviour.
+   Plain `overflow-x: auto`, at every width. This used to flip to `clip` above
+   a breakpoint, and the whole apparatus existed for one reason: `clip` avoids
+   establishing a scroll container, which was what let FeedTableHeader's
+   `position: sticky` resolve against the viewport instead of against this
+   box. The header doesn't stick any more (see FeedTableHeader), so the
+   breakpoint, its arithmetic and the standing requirement to move it in step
+   with every new column all go with it.
 
-   1000px, walked up from 900 and then 960 as columns changed: `clip` hides
-   overflow *without a scrollbar*, so this breakpoint has to sit above the
-   width where the table genuinely fits or the last column is silently
-   amputated with no way to reach it. The redesign's six tracks bottom out at
-   930px inside the card (see .feed-grid's arithmetic), which needs a 994px
-   viewport once .page-shell's 32px gutters are counted; 1000 is the next
-   round number above that. Any future column has to move this in step. */
+   `auto` is also the safer of the two on its own merits: `clip` hides
+   horizontal overflow *without* a scrollbar, so if the columns ever outgrew
+   the breakpoint the last one was amputated with no way to reach it. That
+   very nearly happened twice, which is why the number was walked from 900 to
+   960 to 1000. `auto` shows a scrollbar exactly when there is something to
+   scroll to and nothing at all when there isn't.
+
+   The FeedFormPopover is `position: fixed` rather than absolute precisely so
+   this scroll container can't clip it -- see its own comment. */
 .feed-table-wrap {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow-x: auto;
-}
-@media (min-width: 1000px) {
-  .feed-table-wrap { overflow-x: clip; }
 }
 
 /* ---------- prop feed table ----------
@@ -536,24 +529,17 @@ select.select:focus, select.select:focus-visible {
   padding-right: 16px;
 }
 
-/* FeedTableHeader's sticky behaviour, gated to the same 960px breakpoint as
-   .feed-table-wrap's clip/auto switch above -- the two have to move together.
+/* The feed's table header does not stick, at any width.
 
-   Below it the wrapper is `overflow-x: auto`, which makes it a scroll
-   container, and a sticky offset resolves against the nearest ancestor
-   scroll container rather than the viewport. The header therefore pinned
-   `top` pixels down from the top of the *card*, landing in the middle of the
-   first row and cutting it in half at every scroll position -- the player's
-   name above the header, the rest of the row below it.
+   It did, above a breakpoint, pinned under the filter rail. Alex asked for it
+   gone on 2026-08-21: a bar of column labels riding down over the rows sat on
+   top of whichever row it was crossing and cut that row in half, and it looks
+   wrong doing it. The design agrees -- it draws the header as a sunken strip
+   at the top of the card, not a floating one.
 
-   `position` has to be decided here rather than inline in FeedTableHeader:
-   an inline style beats a media query, so a JS-set `position: sticky` could
-   never be turned back off at a breakpoint. The inline `top` is harmless
-   while this is static, since `top` does nothing on a static element. */
+   Kept as an explicit `static` rather than deleted so that the rule, and the
+   reason for it, are findable from the class. */
 .feed-thead { position: static; }
-@media (min-width: 1000px) {
-  .feed-thead { position: sticky; }
-}
 
 /* Line and Odds used to be right-aligned while L5/L10/L20/Season were
    centered, which is what made the Odds->L5 gap read as tighter than the
