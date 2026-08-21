@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#8fa6ff; text-decoration:none; }
+  a:hover { color:#e8ecf2; }
+</style>
+</helmet>
+<div style="width:1280px; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif;">
+
+  <div style="display:flex; align-items:center; gap:32px; padding:20px 40px; border-bottom:1px solid #2b2f36;">
+    <a href="./PropPalace Landing.dc.html" style="display:flex; align-items:center; gap:10px; color:#e8ecf2;">
+      <span style="position:relative; display:flex; align-items:flex-end; gap:2px;">
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="position:relative; width:4px; height:23px; background:#3ecf8e; border-radius:2px 2px 0 0;">
+          <span style="position:absolute; left:1px; bottom:23px; width:2px; height:9px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+          <span style="position:absolute; left:3px; bottom:26px; width:9px; height:6px; background:#3ecf8e; clip-path:polygon(0 0, 100% 50%, 0 100%);"></span>
+        </span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="position:absolute; left:-3px; right:-3px; bottom:11px; border-top:1.5px dashed #e8ecf2;"></span>
+      </span>
+      <span style="font-family:'Space Mono', monospace; font-size:13px; letter-spacing:0.14em; text-transform:uppercase;">Prop Palace</span>
+    </a>
+    <div style="display:flex; align-items:center; gap:26px; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;">
+      <span style="color:#8fa6ff; padding-bottom:4px; border-bottom:2px solid #3b5bdb;">Games</span>
+      <a href="./PropPalace Prop Feed.dc.html" style="color:#aab2c0;">Prop Feed</a>
+      <span style="color:#aab2c0;">News</span>
+    </div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:16px;">
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8b98ab;">SIGN IN</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 12px;">21+</span>
+    </div>
+  </div>
+
+  <div style="display:flex; align-items:flex-end; gap:20px; padding:28px 40px 18px;">
+    <div>
+      <h1 style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-0.01em;">Games</h1>
+      <div style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; margin-top:8px;">{{ slateLabel }}</div>
+    </div>
+    <div style="margin-left:auto; display:flex; gap:8px;">
+      <sc-for list="{{ leagues }}" as="lg" hint-placeholder-count="3">
+        <span onClick="{{ lg.pick }}" style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.1em; text-transform:uppercase; border-radius:4px; padding:8px 14px; cursor:pointer; background:{{ lg.bg }}; color:{{ lg.fg }}; border:1px solid {{ lg.border }};">{{ lg.label }}</span>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="padding:0 40px;">
+    <div style="display:flex; border-top:1px solid #2b2f36; border-bottom:1px solid #2b2f36;">
+      <sc-for list="{{ dates }}" as="d" hint-placeholder-count="5">
+        <span onClick="{{ d.pick }}" style="display:flex; flex-direction:column; gap:5px; padding:14px 24px 12px; cursor:pointer; border-bottom:2px solid {{ d.rule }}; margin-bottom:-1px;">
+          <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:17px; color:{{ d.fg }};">{{ d.day }}</span>
+          <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">{{ d.count }}</span>
+        </span>
+      </sc-for>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:10px; padding:0 4px;">
+        <span style="font-family:'Space Mono', monospace; font-size:12px; color:#8b98ab;">⌕</span>
+        <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.06em; color:#8b98ab;">Search players or teams</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:20px 40px 80px;">
+    <div style="display:grid; grid-template-columns:300px 168px 1fr 128px; gap:16px; align-items:center; padding:12px 20px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px 6px 0 0;">
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Matchup</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Status</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Props worth a look</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">Research</span>
+    </div>
+
+    <div style="background:#131519; border:1px solid #2b2f36; border-top:none; border-radius:0 0 6px 6px;">
+      <sc-for list="{{ games }}" as="g" hint-placeholder-count="6">
+        <div style="border-top:1px solid #2b2f36;">
+          <div onClick="{{ g.toggle }}" style="display:grid; grid-template-columns:300px 168px 1fr 128px; gap:16px; align-items:center; padding:16px 20px; cursor:pointer; background:{{ g.rowBg }}; opacity:{{ g.rowOpacity }};">
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <div style="display:flex; align-items:baseline; gap:9px;">
+                <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:20px;">{{ g.away }}</span>
+                <span style="font-family:'Space Mono', monospace; font-size:11px; color:#8b98ab;">at</span>
+                <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:20px;">{{ g.home }}</span>
+              </div>
+              <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ g.records }}</div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="width:6px; height:6px; border-radius:999px; background:{{ g.statusDot }};"></span>
+              <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.08em; font-variant-numeric:tabular-nums; color:{{ g.statusColor }};">{{ g.status }}</span>
+            </div>
+
+            <div style="font-size:14px; color:#aab2c0;">{{ g.watch }}</div>
+
+            <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:{{ g.actionColor }};">{{ g.action }}</span>
+          </div>
+
+          <sc-if value="{{ g.open }}" hint-placeholder-val="{{ false }}">
+            <div style="background:#0d0f12; border-top:1px solid #2b2f36; padding:20px;">
+              <div style="display:grid; grid-template-columns:400px 1fr; gap:24px; align-items:start;">
+
+                <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; padding:16px;">
+                  <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Line score</div>
+                  <div style="display:grid; grid-template-columns:64px repeat(9, 1fr) 30px 30px; gap:4px; margin-top:14px; font-family:'Space Mono', monospace; font-size:11px; color:#8b98ab; font-variant-numeric:tabular-nums;">
+                    <span></span><span style="text-align:center;">1</span><span style="text-align:center;">2</span><span style="text-align:center;">3</span><span style="text-align:center;">4</span><span style="text-align:center;">5</span><span style="text-align:center;">6</span><span style="text-align:center;">7</span><span style="text-align:center;">8</span><span style="text-align:center;">9</span><span style="text-align:center; color:#e8ecf2;">R</span><span style="text-align:center;">H</span>
+                  </div>
+                  <div style="display:grid; grid-template-columns:64px repeat(9, 1fr) 30px 30px; gap:4px; margin-top:8px; padding-top:8px; border-top:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:12.5px; color:#e8ecf2; font-variant-numeric:tabular-nums;">
+                    <span style="letter-spacing:0.08em;">WSH</span><span style="text-align:center;">0</span><span style="text-align:center;">2</span><span style="text-align:center;">0</span><span style="text-align:center;">1</span><span style="text-align:center;">0</span><span style="text-align:center; color:#8b98ab;">·</span><span style="text-align:center; color:#8b98ab;">·</span><span style="text-align:center; color:#8b98ab;">·</span><span style="text-align:center; color:#8b98ab;">·</span><span style="text-align:center; color:#8fa6ff;">3</span><span style="text-align:center; color:#8b98ab;">7</span>
+                  </div>
+                  <div style="display:grid; grid-template-columns:64px repeat(9, 1fr) 30px 30px; gap:4px; margin-top:6px; font-family:'Space Mono', monospace; font-size:12.5px; color:#e8ecf2; font-variant-numeric:tabular-nums;">
+                    <span style="letter-spacing:0.08em;">TEX</span><span style="text-align:center;">1</span><span style="text-align:center;">0</span><span style="text-align:center;">0</span><span style="text-align:center;">3</span><span style="text-align:center;">0</span><span style="text-align:center; color:#8b98ab;">–</span><span style="text-align:center; color:#8b98ab;">·</span><span style="text-align:center; color:#8b98ab;">·</span><span style="text-align:center; color:#8b98ab;">·</span><span style="text-align:center; color:#8fa6ff;">4</span><span style="text-align:center; color:#8b98ab;">9</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:10px; margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+                    <span style="width:6px; height:6px; border-radius:999px; background:#3ecf8e;"></span>
+                    <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.08em; color:#e8ecf2;">TOP 6 · 1 OUT</span>
+                    <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.06em; color:#8b98ab;">Runners on 1st, 2nd</span>
+                  </div>
+                  <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.05em; color:#8b98ab; margin-top:12px; line-height:1.5;">Live game state. Season hit rates below still count finished games only.</div>
+                </div>
+
+                <div>
+                  <div style="display:flex; align-items:baseline; gap:12px;">
+                    <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Props in play</span>
+                    <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.06em; color:#8b98ab;">progress against tonight's line</span>
+                    <a href="./PropPalace Prop Feed.dc.html" style="margin-left:auto; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase;">All 172 props →</a>
+                  </div>
+
+                  <div style="margin-top:14px;">
+                    <sc-for list="{{ livePlayers }}" as="p" hint-placeholder-count="4">
+                      <div style="display:grid; grid-template-columns:200px 128px 1fr 116px; gap:16px; align-items:center; padding:12px 0; border-top:1px solid #2b2f36;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                          <span style="display:block; width:30px; height:30px; border-radius:999px; background:#191c21; border:1px solid #2b2f36;"></span>
+                          <div>
+                            <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:15px;">{{ p.name }}</div>
+                            <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab;">{{ p.team }}</div>
+                          </div>
+                        </div>
+                        <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.06em; text-transform:uppercase; color:#e8ecf2;">{{ p.prop }}</span>
+                        <div>
+                          <div style="position:relative; height:8px; border-radius:2px; background:#191c21; border:1px solid #2b2f36;">
+                            <div style="height:100%; border-radius:2px; width:{{ p.fill }}; background:{{ p.fillColor }};"></div>
+                            <span style="position:absolute; top:-4px; bottom:-4px; left:{{ p.lineAt }}; border-left:1.5px dashed #e8ecf2;"></span>
+                          </div>
+                          <div style="display:flex; justify-content:space-between; margin-top:6px; font-family:'Space Mono', monospace; font-size:10.5px; color:#8b98ab; font-variant-numeric:tabular-nums;">
+                            <span>{{ p.progress }}</span>
+                            <span>{{ p.season }}</span>
+                          </div>
+                        </div>
+                        <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; border-radius:999px; padding:5px 10px; color:{{ p.verdictFg }}; border:1px solid {{ p.verdictBorder }};">{{ p.verdict }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:16px; margin-top:20px;">
+      <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:10px 16px; cursor:pointer;">Show all 15 games</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.05em; color:#8b98ab;">Hit rates count finished games only, and every rate shows how many games it came from. Research tool — no picks, no wagers.</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:1000}}">
+const GAMES = [
+  { id:'atl-mil', away:'Braves', home:'Brewers', records:'75-53 · 79-49', state:'pre', status:'4:10 PM', watch:'Acuña total bases · Yelich hits', action:'172 props →' },
+  { id:'wsh-tex', away:'Nationals', home:'Rangers', records:'61-68 · 76-51', state:'live', status:'TOP 6 · 3–4', watch:'Ruiz hits · Seager total bases · Burger RBIs', action:'Gamecast →' },
+  { id:'stl-phi', away:'Cardinals', home:'Phillies', records:'66-63 · 70-58', state:'pre', status:'6:40 PM', watch:'Harper total bases · Contreras hits', action:'168 props →' },
+  { id:'tor-nyy', away:'Blue Jays', home:'Yankees', records:'63-66 · 72-55', state:'pre', status:'7:05 PM', watch:'Judge total bases · Guerrero hits', action:'174 props →' },
+  { id:'sf-bos', away:'Giants', home:'Red Sox', records:'52-75 · 68-59', state:'pre', status:'7:10 PM', watch:'Devers RBIs · Chapman hits', action:'166 props →' },
+  { id:'laa-hou', away:'Angels', home:'Astros', records:'49-79 · 64-64', state:'final', status:'FINAL 2–6', watch:'Results settled', action:'Recap →' },
+];
+
+const LIVE = [
+  { name:'Keibert Ruiz', team:'WSH · C', prop:'Hits o0.5', have:1, line:0.5, cap:3, season:'78% · 7 of 9' },
+  { name:'Corey Seager', team:'TEX · SS', prop:'Total bases o1.5', have:1, line:1.5, cap:4, season:'62% · 8 of 13' },
+  { name:'Jake Burger', team:'TEX · 1B', prop:'RBIs o0.5', have:2, line:0.5, cap:3, season:'55% · 11 of 20' },
+  { name:'Abimelec Ortiz', team:'WSH · 1B', prop:'Hits o1.5', have:0, line:1.5, cap:4, season:'41% · 7 of 17' },
+];
+
+class Component extends DCLogic {
+  state = { league:'MLB', date:'Aug 21', open:'wsh-tex' };
+
+  renderVals() {
+    const s = this.state;
+    const dates = [
+      { day:'Aug 19', count:'Wed · 15 games' },
+      { day:'Aug 20', count:'Thu · 9 games' },
+      { day:'Aug 21', count:'Fri · 15 games' },
+      { day:'Aug 22', count:'Sat · 15 games' },
+      { day:'Aug 23', count:'Sun · 14 games' },
+    ];
+
+    return {
+      slateLabel: '15 games · Friday, August 21',
+
+      leagues: ['MLB', 'WNBA', 'NFL'].map(label => ({
+        label,
+        pick: () => this.setState({ league: label }),
+        bg: label === s.league ? '#3b5bdb' : 'transparent',
+        fg: label === s.league ? '#ffffff' : '#aab2c0',
+        border: label === s.league ? '#3b5bdb' : '#2b2f36',
+      })),
+
+      dates: dates.map(d => ({
+        ...d,
+        pick: () => this.setState({ date: d.day }),
+        fg: d.day === s.date ? '#8fa6ff' : '#aab2c0',
+        rule: d.day === s.date ? '#3b5bdb' : 'transparent',
+      })),
+
+      games: GAMES.map(g => ({
+        ...g,
+        open: s.open === g.id,
+        toggle: () => this.setState({ open: s.open === g.id ? null : g.id }),
+        rowBg: s.open === g.id ? '#191c21' : 'transparent',
+        rowOpacity: g.state === 'final' ? 0.6 : 1,
+        statusDot: g.state === 'live' ? '#3ecf8e' : 'transparent',
+        statusColor: g.state === 'live' ? '#e8ecf2' : '#aab2c0',
+        actionColor: g.state === 'final' ? '#8b98ab' : '#8fa6ff',
+      })),
+
+      livePlayers: LIVE.map(p => {
+        const cleared = p.have > p.line;
+        return {
+          ...p,
+          fill: Math.min(100, (p.have / p.cap) * 100) + '%',
+          fillColor: cleared ? '#3ecf8e' : '#3b5bdb',
+          lineAt: (p.line / p.cap) * 100 + '%',
+          progress: p.have + ' of ' + p.line,
+          verdict: cleared ? 'cleared' : 'needs ' + (Math.ceil(p.line) - p.have),
+          verdictFg: cleared ? '#3ecf8e' : '#aab2c0',
+          verdictBorder: cleared ? '#3ecf8e' : '#2b2f36',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>
