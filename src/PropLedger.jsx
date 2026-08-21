@@ -19,6 +19,7 @@ import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL 
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
+import { fetchLeagueRosters } from "./lib/rosters.js";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
   MatchupBreadcrumb, MatchupVerdictBlock, GameLogTable, TheRead, MatchupSplits, ValueDistribution,
@@ -2123,6 +2124,20 @@ const NFL_HEADSHOTS = Object.fromEntries(
   ])
 );
 
+// NFL_HEADSHOTS is keyed by hand-written slug, so it has nothing for a player
+// who only exists because the live roster listed him. His espnId rides on the
+// player object, and ESPN's combiner URL is the same either way -- so resolve
+// through both rather than leaving new arrivals faceless.
+function nflHeadshot(player) {
+  if (!player) return null;
+  const bySlug = NFL_HEADSHOTS[player.id];
+  if (bySlug) return bySlug;
+  const espnId = player.espnId || NFL_ESPN_ID[player.id];
+  return espnId
+    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${espnId}.png&w=350&h=350&scale=crop`
+    : null;
+}
+
 const NFL_PLAYERS = [
   { id: "dak", name: "Dak Prescott", team: "DAL", pos: "QB" },
   { id: "lamb", name: "CeeDee Lamb", team: "DAL", pos: "WR" },
@@ -2481,6 +2496,43 @@ const ALL_NFL_PLAYERS = [
   ...PACKERS_PLAYERS, ...VIKINGS_PLAYERS, ...COMMANDERS_PLAYERS, ...EAGLES_PLAYERS,
   ...NFL_CARDINALS_PLAYERS, ...CHARGERS_PLAYERS,
 ];
+
+// Live NFL roster, merged over the hand-written pool above.
+//
+// Those thirty-two arrays are accurate on the day they were typed and stale the
+// moment anyone is traded or signed. ESPN's roster endpoint is not, so it is
+// the source of truth and they become the cold-start fallback -- the same shape
+// WNBA has used since item 5b.
+//
+// Filled by PropLedger's roster effect. Mutable module state, like
+// NFL_REAL_GAME_LOGS beside it, because the pool is read from four page
+// components and a builder function that are not all inside one React tree.
+let NFL_LIVE_PLAYERS = [];
+// { teamsLoaded, teamsTotal } once a fetch has answered, so the UI can say
+// "28 of 32 teams" rather than quietly showing a short league.
+let NFL_ROSTER_COVERAGE = null;
+
+// Only the positions this app prices. An ESPN NFL roster is ~96 athletes
+// including the offensive line and the whole defense, none of whom have a prop
+// market here -- carrying them would quadruple the pool to no end.
+const NFL_PROP_POSITIONS = new Set(["QB", "RB", "WR", "TE", "K", "FB"]);
+
+const NFL_SLUG_BY_ESPN_ID = Object.fromEntries(
+  Object.entries(NFL_ESPN_ID).map(([slug, espnId]) => [String(espnId), slug])
+);
+
+// The pool every NFL surface reads. Live players win on collision, since the
+// whole point is that they are current; a hand-written player the live roster
+// doesn't list is kept rather than dropped, because "ESPN didn't return him"
+// and "he isn't on the team" are different facts and only one of them is
+// knowable from a missing row.
+function nflPlayerPool() {
+  if (!NFL_LIVE_PLAYERS.length) return ALL_NFL_PLAYERS;
+  const byId = new Map(ALL_NFL_PLAYERS.map((p) => [p.id, p]));
+  NFL_LIVE_PLAYERS.forEach((p) => byId.set(p.id, { ...(byId.get(p.id) || {}), ...p }));
+  return [...byId.values()];
+}
+
 
 // Each entry is one week's matchup the Prop Ledger can scout -- the "matchup
 // selector" dropdown on the NFL page switches between these, swapping which
@@ -3300,6 +3352,12 @@ async function fetchNFLPlayerGameLogForDisplay(espnId) {
 function getNFLGames(player) {
   if (NFL_REAL_GAME_LOGS[player.id]) return NFL_REAL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
   if (NFL_GAME_LOGS[player.id]) return NFL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
+  // A player who exists only because the live roster listed him has no
+  // hand-written log to fall back to, and generating one would put invented
+  // numbers on screen under a real name -- the exact failure the live-roster
+  // work exists to remove. Empty until his real log lands; the feed and the
+  // rails already drop a player with no games rather than showing a blank row.
+  if (player.liveOnly) return [];
   return genSyntheticNFLGames(player);
 }
 
@@ -5554,7 +5612,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
   React.useEffect(() => {
     if (!jumpTo) return;
-    const jumpPlayer = ALL_NFL_PLAYERS.find((p) => p.id === jumpTo.playerId);
+    const jumpPlayer = nflPlayerPool().find((p) => p.id === jumpTo.playerId);
     if (jumpPlayer) {
       const jumpMatchup = NFL_MATCHUPS.find(
         (m) => m.teamA.players.some((p) => p.id === jumpPlayer.id) || m.teamB.players.some((p) => p.id === jumpPlayer.id)
@@ -5604,7 +5662,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     setLine(null);
   };
 
-  const player = ALL_NFL_PLAYERS.find((p) => p.id === playerId);
+  // Resolved from the merged pool, so a player reached from the feed or a
+  // search result exists here even when he arrived on the live roster after
+  // the hand-written arrays were written.
+  const player = useMemo(() => nflPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
   const allGames = useMemo(() => getNFLGames(player), [player, dataVersion]);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
@@ -5853,7 +5914,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           sport="nfl"
           team={player.team}
           colorMap={NFL_TEAM_COLORS}
-          headshotSrc={NFL_HEADSHOTS[player.id]}
+          headshotSrc={nflHeadshot(player)}
           surface="var(--panel)"
           size={compact ? 48 : 76}
           inset={compact ? 3 : 5}
@@ -6355,7 +6416,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       teamB={oppRoster}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-      headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
+      headshotSrc={(p) => nflHeadshot(p)}
       metaLine={railMeta}
       avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
     />
@@ -6365,7 +6426,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       players={teamRoster.players}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-      headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
+      headshotSrc={(p) => nflHeadshot(p)}
       metaLine={railMeta}
       avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
     />
@@ -6544,7 +6605,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       players={oppRoster.players}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-      headshotSrc={(p) => NFL_HEADSHOTS[p.id]}
+      headshotSrc={(p) => nflHeadshot(p)}
       metaLine={railMeta}
       avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
     />
@@ -6553,7 +6614,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
         Real 2025 regular-season game logs (ESPN Stats API) for every player shown above — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.
       </div>
-      <PlayerNewsModule playerName={player.name} headshotSrc={NFL_HEADSHOTS[player.id]} sport="nfl" team={player.team} />
+      <PlayerNewsModule playerName={player.name} headshotSrc={nflHeadshot(player)} sport="nfl" team={player.team} />
     </div>
   );
 }
@@ -15787,7 +15848,7 @@ function matchupDateForPlayer(matchups, playerId) {
 
 function buildNFLFeedRows() {
   const rows = [];
-  ALL_NFL_PLAYERS.forEach((player) => {
+  nflPlayerPool().forEach((player) => {
     const games = getNFLGames(player);
     if (!games.length) return;
     const nextOpp = games[games.length - 1].opp;
@@ -15808,7 +15869,7 @@ function buildNFLFeedRows() {
         marketId: m.id,
         category: NFL_MARKET_CATEGORY[m.id],
         icon: nflTeamLogo(player.team),
-        avatar: NFL_HEADSHOTS[player.id],
+        avatar: nflHeadshot(player),
         name: player.name,
         team: player.team,
         date: gameDate,
@@ -17103,10 +17164,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // season and which source this sport's logs actually come from rather than
   // the design's single hard-coded "Real 2025 regular-season game logs" --
   // that sentence is true of NFL here and of none of the other three.
+  // Rule 4 on the roster fetch: falling back to the hand-written arrays is a
+  // legitimate answer, but a silent one is not -- a stale roster looks exactly
+  // like a current one. NFL is the only sport wired to lib/rosters.js so far,
+  // so it is the only one that can report coverage.
+  const nflRosterNote = sport !== "nfl" ? ""
+    : !NFL_ROSTER_COVERAGE
+      ? " Live rosters haven't loaded yet, so this is the last hand-written squad list — it won't show recent trades or signings."
+      : NFL_ROSTER_COVERAGE.teamsLoaded < NFL_ROSTER_COVERAGE.teamsTotal
+        ? ` Live rosters loaded for ${NFL_ROSTER_COVERAGE.teamsLoaded} of ${NFL_ROSTER_COVERAGE.teamsTotal} teams; the rest fall back to hand-written squad lists.`
+        : "";
   const feedDataDisclaimer = sport === "mlb"
     ? "Live 2026 regular-season game logs (MLB Stats API) for every team on today's real MLB slate. Not a live odds feed."
     : sport === "nfl"
-    ? "Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed."
+    ? `Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.${nflRosterNote}`
     : sport === "wnba"
     ? "Live 2026 regular-season game logs (ESPN Stats API), refreshed each session. Not a live odds feed."
     : "Sample data only — generated from the same mock game logs as the single-player pages, not a live odds feed.";
@@ -19582,9 +19653,9 @@ function buildNewsPlayerPool() {
     entries.push({ ...e, nameKey });
   };
 
-  ALL_NFL_PLAYERS.forEach((p) => add({
+  nflPlayerPool().forEach((p) => add({
     sport: "nfl", playerId: p.id, name: p.name, team: p.team, position: p.pos,
-    espnId: NFL_ESPN_ID[p.id] || null, headshotSrc: NFL_HEADSHOTS[p.id] || null,
+    espnId: p.espnId || NFL_ESPN_ID[p.id] || null, headshotSrc: nflHeadshot(p),
   }));
   ALL_NBA_PLAYERS.forEach((p) => add({
     sport: "nba", playerId: p.id, name: p.name, team: p.team, position: p.pos,
@@ -19971,6 +20042,39 @@ export default function PropLedger() {
       bumpNflRefresh();
     });
 
+    // Live rosters first. Every sport has to reflect trades and signings, and
+    // that is a property of fetching rather than hard-coding -- see
+    // lib/rosters.js. The hand-written arrays stay as the cold-start fallback.
+    fetchLeagueRosters("nfl", {
+      slugFor: (p) => NFL_SLUG_BY_ESPN_ID[p.espnId],
+    }).then((res) => {
+      if (cancelled || !res) return;
+      NFL_LIVE_PLAYERS = res.players
+        .filter((p) => NFL_PROP_POSITIONS.has(p.pos))
+        .map((p) => ({
+          id: p.id || `nfl_${p.espnId}`,
+          name: p.name,
+          team: p.team,
+          pos: p.pos,
+          espnId: p.espnId,
+          // Marks a player the hand-written pool never had. getNFLGames
+          // refuses to generate a log for one of these.
+          liveOnly: !p.id,
+        }));
+      NFL_ROSTER_COVERAGE = { teamsLoaded: res.teamsLoaded, teamsTotal: res.teamsTotal };
+      bumpNflRefresh();
+      // Their logs, once we know who they are. Keyed by our slug so a player
+      // the hand-written pool already had keeps the id his saved picks use.
+      NFL_LIVE_PLAYERS.forEach((player) => {
+        if (NFL_REAL_GAME_LOGS[player.id] || !player.espnId) return;
+        fetchNFLPlayerGameLogForDisplay(player.espnId).then((games) => {
+          if (cancelled || !games) return;
+          NFL_REAL_GAME_LOGS[player.id] = games;
+          bumpNflRefresh();
+        });
+      });
+    });
+
     ALL_NFL_PLAYERS.forEach((player) => {
       const espnId = NFL_ESPN_ID[player.id];
       if (!espnId) return;
@@ -20086,7 +20190,7 @@ export default function PropLedger() {
   // player/team needs a different one (e.g. a pitcher).
   const searchIndex = useMemo(() => {
     const entries = [];
-    ALL_NFL_PLAYERS.forEach((p) => entries.push({
+    nflPlayerPool().forEach((p) => entries.push({
       key: `nfl_${p.id}`, sport: "nfl", sportLabel: "NFL", label: p.name, playerId: p.id, market: "passYds",
       searchText: `${p.name} ${p.team}`.toLowerCase(),
     }));
