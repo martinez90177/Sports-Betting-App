@@ -400,6 +400,26 @@ const REB_SPLITS = [
 const NBA_ESPN_ABBR = { GS: "GSW", NO: "NOP", NY: "NYK", SA: "SAS", UTAH: "UTA", WSH: "WAS" };
 const nbaTeamAbbr = (espnAbbr) => NBA_ESPN_ABBR[espnAbbr] || espnAbbr;
 
+// ESPN groups a gamelog into "2025-26 Preseason" / "Regular Season" /
+// "Postseason". Flattening those together -- which both basketball parsers did
+// -- silently counted exhibition games in every hit rate: Wembanyama's 2025-26
+// log is 67 regular-season games, 22 playoff games and 5 preseason ones, and
+// all 94 were being graded against the line.
+//
+// Preseason is dropped outright. It is not a competitive sample and no book
+// prices it, so it is not "a game that counts" under any reading.
+//
+// Postseason is kept and tagged, per Alex's decision: playoff games go into the
+// hit rates rather than being thrown away, but a playoff game has to *look*
+// like one wherever it appears. `seasonType` is what a filter and a visible
+// mark both hang off.
+function espnSeasonType(displayName) {
+  const d = String(displayName || "").toLowerCase();
+  if (d.includes("preseason")) return "pre";
+  if (d.includes("post")) return "post";
+  return "regular";
+}
+
 const NBA_REAL_GAME_LOGS = {};
 let NBA_LIVE_PLAYERS = [];
 let NBA_ROSTER_COVERAGE = null;
@@ -418,11 +438,13 @@ function parseNBAGameLogResponse(data) {
   const events = data?.events || {};
   const byEvent = {};
   (data?.seasonTypes || []).forEach((st) => {
+    const seasonType = espnSeasonType(st.displayName);
+    if (seasonType === "pre") return;
     (st.categories || []).forEach((cat) => {
       (cat.events || []).forEach((ev) => {
         const meta = events[ev.eventId];
         if (!meta) return;
-        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {} };
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType };
         (ev.stats || []).forEach((val, idx) => {
           const key = names[idx];
           if (key) byEvent[ev.eventId].stats[key] = val;
@@ -437,13 +459,14 @@ function parseNBAGameLogResponse(data) {
     // those abbreviations aren't in TEAM_DEF at all -- dropped here rather
     // than left to break every downstream defence lookup.
     .filter(({ meta }) => known.has(nbaTeamAbbr(meta.opponent?.abbreviation)))
-    .map(({ meta, stats }) => {
+    .map(({ meta, stats, seasonType }) => {
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
       const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
       return {
         date: (meta.gameDate || "").slice(0, 10),
         opp: nbaTeamAbbr(meta.opponent.abbreviation),
+        seasonType,
         home: meta.atVs !== "@",
         minutes: num(stats.minutes),
         pts: num(stats.points),
@@ -3388,11 +3411,14 @@ function parseNFLGameLogResponse(data) {
   const byEvent = {};
 
   (data?.seasonTypes || []).forEach((st) => {
+    // Same preseason exclusion and postseason tagging as the NBA parser above.
+    const seasonType = espnSeasonType(st.displayName);
+    if (seasonType === "pre") return;
     (st.categories || []).forEach((cat) => {
       (cat.events || []).forEach((ev) => {
         const meta = events[ev.eventId];
         if (!meta) return;
-        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {} };
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType };
         (ev.stats || []).forEach((val, i) => {
           const key = names[i];
           if (key) byEvent[ev.eventId].stats[key] = val;
@@ -3402,13 +3428,14 @@ function parseNFLGameLogResponse(data) {
   });
 
   return Object.values(byEvent)
-    .map(({ meta, stats }) => {
+    .map(({ meta, stats, seasonType }) => {
       const oppAbbr = meta.opponent?.abbreviation;
       const opp = NFL_ESPN_ABBR_FIX[oppAbbr] || oppAbbr || "???";
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       const game = {
         date: (meta.gameDate || "").slice(0, 10),
         opp,
+        seasonType,
         home: meta.atVs !== "@",
       };
       Object.entries(NFL_STAT_NAME_MAP).forEach(([espnKey, ourKey]) => {
@@ -7499,11 +7526,14 @@ function parseWNBAGameLogResponse(data) {
   const byEvent = {};
 
   (data?.seasonTypes || []).forEach((st) => {
+    // Same preseason exclusion and postseason tagging as the NBA parser above.
+    const seasonType = espnSeasonType(st.displayName);
+    if (seasonType === "pre") return;
     (st.categories || []).forEach((cat) => {
       (cat.events || []).forEach((ev) => {
         const meta = events[ev.eventId];
         if (!meta) return;
-        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {} };
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType };
         (ev.stats || []).forEach((val, i) => {
           const key = names[i];
           if (key) byEvent[ev.eventId].stats[key] = val;
@@ -7519,13 +7549,14 @@ function parseWNBAGameLogResponse(data) {
     // WNBA_TEAM_DEF/the defense-rank tables at all, so they're dropped here
     // rather than crashing every lookup that expects a real team abbreviation.
     .filter(({ meta }) => knownTeams.has(meta.opponent?.abbreviation))
-    .map(({ meta, stats }) => {
+    .map(({ meta, stats, seasonType }) => {
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
       const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
       return {
         date: (meta.gameDate || "").slice(0, 10),
         opp: meta.opponent.abbreviation,
+        seasonType,
         home: meta.atVs !== "@",
         minutes: num(stats.minutes),
         pts: num(stats.points),
