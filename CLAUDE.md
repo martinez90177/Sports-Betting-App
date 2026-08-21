@@ -10,8 +10,11 @@ Two committed documents carry the context that isn't in the code:
   rosters and real game logs. **Read it before starting any redesign item.**
 - **[`docs/PROJECT_NOTES.md`](docs/PROJECT_NOTES.md)** — durable facts about the
   project that the repo and git history don't record.
+- **[`docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md)**
+  — the full spec for accounts, Stripe subscriptions and the beginner tutorial.
+  Not started; summarised as its own track in the plan.
 
-Both are committed on purpose: this project is worked on from more than one
+These are committed on purpose: this project is worked on from more than one
 computer, and Claude's own memory does not travel between machines.
 
 Design sources of truth live in `design_handoff_proppalace_redesign/` (the

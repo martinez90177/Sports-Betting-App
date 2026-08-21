@@ -809,3 +809,89 @@ that change has to hold across every feed row.
 `image-slot.js` is prototype-only scaffolding for dropping images into the mock.
 Do not port it. Headshots and crests wire to the real asset source, and the
 availability rule holds: unknown status renders **no dot**.
+
+---
+
+# Monetisation track — accounts, subscription, beginner tutorial
+
+Third track, independent of the redesign items and the data track. **Not
+started:** planned in a session on 2026-08-21 that never landed. Verified
+2026-08-21 — none of the files below exist, and the branch that session named
+(`claude/accounts-subscription-tutorial-34tzoh`) is on neither origin nor this
+machine. Treat the whole thing as unbuilt.
+
+The full specification as written is reproduced in
+[`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md).
+This section records what it is and what it collides with; that file is the
+detail.
+
+## What it covers
+
+1. **Accounts** — email + password on the Upstash Redis already in the project.
+   `api/_lib/auth.js` (scrypt + `timingSafeEqual`, `pp_session` HttpOnly cookie,
+   Redis-backed sessions and rate limiting), endpoints under `api/auth/…`.
+2. **Subscription** — real Stripe Checkout + Billing Portal + webhook, on test
+   keys until live ones are added. **The server is the only source of truth for
+   plan; the client never sets it.**
+3. **Free tier** — a curated allowlist (`src/lib/freeTier.js`) of two deliberately
+   low-profile players per sport. Everything else renders **locked, not hidden**.
+4. **Tutorial** — a spotlight coach-mark tour over the real UI, driven by
+   `data-tour` attributes, teaching betting concepts from zero.
+5. **Settings rebuild** — Profile · Security · Preferences · Betting ·
+   Subscription · Tutorial · Resources.
+
+## Why it is a separate branch
+
+`CLAUDE.md` says work on `master`, and that stands for everything else. This is
+the one deliberate exception: `master` auto-deploys to the public site, and a
+half-built paywall must never be live mid-build. Merge to `master` when it is
+ready to charge people.
+
+## What it collides with — check these before building
+
+### 1. A hardcoded free-tier allowlist vs. live rosters (data track)
+
+`FREE_PLAYER_IDS` pins specific player ids. The data track replaces hand-written
+rosters with **live ESPN fetches**, precisely so trades and signings flow
+through. The moment that lands, a pinned free-tier player can be traded,
+waived or retired — and silently vanish, leaving the free tier showing **one
+player, or none**, with no error and no signal that the paywall just closed
+completely.
+
+Fix it when building, not after: validate the allowlist against the live roster
+at load, and if a pinned id is missing, fall back to another player from the same
+team rather than showing nothing. A free tier that quietly empties itself looks
+like a broken app, not a sales pitch.
+
+### 2. The landing page's hero card vs. the paywall (item 16)
+
+Item 16 puts one **real** player card on the front page as the worked example —
+hit rate, splits, verdict, form graph — and it is seen by signed-out visitors.
+Under this plan almost every player is locked to them.
+
+So the hero must be drawn from `FREE_PLAYER_IDS`, or the front door demonstrates
+the product with a blurred card. That constraint fights item 16's other rule
+(pick the strongest real row), since the free tier is deliberately low-profile
+players. Resolve it explicitly — probably "strongest row *among free-tier
+players*".
+
+### 3. Rule 4 — already handled, keep it that way
+
+The plan is careful here and it must stay careful: locked rows still render with
+avatar, name and availability dot; only the numbers blur. Row counts keep
+counting locked rows so "showing 42" never silently shrinks. That is exactly
+right per CLAUDE.md rules 1 and 4 — a paywall is not a licence to drop rows.
+
+### 4. Secrets
+
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` are env vars and
+must never be committed — same discipline as the existing `CRON_SECRET`. The
+repo currently contains no secret values and should stay that way.
+
+## Sequencing
+
+Auth first (nothing else works without it), then the paywall, then Stripe, then
+the tutorial — the tutorial spotlights real UI and wants that UI settled. Worth
+weighing against the redesign items: items 16/17 change the surfaces this would
+gate, so building the paywall first means gating screens that are about to be
+rebuilt.
