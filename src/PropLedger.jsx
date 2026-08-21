@@ -10368,35 +10368,71 @@ MLB_MATCHUPS.forEach((m) => {
 const MLB_GAMELOG_TTL_MS = 15 * 60 * 1000;
 const mlbGameLogCache = new Map();
 
-async function fetchMLBGameLog(mlbId) {
-  const cached = mlbGameLogCache.get(mlbId);
+// MLB's own season-type vocabulary. `gameType=R,P` asks for the regular
+// season plus the playoffs, and the playoffs come back split by round --
+// F wild card, D division series, L championship series, W world series --
+// never as a literal "P". Anything else that slips through (S spring, E/A
+// exhibition) is dropped the way ESPN's preseason is: it is not a competitive
+// sample and no book prices it.
+const MLB_POST_GAME_TYPES = new Set(["F", "D", "L", "W", "P"]);
+function mlbSeasonType(gameType) {
+  const t = String(gameType || "").toUpperCase();
+  if (t === "R") return "regular";
+  if (MLB_POST_GAME_TYPES.has(t)) return "post";
+  return null;
+}
+
+// The MLB season is a calendar year, so this is nearly `getFullYear()` -- with
+// the January/February exception that matters: in the offseason the most
+// recent *played* season is last year, and asking for the current one returns
+// an empty log for every player in the app. Derived rather than hardcoded,
+// which `season=2026` was: it silently became wrong on 1 January.
+function currentMLBSeason(now = new Date()) {
+  return now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear();
+}
+
+async function fetchMLBGameLog(mlbId, season = currentMLBSeason()) {
+  const key = `${mlbId}:${season}`;
+  const cached = mlbGameLogCache.get(key);
   if (cached && Date.now() - cached.fetchedAt < MLB_GAMELOG_TTL_MS) return cached.games;
 
   // v4 adds gamePk (see fetchMLBGameBoxscoreLineupIds) -- bumped so any
   // cache written before that field existed gets refetched instead of
   // silently missing it.
-  const cacheKey = `mlb_gamelog_v4_${mlbId}`;
+  // v5: the log now spans regular season *and* playoffs, and every game
+  // carries seasonType/season/team. A v4 payload is regular-season-only with
+  // none of those fields, so the log-scoping control would find nothing to
+  // offer and quietly not appear.
+  const cacheKey = `mlb_gamelog_v5_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Date.now() - parsed.fetchedAt < MLB_GAMELOG_TTL_MS) {
-        mlbGameLogCache.set(mlbId, parsed);
+        mlbGameLogCache.set(key, parsed);
         return parsed.games;
       }
     }
   } catch {}
 
   const res = await fetch(
-    `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=hitting&season=2026&gameType=R`
+    `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=hitting&season=${season}&gameType=R,P`
   );
   const data = await res.json();
   const splits = data?.stats?.[0]?.splits || [];
   const games = splits.map((s) => {
+    const seasonType = mlbSeasonType(s.gameType);
+    if (!seasonType) return null;
     const st = s.stat;
     return {
       date: s.date,
       opp: MLB_TEAM_ID_ABBR[s.opponent?.id] || s.opponent?.name || "???",
+      // The player's own team that game. A roster says where he is now and
+      // says it about every game he ever played; this is what makes the
+      // traded-player filter possible.
+      team: MLB_TEAM_ID_ABBR[s.team?.id] || undefined,
+      seasonType,
+      season: Number(s.season) || season,
       home: !!s.isHome,
       pa: st.plateAppearances || 0,
       h: st.hits || 0,
@@ -10412,10 +10448,10 @@ async function fetchMLBGameLog(mlbId) {
       sf: st.sacFlies || 0,
       gamePk: s.game?.gamePk || null,
     };
-  });
+  }).filter(Boolean);
 
   const record = { games, fetchedAt: Date.now() };
-  mlbGameLogCache.set(mlbId, record);
+  mlbGameLogCache.set(key, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
   return games;
 }
@@ -10930,32 +10966,40 @@ function formatOuts(outs) {
   return `${Math.floor(outs / 3)}.${outs % 3}`;
 }
 
-async function fetchMLBPitcherGameLog(mlbId) {
-  const cached = mlbPitcherGameLogCache.get(mlbId);
+async function fetchMLBPitcherGameLog(mlbId, season = currentMLBSeason()) {
+  const key = `${mlbId}:${season}`;
+  const cached = mlbPitcherGameLogCache.get(key);
   if (cached && Date.now() - cached.fetchedAt < MLB_GAMELOG_TTL_MS) return cached.games;
 
-  const cacheKey = `mlb_pitcher_gamelog_v1_${mlbId}`;
+  // v2: regular season + playoffs, with seasonType/season/team on every game.
+  // See the note on the batter log's v5 for why a stale payload has to miss.
+  const cacheKey = `mlb_pitcher_gamelog_v2_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
       if (Date.now() - parsed.fetchedAt < MLB_GAMELOG_TTL_MS) {
-        mlbPitcherGameLogCache.set(mlbId, parsed);
+        mlbPitcherGameLogCache.set(key, parsed);
         return parsed.games;
       }
     }
   } catch {}
 
   const res = await fetch(
-    `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=pitching&season=2026&gameType=R`
+    `https://statsapi.mlb.com/api/v1/people/${mlbId}/stats?stats=gameLog&group=pitching&season=${season}&gameType=R,P`
   );
   const data = await res.json();
   const splits = data?.stats?.[0]?.splits || [];
   const games = splits.map((s) => {
+    const seasonType = mlbSeasonType(s.gameType);
+    if (!seasonType) return null;
     const st = s.stat;
     return {
       date: s.date,
       opp: MLB_TEAM_ID_ABBR[s.opponent?.id] || s.opponent?.name || "???",
+      team: MLB_TEAM_ID_ABBR[s.team?.id] || undefined,
+      seasonType,
+      season: Number(s.season) || season,
       home: !!s.isHome,
       k: st.strikeOuts || 0,
       er: st.earnedRuns || 0,
@@ -10963,10 +11007,10 @@ async function fetchMLBPitcherGameLog(mlbId) {
       bb: st.baseOnBalls || 0,
       outs: parseInningsPitchedToOuts(st.inningsPitched),
     };
-  });
+  }).filter(Boolean);
 
   const record = { games, fetchedAt: Date.now() };
-  mlbPitcherGameLogCache.set(mlbId, record);
+  mlbPitcherGameLogCache.set(key, record);
   try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
   return games;
 }
@@ -12479,6 +12523,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const [hoverTeammate, setHoverTeammate] = useState(null);
 
   const resetFilters = () => {
+    setLogScope(LOG_SCOPE_DEFAULT);
     setSide("all");
     setLastN(10);
     setH2h(false);
@@ -12593,7 +12638,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId, isPitcher]);
 
-  const [allGames, setAllGames] = useState([]);
+  // The whole log as fetched, before scoping -- the scope control reads this
+  // to know what it can offer. `allGames` below is the scoped view every other
+  // number on the page derives from. Same pair as the other three sport pages.
+  const [logGames, setLogGames] = useState([]);
+  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
+  const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
   const [gameLogUpdatedAt, setGameLogUpdatedAt] = useState(null);
 
   // Load the player's live game log on mount/player switch, then keep
@@ -12606,7 +12656,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       (isPitcher ? fetchMLBPitcherGameLog(player.mlbId) : fetchMLBGameLog(player.mlbId))
         .then((games) => {
           if (cancelled) return;
-          setAllGames(games);
+          setLogGames(games);
           setGameLogUpdatedAt(Date.now());
         })
         .catch(() => {});
@@ -12664,12 +12714,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     return true;
   }, [side, h2h, nextGame && nextGame.opp, minPA, maxPA, isPitcher]);
 
-  const scopeGames = useMemo(() => allGames.filter(matchesScope), [allGames, matchesScope]);
+  const inScopeGames = useMemo(() => allGames.filter(matchesScope), [allGames, matchesScope]);
 
   const teammateScopeGamePks = useMemo(() => {
     if (isPitcher) return [];
     if (!teammateChips.length && !teammateDataWanted) return [];
-    const pks = Array.from(new Set(scopeGames.map((g) => g.gamePk).filter(Boolean)));
+    const pks = Array.from(new Set(inScopeGames.map((g) => g.gamePk).filter(Boolean)));
     // Two tiers. With nothing committed yet these boxscores exist only to
     // compute the differentials printed on the chips, so the most recent 40
     // is plenty and keeps merely *opening* the panel cheap. Once a chip is
@@ -12679,7 +12729,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     // satisfied for a player with a longer log, so the filter silently never
     // applied.) Each response is sessionStorage-cached per gamePk.
     return teammateChips.length ? pks : pks.slice(-40);
-  }, [scopeGames, teammateChips.length, teammateDataWanted, isPitcher]);
+  }, [inScopeGames, teammateChips.length, teammateDataWanted, isPitcher]);
 
   React.useEffect(() => {
     if (!teammateScopeGamePks.length) return;
@@ -12701,8 +12751,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // True once every in-scope game has a boxscore to check chips against.
   // Until then the teammate predicate can only produce a partial answer.
   const teammateDataReady = useMemo(
-    () => !teammateChips.length || scopeGames.every((g) => !g.gamePk || boxscoreLineups[g.gamePk]),
-    [teammateChips.length, scopeGames, boxscoreLineups]
+    () => !teammateChips.length || inScopeGames.every((g) => !g.gamePk || boxscoreLineups[g.gamePk]),
+    [teammateChips.length, inScopeGames, boxscoreLineups]
   );
 
   const filtered = useMemo(() => {
@@ -12713,7 +12763,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     // shows its own loading state meanwhile, so nothing is misrepresented as
     // a finished sample.
     const applyTeammates = !isPitcher && teammateChips.length > 0 && teammateDataReady;
-    let g = scopeGames.filter((game) => {
+    let g = inScopeGames.filter((game) => {
       if (!applyTeammates) return true;
       if (!game.gamePk) return false;
       const ids = boxscoreLineups[game.gamePk];
@@ -12727,7 +12777,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     });
     if (lastN !== "all") g = g.slice(-lastN);
     return g;
-  }, [scopeGames, lastN, isPitcher, teammateChips, boxscoreLineups, teammateDataReady]);
+  }, [inScopeGames, lastN, isPitcher, teammateChips, boxscoreLineups, teammateDataReady]);
 
   // Batter rate-stat card (PA/Hits/AVG/OBP/BABIP/K%) -- the top value is the
   // rate over whatever the filters above have narrowed "filtered" down to,
@@ -12917,7 +12967,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const teammateDiffs = useMemo(() => {
     const out = {};
     if (isPitcher) return out;
-    const known = scopeGames.filter((g) => g.gamePk && boxscoreLineups[g.gamePk]);
+    const known = inScopeGames.filter((g) => g.gamePk && boxscoreLineups[g.gamePk]);
     if (known.length < 6) return out;
     teammateCandidates.forEach((p) => {
       let onSum = 0, onN = 0, offSum = 0, offN = 0;
@@ -12933,7 +12983,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       out[p.mlbId] = onSum / onN - offSum / offN;
     });
     return out;
-  }, [scopeGames, boxscoreLineups, teammateCandidates, statValueFn, isPitcher]);
+  }, [inScopeGames, boxscoreLineups, teammateCandidates, statValueFn, isPitcher]);
 
   // Season-wide average for the *currently selected market* -- distinct from
   // `avg` above (which is scoped to `filtered`, i.e. whatever the side/PA/
@@ -13753,8 +13803,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     if (lastN !== 10) n += 1;
     if (!isPitcher && (minPA !== 0 || maxPA !== 6)) n += 1;
     n += teammateChips.length;
+    n += scopeFilterCount(logScope);
     return n;
-  }, [side, h2h, lastN, minPA, maxPA, teammateChips.length, isPitcher]);
+  }, [side, h2h, lastN, minPA, maxPA, teammateChips.length, isPitcher, logScope]);
 
   const splitCells = buildHitRateSplits({
     allGames,
@@ -13784,6 +13835,13 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
 
   const filtersBody = (
     <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
+      {/* First, because it is the outermost narrowing: it decides which games
+           exist at all, and every control below filters what it leaves. Renders
+           nothing for a player whose log offers no choice -- one team, one
+           season, no playoff games -- which is most of them, and all of them
+           until October. */}
+      <LogScopeSection games={logGames} sport="mlb" scope={logScope} onChange={setLogScope} />
+
       {/* Sample size leads and stays unshaded -- it's the filter you reach for
            first, and letting it sit on the panel's own surface makes the
            shaded blocks below read as secondary without a heading saying so. */}
@@ -16337,9 +16395,17 @@ function combineParlayOdds(americanOddsList) {
 // fetchLog receives the pick as well as the id, because NFL logs are fetched
 // one season at a time and the season that matters is the one the pick's game
 // was played in -- not whatever season is current when the Ledger opens.
+// Same reasoning applies to MLB now that its log is fetched per season: a pick
+// on an October playoff game saved and settled in January must read the season
+// it was played in, not the one the Ledger happens to open in.
+const mlbSeasonForDate = (d) => {
+  const dt = d instanceof Date ? d : new Date(d);
+  return Number.isNaN(dt.getTime()) ? null : dt.getUTCFullYear();
+};
+
 const PICK_GRADE_SOURCES = {
-  mlb_batter: { fetchLog: (id) => fetchMLBGameLog(id), value: statValueMLB },
-  mlb_pitcher: { fetchLog: (id) => fetchMLBPitcherGameLog(id), value: statValueMLBPitcher },
+  mlb_batter: { fetchLog: (id, p) => fetchMLBGameLog(id, mlbSeasonForDate(p.gameDate) ?? currentMLBSeason()), value: statValueMLB },
+  mlb_pitcher: { fetchLog: (id, p) => fetchMLBPitcherGameLog(id, mlbSeasonForDate(p.gameDate) ?? currentMLBSeason()), value: statValueMLBPitcher },
   nfl: { fetchLog: (id, p) => fetchNFLPlayerGameLog(id, nflSeasonForDate(p.gameDate) ?? currentNFLSeason()), value: statValueNFL },
   wnba: { fetchLog: (id) => fetchWNBAPlayerGameLog(id), value: statValue },
   // Added once NBA logs became real. Same reader as the WNBA: both are
