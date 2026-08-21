@@ -220,7 +220,7 @@ function LeaderRow({ item, isLast, sport, team }) {
   );
 }
 
-export default function GamecastPage({ game, isMobile, onBack, onViewProps }) {
+export default function GamecastPage({ game, isMobile, embedded, onBack, onViewProps }) {
   const [detail, setDetail] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const pollRef = useRef(null);

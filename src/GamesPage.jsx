@@ -267,7 +267,11 @@ function statusCenterContent(game, isMobile) {
 }
 
 // Column template, shared by the header and every row so they cannot drift.
-const SLATE_COLS = "2.4fr 1.1fr 2.1fr 1fr";
+// The handoff's own template for this table. Fixed at its design widths with
+// the props column taking the slack, rather than four fr weights -- the
+// matchup and research columns hold fixed content and were stretching with
+// the window while the sentence in the middle stayed cramped.
+const SLATE_COLS = "minmax(240px, 300px) 168px minmax(0, 1fr) 128px";
 
 // What the reader gets by opening this row. The destination is already decided
 // by opensGamecast, so the label can name it without any new data.
@@ -277,7 +281,7 @@ function researchLabel(game) {
   return "OPEN →";
 }
 
-function GameRow({ game, isMobile, onSelect, isLast, getPropsCount }) {
+function GameRow({ game, isMobile, onSelect, isLast, expanded, getPropsCount }) {
   const open = () => onSelect(game);
   const showScore = (game.isLive || game.isFinal) && (game.away.score != null || game.home.score != null);
   const center = statusCenterContent(game, isMobile);
@@ -304,6 +308,9 @@ function GameRow({ game, isMobile, onSelect, isLast, getPropsCount }) {
         // Finals recede rather than disappear -- the reference dims the whole
         // row instead of restyling it.
         opacity: muted ? 0.6 : 1,
+        // The open row takes --surface-2, so the panel below it reads as
+        // belonging to this game rather than floating under the list.
+        background: expanded ? 'var(--surface-2)' : undefined,
         boxSizing: "border-box",
         transition: "opacity 0.2s ease, background 0.2s ease",
       }}
@@ -336,7 +343,9 @@ function GameRow({ game, isMobile, onSelect, isLast, getPropsCount }) {
         {center.live && (
           <span style={{
             width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-            background: "var(--amber)",
+            // Green, not the accent: a live dot is a state, and the accent
+            // can be re-tinted to any hue including one that reads as dead.
+            background: "var(--pos)",
             animation: "gm-live-pulse 1.6s ease-out infinite",
           }} />
         )}
@@ -590,22 +599,6 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     return d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   }, [sport, activeKey]);
 
-  if (selected) {
-    // A game that goes live while its Matchup Overview is open swaps to the
-    // Gamecast on the next poll, which is the intent -- the pre-game view has
-    // nothing left to say once the first pitch is thrown.
-    const Page = opensGamecast(selected.status) ? GamecastPage : MatchupPage;
-    return (
-      <Page
-        game={selected}
-        isMobile={isMobile}
-        onBack={() => { selectedSnap.current = null; setSelectedId(null); }}
-        onViewProps={onViewProps}
-        getTopProps={getTopProps}
-        onOpenProp={onOpenProp}
-      />
-    );
-  }
 
   const hero = (
     <div style={{
@@ -697,14 +690,41 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         )}
 
         {games.map((g, i) => (
-          <GameRow
-            key={g.id}
-            game={g}
-            isMobile={isMobile}
-            isLast={i === games.length - 1}
-            onSelect={(picked) => { selectedSnap.current = picked; setSelectedId(picked.id); }}
-            getPropsCount={getPropsCount}
-          />
+          <React.Fragment key={g.id}>
+            <GameRow
+              game={g}
+              isMobile={isMobile}
+              isLast={i === games.length - 1 && g.id !== selectedId}
+              expanded={g.id === selectedId}
+              onSelect={(picked) => {
+                // Toggle, not navigate. The gamecast folds in under the row it
+                // belongs to (design screen 4) instead of replacing the page,
+                // so the slate stays on screen and closing is one click on the
+                // same row rather than a back button and a re-scroll.
+                if (picked.id === selectedId) { selectedSnap.current = null; setSelectedId(null); return; }
+                selectedSnap.current = picked;
+                setSelectedId(picked.id);
+              }}
+              getPropsCount={getPropsCount}
+            />
+            {g.id === selectedId && (
+              <div style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--line)' }}>
+                {/* A game that goes live while its Matchup Overview is open
+                    swaps to the Gamecast on the next poll, which is the intent
+                    -- the pre-game view has nothing left to say once the first
+                    pitch is thrown. */}
+                {React.createElement(opensGamecast(g.status) ? GamecastPage : MatchupPage, {
+                  game: selected || g,
+                  isMobile,
+                  embedded: true,
+                  onBack: () => { selectedSnap.current = null; setSelectedId(null); },
+                  onViewProps,
+                  getTopProps,
+                  onOpenProp,
+                })}
+              </div>
+            )}
+          </React.Fragment>
         ))}
 
         {/* Four distinct states, because they mean four different things:

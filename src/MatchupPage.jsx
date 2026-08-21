@@ -227,7 +227,7 @@ function ProbablePitchers({ game }) {
   );
 }
 
-export default function MatchupPage({ game, isMobile, onBack, onViewProps, getTopProps, onOpenProp }) {
+export default function MatchupPage({ game, isMobile, embedded, onBack, onViewProps, getTopProps, onOpenProp }) {
   const [depth, setDepth] = useState(10);
   const [form, setForm] = useState({ away: [], home: [] });
   const [h2h, setH2h] = useState(null);
@@ -300,7 +300,7 @@ export default function MatchupPage({ game, isMobile, onBack, onViewProps, getTo
             fontSize: 11.5, letterSpacing: "0.1em", color: "var(--dim)", marginBottom: 18,
           }}
         >
-          ← BACK TO GAMES
+          {embedded ? "× CLOSE" : "← BACK TO GAMES"}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
