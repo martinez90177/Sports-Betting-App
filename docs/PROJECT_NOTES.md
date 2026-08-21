@@ -28,12 +28,12 @@ Sources of truth: `reference/app-screens.html` for the screens it covers,
 for everything else. Sections 1a/1b/1c are rejected directions. The logo is
 three ascending bars in lapis — any arch motif is dead.
 
-Done as of 2026-08-20: items 1-4 (`5b6ce33`), item 5 prop feed / card 713
-(`1e3ec85`), item 5b WNBA game chips (`ee3c461`), feed drops concluded games
-(`52954f1`).
-**Next up: item 6, Settings, card 647.** Then: 7 news · 8 alt lines and legs ·
-9 mobile prop feed · 10 mobile player page · 11 mobile rows in 2a · 12 slip ·
-13 ledger · 14 report · 15 the three-bar mark across nav, favicon and lockups.
+**This note is a historical snapshot and goes stale fast — for current status,
+read `REDESIGN_PLAN.md`'s "Status as of" line and "Shipped so far" table at the
+top of that file, not this paragraph.** As of 2026-08-21: items 1-8 + 5b
+shipped (`5b6ce33`, `1e3ec85`, `ee3c461`, `52954f1`, `b085e55`, `76d027a`; item
+7 was found already built from earlier work). Items 9/10 (mobile) are next but
+paused on purpose — see REDESIGN_PLAN.md for why.
 
 Items **16 (landing page)** and **17 (the board)** were added later from a real
 Claude Design handoff in `design_handoff_propplace_landing_board/` (read its

@@ -5,13 +5,13 @@ has been decided. Read this before starting any item. It is committed to the
 repo on purpose: this project is worked on from more than one machine, and
 Claude's own memory does not travel between them.
 
-**Status as of 2026-08-21 — `master` at `da93481`.**
+**Status as of 2026-08-21 — `master` at `76d027a`.**
 
 ## The five tracks
 
 | Track | What it is | State |
 |---|---|---|
-| **Redesign, items 1–15** | The numbered build order against the design cards | **1–5 + 5b shipped.** Next: **item 6, Settings, card 647** |
+| **Redesign, items 1–15** | The numbered build order against the design cards | **1–8 + 5b shipped.** Next: **item 9, mobile prop feed, card 3a** — paused on purpose, see below |
 | **Items 16 & 17** | Landing page + the board, from the real Claude Design handoff | Not started. 3 of 4 conflicts decided |
 | **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | Not started |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
@@ -19,6 +19,14 @@ Claude's own memory does not travel between them.
 
 The tracks are independent. Redesign items follow Alex's order and are not to be
 resequenced; the data and monetisation tracks can run whenever.
+
+**Items 9 & 10 (mobile) are a different kind of item than 6–8 turned out to
+be.** 6–8 were mostly-built-already polish passes; 9/10 are a real,
+largely-unbuilt mobile redesign (new single-column touch cards, a "REFINE"
+bottom sheet) that the app's existing `isNarrow` responsive tweaks don't cover.
+Alex chose to stop after item 8 and pick 9/10 up as their own dedicated pass
+rather than fold them into the same session. Don't assume they're close to
+done the way 6–8 were — check current state fresh.
 
 ## Shipped so far
 
@@ -29,6 +37,9 @@ resequenced; the data and monetisation tracks can run whenever.
 | `ee3c461` | Item 5b — WNBA game chips, concluded games drop from the picker |
 | `52954f1` | Feed drops props whose game has already been played |
 | `eba554f` | Made the project portable — this plan, the notes, the design handoff |
+| `b085e55` | Item 6 — Settings to card 647, Lapis as the new default accent |
+| — | Item 7 (News, card 4a) — found already fully built from earlier, pre-15-item-order work (`81ded6b`/`29a5572`). Confirmed live, no changes needed |
+| `76d027a` | Item 8 — alt lines and legs: safer-rung suggestions, restyled slip price/correlation block |
 
 ## Decisions already made — do not silently reverse these
 
@@ -254,9 +265,16 @@ asking.
 ## Committed follow-on, in order
 
 #5 prop feed (card 713) — **done, pushed as 1e3ec85** · **#5b WNBA game chips (see below)** ·
-#6 settings (card 647) · #7 news · #8 alt lines and legs ·
-#9 mobile prop feed · #10 mobile player page · #11 mobile rows in 2a · #12 slip · #13 ledger ·
+#6 settings (card 647) — **done, `b085e55`** · #7 news (card 4a) — **found already
+built from earlier work, confirmed live, nothing new to commit** · #8 alt lines
+and legs (card 4b) — **done, `76d027a`** ·
+**#9 mobile prop feed · #10 mobile player page — next, paused here on purpose (see
+the five-tracks table above)** · #11 mobile rows in 2a · #12 slip · #13 ledger ·
 #14 report · #15 the three-bar mark across nav, favicon and lockups.
+
+As of this pass, `b085e55` and `76d027a` are committed on `master` locally but
+**not yet pushed** — push only on Alex's explicit go-ahead per CLAUDE.md's git
+workflow.
 
 5b is numbered rather than appended to the end: it completes card 713, which #5
 left one sport short. It does not displace #6 unless you want it to.
