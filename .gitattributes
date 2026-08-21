@@ -1,0 +1,16 @@
+# Normalise line endings. The repo is authored on macOS (LF) and also worked on
+# from Windows; without this, Git for Windows checks out CRLF and the next
+# commit from that machine shows thousands of changed lines with no real diff.
+* text=auto eol=lf
+
+# Binary/asset types Git must never try to normalise.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.woff  binary
+*.woff2 binary
+*.mp4  binary
+*.mov  binary

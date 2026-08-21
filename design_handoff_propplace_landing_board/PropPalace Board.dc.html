@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+  body { margin:0; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#8fa6ff; text-decoration:none; }
+  a:hover { color:#e8ecf2; }
+</style>
+</helmet>
+<div style="width:1280px; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif;">
+
+  <div style="display:flex; align-items:center; gap:32px; padding:20px 48px; border-bottom:1px solid #2b2f36;">
+    <a href="./PropPalace Landing.dc.html" style="display:flex; align-items:center; gap:10px; color:#e8ecf2;">
+      <span style="display:flex; align-items:flex-end; gap:3px;">
+        <span style="width:6px; height:12px; background:#3b5bdb; border-radius:3px 3px 0 0;"></span>
+        <span style="width:6px; height:21px; background:#3b5bdb; border-radius:3px 3px 0 0;"></span>
+        <span style="width:6px; height:16px; background:#3b5bdb; border-radius:3px 3px 0 0;"></span>
+      </span>
+      <span style="font-family:'Space Mono', monospace; font-size:13px; letter-spacing:0.14em; text-transform:uppercase;">Prop Palace</span>
+    </a>
+    <div style="display:flex; align-items:center; gap:26px; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;">
+      <span style="color:#8fa6ff; padding-bottom:4px; border-bottom:2px solid #3b5bdb;">Games</span>
+      <span style="color:#aab2c0;">Prop Feed</span>
+      <span style="color:#aab2c0;">News</span>
+    </div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:16px;">
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8b98ab;">SIGN IN</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 12px;">21+</span>
+    </div>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:20px; padding:28px 48px 20px;">
+    <h1 style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-0.01em;">The board</h1>
+    <div style="display:flex; align-items:center; gap:14px; border:1px solid #2b2f36; border-radius:4px; padding:7px 12px;">
+      <span style="font-family:'Space Mono', monospace; font-size:13px; color:#aab2c0;">‹</span>
+      <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.12em; text-transform:uppercase; color:#e8ecf2;">Sun, Sep 14</span>
+      <span style="font-family:'Space Mono', monospace; font-size:13px; color:#aab2c0;">›</span>
+    </div>
+    <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.12em; text-transform:uppercase; color:#aab2c0;">12 games · 1,840 props</span>
+    <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#aab2c0;">Sort: <span style="color:#8fa6ff;">Hit rate</span></span>
+  </div>
+
+  <div style="display:grid; grid-template-columns:236px 1fr; gap:24px; padding:0 48px 64px; align-items:start;">
+
+    <sc-if value="{{ showFilterRail }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; padding:20px;">
+        <div style="display:flex; align-items:baseline; justify-content:space-between;">
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.12em; text-transform:uppercase; color:#aab2c0;">Market</span>
+          <span onClick="{{ clearMarkets }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">Clear</span>
+        </div>
+        <div style="max-height:296px; overflow:auto; margin-top:12px; padding-right:4px;">
+          <sc-for list="{{ marketGroups }}" as="group" hint-placeholder-count="4">
+            <div style="margin-bottom:14px;">
+              <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">{{ group.label }}</div>
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+                <sc-for list="{{ group.items }}" as="m" hint-placeholder-count="4">
+                  <span onClick="{{ m.toggle }}" style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.05em; border-radius:4px; padding:5px 9px; cursor:pointer; background:{{ m.bg }}; color:{{ m.fg }}; border:1px solid {{ m.border }};">{{ m.label }}</span>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:20px; padding-top:20px; border-top:1px solid #2b2f36;">
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.12em; text-transform:uppercase; color:#aab2c0;">Minimum sample</span>
+          <span onClick="{{ savePreset }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">{{ saveLabel }}</span>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;">
+          <sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+            <span onClick="{{ p.pick }}" style="display:flex; align-items:center; gap:6px; font-family:'Space Mono', monospace; font-size:11.5px; border-radius:4px; padding:5px 9px; cursor:pointer; font-variant-numeric:tabular-nums; background:{{ p.bg }}; color:{{ p.fg }}; border:1px solid {{ p.border }};">{{ p.label }}<span onClick="{{ p.remove }}" style="font-size:10px; opacity:0.65;">×</span></span>
+          </sc-for>
+          <span onClick="{{ pickAll }}" style="font-family:'Space Mono', monospace; font-size:11.5px; border-radius:4px; padding:5px 9px; cursor:pointer; background:{{ allBg }}; color:{{ allFg }}; border:1px solid {{ allBorder }};">All</span>
+        </div>
+
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:20px;">
+          <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Exact minimum</span>
+          <span style="font-family:'Space Mono', monospace; font-size:14px; color:#8fa6ff; font-variant-numeric:tabular-nums;">{{ minLabel }}</span>
+        </div>
+        <div style="display:flex; align-items:flex-end; gap:3px; height:26px; margin-top:10px; cursor:pointer;">
+          <sc-for list="{{ ticks }}" as="t" hint-placeholder-count="17">
+            <span onClick="{{ t.pick }}" style="flex:1; height:{{ t.h }}px; border-radius:1px; background:{{ t.bg }};"></span>
+          </sc-for>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-top:6px; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab; font-variant-numeric:tabular-nums;">
+          <span>1</span>
+          <span>9</span>
+          <span>17</span>
+        </div>
+        <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; color:#8b98ab; margin-top:10px; line-height:1.5;">{{ sampleNote }}</div>
+
+        <div style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.12em; text-transform:uppercase; color:#aab2c0; margin-top:24px; padding-top:20px; border-top:1px solid #2b2f36;">Split</div>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
+          <span style="display:flex; align-items:center; gap:10px; font-size:14px; color:#e8ecf2;"><span style="width:14px; height:14px; border-radius:3px; background:#3b5bdb;"></span>Season</span>
+          <span style="display:flex; align-items:center; gap:10px; font-size:14px; color:#aab2c0;"><span style="width:14px; height:14px; border-radius:3px; border:1px solid #2b2f36;"></span>Home only</span>
+          <span style="display:flex; align-items:center; gap:10px; font-size:14px; color:#aab2c0;"><span style="width:14px; height:14px; border-radius:3px; border:1px solid #2b2f36;"></span>Last 3 games</span>
+          <span style="display:flex; align-items:center; gap:10px; font-size:14px; color:#aab2c0;"><span style="width:14px; height:14px; border-radius:3px; border:1px solid #2b2f36;"></span>vs. this defense</span>
+        </div>
+
+        <div style="border:1px solid #2b2f36; border-radius:6px; background:#0d0f12; padding:14px; margin-top:24px;">
+          <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.06em; color:#8b98ab; line-height:1.55;">Real 2025 regular-season game logs. Not a live odds feed.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <div>
+      <div style="display:grid; grid-template-columns:232px 176px 148px 1fr 132px; gap:16px; padding:0 20px 10px; background:#0d0f12; border:1px solid #2b2f36; border-bottom:none; border-radius:6px 6px 0 0; padding-top:14px;">
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">Player</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">Prop</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">Hit rate · sample</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">Last 8 vs. line</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; text-align:right;">Verdict</span>
+      </div>
+
+      <div style="background:#131519; border:1px solid #2b2f36; border-radius:0 0 6px 6px;">
+
+        <div style="display:flex; align-items:center; gap:14px; padding:14px 20px; background:#191c21; border-bottom:1px solid #2b2f36;">
+          <span style="font-family:'Space Mono', monospace; font-size:14px; letter-spacing:0.1em;">SEA @ LAR</span>
+          <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; color:#aab2c0;">1:05 PT · SoFi Stadium</span>
+          <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; color:#8fa6ff;">148 props</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:232px 176px 148px 1fr 132px; gap:16px; align-items:center; padding:14px 20px; border-bottom:1px solid #2b2f36;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="position:relative; width:38px; height:38px; flex:none;">
+              <image-slot id="bd-a1" shape="circle" style="width:38px; height:38px;" placeholder=""></image-slot>
+              <div style="position:absolute; right:0; bottom:0; width:10px; height:10px; border-radius:999px; background:#3ecf8e; border:2px solid #131519;"></div>
+            </div>
+            <div>
+              <div style="font-size:15px; font-weight:500;">Puka Nacua</div>
+              <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; margin-top:3px;">LAR · WR</div>
+            </div>
+          </div>
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.08em; text-transform:uppercase; color:#e8ecf2;">Receptions o5.5</span>
+          <div>
+            <div style="font-family:'Space Mono', monospace; font-size:22px; color:#8fa6ff; font-variant-numeric:tabular-nums;">78%</div>
+            <div style="font-family:'Space Mono', monospace; font-size:11.5px; color:#aab2c0; margin-top:2px; font-variant-numeric:tabular-nums;">7 of 9 games</div>
+          </div>
+          <div style="position:relative; display:flex; align-items:flex-end; gap:5px; height:34px;">
+            <span style="flex:1; height:22px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:28px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:11px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:20px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:34px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:20px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:25px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:31px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="position:absolute; left:0; right:0; bottom:16px; border-top:1.5px dashed #e8ecf2;"></span>
+          </div>
+          <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 10px;">Leans over</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:232px 176px 148px 1fr 132px; gap:16px; align-items:center; padding:14px 20px; border-bottom:1px solid #2b2f36;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="position:relative; width:38px; height:38px; flex:none;">
+              <image-slot id="bd-a2" shape="circle" style="width:38px; height:38px;" placeholder=""></image-slot>
+              <div style="position:absolute; right:0; bottom:0; width:10px; height:10px; border-radius:999px; background:#e8b13a; border:2px solid #131519;"></div>
+            </div>
+            <div>
+              <div style="font-size:15px; font-weight:500;">Kyren Williams</div>
+              <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; margin-top:3px;">LAR · RB</div>
+            </div>
+          </div>
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.08em; text-transform:uppercase; color:#e8ecf2;">Rush yds o58.5</span>
+          <div>
+            <div style="font-family:'Space Mono', monospace; font-size:22px; color:#8fa6ff; font-variant-numeric:tabular-nums;">64%</div>
+            <div style="font-family:'Space Mono', monospace; font-size:11.5px; color:#aab2c0; margin-top:2px; font-variant-numeric:tabular-nums;">7 of 11 games</div>
+          </div>
+          <div style="position:relative; display:flex; align-items:flex-end; gap:5px; height:34px;">
+            <span style="flex:1; height:26px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:12px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:31px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:22px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:34px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:14px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:24px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="position:absolute; left:0; right:0; bottom:16px; border-top:1.5px dashed #e8ecf2;"></span>
+          </div>
+          <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:#aab2c0; border:1px solid #2b2f36; border-radius:999px; padding:5px 10px;">Coin flip</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:232px 176px 148px 1fr 132px; gap:16px; align-items:center; padding:14px 20px; border-bottom:1px solid #2b2f36;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="position:relative; width:38px; height:38px; flex:none;">
+              <image-slot id="bd-a3" shape="circle" style="width:38px; height:38px;" placeholder=""></image-slot>
+            </div>
+            <div>
+              <div style="font-size:15px; font-weight:500;">Jaxon Smith-Njigba</div>
+              <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; margin-top:3px;">SEA · WR</div>
+            </div>
+          </div>
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.08em; text-transform:uppercase; color:#e8ecf2;">Rec yds o64.5</span>
+          <div>
+            <div style="font-family:'Space Mono', monospace; font-size:22px; color:#8fa6ff; font-variant-numeric:tabular-nums;">55%</div>
+            <div style="font-family:'Space Mono', monospace; font-size:11.5px; color:#aab2c0; margin-top:2px; font-variant-numeric:tabular-nums;">6 of 11 games</div>
+          </div>
+          <div style="position:relative; display:flex; align-items:flex-end; gap:5px; height:34px;">
+            <span style="flex:1; height:13px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:29px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:19px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:8px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:11px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:34px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:23px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:14px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="position:absolute; left:0; right:0; bottom:16px; border-top:1.5px dashed #e8ecf2;"></span>
+          </div>
+          <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:#aab2c0; border:1px solid #2b2f36; border-radius:999px; padding:5px 10px;">Coin flip</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:14px; padding:14px 20px; background:#191c21; border-bottom:1px solid #2b2f36;">
+          <span style="font-family:'Space Mono', monospace; font-size:14px; letter-spacing:0.1em;">GB @ DET</span>
+          <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; color:#aab2c0;">10:00 PT · Ford Field</span>
+          <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; color:#8fa6ff;">163 props</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:232px 176px 148px 1fr 132px; gap:16px; align-items:center; padding:14px 20px; border-bottom:1px solid #2b2f36;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="position:relative; width:38px; height:38px; flex:none;">
+              <image-slot id="bd-a4" shape="circle" style="width:38px; height:38px;" placeholder=""></image-slot>
+              <div style="position:absolute; right:0; bottom:0; width:10px; height:10px; border-radius:999px; background:#3ecf8e; border:2px solid #131519;"></div>
+            </div>
+            <div>
+              <div style="font-size:15px; font-weight:500;">Amon-Ra St. Brown</div>
+              <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; margin-top:3px;">DET · WR</div>
+            </div>
+          </div>
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.08em; text-transform:uppercase; color:#e8ecf2;">Receptions o6.5</span>
+          <div>
+            <div style="font-family:'Space Mono', monospace; font-size:22px; color:#8fa6ff; font-variant-numeric:tabular-nums;">71%</div>
+            <div style="font-family:'Space Mono', monospace; font-size:11.5px; color:#aab2c0; margin-top:2px; font-variant-numeric:tabular-nums;">10 of 14 games</div>
+          </div>
+          <div style="position:relative; display:flex; align-items:flex-end; gap:5px; height:34px;">
+            <span style="flex:1; height:24px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:30px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:20px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:10px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:34px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:26px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:12px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:22px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="position:absolute; left:0; right:0; bottom:16px; border-top:1.5px dashed #e8ecf2;"></span>
+          </div>
+          <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 10px;">Leans over</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:232px 176px 148px 1fr 132px; gap:16px; align-items:center; padding:14px 20px; border-bottom:1px solid #2b2f36;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="position:relative; width:38px; height:38px; flex:none;">
+              <image-slot id="bd-a5" shape="circle" style="width:38px; height:38px;" placeholder=""></image-slot>
+              <div style="position:absolute; right:0; bottom:0; width:10px; height:10px; border-radius:999px; background:#3ecf8e; border:2px solid #131519;"></div>
+            </div>
+            <div>
+              <div style="font-size:15px; font-weight:500;">Josh Jacobs</div>
+              <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; margin-top:3px;">GB · RB</div>
+            </div>
+          </div>
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.08em; text-transform:uppercase; color:#e8ecf2;">Rush yds o64.5</span>
+          <div>
+            <div style="font-family:'Space Mono', monospace; font-size:22px; color:#8fa6ff; font-variant-numeric:tabular-nums;">62%</div>
+            <div style="font-family:'Space Mono', monospace; font-size:11.5px; color:#aab2c0; margin-top:2px; font-variant-numeric:tabular-nums;">8 of 13 games</div>
+          </div>
+          <div style="position:relative; display:flex; align-items:flex-end; gap:5px; height:34px;">
+            <span style="flex:1; height:21px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:14px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:34px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:27px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:19px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:23px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:12px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="position:absolute; left:0; right:0; bottom:16px; border-top:1.5px dashed #e8ecf2;"></span>
+          </div>
+          <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 10px;">Leans over</span>
+        </div>
+
+        <div style="display:grid; grid-template-columns:232px 176px 148px 1fr 132px; gap:16px; align-items:center; padding:14px 20px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="position:relative; width:38px; height:38px; flex:none;">
+              <image-slot id="bd-a6" shape="circle" style="width:38px; height:38px;" placeholder=""></image-slot>
+            </div>
+            <div>
+              <div style="font-size:15px; font-weight:500;">Jayden Reed</div>
+              <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; margin-top:3px;">GB · WR</div>
+            </div>
+          </div>
+          <span style="font-family:'Space Mono', monospace; font-size:12.5px; letter-spacing:0.08em; text-transform:uppercase; color:#e8ecf2;">Rec yds o44.5</span>
+          <div>
+            <div style="font-family:'Space Mono', monospace; font-size:14px; letter-spacing:0.1em; text-transform:uppercase; color:#e8ecf2;">Too few</div>
+            <div style="font-family:'Space Mono', monospace; font-size:11.5px; color:#aab2c0; margin-top:4px; font-variant-numeric:tabular-nums;">4 games</div>
+          </div>
+          <div style="position:relative; display:flex; align-items:flex-end; gap:5px; height:34px;">
+            <span style="flex:1; height:22px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:11px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:1; height:28px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+            <span style="flex:1; height:13px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:1px 1px 0 0; box-sizing:border-box;"></span>
+            <span style="flex:4;"></span>
+            <span style="position:absolute; left:0; right:0; bottom:16px; border-top:1.5px dashed #e8ecf2;"></span>
+          </div>
+          <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:#aab2c0; border:1px solid #2b2f36; border-radius:999px; padding:5px 10px;">Too few</span>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:20px; margin-top:20px;">
+        <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:10px 16px;">Show 10 more games</span>
+        <sc-if value="{{ showLegend }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; gap:16px;">
+            <span style="display:flex; align-items:center; gap:6px; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0;">
+              <span style="width:8px; height:16px; background:#3ecf8e; border-radius:2px;"></span>cleared the line
+            </span>
+            <span style="display:flex; align-items:center; gap:6px; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0;">
+              <span style="width:8px; height:16px; border:1.5px solid #ef5b5b; border-radius:2px; box-sizing:border-box;"></span>fell short
+            </span>
+            <span style="display:flex; align-items:center; gap:6px; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0;">
+              <span style="width:14px; border-top:1.5px dashed #e8ecf2;"></span>the line
+            </span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <div style="border-top:1px solid #2b2f36; padding:28px 48px 40px; display:flex; align-items:center; gap:24px;">
+    <span style="display:flex; align-items:flex-end; gap:3px;">
+      <span style="width:6px; height:12px; background:#3b5bdb; border-radius:3px 3px 0 0;"></span>
+      <span style="width:6px; height:21px; background:#3b5bdb; border-radius:3px 3px 0 0;"></span>
+      <span style="width:6px; height:16px; background:#3b5bdb; border-radius:3px 3px 0 0;"></span>
+    </span>
+    <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">Research only · no picks sold · 21+</span>
+    <a href="./PropPalace Landing.dc.html" style="margin-left:auto; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase;">How we count</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:1100},&quot;showFilterRail&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;showLegend&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+const MARKETS = [
+  { label: 'Passing', items: ['Pass yds', 'Pass TD', 'Pass attempts', 'Completions', 'INT', 'Longest completion'] },
+  { label: 'Rushing', items: ['Rush yds', 'Rush attempts', 'Rush TD', 'Longest rush'] },
+  { label: 'Receiving', items: ['Receptions', 'Rec yds', 'Rec TD', 'Targets', 'Longest reception'] },
+  { label: 'Combos', items: ['Pass + rush yds', 'Rush + rec yds'] },
+  { label: 'Scoring', items: ['Anytime TD', 'First TD', '2+ TD', 'Kicking points', 'FG made', 'XP made'] },
+  { label: 'Team & game', items: ['Team total', 'Game total', 'Spread'] },
+];
+
+class Component extends DCLogic {
+  state = { markets: ['Receptions'], minGames: 9, presets: [5, 9, 12], all: false };
+
+  toggleMarket(m) {
+    this.setState(s => ({ markets: s.markets.includes(m) ? s.markets.filter(x => x !== m) : s.markets.concat(m) }));
+  }
+
+  renderVals() {
+    const { markets, minGames, presets, all } = this.state;
+    const on = { bg: '#3b5bdb', fg: '#ffffff', border: '#3b5bdb' };
+    const off = { bg: 'transparent', fg: '#aab2c0', border: '#2b2f36' };
+    const chip = active => (active ? on : off);
+
+    return {
+      showFilterRail: this.props.showFilterRail ?? true,
+      showLegend: this.props.showLegend ?? true,
+
+      marketGroups: MARKETS.map(g => ({
+        label: g.label,
+        items: g.items.map(label => ({
+          label,
+          toggle: () => this.toggleMarket(label),
+          ...chip(markets.includes(label)),
+        })),
+      })),
+      clearMarkets: () => this.setState({ markets: [] }),
+
+      presets: presets.slice().sort((a, b) => a - b).map(n => ({
+        label: n + '+',
+        pick: () => this.setState({ minGames: n, all: false }),
+        remove: e => { e.stopPropagation(); this.setState(s => ({ presets: s.presets.filter(x => x !== n) })); },
+        ...chip(!all && minGames === n),
+      })),
+      savePreset: () => this.setState(s => ({ presets: s.presets.includes(s.minGames) ? s.presets : s.presets.concat(s.minGames) })),
+      saveLabel: presets.includes(minGames) ? 'saved' : '+ save ' + minGames + '+',
+
+      pickAll: () => this.setState({ all: true }),
+      allBg: all ? on.bg : off.bg,
+      allFg: all ? on.fg : off.fg,
+      allBorder: all ? on.border : off.border,
+
+      minLabel: all ? 'any' : minGames + '+ games',
+      ticks: Array.from({ length: 17 }, (_, i) => {
+        const n = i + 1;
+        const active = !all && n <= minGames;
+        return {
+          h: 10 + Math.round(i * 16 / 16),
+          bg: active ? '#3b5bdb' : '#2b2f36',
+          pick: () => this.setState({ minGames: n, all: false }),
+        };
+      }),
+      sampleNote: all
+        ? 'Every prop shown. Under 10 games still reads “too few” instead of a rate.'
+        : 'Props under ' + minGames + ' games still appear, without a rate.',
+    };
+  }
+}
+</script>
+</body>
+</html>

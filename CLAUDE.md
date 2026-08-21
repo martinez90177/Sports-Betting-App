@@ -1,5 +1,23 @@
 # PropPalace
 
+## Start here
+
+Two committed documents carry the context that isn't in the code:
+
+- **[`docs/REDESIGN_PLAN.md`](docs/REDESIGN_PLAN.md)** — the working plan. The
+  numbered build order, which items have shipped, what is next, the decisions
+  already made (and the few still open), plus the separate data track for live
+  rosters and real game logs. **Read it before starting any redesign item.**
+- **[`docs/PROJECT_NOTES.md`](docs/PROJECT_NOTES.md)** — durable facts about the
+  project that the repo and git history don't record.
+
+Both are committed on purpose: this project is worked on from more than one
+computer, and Claude's own memory does not travel between machines.
+
+Design sources of truth live in `design_handoff_proppalace_redesign/` (the
+original concepts) and `design_handoff_propplace_landing_board/` (the later
+landing-page and board handoff — read its `README.md` first).
+
 ## Git workflow
 
 This is a solo project deployed from Vercel, which builds **production from `master`**.
