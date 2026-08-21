@@ -15,6 +15,7 @@ import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import PalaceMark from "./PalaceMark.jsx";
+import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
   MatchupBreadcrumb, MatchupVerdictBlock, GameLogTable, TheRead, MatchupSplits, ValueDistribution,
@@ -14338,7 +14339,15 @@ function FeedFormStrip({
   // handoff's "full-size treatment". The axis itself is plotted over
   // FORM_PLOT_H (58), the figure the spec's arithmetic uses, so the tallest
   // bar clears the top of the row by a hair instead of touching it.
-  r, direction, streak = 0, height = 60, gap = 5,
+  //
+  // The phone card passes the smaller set (48 / 4 / 42) and `tag` without
+  // `onDragLine`: the design draws the line tag there but specifies dragging
+  // only on desktop, and a 24px handle is not a touch target. `caption` is
+  // off there too -- the phone card states its sample beside the rate figure
+  // and its streak in the meta line, so the desktop caption would be the
+  // third printing of the same two numbers.
+  r, direction, streak = 0, height = 60, gap = 5, gutter = 54,
+  tag = false, caption = true,
   line, onDragLine, onResetLine, adjusted,
 }) {
   const recent = r.recent;
@@ -14365,6 +14374,8 @@ function FeedFormStrip({
   const runColor = shownRunHit ? "var(--pos)" : "var(--neg)";
 
   const draggable = !!onDragLine && !r.isBinary;
+  // The tag is what makes the gutter necessary, so both follow the same flag.
+  const showTag = !r.isBinary && (draggable || tag);
   // The rule sits at the line's own position on the same windowed axis the
   // bars are drawn on, so "clears the line" is literally "taller than the
   // dashes" at every market size.
@@ -14372,7 +14383,7 @@ function FeedFormStrip({
 
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ position: "relative", paddingRight: draggable ? 54 : 0 }}>
+      <div style={{ position: "relative", paddingRight: showTag ? gutter : 0 }}>
         <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap, height }}>
           {recent.map((g, i) => (
             <div
@@ -14392,7 +14403,7 @@ function FeedFormStrip({
           ))}
           {!r.isBinary && (
             <span style={{
-              position: "absolute", left: 0, right: draggable ? -54 : 0, bottom: lineY,
+              position: "absolute", left: 0, right: showTag ? -gutter : 0, bottom: lineY,
               // White, not accent: at accent lightness the rule disappeared
               // against the green fills. It goes accent-ink only once the
               // reader has dragged it off the posted line.
@@ -14400,14 +14411,14 @@ function FeedFormStrip({
               pointerEvents: "none",
             }} />
           )}
-          {draggable && (
+          {showTag && (
             <span
-              onMouseDown={onDragLine}
-              onDoubleClick={onResetLine}
-              title="Drag to move the line · double-click to reset"
-              className="mono"
+              onMouseDown={onDragLine || undefined}
+              onDoubleClick={onResetLine || undefined}
+              title={draggable ? "Drag to move the line · double-click to reset" : "The prop line"}
+              className="pp-mono"
               style={{
-                position: "absolute", right: -54, bottom: lineY, transform: "translateY(50%)",
+                position: "absolute", right: -gutter, bottom: lineY, transform: "translateY(50%)",
                 // Solid accent by default, per the handoff -- it re-tints
                 // with the user's chosen hue and never encodes hit/miss.
                 // Off-market it inverts to accent-ink on the row ground, the
@@ -14417,7 +14428,8 @@ function FeedFormStrip({
                 color: adjusted ? "var(--amber-ink, var(--amber))" : "var(--accent-on)",
                 border: `1px solid ${adjusted ? "var(--amber)" : "var(--amber)"}`,
                 borderRadius: 3, padding: "3px 6px", fontSize: 10.5,
-                fontVariantNumeric: "tabular-nums", cursor: "ns-resize", userSelect: "none",
+                fontVariantNumeric: "tabular-nums", userSelect: "none",
+                cursor: draggable ? "ns-resize" : "default",
               }}
             >
               {Number(lineVal).toFixed(1)}
@@ -14437,9 +14449,11 @@ function FeedFormStrip({
       {/* Counts first: "N of M" is the sample the bars above actually draw,
            shown every time so a hit rate is never on screen without its own
            sample size next to it. */}
-      <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
-        {hitCount} of {recent.length}{showRun ? ` · ${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
-      </div>
+      {caption && (
+        <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
+          {hitCount} of {recent.length}{showRun ? ` · ${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
+        </div>
+      )}
     </div>
   );
 }
@@ -14754,7 +14768,7 @@ function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status })
   };
 }
 
-const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder }) {
+const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder }) {
   // Read from context rather than passed down: this component is memo'd, and
   // a context read still re-renders it when the format changes (memo only
   // short-circuits prop changes), so the whole feed reformats without adding
@@ -14765,9 +14779,19 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
   // amber accent used elsewhere (odds, active toggles) -- but it still
   // needs its own border, since --panel2 is only a shade off from the
   // row's --panel background and was nearly invisible without one.
-  const tierBg = r.tier === "soft" ? "var(--green)" : r.tier === "tough" ? "var(--red)" : "var(--neutral-badge-bg)";
-  const tierFg = r.tier === "mid" ? "var(--dim-strong)" : "#08131c";
-  const tierBorder = r.tier === "mid" ? "1px solid var(--line-strong)" : "none";
+  // The opponent-rank chip used to be filled green for a soft matchup and red
+  // for a tough one. It is a neutral outlined box now, at the new handoff's
+  // explicit direction: a green chip makes green mean "favourable matchup"
+  // two inches from bars where green means "cleared the line", and the app's
+  // colour rules allow that pair exactly one meaning. The accent is no escape
+  // either -- it may never encode good/bad.
+  //
+  // Nothing is lost by it. The rank is a number on a stated scale, and "#4"
+  // against "#28" says which matchup is harder without needing a colour; the
+  // tier only ever restated the number it was sitting on.
+  const tierBg = "transparent";
+  const tierFg = "var(--text)";
+  const tierBorder = "1px solid var(--line)";
   const hrColor = feedRateColor;
   const odds = r[sampleWindow] == null ? null : probToAmericanOdds(r[sampleWindow]);
   // Overs keep the original `${sport}-${key}` id so picks saved to
@@ -15054,7 +15078,14 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
       )}
       {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
            otherwise produce two visually identical rows per prop. */}
-      <span style={{ whiteSpace: "nowrap" }}>vs {r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}</span>
+      <span style={{ whiteSpace: "nowrap" }}>
+        vs {r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}
+        {/* The streak rides here on the phone only. On desktop it is already
+             the second half of the form graph's caption; this card has no
+             caption (see FeedFormStrip's `caption` prop), so without this the
+             run would go unstated on mobile entirely. */}
+        {isNarrow && Math.abs(streak) >= 3 ? ` · ${Math.abs(streak)} ${streak > 0 ? "straight" : "cold"}` : ""}
+      </span>
     </div>
   );
 
@@ -15100,6 +15131,10 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     const gamesCounted = r[nKey];
     const gamesOver = rate != null && gamesCounted != null ? Math.round(rate * gamesCounted) : null;
     const recent = r.recent || [];
+    // Matches FeedPctCell's `minSample` exactly, so the phone card and the
+    // desktop cell for one row can never disagree about whether its sample is
+    // big enough to state a rate over.
+    const thinSample = gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? Math.min(minGames, 5) : minGames);
     return (
       <div
         className="feed-row"
@@ -15117,10 +15152,13 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
           {avatarEl}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
-              <span className="pp-display" style={{ fontWeight: 600, letterSpacing: "-0.01em", fontSize: 19, color: "var(--text)" }}>{r.name}</span>
-              <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)" }}>{r.team}</span>
+              <span className="pp-display" style={{ fontWeight: 600, letterSpacing: "-0.01em", fontSize: 18, color: "var(--text)" }}>{r.name}</span>
+              <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2, var(--dim))" }}>{r.team}</span>
             </div>
-            <div style={{ fontSize: 14.5, marginTop: 3, color: "var(--accent-text, var(--amber))" }}>
+            {/* Uppercase mono in --text with the price trailing in --dim, not
+                accent-coloured body text: the proposition is the card's
+                subject, and colouring it accent made every card look active. */}
+            <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
               {r.subtitle}{odds != null && <span style={{ color: "var(--dim)" }}> {formatOdds(odds, oddsFormat)}</span>}
             </div>
           </div>
@@ -15131,41 +15169,54 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
                 verdict, not a percentage. L5 is exempt -- five games is the
                 whole sample it claims. */}
             <div className="pp-mono" style={{
-              fontVariantNumeric: "tabular-nums", lineHeight: 1, fontWeight: 600,
-              fontSize: rate != null && gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? 5 : 10) ? 17 : 30,
-              color: rate == null || (gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? 5 : 10)) ? "var(--dim)" : hrColor(rate),
+              lineHeight: thinSample ? 1.2 : 1,
+              fontSize: thinSample ? 15 : 28,
+              letterSpacing: thinSample ? "0.08em" : 0,
+              textTransform: thinSample ? "uppercase" : "none",
+              color: thinSample || rate == null ? "var(--text-2, var(--dim))" : feedRateColor(rate),
             }}>
-              {rate == null
-                ? "—"
-                : gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? 5 : 10)
-                ? "too few"
-                : `${Math.round(rate * 100)}%`}
+              {rate == null ? "—" : thinSample ? "Too few" : `${Math.round(rate * 100)}%`}
             </div>
             {gamesCounted != null && (
-              <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>{gamesOver} of {gamesCounted}</div>
+              <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 5 }}>
+                {thinSample ? `${gamesCounted} games` : `${gamesOver} of ${gamesCounted} games`}
+              </div>
             )}
           </div>
         </div>
 
-        {recent.length > 0 && (
-          <div style={{ display: "flex", gap: 4, marginTop: 13 }}>
-            {recent.map((g, i) => {
-              const isHit = feedIsHit(g.v, r.line, r.isBinary, direction);
-              return (
-                <span
-                  key={i}
-                  style={{
-                    flex: 1, height: 15, boxSizing: "border-box",
-                    background: isHit ? "var(--pos)" : "transparent",
-                    border: isHit ? "none" : "1.5px solid var(--neg)",
-                  }}
-                />
-              );
-            })}
+        {/* No graph on a thin sample -- a plain sentence instead. Ten bars
+            drawn off four games look exactly as authoritative as ten drawn
+            off forty, which is the thing the "too few" verdict beside it
+            exists to prevent. */}
+        {thinSample ? (
+          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)", marginTop: 12, lineHeight: 1.5 }}>
+            {gamesCounted === 0
+              ? "No finished games logged yet, so there is no rate to show."
+              : `Only ${gamesCounted} finished ${gamesCounted === 1 ? "game" : "games"} on the log — too few to carry a rate, so no number is shown.`}
+          </div>
+        ) : recent.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            {/* The same windowed graph the desktop rows draw, at phone scale.
+                It replaces ten equal-height squares, which the design rejects
+                by name: they showed whether a game cleared, never by how
+                much. The line tag renders but does not drag -- dragging is
+                specified for desktop only, and a 24px handle is not a touch
+                target. */}
+            <FeedFormStrip
+              r={r}
+              direction={direction}
+              streak={streak}
+              height={48}
+              gap={4}
+              gutter={42}
+              tag
+              caption={false}
+            />
           </div>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 11 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
           {oppRankLine}
           <div
             role="button"
@@ -15255,10 +15306,10 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
           stay as built rather than being recomputed off a shorter sample
           than they claim. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-        <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={5} active={sampleWindow === "l5"} />
-        <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} active={sampleWindow === "l10"} />
-        <FeedPctCell v={r.l20} n={r.n20} label={20} active={sampleWindow === "l20"} />
-        <FeedPctCell v={r.all} n={r.nAll} active={sampleWindow === "all"} />
+        <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={Math.min(minGames, 5)} active={sampleWindow === "l5"} />
+        <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={minGames} active={sampleWindow === "l10"} />
+        <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={minGames} active={sampleWindow === "l20"} />
+        <FeedPctCell v={r.all} n={r.nAll} minSample={minGames} active={sampleWindow === "all"} />
       </div>
     </div>
   );
@@ -16316,6 +16367,16 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // because a feed that opened a thousand ladders at once would be unreadable
   // and would cost a ladder build per row.
   const [linesMode, setLinesMode] = useState("main");
+  // Minimum sample. A *display* threshold, not a filter: a prop under it keeps
+  // its row and shows no rate (see MinSampleControl for why). 10 is where the
+  // app already drew the line before this control existed, so the default
+  // changes nothing until someone moves it.
+  const [minGames, setMinGames] = useState(10);
+  const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
+  const updateSamplePresets = React.useCallback((next) => {
+    setSamplePresets(next);
+    saveSamplePresets(next);
+  }, []);
   // Exactly one ladder open at a time, keyed by row. Cleared whenever the
   // ladder's own inputs change underneath it -- a ladder counted over L10 must
   // not stay on screen labelled L5.
@@ -17302,7 +17363,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               one filters surface, not two competing ones. */}
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-            padding: "12px 14px", background: "var(--panel2)", border: "1px solid var(--line)",
+            padding: "12px 14px", background: "var(--surface-sunken)", border: "1px solid var(--line)",
           }}>
             <div style={{ minWidth: 0 }}>
               <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>
@@ -17585,6 +17646,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               </div>
             </div>
             <LinesModeSwitcher value={linesMode} onChange={setLinesMode} fill />
+            <div style={{ marginTop: 8 }}>
+              <MinSampleControl
+                value={minGames}
+                onChange={setMinGames}
+                presets={samplePresets}
+                onSetPresets={updateSamplePresets}
+              />
+            </div>
             {!showGamesStrip && (
               showMatchupDropdown ? (
                 <GamesMultiSelect
@@ -17615,6 +17684,21 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               </span>
             </div>
             <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }} />
+          </div>
+        )}
+        {/* Minimum sample lives in the Filters panel on desktop and in the
+            REFINE sheet on the phone -- one control, both surfaces, same
+            state. It sits above SORT BY because it changes what the rows are
+            allowed to say, not merely what order they come in. */}
+        {!isNarrow && (
+          <div style={{ padding: "0 2px 14px", borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
+            <MinSampleControl
+              value={minGames}
+              onChange={setMinGames}
+              presets={samplePresets}
+              onSetPresets={updateSamplePresets}
+              compact
+            />
           </div>
         )}
         <div style={FEED_FILTER_ROW_STYLE}>
@@ -17945,6 +18029,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             sport={sport}
             status={rowStatus}
             sampleWindow={sampleWindow}
+            minGames={minGames}
             isNarrow={isNarrow}
             isAdded={pickIds.has(feedPickId(sport, r))}
             onTogglePick={onTogglePick}
@@ -18028,11 +18113,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               </span>
             </>
           )}
+          {/* The easy/average/tough colour key is gone with the colours it
+              described -- the rank chip is a neutral outlined box now (see
+              tierBg). What it keys instead is the scale, which a bare "#4"
+              doesn't state: low is a defence that stops this stat. */}
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            opponent rank
-            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 800, background: "var(--green)", color: "#08131c" }}>easy</span>
-            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 800, background: "var(--neutral-badge-bg)", color: "var(--dim-strong)", border: "1px solid var(--line-strong)" }}>average</span>
-            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 800, background: "var(--red)", color: "#08131c" }}>tough</span>
+            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, background: "transparent", color: "var(--text)", border: "1px solid var(--line)" }}>#4</span>
+            opponent rank — #1 is the toughest defence against this stat
           </span>
           <span>
             <span className="mono" style={{ color: "var(--amber)" }}>+</span> adds to My Picks
