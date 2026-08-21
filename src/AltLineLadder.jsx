@@ -12,7 +12,9 @@ const strong = (r) => r >= 0.7;
 
 // A rung the sample never split carries no price -- see rungAt in
 // lib/altLines.js. A dash, not a clamped number pretending to be one.
-const fmtPrice = (p) => (p == null ? "—" : p > 0 ? `+${p}` : String(p));
+// U+2212 MINUS SIGN, matching formatOdds in odds.js -- at tabular-nums a
+// hyphen is visibly shorter than the `+` it alternates with down a column.
+const fmtPrice = (p) => (p == null ? "—" : p > 0 ? `+${p}` : `−${Math.abs(p)}`);
 const pct = (r) => (r == null ? "—" : `${Math.round(r * 100)}%`);
 
 function LadderRow({ rung, onAddLeg, inSlip, countLabel }) {
@@ -216,26 +218,45 @@ export function SlipLeg({ leg, rungs = [], onChangeLine, onRemove, sport, colorM
           espnId={leg.player.espnId} headshotSrc={leg.player.headshotSrc} fallbackSrc={leg.player.fallbackSrc}
           status={leg.player.status} surface={surface} size={38} inset={2}
         />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontSize: 14.5 }}>{leg.player.name}</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 15 }}>{leg.player.name}</span>
+            {leg.player.team && (
+              <span className="pp-mono" style={{ fontSize: 11, color: "var(--dim)" }}>{leg.player.team}</span>
+            )}
+            {/* Outlined, not a solid accent fill. A filled badge on every
+                off-market leg read as the loudest thing in the row, ahead of
+                the player and the line it was describing. */}
             {isAlt && (
-              <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.1em", background: "var(--accent, #3b5bdb)", color: "#fff", padding: "3px 6px" }}>ALT</span>
+              <span className="pp-mono" style={{
+                fontSize: 9.5, fontWeight: 700, letterSpacing: "0.1em",
+                color: "var(--accent-text, #8fa6ff)",
+                border: "1px solid var(--accent, #3b5bdb)", padding: "2px 5px",
+              }}>ALT</span>
             )}
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2 }}>
+          {/* The rung's relationship to the posted line moved out of here and
+              into the sentence beside the stepper, where the numbers behind
+              the claim sit with it. */}
+          <div style={{ fontSize: 13.5, color: "var(--dim-strong, #aab2c0)", marginTop: 3 }}>
             {leg.side} {leg.market}
-            {isAlt
-              ? rungsMoved
-                ? ` · ${rungsMoved} rung${rungsMoved === 1 ? "" : "s"} ${leg.line < mainLine ? "down" : "up"} from ${mainLine}`
-                : ` · off the posted ${mainLine}`
-              : " · main line"}
           </div>
         </div>
-        <button type="button" onClick={onRemove} aria-label="Remove leg" style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "var(--dim)" }}>×</button>
+        {/* Price rides the header row, next to the player it prices. It used
+            to sit under the stepper beside the hit rate, which put the two
+            numbers that move in opposite directions in one column and made
+            them read as a pair of related figures. */}
+        {leg.price != null && (
+          <span className="pp-mono" style={{ fontSize: 15, fontWeight: 700, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+            {fmtPrice(leg.price)}
+          </span>
+        )}
+        <button type="button" onClick={onRemove} aria-label="Remove leg" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 15, color: "var(--dim)", paddingLeft: 4, flexShrink: 0 }}>×</button>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 13 }}>
+      {/* Indented to clear the avatar, so the stepper and its sentence line up
+          under the proposition they belong to rather than under the photo. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 13, paddingLeft: 51 }}>
         {/* 44px hit areas on both steppers. A leg at the end of its ladder
             disables that direction rather than hiding it, so the control
             doesn't change shape as the line moves. */}
@@ -248,31 +269,47 @@ export function SlipLeg({ leg, rungs = [], onChangeLine, onRemove, sport, colorM
             disabled={!steppable || idx === rungs.length - 1}
             style={{ width: 44, height: 44, background: "none", border: "none", borderLeft: `1px solid ${accent}`, cursor: !steppable || idx === rungs.length - 1 ? "default" : "pointer", opacity: !steppable || idx === rungs.length - 1 ? 0.35 : 1, fontSize: 17, color: isAlt ? "var(--accent-text, #8fa6ff)" : "var(--dim-strong, #aab2c0)" }}>+</button>
         </span>
-        <div style={{ marginLeft: "auto", textAlign: "right" }}>
-          <div className="pp-mono" style={{ fontSize: 20, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: rate >= 0.7 ? "var(--pos, #3ecf8e)" : "var(--dim-strong, #aab2c0)" }}>{pct(rate)}</div>
-          <div className="pp-mono" style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>{fmtPrice(leg.price)} · {leg.gamesOver} of {leg.gamesCounted}</div>
+        {/* The trade-off, in words, beside the stepper that makes it -- what
+            this rung is relative to the posted line, and what moving there
+            did to the rate and the price. Every clause is guarded: a rung the
+            sample never split has no price, so the sentence states the
+            hit-rate move alone rather than differencing against a missing
+            number. The posted line and its rate close the sentence in dimmer
+            text, so the thing being compared against is never off-screen. */}
+        <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.45, minWidth: 0 }}>
+          {!isAlt ? (
+            <>
+              Posted line.
+              {rate != null && leg.gamesCounted
+                ? ` ${leg.gamesOver} of ${leg.gamesCounted} in this window.`
+                : ""}
+            </>
+          ) : (
+            <>
+              {rungsMoved
+                ? `${rungsMoved} rung${rungsMoved === 1 ? "" : "s"} ${leg.line < mainLine ? "below" : "above"} the posted ${mainLine}.`
+                : `Off the posted ${mainLine}.`}
+              {main && rate != null && main.hitRate != null && (
+                <>
+                  {" "}
+                  {(() => {
+                    const pts = Math.round((rate - main.hitRate) * 100);
+                    const verb = pts > 0 ? "Buys" : pts < 0 ? "Gives up" : "Moves";
+                    const priceBit = leg.price != null && main.price != null && leg.price !== main.price
+                      ? ` and ${Math.abs(leg.price - main.price)} of price`
+                      : "";
+                    return `${verb} ${Math.abs(pts)} points of hit rate${priceBit}, over the same ${leg.gamesCounted} games.`;
+                  })()}
+                  {" "}
+                  <span className="pp-mono" style={{ color: "var(--dim)", opacity: 0.75 }}>
+                    POSTED {main.line} · {pct(main.hitRate)}
+                  </span>
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
-
-      {/* The trade-off, in words: what this rung bought and what it cost. Both
-          halves are guarded -- a rung the sample never split has no price, so
-          the sentence states the hit-rate move alone rather than printing a
-          difference against a missing number. */}
-      {isAlt && main && rate != null && main.hitRate != null && (
-        <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, fontSize: 12.5, lineHeight: 1.5, flexWrap: "wrap" }}>
-          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--accent-text, #8fa6ff)" }}>
-            WAS {main.line} · {pct(main.hitRate)}
-          </span>
-          <span style={{ color: "var(--dim)" }}>
-            {rungsMoved} rung{rungsMoved === 1 ? "" : "s"} {leg.line < main.line ? "down" : "up"} moves the hit rate by{" "}
-            {Math.round((rate - main.hitRate) * 100)} points
-            {leg.price != null && main.price != null
-              ? ` and the price by ${Math.abs(leg.price - main.price)}`
-              : ""}
-            , over the same {leg.gamesCounted} games.
-          </span>
-        </div>
-      )}
 
       {note && (
         <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--dim)", lineHeight: 1.45, fontStyle: "italic" }}>

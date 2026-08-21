@@ -18820,21 +18820,25 @@ function LedgerHeader({ summary, settledPicks, dollarsPerUnit }) {
   }, [settledPicks]);
 
   return (
-    <div style={{ padding: "16px 18px 14px", borderBottom: "1px solid var(--line)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 11 }}>
-        <span className="mono" style={{ fontSize: 27, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+    <div style={{ padding: "20px 24px 16px", background: "var(--surface-sunken)", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 13 }}>
+        <span className="pp-mono" style={{ fontSize: 34, fontWeight: 700 }}>
           {summary.won}<span style={{ color: "var(--dim)" }}>−</span>{summary.lost}
         </span>
-        <span className="mono" style={{ fontSize: 16, fontVariantNumeric: "tabular-nums", color: "var(--text)" }}>
+        {/* Banded on the same thresholds as every other hit rate in the app
+            (see feedRateColor), rather than always green as the mock draws
+            it -- this is a real record, and a losing one should not be
+            painted the colour that means "cleared". */}
+        <span className="pp-mono" style={{ fontSize: 19, color: feedRateColor(summary.hitRate) }}>
           {summary.hitRate == null ? "—" : `${Math.round(summary.hitRate * 100)}%`}
         </span>
         {since && (
-          <span className="mono" style={{ fontSize: 10, letterSpacing: "0.07em", color: "var(--dim)", marginLeft: "auto" }}>
+          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--dim)", marginLeft: "auto" }}>
             SINCE {since.toUpperCase()}
           </span>
         )}
       </div>
-      <div style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5, marginTop: 8 }}>
+      <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.5, marginTop: 9 }}>
         Every pick you saved, graded off the box score. Not a bankroll and not
         profit — a slip you never placed counts the same as one you did.
       </div>
@@ -19062,14 +19066,17 @@ function PickReportTab({ openPicks, settledPicks, correlations }) {
                     size={30}
                     inset={2}
                   />
-                  <div className="oswald" style={{ fontSize: 12.5, color: "var(--text)", minWidth: 0 }}>
+                  <div style={{ fontSize: 15, color: "var(--text)", minWidth: 0 }}>
                     {p.name} <span style={{ color: "var(--dim)" }}>{p.subtitle}</span>
                   </div>
                 </div>
+                {/* A fixed 16px mark column, not a flex gap: the marks stay in
+                    one vertical line down the leg and the sentences all start
+                    at the same x, however long the previous one wrapped. */}
                 {fs.map((f, i) => (
-                  <div key={i} style={{ display: "flex", gap: 6, fontSize: 11.5, lineHeight: 1.45, marginTop: 2 }}>
-                    <span style={{ color: REPORT_TONE[f.tone].color, flexShrink: 0 }}>{REPORT_TONE[f.tone].mark}</span>
-                    <span style={{ color: "var(--dim)" }}>{f.text}</span>
+                  <div key={i} style={{ display: "grid", gridTemplateColumns: "16px 1fr", gap: 10, alignItems: "start", padding: "6px 0" }}>
+                    <span style={{ color: REPORT_TONE[f.tone].color, fontSize: 10, lineHeight: 1.6 }}>{REPORT_TONE[f.tone].mark}</span>
+                    <span style={{ fontSize: 13.5, lineHeight: 1.55, color: "var(--dim-strong, var(--text))" }}>{f.text}</span>
                   </div>
                 ))}
               </div>
@@ -19121,7 +19128,15 @@ function PickReportTab({ openPicks, settledPicks, correlations }) {
         </>
       )}
 
-      <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+      {/* Its own sunken band with a full-bleed top rule, the way the design
+          closes this tab -- it is the clearest statement of what this app
+          does and does not do, and it was reading as a footnote. Copy is
+          unchanged and stays unchanged. */}
+      <div style={{
+        fontSize: 12.5, color: "var(--dim)", lineHeight: 1.55,
+        background: "var(--surface-sunken)", borderTop: "1px solid var(--line)",
+        margin: "18px -18px -18px", padding: "18px 24px 20px",
+      }}>
         Written from your own picks and the game logs on this device — no
         account, no model, no prediction. Each line above is a fact about the
         sample, which is not the same thing as a fact about tonight.
@@ -19470,7 +19485,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
           aria-label="My Picks"
           style={{
             position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 2100,
-            width: 340, maxWidth: "92vw",
+            width: 468, maxWidth: "92vw",
             background: "var(--panel)", borderLeft: "1px solid var(--line)",
             boxShadow: "-6px 0 24px rgba(0,0,0,0.45)",
             display: "flex", flexDirection: "column",
