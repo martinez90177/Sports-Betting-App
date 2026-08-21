@@ -14056,30 +14056,6 @@ function TodaysGamesStrip({ options, selected, onChange, logoFn, emptyLabel }) {
   );
 }
 
-// L5/L10/L20/season hit rate, graded green (favorable) to red (unfavorable) --
-// every row already computes all four (see hitRateWindow in each build*FeedRows),
-// this just puts all of them on screen together instead of only whichever one
-// the global sample-size switcher happens to be set to. The currently-selected
-// window is called out in amber so it's still obvious which one is driving the
-// row's displayed odds/hit-rate figure and the list's sort order.
-const FEED_ROW_SPLITS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["SZN", "all"]];
-function FeedSplitsStrip({ r, sampleWindow, size }) {
-  const hrColor = (v) => (v >= 0.55 ? "var(--green)" : v <= 0.45 ? "var(--red)" : "var(--dim)");
-  return (
-    <div style={{ display: "flex", gap: size === "sm" ? 8 : 10, flexWrap: "wrap" }}>
-      {FEED_ROW_SPLITS.map(([label, key]) => {
-        const active = key === sampleWindow;
-        return (
-          <span key={key} className="mono" style={{ fontSize: size === "sm" ? 10 : 10.5, display: "inline-flex", alignItems: "center", gap: 3 }}>
-            <span style={{ color: active ? "var(--amber)" : "var(--dim)", fontWeight: active ? 700 : 500 }}>{label}</span>
-            <b style={{ color: hrColor(r[key]), fontWeight: 700 }}>{Math.round(r[key] * 100)}%</b>
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 // The desktop table's column template is the `.feed-grid` class in
 // index.css -- header and every row carry it so cells line up exactly:
 // add-button / avatar / proposition / line / odds / L5 / L10 / L20 /
@@ -14586,20 +14562,24 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     </div>
   );
 
+  // The main line, built through the same function the ladder's + ADD LEG
+  // uses. The ladder is built here rather than during render so it costs
+  // nothing on the thousands of rows nobody clicks -- but building it at
+  // all means a main-line pick carries its "6 of 9" too, and lands in the
+  // slip with a working stepper whether or not the ladder was ever opened.
+  // Shared between the desktop icon button and the mobile "+ ADD" text
+  // button below so the two never drift apart on what a tap actually saves.
+  const handleAddClick = () => {
+    const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction, window: sampleWindow });
+    const mainRung = rungs.find((x) => x.isMain) || null;
+    onTogglePick(pickFromRung(sport, r, mainRung, { streak, cushion, sampleWindow, status }));
+  };
+
   const addBtn = (
     <div
       className="oswald"
       role="button"
-      // The main line, built through the same function the ladder's + ADD LEG
-      // uses. The ladder is built here rather than during render so it costs
-      // nothing on the thousands of rows nobody clicks -- but building it at
-      // all means a main-line pick carries its "6 of 9" too, and lands in the
-      // slip with a working stepper whether or not the ladder was ever opened.
-      onClick={() => {
-        const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction, window: sampleWindow });
-        const mainRung = rungs.find((x) => x.isMain) || null;
-        onTogglePick(pickFromRung(sport, r, mainRung, { streak, cushion, sampleWindow, status }));
-      }}
+      onClick={handleAddClick}
       title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
       style={{
         cursor: "pointer",
@@ -14728,21 +14708,6 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     </div>
   );
 
-  const oddsBlock = (
-    <div style={{ textAlign: isNarrow ? "left" : "right", flexShrink: 0 }}>
-      <div className="mono" style={{ fontSize: 17, fontWeight: 700, color: "var(--text)" }}>
-        {odds == null ? "—" : formatOdds(odds, oddsFormat)}
-      </div>
-      <div
-        className="mono"
-        title={`Hit rate over the trailing ${sampleWindow.slice(1)} games`}
-        style={{ fontSize: 13, marginTop: 6, fontWeight: 700, color: r[sampleWindow] == null ? "var(--dim)" : hrColor(r[sampleWindow]) }}
-      >
-        {r[sampleWindow] == null ? "—" : `${Math.round(r[sampleWindow] * 100)}%`}
-        <span style={{ color: "var(--dim)", fontWeight: 600, fontSize: 11 }}> ({sampleWindow.toUpperCase()})</span>
-      </div>
-    </div>
-  );
   const oppRankLine = (
     // Wraps as whole chips rather than mid-label: the Form column narrowed
     // the Proposition track enough that "OPP RANK" itself was breaking across
@@ -14789,37 +14754,93 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, is
     </div>
   );
 
-  // Narrow screens stack into rows (name/team, opp rank, splits, odds+actions)
-  // instead of squeezing everything into one row -- that forced the player
-  // name to wrap onto 2-3 lines and left the action buttons cramped/overlapping.
+  // Mobile card (item 9, card 3a) -- a different layout from the desktop
+  // table row, not a squeeze of it: one dominant hit-rate figure instead of
+  // four sample-window columns, full-width chunky form segments instead of
+  // the thin margin-scaled bars, and a text "+ ADD" sized to a real 44px
+  // target instead of the desktop's small icon button. The whole card is
+  // itself the tap target for the player's chart -- there's no room here for
+  // a separate chevron the way the desktop row has one.
+  //
+  // The ladder ("OPEN LADDER") has no mobile treatment in the design (nor
+  // does the mobile player page it would otherwise live on) -- its five
+  // columns don't fit a 390px card. Left off this screen rather than
+  // approximated; it stays fully reachable on desktop.
   if (isNarrow) {
+    const nKey = sampleWindow === "l5" ? "n5" : sampleWindow === "l20" ? "n20" : sampleWindow === "all" ? "nAll" : "n10";
+    const rate = r[sampleWindow];
+    const gamesCounted = r[nKey];
+    const gamesOver = rate != null && gamesCounted != null ? Math.round(rate * gamesCounted) : null;
+    const recent = r.recent || [];
     return (
       <div
         className="feed-row"
+        role={openChart ? "button" : undefined}
+        tabIndex={openChart ? 0 : undefined}
+        onClick={openChart || undefined}
+        onKeyDown={openChart ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openChart(); } } : undefined}
+        title={openChart ? `Open ${r.name}'s chart on the ${sport.toUpperCase()} Props page` : undefined}
         style={{
-          display: "flex", flexDirection: "column", gap: 8, padding: "12px 16px",
+          padding: "15px 16px", cursor: openChart ? "pointer" : "default",
           borderBottom: isLast ? "none" : "1px solid var(--line)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           {avatarEl}
           <div style={{ flex: 1, minWidth: 0 }}>
-            {propositionBlock}
+            <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+              <span className="pp-display" style={{ fontWeight: 600, letterSpacing: "-0.01em", fontSize: 19, color: "var(--text)" }}>{r.name}</span>
+              <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)" }}>{r.team}</span>
+            </div>
+            <div style={{ fontSize: 14.5, marginTop: 3, color: "var(--accent-text, var(--amber))" }}>
+              {r.subtitle}{odds != null && <span style={{ color: "var(--dim)" }}> {formatOdds(odds, oddsFormat)}</span>}
+            </div>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div className="pp-mono" style={{ fontVariantNumeric: "tabular-nums", fontSize: 30, fontWeight: 600, lineHeight: 1, color: rate == null ? "var(--dim)" : hrColor(rate) }}>
+              {rate == null ? "—" : `${Math.round(rate * 100)}%`}
+            </div>
+            {gamesCounted != null && (
+              <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>{gamesOver} of {gamesCounted}</div>
+            )}
           </div>
         </div>
-        {oppRankLine}
-        {/* No Form column to slot into on a phone, so the strip rides
-             alongside the splits instead of getting its own stacked row. */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <FeedSplitsStrip r={r} sampleWindow={sampleWindow} size="sm" />
-          {formCell}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          {oddsBlock}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {ladderBtn}
-            {addBtn}
-            {chartBtn}
+
+        {recent.length > 0 && (
+          <div style={{ display: "flex", gap: 4, marginTop: 13 }}>
+            {recent.map((g, i) => {
+              const isHit = feedIsHit(g.v, r.line, r.isBinary, direction);
+              return (
+                <span
+                  key={i}
+                  style={{
+                    flex: 1, height: 15, boxSizing: "border-box",
+                    background: isHit ? "var(--pos)" : "transparent",
+                    border: isHit ? "none" : "1.5px solid var(--neg)",
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 11 }}>
+          {oppRankLine}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); handleAddClick(); }}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); e.preventDefault(); handleAddClick(); } }}
+            title={isAdded ? "Remove from My Picks" : "Add to My Picks slip"}
+            className="pp-mono"
+            style={{
+              cursor: "pointer", flexShrink: 0,
+              minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "flex-end",
+              fontSize: 12, letterSpacing: "0.06em", fontWeight: 600,
+              color: isAdded ? "var(--pos)" : "var(--accent-text, var(--amber))",
+            }}
+          >
+            {isAdded ? "✓ ADDED" : "+ ADD"}
           </div>
         </div>
       </div>
@@ -15937,6 +15958,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // page flow -- see feedActiveFilterCount below for the badge shown on its
   // trigger.
   const [feedFiltersOpen, setFeedFiltersOpen] = useState(false);
+  // On mobile this box renders as a bottom sheet over the feed (see its
+  // render site below) rather than the plain inline disclosure it is on
+  // desktop, so it needs the same scroll lock every other sheet in this app
+  // uses -- without it the feed underneath scrolls along with a finger
+  // dragging inside the sheet. Desktop's inline box never needs this.
+  React.useEffect(() => {
+    if (!isNarrow || !feedFiltersOpen) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prevOverflow; };
+  }, [isNarrow, feedFiltersOpen]);
   // MLB only -- `lineupConfirmed` is undefined on every other sport's rows
   // (see the avatar dot's own comment above). Left on when switching away
   // from MLB rather than force-reset: filteredRows only applies it when
@@ -16798,6 +16830,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     </>
   );
 
+  // The mobile summary/REFINE bar's description line (card 3a: "Hits · Over
+  // · Last 10 games") -- built from the same three pieces of state the
+  // desktop header shows as separate controls, so it can never say something
+  // the actual filtering isn't doing.
+  const refineMarketLabel = propGroups.flatMap((g) => g.markets).find((m) => m.id === selectedMarket)?.label || "Props";
+  const refineWindowLabel = sampleWindow === "l5" ? "Last 5 games" : sampleWindow === "l20" ? "Last 20 games" : sampleWindow === "all" ? "Season" : "Last 10 games";
+  const refineSummary = `${refineMarketLabel} · ${direction === "under" ? "Under" : "Over"} · ${refineWindowLabel}`;
+
   return (
     // 900px left ~270px of dead gutter either side of a 1440px window while
     // the table itself overflowed its container -- the feed is a ten-column
@@ -16855,50 +16895,40 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               emptyLabel={gamesStripEmptyLabel}
             />
           )}
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <PropTypePicker groups={propGroups} value={selectedMarket} onChange={setSelectedMarket} fill />
+          {/* Card 3a's summary + REFINE bar. Everything the old stacked column
+              held here (market picker, side/window switchers, lines mode,
+              team/game select, Screens, the feed key) moved into the sheet
+              this opens -- REFINE is a sheet, not a page-shover, per the
+              design's own subtitle for this card. Same feedFiltersOpen state
+              the desktop Filters button already drives, so there's exactly
+              one filters surface, not two competing ones. */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+            padding: "12px 14px", background: "var(--panel2)", border: "1px solid var(--line)",
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>
+                SHOWING {filteredRows.length} OF {rows.length}
+              </div>
+              <div style={{ fontSize: 14, marginTop: 4, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {refineSummary}
+              </div>
             </div>
-            {filtersButton}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>{screensButton}</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <DirectionSwitcher value={direction} onChange={setDirection} fill />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} fill />
-            </div>
-          </div>
-          <LinesModeSwitcher value={linesMode} onChange={setLinesMode} fill />
-          {!showGamesStrip && (
-            showMatchupDropdown ? (
-              <GamesMultiSelect
-                options={activeMatchupOptions}
-                selected={selectedGameIds}
-                onChange={setSelectedGameIds}
-                allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
-                logoFn={gamesStripLogoFn}
-                fill
-              />
-            ) : (
-              <select className="select" style={{ width: "100%", boxSizing: "border-box" }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-                <option value="all">All teams</option>
-                {teamOptions.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            )
-          )}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: "var(--dim)" }}>
-            <span>{resultCount}</span>
-            <span
+            <div
               role="button"
-              onClick={() => setShowFeedKey((v) => !v)}
-              style={{ cursor: "pointer", color: "var(--amber)", fontWeight: 600, flexShrink: 0 }}
+              tabIndex={0}
+              onClick={() => setFeedFiltersOpen(true)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(true); } }}
+              className="pp-mono"
+              style={{
+                cursor: "pointer", flexShrink: 0, minHeight: 44,
+                display: "flex", alignItems: "center", padding: "0 18px",
+                fontSize: 12, letterSpacing: "0.08em", fontWeight: 600,
+                color: "var(--accent-on)", background: "var(--amber)",
+              }}
             >
-              {showFeedKey ? "Hide key ▴" : "What am I looking at? ▾"}
-            </span>
+              REFINE{feedActiveFilterCount > 0 ? ` (${feedActiveFilterCount})` : ""}
+            </div>
           </div>
         </div>
       ) : (
@@ -17057,11 +17087,93 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       </>
       )}
 
+      {feedFiltersOpen && isNarrow && (
+        <div
+          onClick={() => setFeedFiltersOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 3500 }}
+        />
+      )}
       {feedFiltersOpen && (
-      <div style={{
+      <div style={isNarrow ? {
+        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 3501,
+        maxHeight: "85vh", overflowY: "auto",
+        background: "var(--surface-1)", border: "1px solid var(--line)", borderBottom: "none",
+        borderRadius: "16px 16px 0 0", boxShadow: "0 -12px 32px rgba(0,0,0,0.5)",
+        padding: "16px", paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+      } : {
         maxWidth: 480, margin: "0 auto 20px", padding: "16px", background: "var(--panel)",
         border: "1px solid var(--line)", borderRadius: 8,
       }}>
+        {/* card 3a: everything the old always-visible stacked column held
+            (market, side, sample window, lines mode, team/game, Screens, the
+            feed key) lives at the top of this sheet on mobile, above the
+            SORT BY / odds range / matchup / teammate filters this box
+            already had -- one sheet, not two competing filter surfaces. */}
+        {isNarrow && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 4 }}>
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--line-strong)" }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span className="pp-display" style={{ fontSize: 18, fontWeight: 600 }}>Refine</span>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setFeedFiltersOpen(false)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setFeedFiltersOpen(false); }}
+                aria-label="Close Refine"
+                style={{ cursor: "pointer", minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "flex-end", fontSize: 20, color: "var(--dim)" }}
+              >
+                ×
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <PropTypePicker groups={propGroups} value={selectedMarket} onChange={setSelectedMarket} fill />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>{screensButton}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <DirectionSwitcher value={direction} onChange={setDirection} fill />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} fill />
+              </div>
+            </div>
+            <LinesModeSwitcher value={linesMode} onChange={setLinesMode} fill />
+            {!showGamesStrip && (
+              showMatchupDropdown ? (
+                <GamesMultiSelect
+                  options={activeMatchupOptions}
+                  selected={selectedGameIds}
+                  onChange={setSelectedGameIds}
+                  allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
+                  logoFn={gamesStripLogoFn}
+                  fill
+                />
+              ) : (
+                <select className="select" style={{ width: "100%", boxSizing: "border-box" }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+                  <option value="all">All teams</option>
+                  {teamOptions.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              )
+            )}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: "var(--dim)" }}>
+              <span>{resultCount}</span>
+              <span
+                role="button"
+                onClick={() => setShowFeedKey((v) => !v)}
+                style={{ cursor: "pointer", color: "var(--amber)", fontWeight: 600, flexShrink: 0 }}
+              >
+                {showFeedKey ? "Hide key ▴" : "What am I looking at? ▾"}
+              </span>
+            </div>
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }} />
+          </div>
+        )}
         <div style={FEED_FILTER_ROW_STYLE}>
           <span className="oswald" style={FEED_LABEL_STYLE}>SORT BY</span>
           {/* The "i" info button sits absolutely positioned just outside the
@@ -18617,7 +18729,7 @@ function SaferRungsBlock({ picks, onChangeLine, onRemove }) {
   );
 }
 
-function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, onChangeLine, sportsbook, onOpenSettings }) {
+function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, onChangeLine, sportsbook, onOpenSettings, isNarrow }) {
   const [tab, setTab] = useState("slip");
   const oddsFormat = useOddsFormat();
   const dollarsPerUnit = useUnitValue();
@@ -18654,40 +18766,80 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
     </div>
   );
 
-  return (
-    <>
+  // Card 3a's sticky footer bar -- full-width, not a floating pill, and only
+  // once there's something to show (an empty slip has nothing worth a
+  // persistent bar's screen space, so the FAB covers that case). Desktop
+  // keeps the floating pill regardless of pick count; only mobile switches.
+  // Just the trigger differs -- the backdrop/dialog below is unchanged and
+  // shared by both, opened by the same `open` state either way.
+  const trigger = isNarrow && openPicks.length > 0 ? (
+    <div
+      onClick={onToggleOpen}
+      role="button"
+      aria-label="Toggle My Picks panel"
+      style={{
+        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 2000,
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        padding: "14px 16px", paddingBottom: "max(14px, env(safe-area-inset-bottom))",
+        background: "var(--panel)", borderTop: "1px solid var(--line)",
+        boxShadow: "0 -4px 16px rgba(0,0,0,0.25)", cursor: "pointer",
+      }}
+    >
+      <div>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>MY PICKS · {openPicks.length}</div>
+        <div className="pp-mono" style={{ fontVariantNumeric: "tabular-nums", fontSize: 17, marginTop: 3, color: "var(--text)" }}>
+          {combined != null ? formatOdds(combined, oddsFormat) : "—"}
+        </div>
+      </div>
       <div
-        onClick={onToggleOpen}
-        role="button"
-        aria-label="Toggle My Picks panel"
-        className="oswald cta-btn"
+        className="pp-mono"
         style={{
-          position: "fixed", bottom: 20, right: 20, zIndex: 2000,
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "12px 18px", borderRadius: 999,
-          // A solid --panel fill (not the translucent --amber-dim used by
-          // in-flow chips) -- this button floats fixed over whatever's
-          // scrolled beneath it, and a semi-transparent background would let
-          // that content's color bleed through and shift the button's tone
-          // as the page scrolls. --panel is fully opaque so it always reads
-          // the same regardless of what's underneath.
-          background: "var(--panel)", color: "var(--amber)", border: "1.5px solid var(--amber)",
-          fontSize: 14, fontWeight: 700, letterSpacing: "0.02em",
-          cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+          flexShrink: 0, minHeight: 44, display: "flex", alignItems: "center",
+          padding: "0 20px", fontSize: 12, letterSpacing: "0.08em", fontWeight: 600,
+          color: "var(--accent-on)", background: "var(--amber)",
         }}
       >
-        My Picks
-        {openPicks.length > 0 && (
-          // Count and combined odds together on the one badge, the way the
-          // reference's collapsed pill states both at a glance instead of
-          // making a click-through the only way to see what the count adds
-          // up to. combined is null only when openPicks is empty, which
-          // can't happen inside this guard.
-          <span className="mono" style={{ background: "var(--amber)", color: "var(--accent-on)", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
-            {openPicks.length}{combined != null ? ` · ${formatOdds(combined, oddsFormat)}` : ""}
-          </span>
-        )}
+        VIEW SLIP
       </div>
+    </div>
+  ) : (
+    <div
+      onClick={onToggleOpen}
+      role="button"
+      aria-label="Toggle My Picks panel"
+      className="oswald cta-btn"
+      style={{
+        position: "fixed", bottom: 20, right: 20, zIndex: 2000,
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "12px 18px", borderRadius: 999,
+        // A solid --panel fill (not the translucent --amber-dim used by
+        // in-flow chips) -- this button floats fixed over whatever's
+        // scrolled beneath it, and a semi-transparent background would let
+        // that content's color bleed through and shift the button's tone
+        // as the page scrolls. --panel is fully opaque so it always reads
+        // the same regardless of what's underneath.
+        background: "var(--panel)", color: "var(--amber)", border: "1.5px solid var(--amber)",
+        fontSize: 14, fontWeight: 700, letterSpacing: "0.02em",
+        cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+      }}
+    >
+      My Picks
+      {openPicks.length > 0 && (
+        // Count and combined odds together on the one badge, the way the
+        // reference's collapsed pill states both at a glance instead of
+        // making a click-through the only way to see what the count adds
+        // up to. combined is null only when openPicks is empty, which
+        // can't happen inside this guard.
+        <span className="mono" style={{ background: "var(--amber)", color: "var(--accent-on)", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
+          {openPicks.length}{combined != null ? ` · ${formatOdds(combined, oddsFormat)}` : ""}
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {trigger}
 
       {open && (
         <div
@@ -19726,6 +19878,7 @@ export default function PropLedger() {
         onClearSettled={clearSettledPicks}
         sportsbook={sportsbook}
         onOpenSettings={() => { setPicksOpen(false); setSettingsOpen(true); }}
+        isNarrow={isNarrowShell}
       />
       {/* Reads and writes every preference through the settings context, so
           the only thing it needs from here is the sportsbook list (which
