@@ -1785,6 +1785,7 @@ function NBAPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             effectiveLine={effectiveLine}
             total={values.length}
             hitRate={hitRate}
+            marketLabel={marketLabel}
             sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
           />
         )}
@@ -5363,7 +5364,14 @@ function SampleStatsRow({ cards, glossary, compact, intro }) {
 // AVERAGE / LINE / CLEARS IT BY. `line` is display-only here — LineHandle on
 // the chart remains the single place the line is set (see plan note).
 function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, decimals = 1, line, sampleLabel }) {
+  // Desktop only. PlayerFormVerdict carries the verdict figure on the phone,
+  // where the design has exactly one -- rendering both put the same "50% ·
+  // 2 of 4 games · THIN SAMPLE" on screen twice, one block above the other.
+  // The hook rather than a prop because all four sport pages call this the
+  // same way and none of them should have to remember.
+  const isNarrow = useIsNarrow();
   const pct = Math.round(hitRate * 100);
+  if (isNarrow) return null;
   return (
     <div style={{ padding: compact ? "14px 12px 10px" : "18px 20px 12px" }}>
       <div style={{
@@ -5432,41 +5440,92 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
 // screen with no room for MetricRail's AVERAGE/LINE/CLEARS IT BY row.
 // Desktop keeps that row as its only verdict readout; this is mobile-only
 // (see each page's `{isNarrow && <PlayerFormVerdict .../>}`).
-function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel }) {
+function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel, marketLabel }) {
   if (!total) return null;
   const leans = hitRate >= 0.5 ? "over" : "under";
   const confidenceTier = sampleLabel === "STRONG SAMPLE" ? 3 : sampleLabel === "FAIR SAMPLE" ? 2 : 1;
   const confidenceWord = sampleLabel ? sampleLabel.split(" ")[0] : "THIN";
+  const tierWord = confidenceTier === 3 ? "Strong" : confidenceTier === 2 ? "Fair" : "Thin";
+  const gamesOver = Math.round(hitRate * total);
+  // The last ten, oldest to newest -- the same window the feed's graph draws,
+  // so the two screens tell one story about one player.
+  const recent = values.slice(-10);
+  const avgMargin = values.reduce((a, b) => a + b, 0) / total - effectiveLine;
+  // FeedFormStrip takes a feed row. Building one here rather than forking the
+  // component is the whole point of the windowed axis living in one place:
+  // this screen and every feed row plot identically by construction.
+  const formRow = {
+    recent: recent.map((v) => ({ v })),
+    line: effectiveLine,
+    isBinary: false,
+    subtitle: marketLabel || "",
+  };
   return (
-    <div style={{ padding: "0 16px 20px", textAlign: "center", borderBottom: "1px solid var(--line)" }}>
-      <div style={{ display: "flex", justifyContent: "center", gap: 5, flexWrap: "wrap" }}>
-        {values.map((v, i) => (
-          <span
-            key={i}
-            style={{
-              width: 22, height: 22, boxSizing: "border-box",
-              background: v > effectiveLine ? "var(--pos)" : "transparent",
-              border: v > effectiveLine ? "none" : "1.5px solid var(--neg)",
-            }}
-          />
-        ))}
-      </div>
-      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 8 }}>oldest to newest · filled cleared the line</div>
+    <div style={{ borderBottom: "1px solid var(--line)" }}>
+      {/* The verdict figure. Accent-ink, not green -- it is a rate, and the
+          accent is what the design uses for figures that survive a re-tint.
+          Its sample sits beside it rather than under it, so the number can
+          never appear without the two counts behind it. */}
+      <div style={{ padding: "0 16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+          <span className="pp-mono" style={{ fontSize: 60, lineHeight: 0.9, letterSpacing: "-0.02em", color: "var(--amber-ink, var(--amber))" }}>
+            {Math.round(hitRate * 100)}%
+          </span>
+          <span className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: "var(--text-2, var(--dim))", paddingBottom: 8, lineHeight: 1.5 }}>
+            {gamesOver} of {total} games<br />in this sample
+          </span>
+        </div>
 
-      <div style={{ marginTop: 18 }}>
-        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.14em", color: "var(--accent-text, var(--amber))" }}>THE READ</div>
-        <div className="pp-display" style={{ fontSize: 22, marginTop: 6, fontWeight: 600 }}>Leans {leans}</div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 5, marginTop: 12 }}>
+        {/* The form graph, in its own card. This replaces a row of
+            equal-height squares: they said whether each game cleared and
+            never by how much, which the new handoff rejects by name. */}
+        <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 14, marginTop: 18 }}>
+          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+            Last {recent.length}{marketLabel ? ` · ${marketLabel}` : ""} vs. line
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <FeedFormStrip r={formRow} direction="over" streak={null} height={74} gap={5} gutter={44} tag caption={false} />
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginTop: 10 }}>
+            <span className="pp-mono" style={{ fontSize: 11.5, color: hitRate >= 0.5 ? "var(--pos)" : "var(--neg)" }}>
+              {gamesOver} of {total}
+            </span>
+            <span className="pp-mono" style={{ fontSize: 11, color: "var(--text-2, var(--dim))" }}>
+              avg {avgMargin >= 0 ? "+" : "−"}{Math.abs(avgMargin).toFixed(1)} vs line
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 14, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
+            <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+              <span style={{ width: 7, height: 14, background: "var(--pos)", borderRadius: 2 }} />cleared the line
+            </span>
+            <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+              <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box" }} />fell short
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* The read, on its own sunken band. The heading states the sample tier
+          and the lean in one line and stays in --text: a lean is not a hit or
+          a miss, so it earns neither green nor red. */}
+      <div style={{ padding: "18px 16px", background: "var(--surface-sunken)", borderTop: "1px solid var(--line)" }}>
+        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>The read</div>
+        <div className="pp-display" style={{ fontSize: 26, marginTop: 8, fontWeight: 600, color: "var(--text)" }}>
+          {tierWord} sample · leans {leans}
+        </div>
+        <div style={{ display: "flex", gap: 5, marginTop: 14 }}>
           {[1, 2, 3].map((i) => (
-            <span key={i} style={{ width: 40, height: 4, background: i <= confidenceTier ? "var(--amber)" : "var(--panel2)" }} />
+            <span key={i} style={{ flex: 1, height: 5, borderRadius: 2, background: i <= confidenceTier ? "var(--amber)" : "var(--surface-2)" }} />
           ))}
         </div>
-        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.1em", color: "var(--dim)", marginTop: 8 }}>CONFIDENCE · {confidenceWord}</div>
-        <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.5, marginTop: 10 }}>
+        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 9 }}>
+          Confidence · {confidenceWord}
+        </div>
+        <div style={{ fontSize: 14, color: "var(--text-2, var(--dim))", lineHeight: 1.6, marginTop: 12 }}>
           {confidenceTier === 1
             ? `Only ${total} games behind this — a lean, not a lock.`
             : confidenceTier === 2
-              ? `${total} games is a fair read, not a certainty.`
+              ? `${total} games is a lean, not a lock.`
               : `${total} games is a strong sample for this market.`}
         </div>
       </div>
@@ -6421,6 +6480,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             effectiveLine={effectiveLine}
             total={values.length}
             hitRate={hitRate}
+            marketLabel={marketLabel}
             sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
           />
         )}
@@ -8615,6 +8675,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             effectiveLine={effectiveLine}
             total={values.length}
             hitRate={hitRate}
+            marketLabel={marketLabel}
             sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
           />
         )}
@@ -12385,6 +12446,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           effectiveLine={effectiveLine}
           total={values.length}
           hitRate={hitRate}
+          marketLabel={marketLabel}
           sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
         />
       )}
