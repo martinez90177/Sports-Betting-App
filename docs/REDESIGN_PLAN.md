@@ -266,7 +266,7 @@ exactly that case.
 | Sport | Rosters | Game logs | Defence ranks |
 |---|---|---|---|
 | **NFL** | all 32, **hand-written → stale on trades** | **real**, ESPN, 2025 season | real |
-| **NBA** | **4 of 30** (Knicks, Spurs, Sixers, Heat) | **none — 100% synthetic** (`genGames`, seeded `mulberry32`); needs **two** seasons, 2025-26 *and* 2024-25 | **fake** (`TEAM_DEF`, seeded RNG) |
+| **NBA** | **4 of 30** (Knicks, Spurs, Sixers, Heat) | **none — 100% synthetic** (`genGames`, seeded `mulberry32`); load **2025-26 first**, 2024-25 deferred | **fake** (`TEAM_DEF`, seeded RNG) |
 | **MLB** | 30, hand-written but thin: uniformly 1 SP + 9 batters | **real**, MLB Stats API, but `season=2026&gameType=R` only | real, per-market |
 | **WNBA** | live ESPN fetch + hand-written fallback (~10 teams) | **real**, ESPN, current season | real |
 
@@ -346,16 +346,27 @@ ESPN numbers a season by the year it *ends*, so the 2025-26 NBA season is
 `season=2026`. Today (Aug 2026) is the NBA offseason: 2025-26 is finished, and
 2026-27 has not started.
 
-| Sport | Already real | To add |
-|---|---|---|
-| **NBA** | **nothing** | **both `season=2026` (2025-26) and `season=2025` (2024-25)** |
-| MLB | 2026, in progress | 2025 (`season=2025`, `gameType=R` **and** `P`) |
-| WNBA | 2026, in progress | 2025 |
+| Sport | Already real | To add now | Deferred |
+|---|---|---|---|
+| **NBA** | **nothing** | **`season=2026` (2025-26) only** | 2024-25, later |
+| MLB | 2026, in progress | 2025 (`season=2025`, `gameType=R` **and** `P`) | — |
+| WNBA | 2026, in progress | 2025 | — |
 
-NBA is the one that needs two seasons, because it has no real logs at all — not
-"last year's" and not the most recent completed one. Loading only 2024-25 would
-leave the app showing a season-old picture as though it were current, which is
-worse than the generated data it replaces, because it would look real.
+**NBA scope trimmed by Alex 2026-08-21: 2025-26 only for now, 2024-25 added
+later.** That is the right first cut — 2025-26 is the most recently completed
+season, so NBA stops showing generated numbers and starts showing current ones,
+and the backfill is halved (one season across 30 teams, not two).
+
+Getting the *recent* season first also matters more than depth: loading only the
+older 2024-25 would have left NBA showing a season-old picture as though it were
+current, which is worse than the generated data it replaces — generated data at
+least carries the `· SIMULATED DATA` badge, whereas stale real data just looks
+correct.
+
+One consequence to accept knowingly: decision 3 lists "seeing an offseason jump"
+as a reason for prior seasons, and that specific use case needs two seasons to
+work. With one season NBA gets real hit rates and real consistency data, but no
+year-over-year comparison until 2024-25 lands.
 
 **Do not hardcode the season number.** `season=2026` is already hardcoded for
 MLB at `:9385` and `:9944`, and it silently becomes wrong on 1 January. Resolve
