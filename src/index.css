@@ -397,6 +397,59 @@ img { max-width: 100%; }
   align-items: center;
   box-sizing: border-box;
 }
+
+/* The same floor, applied where a control's height comes from padding and the
+   control is a phone's primary navigation. Scoped to the app's own narrowest
+   breakpoint (useIsNarrow(560) drives the Prop Feed's mobile layout) so a
+   pointer device keeps the compact chrome it has room for.
+
+   --tap is read by inline styles that need the value rather than the rule --
+   see the settings button, which is a 36px square on a desktop and a 44px
+   target on a phone. */
+:root { --tap: 36px; }
+@media (max-width: 560px) {
+  :root { --tap: 44px; }
+  /* Every FeedSegmented option: sport, games-counted, side, lines mode. */
+  .pp-seg-opt {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  /* Primary buttons and any text/select input. An input under the floor is
+     the worst of the set: it is the one control a mis-tap silently retypes. */
+  .cta-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  /* Any text field, not only the ones wearing .select -- the games search
+     box carries no class and was a 23px target. A mis-tap on an input is the
+     worst of the set: it silently puts the caret somewhere else. */
+  input[type="text"], input[type="search"], input:not([type]), select, textarea {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+  /* Every real <button>. This app uses the element for actions and a styled
+     div for chips and cells, so the tag is a good proxy for "something a
+     thumb is meant to hit" -- back, watch, filters, get odds, a roster row.
+     min-height only grows the box: no font, width or wrapping changes, so a
+     row that was already taller than 44 is untouched. */
+  button {
+    min-height: 44px;
+  }
+  /* And the styled divs that behave as buttons. This codebase pairs
+     role="button" with tabIndex and a key handler on things that are
+     genuinely interactive -- tabs, disclosures, closes, chips -- while dense
+     table cells stay plain divs, so the attribute is a reliable marker.
+     Again min-height only: nothing here changes width or type. */
+  [role="button"], [role="tab"] {
+    min-height: 44px;
+  }
+}
 .oswald { font-family: 'Space Grotesk', sans-serif; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 

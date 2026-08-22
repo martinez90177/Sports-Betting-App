@@ -17578,7 +17578,11 @@ function FeedSegmented({ options, value, onChange, titleFor, padding = "6px 16px
       {options.map(([label, key], idx) => (
         <div
           key={key}
-          className="mono"
+          // pp-seg-opt carries the 44px touch floor at narrow widths (see
+          // index.css). Applied here rather than at each call site so every
+          // segmented control in the feed -- sport, window, side, lines --
+          // gets it, instead of whichever ones someone remembered.
+          className="mono pp-seg-opt"
           role="button"
           onClick={() => onChange(key)}
           title={titleFor ? titleFor(label, key) : undefined}
@@ -21935,6 +21939,10 @@ export default function PropLedger() {
                 fontSize: "clamp(18px, 4vw, 24px)", fontWeight: 600, letterSpacing: "0.06em",
                 margin: 0, color: "var(--text)", display: "flex", alignItems: "center", gap: 10,
                 whiteSpace: "nowrap", cursor: "pointer",
+                // The box grows to the touch floor on a phone; the type does
+                // not. This is a real navigation control -- it goes to the
+                // start page -- and a 24px tall lockup is a 24px tall target.
+                minHeight: "var(--tap, 24px)",
               }}
             >
               {/* The palace mark (see PalaceMark.jsx). Replaces the three
@@ -21957,6 +21965,9 @@ export default function PropLedger() {
             style={{
               flexShrink: 0,
               width: 36, height: 36, borderRadius: 8, cursor: "pointer",
+              // Grows to the touch floor on a phone; stays a compact 36px
+              // square on a pointer device, where it does not need 44.
+              minWidth: "var(--tap, 36px)", minHeight: "var(--tap, 36px)",
               display: "flex", alignItems: "center", justifyContent: "center",
               border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 18,
             }}
