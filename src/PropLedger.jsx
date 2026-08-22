@@ -13963,7 +13963,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         >
           {filtersBody}
         </FilterPanelLauncher>
-        <ContextStatToggle stat={mlbContextStat} value={showContext} onChange={setShowContext} compact={isNarrow} />
+        {/* ContextStatToggle stood here. It switched a secondary context
+            line (plate appearances / outs recorded) on and off *inside the
+            recharts chart*. The v2 chart draws no such line -- the mock has
+            none -- so the control governed nothing and only collided with the
+            "Game by game" title it was floating over. The stat it exposed is
+            still on every row of the game log below. */}
         {/* The v2 game-by-game chart (see GameByGameChart in PlayerDetail.jsx).
             This was a recharts ComposedChart drawing fell-short bars as a solid
             red fill under a blue dashed reference line. Both were wrong, and the
@@ -13992,20 +13997,25 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             device, and the Player Detail mock does not draw one here. */}
       </div>
 
-      {/* MLB's defence table is per market (getMLBDefRank takes one), so
-          this cell names the market rather than falling back to a
-          league-wide figure the way the basketball pages must. */}
-
-      <div style={{ padding: compact ? "12px" : "16px 20px 12px" }}>
+      {/* Block 7: what the sample is, then the action. The mock sets the
+          disclaimer on the left and the button hard right on the same line --
+          a full-width button was reading as the page's conclusion when the
+          sentence beside it is the thing that qualifies every number above. */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
+        padding: compact ? "12px" : "16px 20px 14px",
+      }}>
+        <span className="pp-mono" style={{ flex: 1, minWidth: 220, fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)", lineHeight: 1.6 }}>
+          {`${allGames.length} games. Counts finished games only — no live or projected numbers. Not a live odds feed.`}
+        </span>
         <button
           type="button"
           className={isPagePickAdded ? "cta-btn cta-btn--added" : "cta-btn"}
           style={{
-            width: "100%",
-            height: 48,
-            fontSize: 14,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
+            flex: "none",
+            padding: "14px 20px",
+            fontSize: 12,
+            letterSpacing: "0.1em",
             textTransform: "uppercase",
           }}
           onClick={() => onTogglePick && onTogglePick(buildPagePick())}
@@ -14139,12 +14149,44 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // graph card (see graphCard) instead of its own bordered panel next to
   // the matchup selector, so it no longer carries its own background/
   // border, just a bottom divider against the sample-stats row below it.
+  // The mock's player header card: team-colour left border, name and jersey,
+  // the identity line, the availability pill, usage pills and the season panel.
+  //
+  // Empty slots collapse rather than showing a placeholder. This app has no
+  // jersey number for any sport -- no provider it reads carries one -- and no
+  // source for the mock's role sentence, so neither renders. Batting order is
+  // real and does render, off the posted lineup.
+  const battingOrder = (() => {
+    const ids = (nextGame && nextGame.ourLineupIds) || [];
+    const i = ids.indexOf(player.id);
+    if (i < 0) return null;
+    const n = i + 1;
+    const suffix = n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th";
+    return `${n}${suffix}`;
+  })();
+
   const playerIdentityRow = (
-    <PlayerIdentityRow
-      compact={compact}
-      team={player.team}
-      pos={player.pos}
+    <PlayerHeaderCard
+      sport="mlb"
       name={player.name}
+      team={player.team}
+      teamLabel={(liveTeamRoster || {}).label}
+      position={player.pos}
+      season={nextGame?.date ? String(new Date(nextGame.date).getFullYear()) : null}
+      status={mlbStatusOf(player)}
+      usage={[{ label: isPitcher ? "Starts" : "Bats", value: isPitcher ? null : battingOrder }]}
+      figures={(isPitcher
+        ? [
+            { label: "K/G", value: seasonAvg.k },
+            { label: "ER/G", value: seasonAvg.er },
+            { label: "BB/G", value: seasonAvg.bb },
+          ]
+        : [
+            { label: "H/G", value: seasonAvg.h },
+            { label: "HR/G", value: seasonAvg.hr },
+            { label: "RBI/G", value: seasonAvg.rbi },
+          ]
+      ).map((s) => ({ label: s.label, value: s.value.toFixed(2) }))}
       avatar={
         <PlayerAvatar
           key={player.id}
@@ -14162,23 +14204,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           backing={"#000"}
           imgBorder="1px solid var(--line)"
           fadeIn
-          shadow={`0 4px 14px ${(MLB_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
         />
       }
-      stats={(isPitcher
-        ? [
-            { label: "K", value: seasonAvg.k },
-            { label: "ER", value: seasonAvg.er },
-            { label: "BB", value: seasonAvg.bb },
-            { label: "H", value: seasonAvg.h },
-          ]
-        : [
-            { label: "H", value: seasonAvg.h },
-            { label: "HR", value: seasonAvg.hr },
-            { label: "RBI", value: seasonAvg.rbi },
-            { label: "R", value: seasonAvg.r },
-          ]
-      ).map((s) => ({ label: s.label, value: s.value.toFixed(2) }))}
     />
   );
 
@@ -14714,6 +14741,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       metaLine={railMeta}
       avatarBg={(p) => teamAvatarBackground(MLB_TEAM_COLORS, p.team)}
       confirmed={(nextGame?.oppLineupIds?.length || 0) > 0}
+      /* The mock closes the right rail with the graph's own key, under the
+         opponent's roster. It belongs here rather than in the left rail: the
+         reader meets the chart before they need the legend, and the left rail
+         is already carrying the lineup key. */
+      footer={<div style={{ marginTop: 18 }}><ReadingTheGraph /></div>}
     />
     </div>
 
@@ -19631,7 +19663,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 // entirely by MobilePlayerNav (persistent bottom chip strip + Lineup side
 // drawer, rendered once per page rather than once per TeamRosterPanel) --
 // see below. TeamRosterPanel itself renders nothing in that range.
-function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, statusFor, sections, confirmed }) {
+function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, headshotFallback, metaLine, avatarBg, statusFor, sections, confirmed, footer }) {
   const compact = useIsNarrow(1100);
   // Pitchers (pos "SP") get sectioned off from the batting order rather than
   // just tacked onto the end of the list -- MLB is the only sport that
@@ -19781,6 +19813,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
           </div>
         )}
       </div>
+      {footer}
     </div>
   );
 }
