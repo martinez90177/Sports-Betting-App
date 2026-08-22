@@ -81,17 +81,37 @@ function BandHalf({ sport, team, side, align, tone }) {
       <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 22, marginTop: 5 }}>{team.name || team.abbr}</div>
     </div>
   );
+  // No plate. The mock draws a bordered box because it had only an
+  // abbreviation to put in it; a real crest is its own shape and reads better
+  // without a grey square fighting it. The 64px footprint is kept so the band
+  // keeps the file's proportions.
+  //
+  // What the box was quietly doing was lifting dark marks off the card -- the
+  // Yankees' navy on #131519 is nearly invisible. That job moves onto the mark
+  // itself: a 1px light drop-shadow traces the logo's own edge, which
+  // separates a dark crest from a dark ground without drawing a container, and
+  // is imperceptible on a bright one. It flips with the theme, so a pale crest
+  // on the light theme gets a dark trace instead.
   const badge = (
     <span style={{
       display: "flex", alignItems: "center", justifyContent: "center", flex: "none",
-      width: 64, height: 64, borderRadius: 6,
-      // The mock puts the abbreviation here in the team's tone. The crest goes
-      // in the same box; the plate lifts so a navy mark still reads.
-      background: "color-mix(in srgb, var(--text) 10%, var(--surface-2))",
-      border: "1px solid var(--line)",
-      fontFamily: MONO, fontSize: 15, letterSpacing: "0.08em", color: tone,
+      width: 64, height: 64,
     }}>
-      <TeamLogo sport={sport} abbr={team.abbr} size={42} title={team.name || team.abbr} />
+      <TeamLogo
+        sport={sport}
+        abbr={team.abbr}
+        size={56}
+        title={team.name || team.abbr}
+        // Two stacked traces rather than one heavier blur: a tight 1px edge
+        // does the separating, and a wider soft 3px lifts the mark off the
+        // card without reading as a glow. Tuned on the Yankees' navy, which is
+        // the worst case in the league on a #131519 ground; on a bright crest
+        // like Toronto's it is invisible.
+        style={{
+          filter: "drop-shadow(0 0 1px color-mix(in srgb, var(--text) 70%, transparent))"
+            + " drop-shadow(0 0 3px color-mix(in srgb, var(--text) 30%, transparent))",
+        }}
+      />
     </span>
   );
   return (
