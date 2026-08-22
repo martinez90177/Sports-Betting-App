@@ -22,6 +22,30 @@ import {
 // composition is the same product's own mobile layout, which stays balanced
 // with no odds present.
 
+// The All tab: one calendar day across every league.
+//
+// Deliberately NOT "every league's own model at once". A week means something
+// in football and nothing in baseball, and an opening-night tab is an NBA
+// idea, so there is no shared control that could drive all four. A calendar
+// day is the one thing that means the same in every sport, so All is a plain
+// date stepper and each league tab keeps its own native model untouched --
+// NFL weeks, the NBA opener tab, MLB and WNBA days.
+//
+// The cost is that "week 11 across all sports" cannot be asked from here,
+// which is the right trade: week 11 does not exist in baseball.
+const ALL_SPORT = { id: "all", label: "All" };
+const ALL_SPORTS_TABS = [ALL_SPORT, ...SPORTS];
+
+// The sport identity family (see index.css). Low-chroma neutrals that collide
+// with no game-state or outcome colour, so a divider can carry a league's
+// identity without reading as a status.
+const SPORT_TONE = {
+  mlb: "var(--sport-mlb)",
+  nfl: "var(--sport-nfl)",
+  nba: "var(--sport-nba)",
+  wnba: "var(--sport-wnba)",
+};
+
 const LEAGUE_MARK = {
   mlb: "https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png",
   wnba: "https://a.espncdn.com/i/teamlogos/leagues/500/wnba.png",
@@ -79,10 +103,10 @@ function heroBackground(isMobile) {
   ].join(", ");
 }
 
-function SportTabs({ sport, onChange, isMobile }) {
+function SportTabs({ sport, onChange, isMobile, options = SPORTS }) {
   return (
     <div className="gm-scroll-x" style={{ gap: isMobile ? 10 : 8, padding: isMobile ? "0 14px 2px" : 0 }}>
-      {SPORTS.map((s) => {
+      {options.map((s) => {
         const active = s.id === sport;
         return (
           <div
@@ -106,13 +130,15 @@ function SportTabs({ sport, onChange, isMobile }) {
               fontSize: isMobile ? 14.5 : 13, fontWeight: 700, letterSpacing: "0.02em",
             }}
           >
-            <img
-              src={LEAGUE_MARK[s.id]}
-              alt=""
-              width={isMobile ? 19 : 16}
-              height={isMobile ? 19 : 16}
-              style={{ objectFit: "contain", opacity: active ? 1 : 0.45 }}
-            />
+            {LEAGUE_MARK[s.id] && (
+              <img
+                src={LEAGUE_MARK[s.id]}
+                alt=""
+                width={isMobile ? 19 : 16}
+                height={isMobile ? 19 : 16}
+                style={{ objectFit: "contain", opacity: active ? 1 : 0.45 }}
+              />
+            )}
             {s.label}
           </div>
         );
@@ -459,6 +485,10 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   // brief flash of invented records is still invented records on screen.
   const [nflWeek, setNflWeek] = useState(null);
   const [dayGames, setDayGames] = useState(null);
+  // The merged slate for the All tab: every league's games for one calendar
+  // day. Held separately from dayGames so switching between All and a league
+  // never shows one's slate under the other's heading.
+  const [allDayGames, setAllDayGames] = useState(null);
   const [pickedKey, setPickedKey] = useState(null);
   // A failed fetch is its own answer. It used to be coerced to [] , so losing
   // the network and a genuinely empty day both printed "No games scheduled for
@@ -492,6 +522,23 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   // `.games` -- the slate fetchers answer { games, unreadable }, and this
   // builds the NFL date tabs from the kickoff days its games actually contain.
   const tabs = useMemo(() => {
+    // All is a plain date stepper: yesterday, today, and the next three days.
+    // No week tabs, no opening-night tab -- those are league-specific ideas
+    // and this view spans four leagues, so the only honest axis is the date.
+    if (sport === ALL_SPORT.id) {
+      const out = [];
+      for (let i = -1; i <= 3; i += 1) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        const key = dayKey(d);
+        out.push({
+          key,
+          label: i === 0 ? "Today" : `${MONTH_SHORT[d.getMonth()]} ${String(d.getDate()).padStart(2, "0")}`,
+          sub: dayLabel(d.toISOString()),
+        });
+      }
+      return out;
+    }
     const base = buildDateTabs(sport, nflWeek?.games);
     if (!nbaOpenerKey || base.some((t) => t.key === nbaOpenerKey)) return base;
     const d = new Date(`${nbaOpenerKey}T12:00:00`);
@@ -506,6 +553,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   // can't strand a selection on a date tab the new sport doesn't have.
   const activeKey = useMemo(() => {
     if (pickedKey && tabs.some((t) => t.key === pickedKey)) return pickedKey;
+    if (sport === ALL_SPORT.id) return dayKey(new Date());
     if (sport === "nfl") return tabs[0]?.key;
     // Offseason: open on the date that has games rather than on an empty
     // today. The tab is labelled with its own date, so this reads as a
@@ -534,7 +582,11 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
 
   const [liveTabCounts, setLiveTabCounts] = useState({});
   useEffect(() => {
-    if (sport === "nfl") return undefined;
+    // No per-tab counts on All. There is no single fetcher for it, and
+    // filling five date tabs would mean twenty requests across four leagues
+    // to label a row of tabs -- the day's own count under the title already
+    // says how many games there are once a day is chosen.
+    if (sport === "nfl" || sport === ALL_SPORT.id) return undefined;
     let cancelled = false;
     setLiveTabCounts({});
     const fetcher = DAY_SLATE[sport];
@@ -547,7 +599,11 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     return () => { cancelled = true; };
   }, [sport, tabs]);
 
-  const tabCounts = sport === "nfl" ? nflTabCounts : liveTabCounts;
+  // No counts on All, and explicitly empty rather than whatever the previous
+  // league left behind: liveTabCounts still holds MLB's numbers after a switch
+  // to All, and a date tab reading "15 GAMES" there would be counting one
+  // league under a heading that means four.
+  const tabCounts = sport === ALL_SPORT.id ? {} : sport === "nfl" ? nflTabCounts : liveTabCounts;
 
   // The one slate loader. Every path into the data -- mount, sport switch,
   // date switch, the live poller and the retry control -- goes through here,
@@ -567,7 +623,9 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         return res;
       });
     }
-    if (!key) return Promise.resolve(null);
+    // The poller and the retry control both come through here. Neither has
+    // a single fetcher to call on All, whose own effect owns that slate.
+    if (s === ALL_SPORT.id || !key || !DAY_SLATE[s]) return Promise.resolve(null);
     if (!silent) { setDayGames(null); setLoadError(null); }
     const load = DAY_SLATE[s](key, opts);
     return load.then((res) => {
@@ -576,6 +634,38 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       return res;
     });
   }, []);
+
+  // All: one day, four leagues, fetched together. NFL is a week competition
+  // so its whole slate is loaded and filtered to the day, the same thing the
+  // NFL tab's own games memo does -- there is no per-day NFL endpoint to call.
+  //
+  // A league that fails to load is left out rather than being reported as
+  // having no games: those are different claims, and unreadable counts the
+  // ones that could not be read so the summary can say so.
+  useEffect(() => {
+    if (sport !== ALL_SPORT.id || !activeKey) return undefined;
+    let cancelled = false;
+    setAllDayGames(null);
+    setLoadError(null);
+    Promise.all([
+      fetchMlbSlate(activeKey).catch(() => null),
+      fetchWnbaSlate(activeKey).catch(() => null),
+      fetchNbaSlate(activeKey).catch(() => null),
+      fetchNflWeekOneSlate().catch(() => null),
+    ]).then(([mlb, wnba, nba, nfl]) => {
+      if (cancelled) return;
+      const nflToday = (nfl?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey);
+      const merged = [
+        ...(mlb?.games || []),
+        ...(wnba?.games || []),
+        ...(nba?.games || []),
+        ...nflToday,
+      ];
+      const failed = [mlb, wnba, nba, nfl].filter((r) => !r).length;
+      setAllDayGames({ games: merged, unreadable: failed });
+    });
+    return () => { cancelled = true; };
+  }, [sport, activeKey]);
 
   useEffect(() => {
     if (sport !== "nfl") return undefined;
@@ -594,7 +684,8 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   // array is a real answer ("no games today"); null from the fetcher is a
   // failure and gets its own state, not an empty slate.
   useEffect(() => {
-    if (sport === "nfl" || !activeKey) return undefined;
+    // All has its own merged loader above; this one is the single-league path.
+    if (sport === "nfl" || sport === ALL_SPORT.id || !activeKey) return undefined;
     let cancelled = false;
     setDayGames(null);
     setLoadError(null);
@@ -622,7 +713,9 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       loadSlate(sport, activeKey, { silent: true });
     };
 
-    const base = sport === "nfl"
+    const base = sport === ALL_SPORT.id
+      ? (allDayGames?.games || [])
+      : sport === "nfl"
       ? (nflWeek?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
       : (dayGames?.games || []);
     const needsPoll = base.some((g) => isActiveStatus(g.status));
@@ -642,7 +735,9 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   // foot of the table rather than hidden -- see the footer below.
   const unreadable = slate?.unreadable || 0;
   const games = useMemo(() => {
-    const base = sport === "nfl"
+    const base = sport === ALL_SPORT.id
+      ? (allDayGames?.games || [])
+      : sport === "nfl"
       ? (nflWeek?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
       : (dayGames?.games || []);
     const q = query.trim().toLowerCase();
@@ -660,7 +755,23 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       if (sa !== sb) return sa - sb;
       return new Date(a.startsAt) - new Date(b.startsAt);
     });
-  }, [sport, nflWeek, dayGames, activeKey, query]);
+  }, [sport, nflWeek, dayGames, allDayGames, activeKey, query]);
+
+  // The All view's groups: one per league that is actually playing today, in
+  // the tab order, each already live-first because `games` is sorted that way
+  // before it is split.
+  //
+  // A league with no games that day has no group. That is the whole empty
+  // state -- an absent divider says "nothing today" without a sentence, and a
+  // row of four headings three of which read "no games" would be worse than
+  // silence. Nothing is dropped: every game in `games` lands in exactly one
+  // group, and the counts add up to the total under the title.
+  const sportGroups = useMemo(() => {
+    if (sport !== ALL_SPORT.id) return null;
+    return SPORTS
+      .map((sp) => ({ id: sp.id, label: sp.label, games: games.filter((g) => g.sport === sp.id) }))
+      .filter((grp) => grp.games.length);
+  }, [sport, games]);
 
   // Slate summary shown under the title. Reads off the same list the cards
   // render, so it tracks the search filter too.
@@ -728,7 +839,12 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
           {` ${gameCount === 1 ? "game" : "games"} · ${subtitle}`}
         </div>
       </div>
-      <SportTabs sport={sport} onChange={(s) => { setSport(s); setPickedKey(null); }} isMobile={isMobile} />
+      <SportTabs
+        sport={sport}
+        onChange={(s) => { setSport(s); setPickedKey(null); }}
+        isMobile={isMobile}
+        options={ALL_SPORTS_TABS}
+      />
     </div>
   );
 
@@ -789,12 +905,48 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
           </div>
         )}
 
-        {games.map((g, i) => (
+        {/* On All, the list is walked group by group with a divider before
+            each -- an MLB card and an NFL card in one undifferentiated stack
+            is a real misread. On a single league it is the same flat list it
+            has always been, with no dividers to state something the sport tab
+            already says. */}
+        {(sportGroups
+          ? sportGroups.flatMap((grp) => [{ __divider: grp }, ...grp.games])
+          : games
+        ).map((g, i, arr) => (g.__divider ? (
+          <div
+            key={`div-${g.__divider.id}`}
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: isMobile ? "12px 16px 8px" : "14px 16px 9px",
+              borderBottom: "1px solid var(--line)",
+              background: "var(--surface-sunken)",
+            }}
+          >
+            {LEAGUE_MARK[g.__divider.id] && (
+              <img src={LEAGUE_MARK[g.__divider.id]} alt="" width={16} height={16} style={{ objectFit: "contain", opacity: 0.7 }} />
+            )}
+            <span
+              className="pp-mono"
+              style={{
+                fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase",
+                // The sport identity family: low-chroma neutrals that cannot
+                // be mistaken for a game state or an outcome.
+                color: SPORT_TONE[g.__divider.id] || "var(--text-2, var(--dim))",
+              }}
+            >
+              {g.__divider.label}
+            </span>
+            <span className="pp-mono" style={{ fontSize: 11, color: "var(--dim)" }}>
+              {g.__divider.games.length} {g.__divider.games.length === 1 ? "game" : "games"}
+            </span>
+          </div>
+        ) : (
           <React.Fragment key={g.id}>
             <GameRow
               game={g}
               isMobile={isMobile}
-              isLast={i === games.length - 1 && g.id !== selectedId}
+              isLast={i === arr.length - 1 && g.id !== selectedId}
               expanded={g.id === selectedId}
               onSelect={(picked) => {
                 // Toggle, not navigate. The gamecast folds in under the row it
@@ -825,7 +977,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
               </div>
             )}
           </React.Fragment>
-        ))}
+        )))}
 
         {/* Four distinct states, because they mean four different things:
              still fetching, the fetch failed, fetched and genuinely empty, and
