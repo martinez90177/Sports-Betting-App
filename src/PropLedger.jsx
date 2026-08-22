@@ -14763,6 +14763,36 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     },
   });
 
+  // Rail order: pitchers first, then the batting order.
+  //
+  // The starting pitcher is the one name on a rail that isn't a batting slot,
+  // and on the opponent's side he is the single most relevant player to a
+  // batter's prop. Burying him at whatever index the static roster happened to
+  // put him made both rails read as one undifferentiated list, so he leads and
+  // the batting order starts below him with a break between.
+  //
+  // The batters underneath are already in projected batting order -- that is
+  // what MLB_TEAM_ROSTERS stores -- so before a lineup posts this leaves them
+  // alone rather than inventing an order. Once it posts, the real order wins:
+  // sort by position in the lineup ids. Anyone confirmed but not in our
+  // projection sorts by their real slot too, and anyone left out of the lineup
+  // falls to the end instead of being dropped.
+  const isPitcher_ = (p) => p.pos === "SP" || p.pos === "P";
+  const railPlayers = (roster, side) => {
+    const players = (roster || {}).players || [];
+    const ids = postedIdsFor(side);
+    const pitchers = players.filter(isPitcher_);
+    const batters = players.filter((p) => !isPitcher_(p));
+    const slot = (p) => { const i = ids.indexOf(p.mlbId); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+    const ordered = ids.length ? [...batters].sort((a, b) => slot(a) - slot(b)) : batters;
+    return [...pitchers, ...ordered].map((p, i) => ({
+      ...railPlayer(p, side),
+      // Extra space above the first batter, so the pitchers read as their own
+      // short group. Only when there is actually a pitcher above to divide.
+      separated: pitchers.length > 0 && i === pitchers.length,
+    }));
+  };
+
   const v2Def = nextGame && nextGame.opp ? getMLBDefRank(market, nextGame.opp) : null;
   const v2Tier = v2Def ? defTier(v2Def.rank, MLB_TEAMS.length) : null;
   const v2Meetings = allGames.filter((g) => g.opp === (nextGame && nextGame.opp));
@@ -14796,8 +14826,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       onBack={onBack || (() => {})}
       onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
       watching={isPagePickAdded}
-      ownRail={{ label: (liveTeamRoster || {}).label, players: ((liveTeamRoster || {}).players || []).map((p) => railPlayer(p, "team")) }}
-      oppRail={{ label: (liveOppRoster || {}).label || "Loading…", players: ((liveOppRoster || {}).players || []).map((p) => railPlayer(p, "opp")) }}
+      ownRail={{ label: (liveTeamRoster || {}).label, players: railPlayers(liveTeamRoster, "team") }}
+      oppRail={{ label: (liveOppRoster || {}).label || "Loading…", players: railPlayers(liveOppRoster, "opp") }}
       band={slateCells.band ? {
         away: { abbr: slateCells.band.awayAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.awayAbbr] || {}).label, record: slateCells.band.awayRecord },
         home: { abbr: slateCells.band.homeAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.homeAbbr] || {}).label, record: slateCells.band.homeRecord },

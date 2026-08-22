@@ -171,9 +171,23 @@ export function neonizeColor(hex) {
   return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`;
 }
 
+// The veil over the team gradient. It has two jobs -- give the disc some
+// depth, and keep it clear of the surface it sits on -- and the second one
+// only works if it moves the disc *away* from that surface. It was black in
+// both themes, which is right on light mode and backwards on dark: shading a
+// navy ring 45% toward black on a #0a0b0d page drives it into the background.
+// Measured on Toronto (#134A8E), whose ring is the one that prompted this:
+// the raw gradient clears the page 3.96:1, the shaded top-left 2.81:1, and the
+// shaded bottom-right 1.49:1 -- which is to say invisible.
+//
+// So the veil's colour is a token now, not a constant: white on dark, black on
+// light, each at whatever weight that theme needs. Toronto's two stops land at
+// 4.65:1 and 4.52:1 under the dark values, and the ring is still Blue Jays
+// blue -- the veil only changes how far it sits from the page, never its hue.
 export const teamAvatarBackground = (colorMap, teamAbbr) => {
   const c = colorMap[teamAbbr] || AVATAR_FALLBACK_COLORS;
-  return `linear-gradient(135deg, rgba(0,0,0,var(--avatar-ring-shade1, 0.2)), rgba(0,0,0,var(--avatar-ring-shade2, 0.45))), linear-gradient(135deg, ${neonizeColor(c.primary)} 0%, ${neonizeColor(c.secondary)} 100%)`;
+  const veil = "var(--avatar-ring-veil, 0,0,0)";
+  return `linear-gradient(135deg, rgba(${veil},var(--avatar-ring-shade1, 0.2)), rgba(${veil},var(--avatar-ring-shade2, 0.45))), linear-gradient(135deg, ${neonizeColor(c.primary)} 0%, ${neonizeColor(c.secondary)} 100%)`;
 };
 
 // sport key -> that sport's map, for callers that carry a sport rather than a

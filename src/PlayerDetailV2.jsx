@@ -44,6 +44,9 @@ function RosterRow({ p, sport, onSelect }) {
         cursor: onSelect ? "pointer" : "default",
         background: p.active ? "var(--amber-dim)" : "transparent",
         border: `1px solid ${p.active ? "var(--amber)" : "var(--line)"}`,
+        // The rail's own 8px gap plus this reads as a group break without
+        // needing a rule: pitchers above, the batting order below.
+        marginTop: p.separated ? 8 : 0,
       }}
     >
       <span style={{ position: "relative", flex: "none", width: 32, height: 32 }}>

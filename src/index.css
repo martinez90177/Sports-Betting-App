@@ -126,8 +126,12 @@
   --dim-strong: var(--text);
   --line-strong: #2b2f36;
   --line-subtle: rgba(255,255,255,0.06);
-  --avatar-ring-shade1: 0.2;
-  --avatar-ring-shade2: 0.45;
+  /* Dark theme lifts the ring off the page instead of sinking it into it --
+     see teamAvatarBackground. White veil, and gentle, because the gradient is
+     already lightness-clamped by neonizeColor. */
+  --avatar-ring-veil: 255,255,255;
+  --avatar-ring-shade1: 0.10;
+  --avatar-ring-shade2: 0.22;
   --info-btn-bg: transparent;
   /* Zebra tint for table rows -- a white wash works on the dark panel
      but is invisible on light mode's white one, so it is a variable. */
@@ -226,6 +230,9 @@
   --dim-strong: var(--text);
   --line-strong: #aab2bd;
   --line-subtle: rgba(11,11,11,0.06);
+  /* Light theme keeps the black veil: here the surface is the pale one, so
+     darkening is what moves the ring away from it. Unchanged weights. */
+  --avatar-ring-veil: 0,0,0;
   --avatar-ring-shade1: 0.35;
   --avatar-ring-shade2: 0.6;
   --info-btn-bg: var(--panel);
