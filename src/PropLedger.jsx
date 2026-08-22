@@ -6530,7 +6530,7 @@ function SampleStatsRow({ cards, glossary, compact, intro }) {
 // Large hit-rate percentage + the three mono tiles the design calls for:
 // AVERAGE / LINE / CLEARS IT BY. `line` is display-only here — LineHandle on
 // the chart remains the single place the line is set (see plan note).
-function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, decimals = 1, line, sampleLabel }) {
+function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, decimals = 1, line, sampleLabel, odds = null, marketLine = null, adjusted = false, onResetLine }) {
   // Desktop only. PlayerFormVerdict carries the verdict figure on the phone,
   // where the design has exactly one -- rendering both put the same "50% ·
   // 2 of 4 games · THIN SAMPLE" on screen twice, one block above the other.
@@ -6572,9 +6572,28 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
         </div>
         <div style={{ textAlign: "left" }}>
           <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>LINE</div>
-          <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>
+          <div className="mono stat-value" style={{
+            fontSize: compact ? 16 : 19,
+            color: adjusted ? "var(--amber-ink)" : "var(--text)",
+          }}>
             {line != null ? Number(line).toFixed(decimals) : "—"}
           </div>
+          {/* While the reader is off the posted number, this is the only place
+              that still says what the book actually put up -- and the way
+              back. Without it an explored 3.5 is indistinguishable from a
+              posted one once you look away from the tag. */}
+          {adjusted && marketLine != null && (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={onResetLine}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onResetLine && onResetLine(); } }}
+              className="pp-mono"
+              style={{ fontSize: 10, color: "var(--dim)", marginTop: 3, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              market {Number(marketLine).toFixed(decimals)} · <span style={{ color: "var(--amber-ink)" }}>reset</span>
+            </div>
+          )}
         </div>
         <div style={{ textAlign: "left" }}>
           <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>CLEARS IT BY</div>
@@ -6583,6 +6602,41 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
             color: edge >= 0 ? "var(--green)" : "var(--red)",
           }}>
             {`${edge >= 0 ? "+" : ""}${edge.toFixed(decimals)}`}
+          </div>
+        </div>
+
+        {/* Odds is a metric, not a control. It reads as the fourth figure
+            beside AVERAGE / LINE / CLEARS IT BY -- the same structure the feed
+            keeps in its ODDS column -- so wiring real coverage later is a
+            value swap in both places rather than reconciling a button with a
+            column.
+
+            Empty by default, and marked SOON exactly once. Nothing here ever
+            derives a price from a hit rate: that is circular, and it is what
+            printed -900 on every feed row.
+
+            `odds` is a node rather than a value because one market on one
+            sport really is covered (MLB hits and home runs, via api/odds.js),
+            and that cell fetches on demand instead of showing the dash. */}
+        <div style={{ textAlign: "left" }}>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 6 }}>
+            ODDS
+            {!odds && (
+              <span style={{
+                fontSize: 8.5, letterSpacing: "0.1em", color: "var(--dim)",
+                border: "1px solid var(--line)", borderRadius: 3, padding: "1px 4px",
+              }}>
+                SOON
+              </span>
+            )}
+          </div>
+          <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--dim)" }}>
+            {/* TODO: when a real feed covers more than MLB hits/home runs, the
+                shape to fill this from is
+                  { price: number, book: string, point: number, fetchedAt: number }
+                per player+market, joined the way api/odds.js already returns
+                bookmakers -> markets -> outcomes. Until then: no value. */}
+            {odds || "—"}
           </div>
         </div>
         {total > 0 && (
@@ -13327,10 +13381,20 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const chartTicks = isBinary
     ? [0, 1]
     : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
-  const hits = values.filter((v) => v > effectiveLine).length;
-  const pushes = isBinary ? 0 : values.filter((v) => v === effectiveLine).length;
+  // The line the page is currently *reading against*, which is the dragged one
+  // while the reader is exploring and the posted one otherwise. Everything
+  // derived from a comparison uses this; `effectiveLine` stays the market
+  // reference, so the verdict row can say which number was actually posted and
+  // offer the way back. Kept out of the axis maths above on purpose -- see the
+  // note on topValue for why feeding the live value in there made the axis
+  // grow under the handle mid-drag.
+  const liveLine = isBinary || dragLine === null ? effectiveLine : dragLine;
+  const lineIsAdjusted = liveLine !== effectiveLine;
+
+  const hits = values.filter((v) => v > liveLine).length;
+  const pushes = isBinary ? 0 : values.filter((v) => v === liveLine).length;
   const hitRate = values.length ? hits / values.length : 0;
-  const edge = avg - effectiveLine;
+  const edge = avg - liveLine;
   const marketLabel = (isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS).find((m) => m.id === market)?.label ?? "";
 
   // Single place both the metric rail and the hit-rate splits pull the
@@ -13790,8 +13854,25 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       total={values.length}
       edge={edge}
       compact={compact}
-      line={effectiveLine}
+      line={liveLine}
+      marketLine={effectiveLine}
+      adjusted={lineIsAdjusted}
+      onResetLine={() => setDragLine(null)}
       sampleLabel={values.length >= 25 ? "STRONG SAMPLE" : values.length >= 10 ? "FAIR SAMPLE" : "THIN SAMPLE"}
+      /* The one market pair with real coverage. api/odds.js tracks
+         batter_hits and batter_home_runs only (MLB_ODDS_MARKET_KEY), on a 450
+         credit/month cap, so this fetches on demand rather than on load --
+         and every other market on every other sport gets the empty cell with
+         its SOON marker instead of a number nobody sold us. */
+      odds={!isPitcher && MLB_ODDS_MARKET_KEY[market] ? (
+        <SportsbookOddsPanel
+          teamAbbr={teamAbbr}
+          playerName={player.name}
+          market={market}
+          isPitcher={isPitcher}
+          values={chartData.filter((d) => !d.isPlaceholder).map((d) => d.value)}
+        />
+      ) : null}
     />
   );
 
@@ -13853,7 +13934,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       {isNarrow && (
         <PlayerFormVerdict
           values={values}
-          effectiveLine={effectiveLine}
+          effectiveLine={liveLine}
           total={values.length}
           hitRate={hitRate}
           marketLabel={marketLabel}
@@ -13984,7 +14065,13 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         <GameByGameChart
           sport="mlb"
           games={chartData.map((d) => ({ v: d.value, opp: d.opp, date: d.date, po: d.playoff }))}
-          line={dragLine !== null ? dragLine : effectiveLine}
+          line={liveLine}
+          marketLine={effectiveLine}
+          adjusted={lineIsAdjusted}
+          onDragLine={(v) => setDragLine(v)}
+          /* Not on a phone: dragging a 1.5px rule with a thumb is not a real
+             interaction, so the mobile chart stays static. */
+          draggable={!isNarrow}
           isBinary={isBinary}
           direction="over"
         />
@@ -14005,8 +14092,13 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap",
         padding: compact ? "12px" : "16px 20px 14px",
       }}>
+        {/* Three counts sit on this screen at once -- the full log, the
+            window, and how many of the window cleared -- and "109 games"
+            beside a "20 GAMES" chip and a "6 of 20 games" verdict invites
+            reading one as another. The footer names which of the three it is
+            and what the other one is. */}
         <span className="pp-mono" style={{ flex: 1, minWidth: 220, fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)", lineHeight: 1.6 }}>
-          {`${allGames.length} games. Counts finished games only — no live or projected numbers. Not a live odds feed.`}
+          {`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
         </span>
         <button
           type="button"
@@ -14024,22 +14116,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         </button>
       </div>
 
-      {/* Action row -- Get Odds only now; Filters moved to the card's
-           top-right corner (see above) so its panel has room to open
-           downward instead of upward off the top of the screen. */}
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px 16px" }}>
-        {/* Values from the same sample the chart is drawing (placeholder bar
-             for tonight's unplayed game excluded), so the hit rate this panel
-             compares against the book's price is the one already on screen
-             rather than a second, differently-filtered number. */}
-        <SportsbookOddsPanel
-          teamAbbr={teamAbbr}
-          playerName={player.name}
-          market={market}
-          isPitcher={isPitcher}
-          values={chartData.filter((d) => !d.isPlaceholder).map((d) => d.value)}
-        />
-      </div>
+      {/* The Get Odds action row stood here. Odds are a metric now, not a
+          control of their own: the panel moved into the verdict row's fourth
+          cell beside AVERAGE / LINE / CLEARS IT BY, so there is one odds
+          concept on the page and it sits where the feed's ODDS column sits.
+          See MetricRail's `odds` prop. */}
     </div>
   );
 
@@ -14055,8 +14136,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
               {filtered.slice().reverse().map((g, i) => {
                 const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
-                const over = v > effectiveLine;
-                const push = !isBinary && v === effectiveLine;
+                const over = v > liveLine;
+                const push = !isBinary && v === liveLine;
                 const def = mlbDefForMarket(g.opp, market);
                 const tier = def ? mlbDefTier(def.rank) : null;
                 return (
@@ -14074,7 +14155,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
                     <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
                     <div>{isPitcher ? formatOuts(g.outs) : g.pa}</div>
                     <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
-                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
+                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : liveLine}</div>
                     <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
                       {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
                     </div>

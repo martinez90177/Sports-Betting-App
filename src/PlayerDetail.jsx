@@ -1,6 +1,7 @@
 import React from "react";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 import { mutedTeamColor, matchupTones } from "./lib/teamColors.js";
+import TeamLogo from "./TeamLogo.jsx";
 import { feedFormScale } from "./FormGraph.jsx";
 
 // The v2 Player Detail furniture, built off the rendered mocks rather than
@@ -42,16 +43,20 @@ export function MatchupBand({ sport, away, home, dateLabel, timeLabel, venue }) 
       }}
     >
       {align === "right" && <TeamText t={t} side={side} align={align} />}
+      {/* The badge keeps its 44px box and border; only the plate changes.
+          --surface-2 is #191c21, which a navy crest disappears into -- the
+          Yankees' mark on it was an empty box. Mixing --text into the plate
+          lifts it in whichever direction the theme needs: a white wash under
+          a dark logo, a dark one under a light logo, without freezing either. */}
       <span
-        className={MONO}
         style={{
           flex: "none", width: 44, height: 44, borderRadius: 6,
           display: "flex", alignItems: "center", justifyContent: "center",
-          background: "var(--surface-2, var(--panel2))", border: "1px solid var(--line)",
-          fontSize: 12, letterSpacing: "0.06em", color: "var(--text-2)",
+          background: "color-mix(in srgb, var(--text) 12%, var(--surface-2, var(--panel2)))",
+          border: "1px solid var(--line)",
         }}
       >
-        {t.abbr}
+        <TeamLogo sport={sport} abbr={t.abbr} size={30} title={t.name || t.abbr} />
       </span>
       {align !== "right" && <TeamText t={t} side={side} align={align} />}
     </div>
@@ -136,8 +141,14 @@ export function PlayerHeaderCard({
           )}
         </div>
 
-        <div className={MONO} style={{ ...LABEL, marginTop: 5 }}>
-          {[teamLabel, position, season].filter(Boolean).join(" · ")}
+        {/* The identity line leads with the crest: [logo] NEW YORK YANKEES ·
+            CF · 2026. It is the one place on the page that names the player's
+            own team, and a 22px mark reads faster than the words after it. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
+          <TeamLogo sport={sport} abbr={team} size={22} title={teamLabel} />
+          <span className={MONO} style={LABEL}>
+            {[teamLabel, position, season].filter(Boolean).join(" · ")}
+          </span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 11 }}>
@@ -225,6 +236,9 @@ const MIN_COL = 26;
 export function GameByGameChart({
   sport, games = [], line, isBinary = false, straightRun = 0, direction = "over",
   height = 224, gap = 6,
+  // The drag. `marketLine` is the posted number, `line` is what is currently
+  // drawn -- they differ only while the reader is exploring.
+  marketLine, onDragLine, adjusted = false, draggable = false,
 }) {
   if (!games.length || line == null) return null;
 
@@ -232,6 +246,39 @@ export function GameByGameChart({
   const scale = feedFormScale(recent, line, isBinary, { height, pedestal: 0 });
   const hit = (v) => (direction === "under" ? v < line : v > line);
   const lineY = Math.max(1, Math.min(height - 1, scale.y(line)));
+
+  // Ported from the Prop Feed's startLineDrag, deliberately unchanged.
+  //
+  // The scale is measured against the *market* line, not the live one, so the
+  // axis and the step do not shift under the handle mid-drag. Both limits are
+  // a whole number of steps off the market line and the clamp is applied to
+  // the step count rather than to the value: clamping the value directly is
+  // what once let the handle stop on a whole number at the top of a passing-
+  // yards axis -- a line this app never posts, because a whole number can
+  // push. Snapping to whole steps off the market line is what preserves the
+  // half-value by construction.
+  const canDrag = draggable && !isBinary && marketLine != null && typeof onDragLine === "function";
+  const startLineDrag = (e) => {
+    if (!canDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { unit, step, dragMax } = feedFormScale(recent, marketLine, isBinary, { height, pedestal: 0 });
+    const startY = e.clientY;
+    const startVal = line;
+    const maxSteps = Math.floor((dragMax - marketLine) / step);
+    const minSteps = Math.ceil((0.25 - marketLine) / step);
+    const move = (ev) => {
+      const raw = startVal + (startY - ev.clientY) / unit;
+      const steps = Math.min(maxSteps, Math.max(minSteps, Math.round((raw - marketLine) / step)));
+      onDragLine(marketLine + steps * step);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
 
   return (
     <div style={{ border: "1px solid var(--line)", borderRadius: 6, background: "var(--panel)", padding: "16px 20px 14px" }}>
@@ -292,16 +339,25 @@ export function GameByGameChart({
               );
             })}
 
+            {/* Off-market, the rule and its tag go --amber-ink so the reader
+                can never mistake an explored number for the posted one. */}
             <span style={{
               position: "absolute", left: 0, right: -GUTTER, bottom: lineY,
-              borderTop: "1.5px dashed var(--text)", pointerEvents: "none",
+              borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink)" : "var(--text)"}`,
+              pointerEvents: "none",
             }} />
             <span
               className={MONO}
+              onMouseDown={canDrag ? startLineDrag : undefined}
+              onDoubleClick={canDrag && adjusted ? () => onDragLine(null) : undefined}
+              title={canDrag ? "Drag to test a different line · double-click to reset" : undefined}
               style={{
                 position: "absolute", right: -GUTTER, bottom: lineY, transform: "translateY(50%)",
-                background: "var(--amber)", color: "#ffffff",
+                background: adjusted ? "transparent" : "var(--amber)",
+                color: adjusted ? "var(--amber-ink)" : "#ffffff",
+                border: `1px solid ${adjusted ? "var(--amber-ink)" : "var(--amber)"}`,
                 borderRadius: 3, padding: "3px 7px", fontSize: 11, fontVariantNumeric: "tabular-nums",
+                cursor: canDrag ? "ns-resize" : "default", userSelect: "none",
               }}
             >
               {line}
@@ -317,10 +373,16 @@ export function GameByGameChart({
               const tint = g.opp ? mutedTeamColor(sport, g.opp, 0.15) : "transparent";
               return (
                 <div key={i} style={{ flex: 1, minWidth: MIN_COL, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                  {/* The crest inside the tinted disc the design draws -- the
+                      ring and tint stay, so the opponent is identifiable by
+                      mark and by colour even where a logo fails to load. */}
                   <span style={{
-                    display: "block", width: 26, height: 26, borderRadius: 999,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 26, height: 26, borderRadius: 999,
                     background: tint, border: `1.5px solid ${ink}`, boxSizing: "border-box",
-                  }} />
+                  }}>
+                    <TeamLogo sport={sport} abbr={g.opp} size={16} />
+                  </span>
                   <span className={MONO} style={{ fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>
                     {g.opp || ""}
                   </span>
