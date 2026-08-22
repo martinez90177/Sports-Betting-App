@@ -100,6 +100,34 @@ function lineupStateFor(rows) {
   return known.every((r) => r.lineupConfirmed) ? "posted" : "projected";
 }
 
+// Kickoff as minutes past midnight, for the rail's "first kickoff" sort.
+// A game whose time we don't have sorts *last* rather than first: an unknown
+// time is not an early one, and putting it at the top would state a running
+// order the data never gave us.
+function kickoffKey(t) {
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(String(t || "").trim());
+  if (!m) return Number.POSITIVE_INFINITY;
+  let h = parseInt(m[1], 10) % 12;
+  if (/pm/i.test(m[3] || "")) h += 12;
+  return h * 60 + parseInt(m[2], 10);
+}
+
+// The sorts the rail offers. "Strongest sample" ranks a game by the best
+// quotable rate on it -- quotable meaning it clears the minimum sample, so a
+// 100%-of-3 cannot push a game to the top of a board whose whole argument is
+// that three games say nothing.
+const SORTS = [
+  { id: "props", label: "Most props" },
+  { id: "kickoff", label: "First kickoff" },
+  { id: "strongest", label: "Strongest sample" },
+];
+
+const LINEUP_FILTERS = [
+  { id: "all", label: "All games" },
+  { id: "posted", label: "Lineups posted" },
+  { id: "projected", label: "Projected only" },
+];
+
 // Rate and sample from one pass over the same games, so the two can never
 // disagree. Returns null when the split leaves nothing at all -- distinct
 // from leaving too little, which is a rate the caller suppresses.
@@ -124,6 +152,9 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
   const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
   const [activeSplits, setActiveSplits] = useState(["season"]);
   const [visibleGames, setVisibleGames] = useState(10);
+  // Slate work, which is what the rail is for: which games, in what order.
+  const [sortBy, setSortBy] = useState("props");
+  const [lineupFilter, setLineupFilter] = useState("all");
 
   const updateSamplePresets = React.useCallback((next) => {
     setSamplePresets(next);
@@ -144,18 +175,38 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       if (!byGame.has(key)) byGame.set(key, { key, label: r.gameLabelFull || `${r.team} vs ${r.opp}`, time: r.gameTime || "", rows: [] });
       byGame.get(key).rows.push(r);
     });
-    return [...byGame.values()]
-      .map((g) => ({
-        ...g,
-        // Strongest first inside a game: the board is for finding the few
-        // worth opening, so the order has to be the answer to that question.
-        rows: g.rows.slice().sort((a, b) => (b.l10 ?? -1) - (a.l10 ?? -1)),
-      }))
-      .sort((a, b) => b.rows.length - a.rows.length);
-  }, [filtered]);
+    return [...byGame.values()].map((g) => {
+      // Strongest first inside a game: the board is for finding the few
+      // worth opening, so the order has to be the answer to that question.
+      const rows = g.rows.slice().sort((a, b) => (b.l10 ?? -1) - (a.l10 ?? -1));
+      // The card's own headline number, computed through the same rateFor
+      // the rows render from -- so the sort agrees with what the card shows
+      // rather than ranking on a second, quietly different figure. Only
+      // samples that clear the minimum count toward it.
+      let strongest = -1;
+      rows.forEach((r) => {
+        const s = rateFor(r, activeSplits);
+        if (s && s.rate != null && s.n >= minGames) strongest = Math.max(strongest, s.rate);
+      });
+      return { ...g, rows, strongest, kickoff: kickoffKey(g.time), lineup: lineupStateFor(rows) };
+    });
+  }, [filtered, activeSplits, minGames]);
 
-  const shown = grouped.slice(0, visibleGames);
-  const propCount = filtered.length;
+  // Filter, then sort. Both are rail state, so both name themselves in the
+  // empty state below when they are the reason nothing is showing.
+  const visible = useMemo(() => {
+    const kept = lineupFilter === "all"
+      ? grouped
+      : grouped.filter((g) => g.lineup === lineupFilter);
+    const out = kept.slice();
+    if (sortBy === "kickoff") out.sort((a, b) => a.kickoff - b.kickoff);
+    else if (sortBy === "strongest") out.sort((a, b) => b.strongest - a.strongest);
+    else out.sort((a, b) => b.rows.length - a.rows.length);
+    return out;
+  }, [grouped, lineupFilter, sortBy]);
+
+  const shown = visible.slice(0, visibleGames);
+  const propCount = visible.reduce((t, g) => t + g.rows.length, 0);
 
   const toggleSplit = (id) => {
     setActiveSplits((prev) => {
@@ -170,7 +221,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
         <h1 className="pp-display" style={{ fontSize: 34, margin: 0, letterSpacing: "-0.01em", fontWeight: 600 }}>The board</h1>
         <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
-          {grouped.length} {grouped.length === 1 ? "game" : "games"} · {propCount.toLocaleString()} props
+          {visible.length} {visible.length === 1 ? "game" : "games"} · {propCount.toLocaleString()} props
         </span>
         {/* The league switcher, reusing the feed's own set rather than
             inventing a second one. NFL in the mock was only an example. */}
@@ -203,6 +254,68 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       <div className="board-layout" style={{ display: "grid", gridTemplateColumns: "236px minmax(0, 1fr)", gap: 24, alignItems: "start" }}>
         {/* ---- Filter rail ---- */}
         <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 20 }}>
+          {/* Slate work first: which games, in what order. The market chips
+              below narrow what is *on* a card; these two decide which cards
+              there are at all, which is the rail's job on this screen. */}
+          <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Sort games by</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0 18px" }}>
+            {SORTS.map((s) => {
+              const on = sortBy === s.id;
+              return (
+                <span
+                  key={s.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={on}
+                  onClick={() => setSortBy(s.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSortBy(s.id); } }}
+                  className="pp-mono"
+                  style={{
+                    cursor: "pointer", fontSize: 11, letterSpacing: "0.05em",
+                    borderRadius: 4, padding: "5px 9px",
+                    background: on ? "var(--amber)" : "transparent",
+                    color: on ? "var(--accent-on)" : "var(--text-2, var(--dim))",
+                    border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+                  }}
+                >
+                  {s.label}
+                </span>
+              );
+            })}
+          </div>
+
+          <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Show</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0 18px" }}>
+            {LINEUP_FILTERS.map((f) => {
+              const on = lineupFilter === f.id;
+              // Count what each option would actually yield, so nobody picks
+              // a filter that empties the board without warning -- and so a
+              // league that publishes no lineups reads as "0" rather than
+              // looking like a control that silently does nothing.
+              const yield_ = f.id === "all" ? grouped.length : grouped.filter((g) => g.lineup === f.id).length;
+              return (
+                <span
+                  key={f.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={on}
+                  onClick={() => setLineupFilter(f.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLineupFilter(f.id); } }}
+                  className="pp-mono"
+                  style={{
+                    cursor: "pointer", fontSize: 11, letterSpacing: "0.05em",
+                    borderRadius: 4, padding: "5px 9px",
+                    background: on ? "var(--amber)" : "transparent",
+                    color: on ? "var(--accent-on)" : "var(--text-2, var(--dim))",
+                    border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+                  }}
+                >
+                  {f.label} · {yield_}
+                </span>
+              );
+            })}
+          </div>
+
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
             <span className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Market</span>
             <span
@@ -316,11 +429,18 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
           <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "0 0 6px 6px" }}>
             {shown.length === 0 ? (
               <div style={{ padding: 28, textAlign: "center", color: "var(--dim)", fontSize: 14, lineHeight: 1.6 }}>
+                {/* An empty state names the control responsible for it. The
+                    lineup filter is checked before the market chips because
+                    it can empty the board on three of the four sports --
+                    lineupConfirmed is MLB batters only -- and "no props
+                    match your markets" would be the wrong thing to fix. */}
                 {rows.length === 0
                   ? "No props have loaded for this league yet."
-                  : selectedMarkets.length
-                    ? "No props match the markets selected in the rail. Clear them to see the rest of the slate."
-                    : "No props to show."}
+                  : lineupFilter !== "all" && grouped.length > 0
+                    ? `No games on this slate have ${lineupFilter === "posted" ? "posted lineups" : "projected-only lineups"}. Lineup state is published for MLB batters; the other leagues report none, so this filter finds nothing there. Set Show back to All games.`
+                    : selectedMarkets.length
+                      ? "No props match the markets selected in the rail. Clear them to see the rest of the slate."
+                      : "No props to show."}
               </div>
             ) : shown.map((g) => (
               <div key={g.key}>
@@ -411,7 +531,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 20, flexWrap: "wrap" }}>
-            {grouped.length > shown.length && (
+            {visible.length > shown.length && (
               <span
                 role="button"
                 tabIndex={0}
@@ -424,7 +544,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                   borderRadius: 4, padding: "10px 16px",
                 }}
               >
-                Show {Math.min(10, grouped.length - shown.length)} more games
+                Show {Math.min(10, visible.length - shown.length)} more games
               </span>
             )}
             <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
