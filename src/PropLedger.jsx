@@ -5289,6 +5289,143 @@ function LogScopeSection({ games, sport, scope, onChange }) {
 // reads and writes the same teammateChips array the chip row above does, so
 // the two controls are alternate front ends onto one filter rather than two
 // filters that have to agree.
+// The lineup filter: one tiled control over both rosters.
+//
+// This replaces two controls that did the same job in the same panel -- a
+// scrolling teammate chip row and a separate tabbed "Precision" select that
+// also reached the opponent's roster. Both wrote to the same chips array, so
+// the split was presentational and cost a reader two places to look for one
+// question: who was on the field.
+//
+// Tiles are tagged TEAM or OPP because an opponent's absence changes a
+// matchup as much as a teammate's does, and one list with a tag says that
+// more plainly than two lists under different headings.
+//
+// Cycling is neutral -> WITH -> W/O -> neutral. Green requires the player,
+// red excludes them; a neutral tile is not a filter and instead shows what
+// that player is worth to this market, so the row doubles as a reason to
+// use it rather than a bank of switches with no argument behind them.
+const LINEUP_PAGE = 4;
+
+function LineupTiles({ teammates = [], opponents = [], chips, onChange, diffs = {}, loading, statusFor, unit }) {
+  const [page, setPage] = useState(0);
+
+  // One list, tagged, rather than two. Teammates first: they appear in every
+  // game in the log, while an opponent only appears in games against that
+  // team, so their splits are the thinner ones and belong further down.
+  const people = React.useMemo(() => [
+    ...teammates.map((p) => ({ ...p, side: "TEAM" })),
+    ...opponents.map((p) => ({ ...p, side: "OPP" })),
+  ], [teammates, opponents]);
+
+  const pages = Math.max(1, Math.ceil(people.length / LINEUP_PAGE));
+  const safePage = Math.min(page, pages - 1);
+  const shown = people.slice(safePage * LINEUP_PAGE, safePage * LINEUP_PAGE + LINEUP_PAGE);
+
+  const modeFor = (mlbId) => (chips.find((c) => c.mlbId === mlbId) || {}).mode || "neutral";
+
+  // Derived from `prev` rather than from the render's own read, so two rapid
+  // clicks cannot both act on a stale mode -- the same discipline the two
+  // controls this replaces already used.
+  const cycle = (p) => {
+    onChange((prev) => {
+      const current = (prev.find((c) => c.mlbId === p.mlbId) || {}).mode || "neutral";
+      if (current === "neutral") return [...prev, { mlbId: p.mlbId, name: p.name, mode: "with" }];
+      if (current === "with") return prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: "without" } : c));
+      return prev.filter((c) => c.mlbId !== p.mlbId);
+    });
+  };
+
+  if (!people.length) {
+    return (
+      <div style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5 }}>
+        No roster loaded for this game yet.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+        {shown.map((p) => {
+          const mode = modeFor(p.mlbId);
+          const on = mode !== "neutral";
+          // WITH is the outcome green and W/O the outcome red, which is the
+          // one place those two colours legitimately leave the graph: they
+          // mean include and exclude here, and the tile prints the word as
+          // well so the colour is never the only carrier.
+          const ink = mode === "with" ? "var(--pos)" : mode === "without" ? "var(--neg)" : "var(--line)";
+          const diff = diffs[p.mlbId];
+          return (
+            <div
+              key={p.mlbId}
+              role="button"
+              tabIndex={0}
+              aria-pressed={on}
+              onClick={() => cycle(p)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); cycle(p); } }}
+              title={mode === "neutral" ? "Click to require this player" : mode === "with" ? "Click to exclude this player" : "Click to clear"}
+              style={{
+                cursor: "pointer", padding: "8px 9px", minWidth: 0, boxSizing: "border-box",
+                border: `1px solid ${ink}`, borderRadius: "var(--r-sm)",
+                background: on ? `color-mix(in srgb, ${ink} 12%, transparent)` : "transparent",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                <span className="mono" style={{ fontSize: 9, letterSpacing: "0.1em", color: "var(--dim)" }}>{p.side}</span>
+                {on && (
+                  <span className="mono" style={{ fontSize: 9, letterSpacing: "0.1em", color: ink }}>
+                    {mode === "with" ? "WITH" : "W/O"}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12.5, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {p.name}
+              </div>
+              {/* A neutral tile argues for itself: what this player is worth
+                   to the market on screen. An em dash where the split is too
+                   thin to state -- never a zero, which would be a claim. */}
+              <div className="mono" style={{ fontSize: 10, marginTop: 2, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                {loading ? "…"
+                  : diff == null ? "—"
+                  : `${diff > 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)}${unit ? " " + unit : ""} with`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {pages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={() => setPage((v) => Math.max(0, v - 1))}
+            onKeyDown={(e) => { if (e.key === "Enter") setPage((v) => Math.max(0, v - 1)); }}
+            className="mono"
+            style={{ cursor: safePage === 0 ? "default" : "pointer", fontSize: 11, color: safePage === 0 ? "var(--line)" : "var(--amber-ink, var(--amber))" }}
+          >
+            ‹ Prev
+          </span>
+          <span className="mono" style={{ fontSize: 10, color: "var(--dim)", letterSpacing: "0.08em" }}>
+            {safePage + 1} / {pages} · {people.length} players
+          </span>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={() => setPage((v) => Math.min(pages - 1, v + 1))}
+            onKeyDown={(e) => { if (e.key === "Enter") setPage((v) => Math.min(pages - 1, v + 1)); }}
+            className="mono"
+            style={{ cursor: safePage >= pages - 1 ? "default" : "pointer", fontSize: 11, color: safePage >= pages - 1 ? "var(--line)" : "var(--amber-ink, var(--amber))" }}
+          >
+            Next ›
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel, statusFor }) {
   const [tab, setTab] = useState("with");
   const [query, setQuery] = useState("");
@@ -14161,35 +14298,22 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       {!isPitcher && (
         <FilterSection
           shaded
-          title="Teammates"
+          title="Lineup"
           action={
             <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>
               {boxscoresLoading ? "Loading…" : teammateModeSummary}
             </span>
           }
         >
-          <TeammateChipRow
-            candidates={teammateCandidates}
-            diffs={teammateDiffs}
-            chips={teammateChips}
-            onChange={setTeammateChips}
-            loading={boxscoresLoading}
-            compact={compact}
-            onHover={setHoverTeammate}
-            statusFor={mlbStatusOf}
-          />
-        </FilterSection>
-      )}
-
-      {!isPitcher && (
-        <FilterSection shaded title="Precision">
-          <PlayerScopeSelect
+          <LineupTiles
             teammates={teammateCandidates}
             opponents={opponentCandidates}
             chips={teammateChips}
             onChange={setTeammateChips}
-            oppLabel={nextGame?.opp}
+            diffs={teammateDiffs}
+            loading={boxscoresLoading}
             statusFor={mlbStatusOf}
+            unit={marketLabel}
           />
         </FilterSection>
       )}
