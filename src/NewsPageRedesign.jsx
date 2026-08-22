@@ -179,13 +179,23 @@ export default function NewsPageRedesign({
   }, [query]);
 
   const withPlayers = articles.map((a) => ({ article: a, player: resolvePlayer ? resolvePlayer(a) : null }));
-  const shown = withPlayers.filter(({ player }) => {
-    if (filter === "All") return true;
-    if (filter === "Watching") return player?.watching;
-    if (filter === "Injuries") return player?.status === "out" || player?.status === "questionable";
-    if (filter === "Line moves") return player?.lineMoved;
+  // One predicate per filter, so the chips' counts and the list they produce
+  // cannot disagree -- the counts below are this same function, run over the
+  // same pool. The "Line moves" branch that used to sit here was unreachable:
+  // FILTERS has not offered it since the app stopped pretending to keep line
+  // history (see the note above FILTERS), and a dead branch is how a filter
+  // that can never match gets quietly restored later.
+  const matchesFilter = (player, f) => {
+    if (f === "Watching") return !!player?.watching;
+    if (f === "Injuries") return player?.status === "out" || player?.status === "questionable";
     return true;
-  });
+  };
+  const shown = withPlayers.filter(({ player }) => matchesFilter(player, filter));
+  // What each filter would yield, so a chip that empties the feed says so
+  // before it is clicked rather than after.
+  const filterCounts = Object.fromEntries(
+    FILTERS.map((f) => [f, withPlayers.filter(({ player }) => matchesFilter(player, f)).length])
+  );
 
   return (
     <div className="page-shell" style={{ boxSizing: "border-box" }}>
@@ -206,7 +216,7 @@ export default function NewsPageRedesign({
                   color: f === filter ? "#fff" : "var(--dim-strong, #aab2c0)",
                   border: f === filter ? "1px solid var(--accent, #3b5bdb)" : "1px solid var(--line)",
                 }}>
-                {f}
+                {f}{!loading ? ` · ${filterCounts[f]}` : ""}
               </button>
             ))}
           </div>
@@ -217,7 +227,14 @@ export default function NewsPageRedesign({
             {loading && <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>Loading headlines…</div>}
             {!loading && shown.length === 0 && (
               <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-                {error ? "Couldn't load news right now — try again shortly." : "Nothing matches this filter."}
+                {/* Names the filter responsible, and says what dropping it
+                    would get back. "Nothing matches this filter" left the
+                    reader to work out which of three chips to undo. */}
+                {error
+                  ? "Couldn't load news right now — try again shortly."
+                  : filter !== "All" && withPlayers.length > 0
+                  ? `No headlines match the ${filter} filter. All has ${withPlayers.length}.`
+                  : "No headlines right now."}
               </div>
             )}
             {!loading && shown.map(({ article, player }, i) => (
