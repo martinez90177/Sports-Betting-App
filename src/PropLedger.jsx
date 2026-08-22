@@ -13977,6 +13977,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             the number is printed in the foot of its own bar, and the opponent
             and date sit under the axis instead. */}
         <GameByGameChart
+          sport="mlb"
           games={chartData.map((d) => ({ v: d.value, opp: d.opp, date: d.date, po: d.playoff }))}
           line={dragLine !== null ? dragLine : effectiveLine}
           isBinary={isBinary}

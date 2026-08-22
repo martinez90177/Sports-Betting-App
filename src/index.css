@@ -58,6 +58,12 @@
   --surface-2: #191c21;   /* nested strips inside a card           */
   --surface-3: #20242b;   /* hover/raised state of a surface-1/2   */
   --surface-sunken: #0d0f12; /* inset wells -- table headers, chart plot */
+  /* Alternating column band behind the game-by-game bars. Every other
+     column is tinted so a long sample can be counted across without a
+     ruler; a band behind every column reads as one slab. Its own token
+     because it must invert with the theme -- the mock's #101318 is a
+     near-black slab on a light page. */
+  --chart-band: #101318;
   --panel: var(--surface-1);
   --panel2: var(--surface-2);
   --line: #2b2f36;
@@ -166,6 +172,7 @@
   --surface-2: #eef1f5;
   --surface-3: #e4e8ee;
   --surface-sunken: #eef1f5;
+  --chart-band: #e7ebf1;
   --panel: var(--surface-1);
   --panel2: var(--surface-2);
   --line: #d7dce3;

@@ -17,6 +17,49 @@ function teamColor(sport, abbr) {
   return (c && c.primary) || AVATAR_FALLBACK_COLORS.primary;
 }
 
+// Team colour, desaturated to the band the mock's own TEAM map sits in.
+//
+// The handoff hand-writes nine muted hexes (SEA #3f8f6a, ARI #a5555f, MIN
+// #7565a8 ...) rather than using brand colours, and the reason is legibility of
+// meaning, not taste: raw brand reds like Boston's #bd3039 or Cincinnati's
+// #c6011f land close enough to --neg #ef5b5b to be read as "fell short", and a
+// bright brand green would read as "cleared". Both are claims the axis is not
+// making -- it is only naming the opponent.
+//
+// Measured off that map, its entries sit around S 0.27-0.39 and L 0.40-0.55, so
+// this pins every team to S 0.32 / L 0.48 and keeps only the hue. At that
+// saturation nothing can collide with --pos (S 0.60 / L 0.53) or --neg (S 0.80
+// / L 0.65). Derived from the real brand hue rather than transcribed, so it
+// covers all four leagues instead of the nine teams the mock happened to draw.
+const MUTED_S = 0.32;
+const MUTED_L = 0.48;
+
+function hueOfHex(hex) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return null;
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (!d) return 0;
+  let deg;
+  if (max === r) deg = ((g - b) / d) % 6;
+  else if (max === g) deg = (b - r) / d + 2;
+  else deg = (r - g) / d + 4;
+  deg *= 60;
+  return deg < 0 ? deg + 360 : deg;
+}
+
+export function mutedTeamColor(sport, abbr, alpha) {
+  const hue = hueOfHex(teamColor(sport, abbr));
+  if (hue == null) return alpha == null ? "var(--dim)" : "transparent";
+  return alpha == null
+    ? `hsl(${Math.round(hue)} ${Math.round(MUTED_S * 100)}% ${Math.round(MUTED_L * 100)}%)`
+    : `hsl(${Math.round(hue)} ${Math.round(MUTED_S * 100)}% ${Math.round(MUTED_L * 100)}% / ${alpha})`;
+}
+
 // ---------------------------------------------------------------------------
 // 1. The matchup band.
 //
@@ -38,7 +81,7 @@ export function MatchupBand({ sport, away, home, dateLabel, timeLabel, venue }) 
       style={{
         flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12,
         justifyContent: align === "right" ? "flex-end" : "flex-start",
-        padding: "16px 20px", borderTop: `3px solid ${teamColor(sport, t.abbr)}`,
+        padding: "16px 20px", borderTop: `3px solid ${mutedTeamColor(sport, t.abbr)}`,
       }}
     >
       {align === "right" && <TeamText t={t} side={side} align={align} />}
@@ -122,7 +165,7 @@ export function PlayerHeaderCard({
     <div
       style={{
         display: "flex", gap: 20, padding: "20px 22px",
-        border: "1px solid var(--line)", borderLeft: `3px solid ${teamColor(sport, team)}`,
+        border: "1px solid var(--line)", borderLeft: `3px solid ${mutedTeamColor(sport, team)}`,
         borderRadius: 6, background: "var(--panel)",
       }}
     >
@@ -215,9 +258,16 @@ function axisDate(d) {
   return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// Room for the line tag, which hangs off the plot's right edge.
+const GUTTER = 52;
+// Columns are flex:1 like the mock's, but a season log is four times the
+// seventeen games it draws; below this the bars become slivers, so the plot
+// scrolls inside its own box instead of collapsing.
+const MIN_COL = 26;
+
 export function GameByGameChart({
-  games = [], line, isBinary = false, straightRun = 0, direction = "over",
-  height = 224, barWidth = 40, gap = 6,
+  sport, games = [], line, isBinary = false, straightRun = 0, direction = "over",
+  height = 224, gap = 6,
 }) {
   if (!games.length || line == null) return null;
 
@@ -239,76 +289,90 @@ export function GameByGameChart({
       </div>
 
       <div style={{ overflowX: "auto" }}>
-        <div style={{ minWidth: games.length * (barWidth + gap) }}>
-          <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap, height }}>
+        {/* 52px of right gutter for the line tag, which hangs outside the plot
+            (`right:-52px` in the mock) rather than overlapping the last bar. */}
+        <div style={{ position: "relative", paddingRight: GUTTER, minWidth: games.length * (MIN_COL + gap) + GUTTER }}>
+          <div style={{ position: "relative", display: "flex", alignItems: "stretch", gap, height }}>
             {games.map((g, i) => {
               const cleared = hit(g.v);
               const h = Math.max(3, Math.round(scale.y(g.v)));
               return (
-                <div key={i} style={{ position: "relative", width: barWidth, height, flex: "none" }}>
-                  {/* The band behind the column. It is what stops a short bar
-                      from floating in space with nothing to read it against. */}
-                  <span style={{
-                    position: "absolute", inset: 0, borderRadius: "4px 4px 0 0",
-                    background: "var(--surface-sunken, #101318)",
-                  }} />
-                  <span
+                <div
+                  key={i}
+                  style={{
+                    flex: 1, minWidth: MIN_COL,
+                    display: "flex", flexDirection: "column", justifyContent: "flex-end",
+                    // Alternating, not uniform: every other column is tinted so
+                    // the eye can count across a long sample without a ruler.
+                    // A band behind every column would read as one slab.
+                    background: i % 2 === 0 ? "var(--chart-band, #101318)" : "transparent",
+                    borderRadius: "4px 4px 0 0",
+                  }}
+                >
+                  <div
                     style={{
-                      position: "absolute", left: 0, right: 0, bottom: 0, height: h,
-                      borderRadius: "3px 3px 0 0", boxSizing: "border-box",
                       display: "flex", alignItems: "flex-end", justifyContent: "center",
+                      height: h, borderRadius: "3px 3px 0 0", boxSizing: "border-box",
+                      paddingBottom: 8,
                       background: cleared ? "var(--pos-solid, var(--pos))" : "transparent",
-                      border: cleared ? "none" : "1px solid var(--neg)",
+                      border: cleared ? "none" : "1.5px solid var(--neg)",
                     }}
                   >
                     <span
                       className={MONO}
                       style={{
-                        fontSize: 10.5, lineHeight: 1, padding: "0 0 5px",
-                        fontVariantNumeric: "tabular-nums",
-                        color: cleared ? "var(--accent-on, #08131c)" : "var(--neg)",
+                        fontSize: 14, lineHeight: 1, fontVariantNumeric: "tabular-nums",
+                        // Rule-based, not a token: the ink on a filled bar has
+                        // to survive whatever --pos is re-tinted to, and the
+                        // outline bar's number is the outline's own colour.
+                        color: cleared ? "var(--bg, #0a0b0d)" : "var(--neg)",
                       }}
                     >
                       {g.v}
                     </span>
-                  </span>
+                  </div>
                 </div>
               );
             })}
 
             <span style={{
-              position: "absolute", left: 0, right: 0, bottom: lineY,
-              borderTop: "1px dashed var(--text)", pointerEvents: "none",
+              position: "absolute", left: 0, right: -GUTTER, bottom: lineY,
+              borderTop: "1.5px dashed var(--text)", pointerEvents: "none",
             }} />
             <span
               className={MONO}
               style={{
-                position: "absolute", right: -2, bottom: lineY, transform: "translateY(50%)",
-                background: "var(--amber)", color: "var(--accent-on, #fff)",
-                borderRadius: 3, padding: "2px 5px", fontSize: 10, fontVariantNumeric: "tabular-nums",
+                position: "absolute", right: -GUTTER, bottom: lineY, transform: "translateY(50%)",
+                background: "var(--amber)", color: "#ffffff",
+                borderRadius: 3, padding: "3px 7px", fontSize: 11, fontVariantNumeric: "tabular-nums",
               }}
             >
               {line}
             </span>
           </div>
 
-          {/* Opponent and date under the axis, one per column. */}
-          <div style={{ display: "flex", gap, marginTop: 8 }}>
-            {games.map((g, i) => (
-              <div key={i} style={{ width: barWidth, flex: "none", textAlign: "center", minWidth: 0 }}>
-                <span style={{
-                  display: "inline-block", width: 5, height: 5, borderRadius: "50%",
-                  background: g.po ? "var(--text-2)" : "transparent",
-                  border: g.po ? "none" : "1px solid var(--line)",
-                }} />
-                <div className={MONO} style={{ fontSize: 9.5, color: "var(--text-2)", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {g.opp || ""}
+          {/* The axis. Each column names its opponent in that team's own colour,
+              desaturated (see mutedTeamColor) so it cannot be mistaken for the
+              cleared/fell-short pair the bars above are using. */}
+          <div style={{ display: "flex", gap, marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+            {games.map((g, i) => {
+              const ink = g.opp ? mutedTeamColor(sport, g.opp) : "var(--dim)";
+              const tint = g.opp ? mutedTeamColor(sport, g.opp, 0.15) : "transparent";
+              return (
+                <div key={i} style={{ flex: 1, minWidth: MIN_COL, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                  <span style={{
+                    display: "block", width: 26, height: 26, borderRadius: 999,
+                    background: tint, border: `1.5px solid ${ink}`, boxSizing: "border-box",
+                  }} />
+                  <span className={MONO} style={{ fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>
+                    {g.opp || ""}
+                  </span>
+                  <span className={MONO} style={{ fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                    {axisDate(g.date)}
+                  </span>
                 </div>
-                <div className={MONO} style={{ fontSize: 9, color: "var(--dim)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {axisDate(g.date)}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
