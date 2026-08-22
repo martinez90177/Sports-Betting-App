@@ -52,6 +52,54 @@ const SPLITS = [
   { id: "vsOpp", label: "vs. this defense", test: (g, r) => g.opp && r.opp && g.opp === r.opp },
 ];
 
+// How many samples a game card shows before handing off to the feed. The
+// board's job is deciding *which* props are worth opening, and a card that
+// lists forty rows has gone back to being the feed with headings on it.
+const CARD_ROWS = 3;
+
+// The verdict pill's thresholds, from the handoff: 65%+ leans to a side,
+// below 45% leans to the other, 45-65% is a coin flip, and under the minimum
+// sample there is no rate to lean on at all.
+const LEAN_HI = 0.65;
+const LEAN_LO = 0.45;
+
+// The pill states which side the games actually favour, which is not the same
+// as the row's own direction. `rateFor` counts hits *for the side the row is
+// priced on*, so a row priced under with a 0.70 rate means 70% of games went
+// under -- "leans under", not "leans over". Reading the rate without the
+// direction inverts the verdict on every under row, and it would do it
+// quietly: the number would look right and the words would be backwards.
+// Exported for verification: today's slate happens to price every board row
+// as an over, so the under branch cannot be exercised from the rendered page.
+export function verdictFor(rate, n, minGames, direction) {
+  if (rate == null || n < minGames) return { label: "Too few", thin: true };
+  const priced = direction === "under" ? "under" : "over";
+  const other = priced === "under" ? "over" : "under";
+  if (rate >= LEAN_HI) return { label: `Leans ${priced}` };
+  if (rate < LEAN_LO) return { label: `Leans ${other}` };
+  return { label: "Coin flip" };
+}
+
+// Lineup state for a game card, derived from the rows it holds rather than
+// stored twice. Confirmed / projected / unknown is a *confidence* signal --
+// how settled the slate is -- not a good-or-bad one, so it uses no outcome
+// colour at any hue. It renders in --text-2 and lets fill carry the split,
+// the same device the game-state family uses:
+//
+//   filled  = posted        every row we can read is in a posted lineup
+//   hollow  = projected     the lineup is still our projection
+//   absent  = unknown       nothing to read
+//
+// Unknown rendering no dot is CLAUDE.md's rule for availability and the
+// honest answer here too: `lineupConfirmed` is MLB batters only, so on the
+// other three sports there is genuinely nothing published to report, and a
+// grey "unknown" dot would be claiming to have looked.
+function lineupStateFor(rows) {
+  const known = (rows || []).filter((r) => typeof r.lineupConfirmed === "boolean");
+  if (!known.length) return null;
+  return known.every((r) => r.lineupConfirmed) ? "posted" : "projected";
+}
+
 // Rate and sample from one pass over the same games, so the two can never
 // disagree. Returns null when the split leaves nothing at all -- distinct
 // from leaving too little, which is a rate the caller suppresses.
@@ -70,7 +118,7 @@ function rateFor(row, activeSplits) {
   return { games, n: games.length, over, rate: over / games.length };
 }
 
-export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, marketGroups = [], disclaimer }) {
+export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
   const [minGames, setMinGames] = useState(10);
   const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
@@ -282,20 +330,82 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                 }}>
                   <span className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.1em", textTransform: "uppercase" }}>{g.label}</span>
                   {g.time && <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))" }}>{g.time}</span>}
-                  <span className="pp-mono" style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--amber-ink, var(--amber))" }}>
-                    {g.rows.length} {g.rows.length === 1 ? "prop" : "props"}
+                  {/* The count is what the card knows about this game; the
+                      action is a move to the feed. Deliberately not phrased
+                      "All 148 props ->" the way the mock draws it: the feed
+                      does not open filtered to one game (see goToGameProps in
+                      PropLedger, which documents why), so that label would
+                      promise a narrowing that does not happen. */}
+                  <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+                    {(() => {
+                      const lineup = lineupStateFor(g.rows);
+                      if (!lineup) return null;
+                      return (
+                        <span
+                          className="pp-mono"
+                          title={lineup === "posted"
+                            ? "Every prop on this card is from a posted lineup"
+                            : "Lineups not posted yet — these are projections"}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6,
+                            fontSize: 11.5, letterSpacing: "0.06em",
+                            textTransform: "uppercase", color: "var(--text-2, var(--dim))",
+                          }}
+                        >
+                          <span style={{
+                            width: 8, height: 8, borderRadius: "50%", boxSizing: "border-box",
+                            background: lineup === "posted" ? "var(--text-2, var(--dim))" : "transparent",
+                            border: "1.5px solid var(--text-2, var(--dim))",
+                          }} />
+                          {lineup === "posted" ? "Lineup posted" : "Projected"}
+                        </span>
+                      );
+                    })()}
+                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))" }}>
+                      {g.rows.length} {g.rows.length === 1 ? "prop" : "props"}
+                    </span>
+                    {onOpenGameProps && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); onOpenGameProps(g); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onOpenGameProps(g); } }}
+                        className="pp-mono"
+                        style={{
+                          cursor: "pointer", fontSize: 11.5, letterSpacing: "0.08em",
+                          textTransform: "uppercase", color: "var(--amber-ink, var(--amber))",
+                        }}
+                      >
+                        Open in feed →
+                      </span>
+                    )}
                   </span>
                 </div>
-                {g.rows.map((r, i) => (
+                {g.rows.slice(0, CARD_ROWS).map((r, i, arr) => (
                   <BoardRow
                     key={r.key}
                     row={r}
                     minGames={minGames}
                     activeSplits={activeSplits}
-                    isLast={i === g.rows.length - 1}
+                    isLast={i === arr.length - 1 && g.rows.length <= CARD_ROWS}
                     onOpen={onOpenProp}
                   />
                 ))}
+                {/* The rest are not hidden, they are located. A card that
+                    silently stopped at three would be dropping rows; saying
+                    how many are left and where they live is the same rule
+                    the thin-sample verdict follows. */}
+                {g.rows.length > CARD_ROWS && (
+                  <div
+                    className="pp-mono"
+                    style={{
+                      padding: "10px 20px", borderBottom: "1px solid var(--line)",
+                      fontSize: 11.5, color: "var(--dim)", letterSpacing: "0.06em",
+                    }}
+                  >
+                    Three strongest shown · {g.rows.length - CARD_ROWS} more in the feed
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -348,8 +458,14 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen }) {
   // Verdicts ride the accent, never green or red: green and red mean cleared
   // and fell short on the bars in this same row, and a green verdict pill
   // would overload the colour two inches from where it means something else.
-  const verdict = thin ? "Too few" : rate >= 0.6 ? "Leans over" : rate <= 0.4 ? "Leans under" : "Coin flip";
-  const verdictLeans = !thin && (rate >= 0.6 || rate <= 0.4);
+  //
+  // Thresholds are the handoff's 65/45, not the 60/40 this shipped with, and
+  // the side comes from `row.direction` rather than being assumed to be over
+  // -- see verdictFor. An under-priced row with a strong rate was reading
+  // "Leans over", which is the exact opposite of what its own games say.
+  const v = verdictFor(rate, n, minGames, row.direction);
+  const verdict = v.label;
+  const verdictLeans = !v.thin && v.label !== "Coin flip";
 
   const bars = (split && split.games.length ? split.games : row.recent || []).slice(-8);
 

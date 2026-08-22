@@ -15854,7 +15854,14 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             position: "absolute", right: -1, top: -1,
             width: dotSize, height: dotSize, borderRadius: "50%",
             boxSizing: "border-box",
-            background: r.lineupConfirmed ? "var(--pos)" : "var(--panel)",
+            // --text-2, deliberately not --pos. Lineup state is confirmed /
+            // projected / unknown -- a confidence signal about how settled
+            // the slate is, not a good-or-bad one -- so it stays out of the
+            // outcome palette in any colour. Green here would have read as
+            // "this prop is good" a few pixels from bars where green means
+            // exactly that. The fill-vs-hollow device carries the meaning,
+            // the same way the game-state family splits its pairs.
+            background: r.lineupConfirmed ? "var(--text-2, var(--dim))" : "var(--panel)",
             border: r.lineupConfirmed
               ? "1.5px solid var(--panel)"
               : "1.5px solid var(--line-strong)",
@@ -21609,6 +21616,7 @@ export default function PropLedger() {
             marketGroups={PROP_GROUPS[boardSport] || []}
             disclaimer={BOARD_DISCLAIMER[boardSport] || BOARD_DISCLAIMER.nfl}
             onOpenProp={goToProp}
+            onOpenGameProps={(g) => goToGameProps({ ...g, sport: boardSport })}
           />
         </LazyPane>
       )}
