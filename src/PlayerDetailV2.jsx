@@ -292,24 +292,34 @@ export default function PlayerDetailV2({
             </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 24, padding: "20px 0", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-              <span style={{ fontFamily: MONO, fontSize: 40, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: verdict.rateColor }}>{verdict.rate}</span>
-              <span style={{ fontSize: 15, color: "var(--text-2)" }}>{verdict.sentence}</span>
+          {/* No wrap, and the row's height never changes.
+              Dragging the line adds a "market 1.5 · reset" note under LINE.
+              With wrap on, that pushed the 20 GAMES pill onto a second line
+              and the whole chart jumped ~48px down the page mid-drag -- the
+              graph moving is the one thing it must never do while you are
+              reading it. The note is absolutely positioned into reserved
+              padding instead, so it costs no height, and the row cannot wrap:
+              the sentence shrinks first. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 24, padding: "20px 0 30px", position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 }}>
+              <span style={{ fontFamily: MONO, fontSize: 40, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: verdict.rateColor, flex: "none" }}>{verdict.rate}</span>
+              <span style={{ fontSize: 15, color: "var(--text-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{verdict.sentence}</span>
             </div>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 28 }}>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 28, flex: "none" }}>
               <div style={{ textAlign: "right" }}>
                 <div style={metricLabel}>Average</div>
                 <div style={metricValue}>{verdict.average}</div>
               </div>
-              <div style={{ textAlign: "right" }}>
+              <div style={{ textAlign: "right", position: "relative" }}>
                 <div style={metricLabel}>Line</div>
                 <div style={{ ...metricValue, color: verdict.adjusted ? "var(--amber-ink)" : "var(--text)" }}>{verdict.line}</div>
                 {verdict.adjusted && (
                   <div
                     role="button" tabIndex={0} onClick={verdict.onResetLine}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); verdict.onResetLine(); } }}
-                    style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", marginTop: 4, cursor: "pointer", whiteSpace: "nowrap" }}
+                    // Absolute, into the row's reserved bottom padding: it must
+                    // not add height, or the chart moves the moment you drag.
+                    style={{ position: "absolute", top: "100%", right: 0, marginTop: 3, fontFamily: MONO, fontSize: 10, color: "var(--dim)", cursor: "pointer", whiteSpace: "nowrap" }}
                   >
                     market {verdict.marketLine} · <span style={{ color: "var(--amber-ink)" }}>reset</span>
                   </div>
