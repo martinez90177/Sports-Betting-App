@@ -5,7 +5,8 @@ has been decided. Read this before starting any item. It is committed to the
 repo on purpose: this project is worked on from more than one machine, and
 Claude's own memory does not travel between them.
 
-**Status as of 2026-08-21 — `master` at `d3dd10a`. Items 1–18 shipped; data track sections A and C complete.**
+**Status as of 2026-08-22 — `master` at `c34df94`. Items 1–18 shipped; the v2
+rebuild is complete; data track sections A and C complete.**
 
 ## The five tracks
 
@@ -16,6 +17,7 @@ Claude's own memory does not travel between them.
 | **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | **A and C done.** B done for NBA; MLB/WNBA logs were already real. See below |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
 | **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
+| **v2 rebuild** | Every screen rebuilt against `design_handoff_proppalace_v2/` | **Complete.** `98f8579`…`c34df94`. See its own section below |
 
 The tracks are independent. Redesign items follow Alex's order and are not to be
 resequenced; the data and monetisation tracks can run whenever.
@@ -258,7 +260,116 @@ printed "2024-25" over a season played in 2025.
   status colours and does **not** re-tint with the user's accent — the one
   sanctioned exception to that rule.
 
-## Still open
+## v2 rebuild — complete, 2026-08-22
+
+The `design_handoff_proppalace_v2/` bundle, rebuilt screen by screen against
+live data. **Read that folder's `README.md` before touching any of it — it
+supersedes every earlier `design_handoff_*` folder**, and it was corrected in
+place during the build wherever it contradicted itself (the corrections are
+marked in the README and are the version to trust, not the original wording).
+
+Seventeen commits, `98f8579` … `c34df94`, in build order:
+
+| Commit | Screen / item |
+|---|---|
+| `98f8579` | The bundle, FormGraph, the four colour families, the fluid shell, first-run intro |
+| `5d0ca0d` `a9e0450` `3372aa9` | The Board — cards, rails, and the gaps it states rather than hides |
+| `d1c5d82` | Prop Feed — denominator, side, and which filter emptied it |
+| `c31b8f3` | `defTier` cuts each league's own thirds |
+| `0ed7811` | Games — game-state colours |
+| `5d62af2` `4ebe50d` `85ec0b1` | Player detail — sport-sized windows, matchup context row, one lineup control |
+| `0a91a8a` | News — filter counts |
+| `06a62fb` | Settings — outcome colours are the reader's, availability is not |
+| `8e157e6` | Gamecast — the boxscore it was already fetching, props in play |
+| `104b5c9` | The board joins the slate |
+| `6e7adac` | Mobile — touch-target floors |
+| `c24ede9` | Games — the All tab |
+| `c34df94` | One MLB fetch for board + feed; kickoff/records/venue on all four player pages |
+
+### The two rules that outrank pixel accuracy
+
+Both came from Alex at the start and both were applied everywhere, including
+where the mock disagreed:
+
+1. **Derive, never type.** Hits, sample, percentage, streak and average all
+   come off the same game-log array. A number that is not derived from the
+   array behind it is a bug even when it looks right.
+2. **Every rate states its sample.** Counts first — "78% · 7 of 9". Under ten
+   games prints a verdict instead of a rate and *keeps the row*: the minimum
+   sample is a display threshold, never a filter.
+
+### Where the build deviates from the mocks, and why
+
+Every number in the v2 mocks is invented — game logs, ranks, usage, rosters,
+records. Season lengths and league sizes are real. Everything else is wired to
+live data, which is what forces most of these:
+
+- **The form graph's axis is windowed, not grounded at zero.** The README said
+  both in different places. A zero-based axis flattens every bar on a market
+  whose values cluster (0.5 hits), so the axis windows to the data. The
+  consequence, which is the part worth remembering: **bar heights are
+  comparable within a row, never across rows.**
+- **Slot count is a prop, not a constant.** `FORM_SIZES` is the source of
+  truth over the README's size table, which was transcribed mid-iteration.
+- **The four colour families cannot be separated by hue alone.** Six reserved
+  hues plus buffers leave two usable bands in 360°. They are separated by
+  shape, placement and lightness instead: availability owns the avatar's
+  bottom-right corner as a dot, game state is a square swatch with one hue per
+  pair split by fill, sport identity tints a divider. The README's section was
+  rewritten around that.
+- **`--status-available` is never `var(--pos)`.** Outcome colours are
+  user-settable from Settings; availability is not. Pointing one at the other
+  would let a reader recolour "healthy".
+- **The mock's lineup-status colour was not matched** — it read as the accent.
+- **The matchup context row omits cells rather than filling them.** The mock
+  draws "6.8 rec/g" for what a defence allows; no provider gives a per-market
+  figure for every sport, so the label is passed in and the cell disappears
+  where the number would be a claim.
+- **"Open in feed" does not filter the feed to one game.** Two id shapes would
+  have to be reconciled inside `PropLedger.jsx` to save one click. Declined
+  twice, deliberately.
+- **The board's "All 148 props →" is phrased as a count plus a move**, because
+  the feed it moves to is not filtered.
+
+### Things a future reader will not find in the code
+
+- **The board's card grouping is directional unless a row carries `gameId`.**
+  `${team}-${opp}` groups the same fixture twice — that is how MLB drew 30
+  cards for a 15-game slate. NBA/NFL rows keep the fallback because their
+  "games" are last-opponent pairings, not a real slate.
+- **Slate joins require *both* teams to match.** Looking one team up finds *a*
+  game it plays. That is not the same as finding this game, and it once hung
+  Tampa Bay's record on a card headed CIN vs CLE. The player pages join the
+  same way; out of season they fail to join and the cells vanish, which is the
+  correct answer.
+- **NBA/NFL prop rows describe 2025 fixtures** (the builders use the last
+  opponent played) while the slates hold 2026. Anything joining rows to a
+  slate has to survive that.
+- **`npm run build` proves nothing about runtime.** Vite does not check that
+  identifiers exist, and the FormGraph shipped rendering zero bars with a clean
+  build and a clean console — an explicitly-placed rule overlay had pushed
+  every auto-placed bar into implicit 0px columns. Drive the dev server.
+- **Duplicated expressions are this codebase's live hazard.** `String.replace`
+  hit the wrong one of four identical `const base = sport === "nfl" ? …`
+  blocks in `GamesPage.jsx` and the All tab shipped rendering one league.
+  Deduped in `c34df94`; the same trap exists anywhere else a block is copied.
+- **Verification for logic today's slate cannot reach** (direction inversion in
+  `verdictFor`, `buildPropsInPlay`, `defTier` equivalence) was done with truth
+  tables, not assertions — every game on the slate the day this was built was
+  an over, so the UI could not exercise the under path.
+
+### Still open after v2
+
+- **Feed game-id reconciliation** (would let "Open in feed" filter to one
+  game). Declined twice on cost-vs-value; the current phrasing is honest.
+- Everything in the monetisation track, untouched.
+
+## Still open — before the v2 rebuild
+
+> The three below were open as of 2026-08-21. The first two were answered by
+> the v2 rebuild: the form graph windows its axis (it is not grounded at zero),
+> and the landing page shows real rows only.
+
 
 - The form graph: whether bars move from margin-height to grounded-at-zero with
   a drawn line at the prop value. Touches every feed row, so it is its own
