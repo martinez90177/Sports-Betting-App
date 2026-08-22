@@ -146,7 +146,7 @@ function rateFor(row, activeSplits) {
   return { games, n: games.length, over, rate: over / games.length };
 }
 
-export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer }) {
+export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, dataUnavailable = false }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
   const [minGames, setMinGames] = useState(10);
   const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
@@ -192,6 +192,14 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
     });
   }, [filtered, activeSplits, minGames]);
 
+  // How many games we actually have a kickoff time for. Drives whether the
+  // kickoff sort is offered at all, and guards against it silently degrading
+  // to insertion order.
+  const kickoffKnown = useMemo(
+    () => grouped.filter((g) => Number.isFinite(g.kickoff)).length,
+    [grouped]
+  );
+
   // Filter, then sort. Both are rail state, so both name themselves in the
   // empty state below when they are the reason nothing is showing.
   const visible = useMemo(() => {
@@ -199,11 +207,13 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       ? grouped
       : grouped.filter((g) => g.lineup === lineupFilter);
     const out = kept.slice();
-    if (sortBy === "kickoff") out.sort((a, b) => a.kickoff - b.kickoff);
+    // Falls through to the props sort when no kickoff is known, so the list
+    // is never ordered by a value nothing has.
+    if (sortBy === "kickoff" && kickoffKnown > 0) out.sort((a, b) => a.kickoff - b.kickoff);
     else if (sortBy === "strongest") out.sort((a, b) => b.strongest - a.strongest);
     else out.sort((a, b) => b.rows.length - a.rows.length);
     return out;
-  }, [grouped, lineupFilter, sortBy]);
+  }, [grouped, lineupFilter, sortBy, kickoffKnown]);
 
   const shown = visible.slice(0, visibleGames);
   const propCount = visible.reduce((t, g) => t + g.rows.length, 0);
@@ -254,31 +264,74 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       <div className="board-layout" style={{ display: "grid", gridTemplateColumns: "236px minmax(0, 1fr)", gap: 24, alignItems: "start" }}>
         {/* ---- Filter rail ---- */}
         <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 20 }}>
-          {/* Slate work first: which games, in what order. The market chips
+          {/* Reading a card. The bars, the dot and the pill each carry
+              meaning by a device rather than by a colour anyone could be
+              expected to guess, so the key for all three lives in one place
+              instead of being inferred from a legend strip under the table.
+              Thresholds are printed from the same constants the pill uses,
+              so the key cannot drift from the behaviour it describes. */}
+          <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Reading a card</div>
+          <div style={{ margin: "10px 0 18px", display: "grid", gap: 9 }}>
+            {[
+              { mark: <span style={{ width: 7, height: 14, background: "var(--pos-solid, var(--pos))", borderRadius: 2, flex: "0 0 auto" }} />, text: "cleared the line" },
+              { mark: <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box", flex: "0 0 auto" }} />, text: "fell short" },
+              { mark: <span style={{ width: 14, borderTop: "1.5px dashed var(--text)", flex: "0 0 auto" }} />, text: "the prop line" },
+              { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text-2, var(--dim))", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "lineup posted" },
+              { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "transparent", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "lineup projected" },
+              { mark: <span style={{ width: 8, flex: "0 0 auto" }} />, text: "no dot · lineup unknown" },
+            ].map((it, i) => (
+              <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+                {it.mark}{it.text}
+              </span>
+            ))}
+            <span style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5 }}>
+              Unknown is never assumed to be available.
+            </span>
+          </div>
+
+          <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Verdicts</div>
+          <div style={{ margin: "10px 0 18px", display: "grid", gap: 7, fontSize: 11.5, color: "var(--text-2, var(--dim))", lineHeight: 1.5 }}>
+            <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Leans over/under</b> — {Math.round(LEAN_HI * 100)}%+ on {minGames} or more games, or below {Math.round(LEAN_LO * 100)}% the other way.</span>
+            <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Coin flip</b> — inside {Math.round(LEAN_LO * 100)}–{Math.round(LEAN_HI * 100)}%.</span>
+            <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Too few</b> — under {minGames} games, no rate stated.</span>
+          </div>
+
+          {/* Slate work: which games, in what order. The market chips
               below narrow what is *on* a card; these two decide which cards
               there are at all, which is the rail's job on this screen. */}
           <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Sort games by</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0 18px" }}>
             {SORTS.map((s) => {
               const on = sortBy === s.id;
+              // A sort with nothing to sort on says so instead of returning
+              // an arbitrary order that looks sorted. Kickoff times are not
+              // on the feed rows the board is built from today, so on those
+              // leagues this control would silently fall back to whatever
+              // order the games were grouped in -- which reads exactly like
+              // a working sort and is the more dangerous failure.
+              const usable = s.id !== "kickoff" || kickoffKnown > 0;
               return (
                 <span
                   key={s.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={on}
-                  onClick={() => setSortBy(s.id)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSortBy(s.id); } }}
+                  role={usable ? "button" : undefined}
+                  tabIndex={usable ? 0 : undefined}
+                  aria-pressed={usable ? on : undefined}
+                  aria-disabled={usable ? undefined : true}
+                  title={usable ? undefined : "No kickoff times on this league's props yet"}
+                  onClick={usable ? () => setSortBy(s.id) : undefined}
+                  onKeyDown={usable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSortBy(s.id); } } : undefined}
                   className="pp-mono"
                   style={{
-                    cursor: "pointer", fontSize: 11, letterSpacing: "0.05em",
+                    cursor: usable ? "pointer" : "not-allowed",
+                    fontSize: 11, letterSpacing: "0.05em",
                     borderRadius: 4, padding: "5px 9px",
-                    background: on ? "var(--amber)" : "transparent",
-                    color: on ? "var(--accent-on)" : "var(--text-2, var(--dim))",
-                    border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+                    background: on && usable ? "var(--amber)" : "transparent",
+                    color: !usable ? "var(--dim)" : on ? "var(--accent-on)" : "var(--text-2, var(--dim))",
+                    border: `1px solid ${on && usable ? "var(--amber)" : "var(--line)"}`,
+                    opacity: usable ? 1 : 0.55,
                   }}
                 >
-                  {s.label}
+                  {s.label}{s.id === "kickoff" && !usable ? " · no times" : ""}
                 </span>
               );
             })}
@@ -434,7 +487,9 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                     it can empty the board on three of the four sports --
                     lineupConfirmed is MLB batters only -- and "no props
                     match your markets" would be the wrong thing to fix. */}
-                {rows.length === 0
+                {dataUnavailable
+                  ? "The MLB board isn't wired to its data yet. MLB props are built from a live feed that today only the Prop Feed loads, so this board has nothing real to show for it — and showing another league's props here instead would be worse than showing none. MLB props are on the Prop Feed in the meantime."
+                  : rows.length === 0
                   ? "No props have loaded for this league yet."
                   : lineupFilter !== "all" && grouped.length > 0
                     ? `No games on this slate have ${lineupFilter === "posted" ? "posted lineups" : "projected-only lineups"}. Lineup state is published for MLB batters; the other leagues report none, so this filter finds nothing there. Set Show back to All games.`

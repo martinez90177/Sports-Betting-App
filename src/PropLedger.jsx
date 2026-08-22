@@ -21339,7 +21339,19 @@ export default function PropLedger() {
     if (page !== "board") return [];
     if (boardSport === "nba") return buildNBAFeedRows();
     if (boardSport === "wnba") return buildWNBAFeedRows();
-    return buildNFLFeedRows();
+    if (boardSport === "nfl") return buildNFLFeedRows();
+    // MLB has no branch here on purpose. Its rows come from
+    // buildMLBFeedRows(mlbTeamsData), and that data is fetched inside
+    // PropFeedPage -- this synchronous memo cannot reach it.
+    //
+    // Returning [] rather than falling through to buildNFLFeedRows(), which
+    // is what this did: selecting MLB rendered NFL props (RUSH ATT, REC YDS)
+    // underneath an MLB market rail (Hits, RBIs, Home Runs), and choosing any
+    // MLB market then filtered NFL rows by an MLB marketId and emptied the
+    // board. Wrong data that looks right is worse than none, so the board
+    // states the gap instead. Threading mlbTeamsData up to here is its own
+    // item -- see boardDataUnavailable below.
+    return [];
   }, [page, boardSport, nflDataVersion, wnbaDataVersion, nbaDataVersion]);
 
   const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
@@ -21617,6 +21629,7 @@ export default function PropLedger() {
             disclaimer={BOARD_DISCLAIMER[boardSport] || BOARD_DISCLAIMER.nfl}
             onOpenProp={goToProp}
             onOpenGameProps={(g) => goToGameProps({ ...g, sport: boardSport })}
+            dataUnavailable={boardSport === "mlb"}
           />
         </LazyPane>
       )}
