@@ -728,6 +728,42 @@ function mlbGamecast(feed) {
     return { abbr, cells };
   };
 
+  // Per-player lines, in the same shape espnGamecast returns, so a consumer
+  // can read tonight's production without caring which provider a sport came
+  // from. MLB's feed already carries every batter's and pitcher's counting
+  // stats; this side of the app was reducing them to one leader per category
+  // and discarding the rest.
+  //
+  // Keys are named to match ESPN's (`RBIs`, `homeRuns`) rather than MLB's own
+  // (`rbi`, `homeRuns`), so LIVE_STAT_KEY in GamecastPage needs one mapping
+  // and not one per provider.
+  const boxPlayers = (which) => {
+    const team = live?.boxscore?.teams?.[which];
+    if (!team) return null;
+    const abbr = feed?.gameData?.teams?.[which]?.abbreviation;
+    if (!abbr) return null;
+    const player = (id) => team.players?.[`ID${id}`];
+    const mk = (ids, kind, pick) => {
+      const players = (ids || []).map(player).filter((p) => p?.stats?.[kind]).map((p) => ({
+        name: p.person?.fullName,
+        headshot: p.person?.id ? mlbHeadshot(p.person.id) : null,
+        stats: pick(p.stats[kind]),
+      })).filter((p) => p.name);
+      return players.length ? { type: kind, keys: Object.keys(players[0].stats), labels: [], players } : null;
+    };
+    const groups = [
+      mk(team.batters, "batting", (s) => ({
+        hits: s.hits, runs: s.runs, RBIs: s.rbi, homeRuns: s.homeRuns,
+        walks: s.baseOnBalls, strikeouts: s.strikeOuts, atBats: s.atBats,
+      })),
+      mk(team.pitchers, "pitching", (s) => ({
+        strikeouts: s.strikeOuts, hits: s.hits, earnedRuns: s.earnedRuns,
+        walks: s.baseOnBalls, outs: s.outs,
+      })),
+    ].filter(Boolean);
+    return groups.length ? { teamAbbr: abbr, groups } : null;
+  };
+
   // Leaders: the side's best bat by hits (RBI, then HR, break ties) plus the
   // starter, who is always first in `pitchers`. MLB pre-formats both stat
   // lines as `summary`, so nothing is recomputed here.
@@ -775,8 +811,99 @@ function mlbGamecast(feed) {
     columns,
     rows: [side("away"), side("home")],
     leaders: [boxSide("away"), boxSide("home")].filter(Boolean),
+    boxscore: [boxPlayers("away"), boxPlayers("home")].filter(Boolean),
     decisions: decisions.length ? decisions : null,
   };
+}
+
+// Which stat picks the leader of a boxscore group, and which stats make up
+// the line printed beside their name. Keyed by ESPN's own group `type`.
+//
+// Every entry is a *preference*, not a requirement: a group whose type is not
+// listed, or whose keys have changed, falls through to the first numeric
+// column rather than rendering nothing. The old leaders parse had no such
+// fallback -- it read summary.leaders and printed nothing at all when ESPN
+// omitted the array, which it does on plenty of live games even while the
+// boxscore beside it is fully populated.
+const BOX_LEADER_PREF = {
+  batting: { by: "hits", line: ["hits-atBats", "runs", "RBIs", "homeRuns"] },
+  pitching: { by: "strikeouts", line: ["fullInnings.partInnings", "hits", "earnedRuns", "strikeouts"] },
+  passing: { by: "passingYards", line: ["completions-passingAttempts", "passingYards", "passingTouchdowns", "interceptions"] },
+  rushing: { by: "rushingYards", line: ["rushingAttempts", "rushingYards", "rushingTouchdowns"] },
+  receiving: { by: "receivingYards", line: ["receptions", "receivingYards", "receivingTouchdowns"] },
+};
+
+// ESPN stats arrive as display strings ("0-4", "6.0", ".234", "94-68"). Only
+// the leading number is comparable, and a hyphenated pair like "0-4" must not
+// be read as negative four.
+function boxNumber(v) {
+  if (v == null) return null;
+  const m = String(v).match(/^-?\d+(\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Per-player stat lines out of a boxscore, as { keys, labels, players[] }.
+// Returned alongside the leaders so callers that need the raw numbers -- a
+// live "props in play" read, for instance -- do not have to re-parse the
+// response or settle for the one leader per category the old shape kept.
+function boxscoreSides(summary) {
+  return (summary?.boxscore?.players || []).map((t) => {
+    const groups = (t.statistics || []).map((g) => {
+      const keys = g.keys || [];
+      const labels = g.labels || [];
+      const players = (g.athletes || [])
+        .filter((a) => a?.athlete?.displayName && Array.isArray(a.stats) && a.stats.length)
+        .map((a) => ({
+          name: a.athlete.displayName,
+          headshot: a.athlete.headshot?.href || null,
+          // Keyed by ESPN's machine name so a consumer asks for "hits", not
+          // for column 3, which would silently shift if ESPN reorders.
+          stats: Object.fromEntries(keys.map((k, i) => [k, a.stats[i]])),
+        }));
+      return { type: g.type || g.name || "", keys, labels, players };
+    }).filter((g) => g.players.length);
+    return { teamAbbr: t.team?.abbreviation, groups };
+  }).filter((t) => t.teamAbbr && t.groups.length);
+}
+
+// The Leaders section, derived from the boxscore rather than summary.leaders.
+function boxscoreLeaders(sides) {
+  return sides.map((t) => {
+    const items = t.groups.map((g) => {
+      const pref = BOX_LEADER_PREF[g.type] || {};
+      // The column to rank by: the preferred one when present, otherwise the
+      // first column that actually holds numbers.
+      const byKey = (pref.by && g.keys.includes(pref.by))
+        ? pref.by
+        : g.keys.find((k) => g.players.some((p) => boxNumber(p.stats[k]) != null));
+      if (!byKey) return null;
+      let best = null;
+      g.players.forEach((p) => {
+        const n = boxNumber(p.stats[byKey]);
+        if (n == null) return;
+        if (!best || n > best.n) best = { p, n };
+      });
+      // Nobody has done anything in this category yet -- a game where no one
+      // has a hit. Dropped rather than printed as a leader with nothing.
+      if (!best || best.n <= 0) return null;
+      const lineKeys = (pref.line || g.keys).filter((k) => g.keys.includes(k)).slice(0, 4);
+      const statLine = lineKeys
+        .map((k) => {
+          const label = g.labels[g.keys.indexOf(k)] || k;
+          return `${best.p.stats[k]} ${label}`;
+        })
+        .join(" · ");
+      return {
+        category: g.type ? g.type.replace(/^\w/, (c) => c.toUpperCase()) : "Leaders",
+        name: best.p.name,
+        statLine,
+        headshot: best.p.headshot,
+      };
+    }).filter(Boolean);
+    return items.length ? { teamAbbr: t.teamAbbr, items } : null;
+  }).filter(Boolean);
 }
 
 function espnGamecast(summary) {
@@ -806,7 +933,13 @@ function espnGamecast(summary) {
     return { abbr: c.team?.abbreviation, cells };
   };
 
-  const leaders = (summary?.leaders || []).map((t) => {
+  // Boxscore first, summary.leaders only as a fallback. ESPN omits the
+  // leaders array on plenty of games whose boxscore is fully populated, and
+  // the section used to go blank for exactly those.
+  const sides = boxscoreSides(summary);
+  const fromBox = boxscoreLeaders(sides);
+
+  const legacyLeaders = (summary?.leaders || []).map((t) => {
     const items = (t.leaders || []).map((cat) => {
       // ESPN emits categories with an empty leader list (a game with no sacks,
       // for instance) -- those are dropped rather than rendered blank.
@@ -822,7 +955,15 @@ function espnGamecast(summary) {
     return items.length ? { teamAbbr: t.team?.abbreviation, items } : null;
   }).filter(Boolean);
 
-  return { columns, rows: [side(away), side(home)], leaders, decisions: null };
+  return {
+    columns,
+    rows: [side(away), side(home)],
+    leaders: fromBox.length ? fromBox : legacyLeaders,
+    // The raw per-player lines, for consumers that need the numbers rather
+    // than one leader per category.
+    boxscore: sides,
+    decisions: null,
+  };
 }
 
 // Detail for one opened game. Returns null whenever the provider has nothing

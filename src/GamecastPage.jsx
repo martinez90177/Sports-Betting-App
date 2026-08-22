@@ -220,10 +220,103 @@ function LeaderRow({ item, isLast, sport, team }) {
   );
 }
 
-export default function GamecastPage({ game, isMobile, embedded, onBack, onViewProps }) {
+// Prop market -> the boxscore column that measures it.
+//
+// Only markets a boxscore actually reports are listed. Composites (H+R+RBI)
+// and markets ESPN's boxscore does not carry (total bases, stolen bases) are
+// deliberately absent: a prop this panel cannot follow live is left out of the
+// panel and said so beneath it, rather than being shown with a number derived
+// from something adjacent.
+const LIVE_STAT_KEY = {
+  mlb: { h: "hits", r: "runs", rbi: "RBIs", hr: "homeRuns", bb: "walks", so: "strikeouts" },
+  nfl: { passYds: "passingYards", rushYds: "rushingYards", recYds: "receivingYards", rec: "receptions" },
+  nba: { pts: "points", reb: "rebounds", ast: "assists" },
+  wnba: { pts: "points", reb: "rebounds", ast: "assists" },
+};
+
+function liveNumber(v) {
+  if (v == null) return null;
+  const m = String(v).match(/^-?\d+(\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Tonight's production for a set of props, read off the boxscore.
+//
+// The one rule that makes this panel legitimate: a live figure is *what has
+// happened so far*, not a rate. A player sitting under his line in the third
+// inning has not missed it -- he has four at-bats left -- so an unfinished
+// prop reads neutral, never as a miss. Only a final game turns a shortfall
+// red, because only then is it one.
+// Exported for verification: the neutral-while-live branch only renders while
+// a game is actually in progress, so on a slate that has finished there is no
+// way to exercise it from the page.
+export function buildPropsInPlay(props, boxscore, sport, isFinal) {
+  const keyMap = LIVE_STAT_KEY[sport] || {};
+  const byName = new Map();
+  (boxscore || []).forEach((t) => {
+    t.groups.forEach((g) => {
+      g.players.forEach((p) => {
+        // A player can appear in two groups (a two-way player, a pitcher who
+        // bats). Merge rather than overwrite, so whichever group holds the
+        // market's column is the one that answers.
+        const prev = byName.get(p.name);
+        byName.set(p.name, prev ? { ...prev, stats: { ...prev.stats, ...p.stats } } : { ...p, teamAbbr: t.teamAbbr });
+      });
+    });
+  });
+
+  const rows = [];
+  let untracked = 0;
+  (props || []).forEach((pr) => {
+    const key = keyMap[pr.market];
+    const player = byName.get(pr.name);
+    if (!key || !player) { untracked += 1; return; }
+    const value = liveNumber(player.stats[key]);
+    if (value == null) { untracked += 1; return; }
+    const passed = value > pr.line;
+    rows.push({
+      key: `${pr.name}-${pr.market}`,
+      name: pr.name,
+      teamAbbr: player.teamAbbr,
+      marketLabel: pr.marketLabel,
+      line: pr.line,
+      value,
+      passed,
+      // Settled only at final. Until then "short" is a running total, not an
+      // outcome, and nothing here counts toward a hit rate.
+      settled: !!isFinal,
+      headshot: player.headshot,
+      // The season read this prop arrived with, kept separate from tonight so
+      // the two can never be mistaken for each other.
+      seasonRate: pr.thin ? null : pr.hitRate,
+      seasonSample: pr.gamesCounted,
+      seasonOver: pr.gamesOver,
+    });
+  });
+  rows.sort((a, b) => (b.passed ? 1 : 0) - (a.passed ? 1 : 0) || b.value - a.value);
+  return { rows, untracked };
+}
+
+export default function GamecastPage({ game, isMobile, embedded, onBack, onViewProps, getTopProps }) {
   const [detail, setDetail] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [topProps, setTopProps] = useState(undefined); // undefined = loading, null = unsupported
   const pollRef = useRef(null);
+
+  // The props worth following in this game, from the same source the pre-game
+  // Matchup Overview uses -- handed down as a callback because this file
+  // cannot import PropLedger (it would close an import cycle).
+  useEffect(() => {
+    if (!getTopProps) { setTopProps(null); return undefined; }
+    let cancelled = false;
+    setTopProps(undefined);
+    getTopProps(game.sport, game.away.abbr, game.home.abbr)
+      .then((reads) => { if (!cancelled) setTopProps(reads || []); })
+      .catch(() => { if (!cancelled) setTopProps([]); });
+    return () => { cancelled = true; };
+  }, [getTopProps, game.sport, game.away.abbr, game.home.abbr]);
 
   const active = isActiveStatus(game.status) || game.status === GAME_STATUS.DELAYED;
 
@@ -366,6 +459,75 @@ export default function GamecastPage({ game, isMobile, embedded, onBack, onViewP
             </div>
           </div>
         ) : null}
+
+        {/* Props in play. Tonight's production against the line -- explicitly
+            not a hit rate, which is why the caption says so and why an
+            unfinished prop under its line stays neutral. */}
+        {(() => {
+          if (!detail?.boxscore?.length || topProps === undefined || topProps === null) return null;
+          const isFinal = game.status === GAME_STATUS.FINAL;
+          const { rows, untracked } = buildPropsInPlay(topProps, detail.boxscore, game.sport, isFinal);
+          if (!rows.length) return null;
+          return (
+            <div style={SECTION}>
+              <SectionTitle right={
+                <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.08em", color: "var(--dim)" }}>
+                  {isFinal ? "FINAL" : "SO FAR TONIGHT"}
+                </span>
+              }>
+                Props in play
+              </SectionTitle>
+              <div>
+                {rows.map((r, i) => {
+                  // Filled once past the line. Before that it is an outline in
+                  // neutral ink, not in --neg: the prop has not missed, it
+                  // simply has not got there yet.
+                  const ink = r.passed ? "var(--pos)" : r.settled ? "var(--neg)" : "var(--text-2, var(--dim))";
+                  return (
+                    <div
+                      key={r.key}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr auto" : "minmax(0,1fr) 96px 108px",
+                        gap: 12, alignItems: "center", padding: "11px 16px",
+                        borderTop: i === 0 ? "none" : "1px solid var(--line)",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {r.name}
+                        </div>
+                        <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 2, whiteSpace: "nowrap" }}>
+                          {r.teamAbbr} · over {r.line} {r.marketLabel}
+                        </div>
+                      </div>
+                      <div className="pp-mono tnum" style={{ fontSize: 17, color: ink, textAlign: isMobile ? "right" : "center", whiteSpace: "nowrap" }}>
+                        {r.value}
+                        <span style={{ fontSize: 11, color: "var(--dim)" }}> / {r.line}</span>
+                      </div>
+                      {!isMobile && (
+                        <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", textAlign: "right", whiteSpace: "nowrap" }}>
+                          {/* The season read, kept visibly apart from tonight.
+                              A thin season sample states that rather than
+                              printing a rate under the minimum. */}
+                          {r.seasonRate == null
+                            ? "too few"
+                            : `${Math.round(r.seasonRate * 100)}% · ${r.seasonOver} of ${r.seasonSample}`}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", padding: "10px 16px", borderTop: "1px solid var(--line)", lineHeight: 1.5 }}>
+                {isFinal
+                  ? "Final figures. These games now count toward the hit rates on the right."
+                  : "What has happened so far tonight, not a hit rate — a prop under its line has not missed, it has not got there yet. Nothing here counts toward a hit rate until the game is final."}
+                {untracked > 0 && ` ${untracked} more prop${untracked === 1 ? "" : "s"} on this game can't be followed live — the boxscore doesn't report ${untracked === 1 ? "that market" : "those markets"}.`}
+              </div>
+            </div>
+          );
+        })()}
 
         <div style={{
           display: "grid",
