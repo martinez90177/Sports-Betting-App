@@ -90,7 +90,10 @@
   --accent-on: #08131c;
   --green: #3ecf8e;
   --red: #ef5b5b;
-  --red-dim: rgba(239,91,91,0.14);
+  /* Derived, not a frozen rgba: --red is user-settable now (see
+     display.statusPalette), and a hardcoded dim variant would keep the old
+     hue after the outcome pair changed. Mirrors --pos-dim. */
+  --red-dim: color-mix(in srgb, var(--red) 14%, transparent);
   /* Caution, distinct from both --red (something failed) and --amber (which
      is the *accent*, and is whatever hue the user picked in Settings -- so it
      can't carry a warning meaning). Used for data that loaded fine but is old
@@ -185,7 +188,7 @@
   --focus-ring: 0 0 0 3px var(--amber-dim);
   --green: #1f9d68;
   --red: #d6453f;
-  --red-dim: rgba(214,69,63,0.12);
+  --red-dim: color-mix(in srgb, var(--red) 12%, transparent);
   /* Darker than dark mode's #e0a33e -- that yellow is illegible as text on a
      white panel. */
   --warn: #9a6410;

@@ -127,6 +127,83 @@ function readStored() {
 }
 
 // --------------------------------------------------------------------------
+// Outcome colours
+// --------------------------------------------------------------------------
+// Offered as *pairs*, never as two independent pickers. Two free wheels let
+// someone choose hues fifteen degrees apart and break every graph in the app
+// at once, and a pair can be checked as a pair before it ships. The wheels
+// exist (posColor/negColor) for anyone who needs a specific hue, but they
+// start from a preset rather than from nothing.
+//
+// Availability deliberately does not follow this -- see the status block in
+// index.css. A palette preference must not retint injury status.
+export const STATUS_PALETTES = [
+  { id: "green-red", label: "Green / red", pos: "#3ecf8e", neg: "#ef5b5b", note: "The default." },
+  { id: "blue-orange", label: "Blue / orange", pos: "#4c9ff0", neg: "#e8823a", note: "The usual choice for red-green colour blindness." },
+  { id: "teal-magenta", label: "Teal / magenta", pos: "#2bb8a6", neg: "#d6409f", note: "Furthest apart in hue of the coloured pairs." },
+  { id: "high-contrast", label: "High contrast", pos: "#ffffff", neg: "#7a8291", note: "Maximum separation by lightness rather than hue." },
+  { id: "no-hue", label: "No hue", pos: "#e8ecf2", neg: "#8b98ab", note: "Shape alone: fill cleared, outline fell short." },
+];
+
+export function statusPaletteById(id) {
+  return STATUS_PALETTES.find((p) => p.id === id) || STATUS_PALETTES[0];
+}
+
+// Hue distance in degrees, 0-180. Used only for the collision warning, which
+// names a problem rather than blocking a choice -- fill versus outline still
+// carries cleared/fell-short at any hue, so a close pair is a bad idea and
+// not a broken one.
+function hueOf(hex) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return null;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  // Greys have no hue to compare, so they never collide with anything --
+  // which is exactly why the no-hue and high-contrast presets are safe.
+  //
+  // Measured as HSL *saturation*, not raw channel spread. A raw-delta test
+  // called #8b98ab hued at 217 degrees, near enough to Lapis that picking the
+  // "no hue" preset -- whose entire purpose is having no hue -- warned about
+  // colliding with the accent. A warning that fires on the accessibility
+  // option is worse than no warning, because it teaches people to ignore it.
+  // Two guards, because neither alone is enough. HSL saturation catches a
+  // mid-lightness grey like #8b98ab (raw spread 0.13, saturation 0.16), but
+  // it blows up near white and black where its denominator collapses --
+  // #e8ecf2 has a raw spread of 0.04 and still computes 0.28. Raw chroma
+  // catches that case. Between them, every grey in the presets reads as
+  // hueless and every real colour keeps its hue.
+  const l = (mx + mn) / 2;
+  const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (sat < 0.25 || d < 0.1) return null;
+  let x = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return x * 60;
+}
+
+export function hueGap(a, b) {
+  const ha = hueOf(a), hb = hueOf(b);
+  if (ha == null || hb == null) return null;
+  const d = Math.abs(ha - hb);
+  return Math.min(d, 360 - d);
+}
+
+// The two collisions worth warning about: the outcome pair too close to each
+// other, or the accent too close to either outcome. Returns a sentence naming
+// what is wrong, or null.
+export function paletteWarning(pos, neg, accent) {
+  const pair = hueGap(pos, neg);
+  if (pair != null && pair < 40) {
+    return `Cleared and fell short are ${Math.round(pair)}° apart. They will be hard to tell apart in a graph — fill and outline still separate them, but colour will not.`;
+  }
+  const toPos = hueGap(accent, pos);
+  const toNeg = hueGap(accent, neg);
+  const near = toPos != null && toPos < 25 ? "cleared" : toNeg != null && toNeg < 25 ? "fell short" : null;
+  if (near) {
+    return `Your accent is close to the ${near} colour. The accent means "selected", so a selected control could read as an outcome.`;
+  }
+  return null;
+}
+
+// --------------------------------------------------------------------------
 // First-run state
 // --------------------------------------------------------------------------
 // Separate from propPalaceSettings on purpose: this is not a preference, it
@@ -323,6 +400,31 @@ export function SettingsProvider({ children }) {
     if (accentColor) root.style.setProperty("--accent-color", accentColor);
     else root.style.removeProperty("--accent-color");
   }, [accentColor]);
+
+  // Outcome colours. Written as --green/--red rather than --pos/--neg because
+  // those are what index.css derives from: --pos, --neg, --pos-dim and
+  // --pos-solid all resolve through them, so one write re-tints every bar,
+  // rate cell and caption together and none of them can drift apart.
+  //
+  // Only ever *set* when the user has moved away from the default pair, so
+  // the stylesheet's own per-theme values keep working -- light mode's green
+  // is a deeper #1f9d68 than dark's, and hardcoding the dark hex here would
+  // flatten that distinction for everyone who never opened this control.
+  const { statusPalette, posColor, negColor } = settings.display;
+  useEffect(() => {
+    const root = document.documentElement;
+    const preset = statusPaletteById(statusPalette);
+    const pos = posColor || preset.pos;
+    const neg = negColor || preset.neg;
+    const isDefault = statusPalette === STATUS_PALETTES[0].id && !posColor && !negColor;
+    if (isDefault) {
+      root.style.removeProperty("--green");
+      root.style.removeProperty("--red");
+    } else {
+      root.style.setProperty("--green", pos);
+      root.style.setProperty("--red", neg);
+    }
+  }, [statusPalette, posColor, negColor]);
 
   // Keeps --accent-on (the label colour for text on a solid accent fill)
   // matched to whatever --amber actually resolved to. Reads the *resolved*

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { useSettings } from "./settings.jsx";
+import { useSettings, STATUS_PALETTES, statusPaletteById, paletteWarning } from "./settings.jsx";
 import { useOverlay } from "./useOverlay.js";
 import { formatOdds } from "./odds.js";
 
@@ -279,8 +279,8 @@ function DisplaySection({ settings, isNarrow }) {
         <SectionTitle>What the accent touches</SectionTitle>
         <div style={{ fontSize: 13, color: "var(--text-2, var(--dim))", lineHeight: 1.65 }}>
           Active tabs, buttons, links and the wordmark. It never colours a hit
-          rate — cleared and missed stay green and red at every accent, so
-          the data reads the same whichever colour you pick.
+          rate — cleared and fell short have their own pair, set below, and
+          the accent does not touch them at any hue.
         </div>
         <AccentTouchesExample />
       </div>
@@ -343,7 +343,122 @@ function DisplaySection({ settings, isNarrow }) {
           </select>
         </Field>
       </div>
+
+      <OutcomeColours settings={settings} isNarrow={isNarrow} />
     </>
+  );
+}
+
+// Cleared and fell short, user-settable independently of the accent.
+//
+// Chosen as *pairs* rather than two free pickers, because two independent
+// wheels let someone land on hues fifteen degrees apart and break every graph
+// in the app at once. The wheels are here for anyone who needs a particular
+// hue, but they start from a preset rather than from nothing, and the warning
+// below names a collision instead of blocking it -- fill versus outline still
+// carries the meaning at any hue, so a close pair is a bad idea, not a broken
+// one.
+function OutcomeColours({ settings, isNarrow }) {
+  const { statusPalette, posColor, negColor, accentColor } = settings.display;
+  const set = (k, v) => settings.set("display", k, v);
+  const preset = statusPaletteById(statusPalette);
+  const pos = posColor || preset.pos;
+  const neg = negColor || preset.neg;
+  const accent = accentColor || "#3b5bdb";
+  const warning = paletteWarning(pos, neg, accent);
+  const custom = !!(posColor || negColor);
+
+  return (
+    <div style={{ borderTop: "1px solid var(--line)", marginTop: 30, paddingTop: 22 }}>
+      <SectionTitle>Outcome colours</SectionTitle>
+      <div style={{ fontSize: 13, color: "var(--text-2, var(--dim))", lineHeight: 1.65, marginBottom: 16 }}>
+        What a cleared game and a game that fell short look like on every graph
+        and rate in the app. Availability is deliberately not affected — a
+        player&rsquo;s injury status keeps its own colours whatever you pick here.
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: 10 }}>
+        {STATUS_PALETTES.map((p) => {
+          const active = p.id === statusPalette && !custom;
+          return (
+            <div
+              key={p.id}
+              role="button"
+              tabIndex={0}
+              aria-pressed={active}
+              onClick={() => { set("statusPalette", p.id); set("posColor", null); set("negColor", null); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); set("statusPalette", p.id); set("posColor", null); set("negColor", null); } }}
+              className="pp-touch"
+              style={{
+                cursor: "pointer", gap: 12, padding: "10px 12px", boxSizing: "border-box",
+                background: active ? "var(--amber-dim)" : "transparent",
+                border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
+                borderRadius: "var(--r-sm)",
+              }}
+            >
+              {/* The pair shown the way the graph draws it: the cleared side
+                  filled, the fell-short side outlined. A reader picking a
+                  palette should see the actual device, not two dots. */}
+              <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                <span style={{ width: 9, height: 18, background: p.pos, borderRadius: 2 }} />
+                <span style={{ width: 9, height: 18, border: `1.5px solid ${p.neg}`, borderRadius: 2, boxSizing: "border-box" }} />
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 13.5 }}>{p.label}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--dim)", lineHeight: 1.45 }}>{p.note}</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {warning && (
+        <div
+          className="pp-mono"
+          style={{
+            marginTop: 14, padding: "10px 12px", fontSize: 11.5, lineHeight: 1.55,
+            color: "var(--warn)", border: "1px solid var(--warn)", borderRadius: "var(--r-sm)",
+          }}
+        >
+          {warning}
+        </div>
+      )}
+
+      {/* Opt-in, and below the presets on purpose: someone who wants a
+          specific hue starts from a pair that already works rather than from
+          two blank wheels. */}
+      <details style={{ marginTop: 16 }}>
+        <summary className="pp-mono" style={{ cursor: "pointer", fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>
+          Pick exact colours
+        </summary>
+        <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: 24, marginTop: 16 }}>
+          <div>
+            <SectionTitle>Cleared</SectionTitle>
+            <React.Suspense fallback={<div style={{ minHeight: 220 }} />}>
+              <ColorWheel value={pos} onChange={(v) => set("posColor", v)} isDefault={!posColor} />
+            </React.Suspense>
+          </div>
+          <div>
+            <SectionTitle>Fell short</SectionTitle>
+            <React.Suspense fallback={<div style={{ minHeight: 220 }} />}>
+              <ColorWheel value={neg} onChange={(v) => set("negColor", v)} isDefault={!negColor} />
+            </React.Suspense>
+          </div>
+        </div>
+      </details>
+
+      {(custom || statusPalette !== STATUS_PALETTES[0].id) && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { set("statusPalette", STATUS_PALETTES[0].id); set("posColor", null); set("negColor", null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { set("statusPalette", STATUS_PALETTES[0].id); set("posColor", null); set("negColor", null); } }}
+          style={{ marginTop: 14, fontSize: 11.5, color: "var(--dim)", cursor: "pointer", textDecoration: "underline" }}
+        >
+          Reset to green / red
+        </div>
+      )}
+    </div>
   );
 }
 
