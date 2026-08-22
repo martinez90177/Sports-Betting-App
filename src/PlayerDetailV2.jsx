@@ -2,6 +2,7 @@ import React from "react";
 import { feedFormScale } from "./FormGraph.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { mutedTeamColor, matchupTones } from "./lib/teamColors.js";
+import MatchupCardModal, { straightRunOf } from "./MatchupCardModal.jsx";
 
 // A transcription of `design_handoff_proppalace_v2/Player Detail <SPORT> v2.dc.html`.
 //
@@ -157,6 +158,11 @@ export default function PlayerDetailV2({
   // it becomes the trigger rather than the page growing a region the mock
   // does not have. Falls back to the text when a page has no slate to offer.
   crumbFixture, crumbSelect, marketLabel, onBack, onWatch, watching,
+  // The extra facts the Matchup Card needs and the page's other props cannot
+  // supply: a 72px avatar and the availability word. Everything else on the
+  // card is derived from `player`/`band`/`context`/`verdict`/`chart`, so it
+  // cannot disagree with the page underneath it.
+  card,
   ownRail, oppRail,
   band,
   context,
@@ -170,6 +176,8 @@ export default function PlayerDetailV2({
     ? matchupTones(sport, band.away.abbr, band.home.abbr)
     : { away: "var(--dim)", home: "var(--dim)" };
 
+  const [cardOpen, setCardOpen] = React.useState(false);
+
   return (
     <div style={{ width: "100%", maxWidth: 1600, margin: "0 auto", background: "var(--bg)", color: "var(--text)" }}>
 
@@ -180,6 +188,19 @@ export default function PlayerDetailV2({
           style={{ ...crumb, color: "var(--text-2)", cursor: "pointer" }}
         >
           ← Prop feed
+        </span>
+        {/* The Matchup Card file adds exactly this button to the breadcrumb,
+            20px after the back link, and it is the only thing that opens the
+            modal. */}
+        <span
+          role="button" tabIndex={0} onClick={() => setCardOpen(true)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCardOpen(true); } }}
+          style={{
+            ...crumb, marginLeft: 20, color: "var(--text-2)", cursor: "pointer",
+            border: "1px solid var(--line)", borderRadius: 4, padding: "6px 12px",
+          }}
+        >
+          Matchup card
         </span>
         <span style={{ ...crumb, margin: "0 auto", color: "var(--dim)" }}>
           {crumbSelect || crumbFixture} · <span style={{ color: "var(--text)" }}>{marketLabel}</span>
@@ -457,6 +478,23 @@ export default function PlayerDetailV2({
           </div>
         </div>
       </div>
+
+      {/* Last in the tree, exactly where the Matchup Card file puts it: after
+          the grid closes, guarded by its own open state. */}
+      <MatchupCardModal
+        open={cardOpen}
+        onClose={() => setCardOpen(false)}
+        sport={sport}
+        player={player}
+        card={card || {}}
+        band={band}
+        context={context}
+        verdict={verdict}
+        chart={chart}
+        marketLabel={marketLabel}
+        onAddPick={onAddPick}
+        pickAdded={pickAdded}
+      />
     </div>
   );
 }
@@ -465,7 +503,7 @@ export default function PlayerDetailV2({
 // bar foot, a 26px opponent disc under the axis, and the line tag hanging in a
 // 52px right gutter. No column band -- removed from all five mocks.
 function GameByGame({
-  sport, games = [], line, isBinary, direction = "over", straightRun = 0,
+  sport, games = [], line, isBinary, direction = "over",
   marketLine, onDragLine, adjusted, draggable,
 }) {
   // Non-null only while a drag is in progress -- see startDrag.
@@ -489,6 +527,7 @@ function GameByGame({
   // than a jump.
   const posLine = rawLine != null ? rawLine : line;
   const lineY = Math.max(1, Math.min(H - 1, scale.y(posLine)));
+  const straightRun = straightRunOf(games, line, direction);
 
   const startDrag = (e) => {
     if (!canDrag) return;
@@ -523,7 +562,11 @@ function GameByGame({
         <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
           oldest to newest · bar height is the number
         </span>
-        {straightRun > 0 && (
+        {/* Derived here rather than passed in. Every page was handing this a
+            hard 0, so the mock's own caption had never once rendered -- and it
+            is a fact about the games already on screen, which is exactly the
+            kind of thing the chart should be reading for itself. */}
+        {straightRun > 1 && (
           <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
             {straightRun} straight {direction === "under" ? "under" : "over"}
           </span>

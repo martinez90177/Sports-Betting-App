@@ -2577,6 +2577,18 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       onBack={onBack || (() => {})}
       onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
       watching={isPagePickAdded}
+      card={{
+        positionShort: player.pos,
+        teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
+        status: null,
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="nba" team={player.team}
+            colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(player.espnId)}
+            surface="var(--surface-sunken)" size={72} inset={3} fadeIn
+          />
+        ),
+      }}
       ownRail={{
         label: v2OwnRoster.label,
         players: v2Rail(v2OwnRoster),
@@ -2660,7 +2672,6 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
-        straightRun: 0,
       }}
       footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
@@ -7880,6 +7891,18 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       onBack={onBack || (() => {})}
       onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
       watching={isPagePickAdded}
+      card={{
+        positionShort: player.pos,
+        teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
+        status: null,
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="nfl" team={player.team}
+            colorMap={NFL_TEAM_COLORS} headshotSrc={nflHeadshot(player)}
+            surface="var(--surface-sunken)" size={72} inset={3} fadeIn
+          />
+        ),
+      }}
       ownRail={{
         label: v2OwnRoster.label,
         players: v2Rail(v2OwnRoster),
@@ -7967,7 +7990,6 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
-        straightRun: 0,
       }}
       footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
@@ -10378,6 +10400,21 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       onBack={onBack || (() => {})}
       onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
       watching={isPagePickAdded}
+      card={{
+        positionShort: player.pos,
+        teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
+        status: statusOf(player) && STATUS[statusOf(player)]
+          ? { word: STATUS[statusOf(player)].label, color: STATUS[statusOf(player)].dot }
+          : null,
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="wnba" team={player.team}
+            colorMap={WNBA_TEAM_COLORS} headshotSrc={wnbaHeadshot(player.espnId)}
+            status={statusOf(player)}
+            surface="var(--surface-sunken)" size={72} inset={3} fadeIn
+          />
+        ),
+      }}
       ownRail={{
         label: v2OwnRoster.label,
         players: v2Rail(v2OwnRoster),
@@ -10461,7 +10498,6 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
-        straightRun: 0,
       }}
       footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
@@ -15420,6 +15456,21 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       onBack={onBack || (() => {})}
       onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
       watching={isPagePickAdded}
+      card={{
+        positionShort: player.pos,
+        teamAbbr,
+        status: mlbStatusOf(player) && STATUS[mlbStatusOf(player)]
+          ? { word: STATUS[mlbStatusOf(player)].label, color: STATUS[mlbStatusOf(player)].dot }
+          : null,
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="mlb" team={player.team}
+            colorMap={MLB_TEAM_COLORS} headshotSrc={mlbHeadshot(player.mlbId)}
+            fallbackSrc={mlbEspnHeadshot(player.id)} status={mlbStatusOf(player)}
+            surface="var(--surface-sunken)" size={72} inset={3} fadeIn
+          />
+        ),
+      }}
       ownRail={{
         label: (liveTeamRoster || {}).label,
         players: railPlayers(liveTeamRoster, "team"),
@@ -15503,7 +15554,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         games: chartData.map((d) => ({ v: d.value, opp: d.opp, date: axisDateShort(d.date), po: d.playoff })),
         line: liveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: lineIsAdjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
-        straightRun: 0,
       }}
       footerNote={`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
