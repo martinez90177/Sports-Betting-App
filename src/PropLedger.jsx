@@ -15476,6 +15476,32 @@ function feedRateColor(v) {
   return "var(--text-2, var(--text))";
 }
 
+// The matchup in one word, for the feed's proposition line. Three things
+// have to be right at once and each of them inverts something:
+//
+//   * **The number runs backwards to the word.** Rank #1 is the *toughest*
+//     defence for this market, not the best matchup (see FEED_SORT_MODES).
+//   * **The cut is per league.** Thirds of the actual league, not defTier's
+//     fixed 10/21: rank 21 does not exist in a 15-team WNBA, so that cut can
+//     never call a WNBA matchup easy. feedTeamCount already holds the real
+//     denominators -- 32 NFL, 30 MLB, 30 NBA, 15 WNBA.
+//   * **It flips with the side.** A defence that suppresses a stat is hard
+//     to go over and easy to go under -- the same inversion
+//     flipFeedRowToUnder applies to matchupScore.
+//
+// Not read off `r.tier`: the feed builders never set it, so it is undefined
+// on every feed row and flipFeedRowToUnder's inversion of it collapses to
+// "mid" for all unders.
+function feedMatchupRead(rank, sport, direction) {
+  if (rank == null) return null;
+  const teams = feedTeamCount(sport);
+  if (!teams) return null;
+  const third = teams / 3;
+  const forOver = rank <= third ? "tough" : rank > teams - third ? "easy" : "mid";
+  if (direction !== "under") return forOver;
+  return forOver === "tough" ? "easy" : forOver === "easy" ? "tough" : "mid";
+}
+
 // `active` marks the cell whose window matches the Games counted control --
 // the design fills exactly that one with --surface-2 and a --line border and
 // leaves the other three transparent, so the column the reader chose is
@@ -16009,15 +16035,32 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           <span style={{ whiteSpace: "nowrap" }}>OPP RANK</span>
           <span
             className="mono"
-            title={`#${r.rank} in ${r.rankLabel}`}
+            title={`#${r.rank} of ${feedTeamCount(sport)} in ${r.rankLabel}`}
             style={{
               display: "inline-block", padding: "1px 6px", borderRadius: 4,
               fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
               background: tierBg, color: tierFg, border: tierBorder,
+              whiteSpace: "nowrap",
             }}
           >
-            #{r.rank}
+            {/* The denominator is per league and stated, not implied. "#27"
+                 alone means nothing until you know whether the league has 32
+                 teams or 15 -- and rank is per *market*, so a defence can be
+                 #27 against receptions and #6 against rush yards. */}
+            #{r.rank} of {feedTeamCount(sport)}
           </span>
+          {(() => {
+            const read = feedMatchupRead(r.rank, sport, direction);
+            if (!read) return null;
+            return (
+              <span
+                title={`${read === "easy" ? "A soft" : read === "tough" ? "A tough" : "A middling"} matchup for this market, on this side`}
+                style={{ whiteSpace: "nowrap", color: "var(--text-2, var(--dim))" }}
+              >
+                {read}
+              </span>
+            );
+          })()}
         </>
       )}
       {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
@@ -18031,11 +18074,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
   // their default, so the trigger itself communicates whether there's
   // anything non-default hiding back there before the user opens it.
+  //
+  // Counted against the *store's* defaults, not page-local literals. The
+  // window and side are seeded from Settings > Betting, so for someone whose
+  // saved default is L20/Under, a feed sitting on L20/Under is not filtered
+  // at all -- and a badge saying "2" there would be counting their own
+  // preferences back at them as though they had narrowed something. The
+  // controls with no setting behind them keep their literal defaults.
   const feedActiveFilterCount =
     (sortMode !== "matchup" ? 1 : 0) +
     (oddsMinX !== 4 || oddsMaxX !== 96 ? 1 : 0) +
     (rankLo !== 1 || rankHi !== maxRank ? 1 : 0) +
-    (sport === "mlb" && postedLineupsOnly ? 1 : 0);
+    (sport === "mlb" && postedLineupsOnly ? 1 : 0) +
+    (sampleWindow !== bettingDefaults.sampleWindow ? 1 : 0) +
+    (direction !== bettingDefaults.lean ? 1 : 0);
 
   // Removable readout of what's actually narrowing the feed right now --
   // reads straight off feedFilters/live state rather than duplicating it, so
@@ -18050,11 +18102,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       onRemove: () => setSelectedMarkets([]),
     });
   }
-  if (sampleWindow !== "l10") {
+  // Against the user's own default, not a literal "l10": someone whose saved
+  // window is L20 was getting a chip saying they had narrowed something the
+  // moment the feed opened on their own preference, and its x reset them to
+  // a window they had never chosen.
+  if (sampleWindow !== bettingDefaults.sampleWindow) {
     activeFilterChips.push({
       key: "window",
       label: sampleWindow === "all" ? "ALL GAMES" : `LAST ${sampleWindow.replace("l", "")}`,
-      onRemove: () => setSampleWindow("l10"),
+      onRemove: () => setSampleWindow(bettingDefaults.sampleWindow),
     });
   }
   if (showMatchupDropdown && selectedGameIds.size > 0) {
@@ -18084,6 +18140,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       onRemove: () => { setRankLo(1); setRankHi(maxRank); },
     });
   }
+
+  // What an empty feed should blame. The chips above are already the honest
+  // readout of what is narrowing the list, so the empty state names them
+  // rather than saying "no props match these filters" and leaving the reader
+  // to guess which of eight controls to undo -- the same rule the board's
+  // lineup filter follows. Controls that live only inside the Filters panel
+  // have no chip, so they are pointed at rather than listed.
+  const emptyStateNames = activeFilterChips.map((c) => c.label);
 
   const activeSortMode = FEED_SORT_MODES.find((mo) => mo.id === sortMode);
 
@@ -19011,6 +19075,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               ? "Loading live MLB matchup data…"
               : rows.length === 0 && finishedTeams.size > 0
               ? "Every game on today's slate has finished. Tomorrow's board arrives once the new slate is posted."
+              : emptyStateNames.length
+              ? `No props match ${emptyStateNames.length === 1 ? "this filter" : "these filters"}: ${emptyStateNames.join(" · ")}. Remove one to widen the feed.`
+              : feedActiveFilterCount > 0
+              ? `No props match the current filters. ${feedActiveFilterCount} ${feedActiveFilterCount === 1 ? "control is" : "controls are"} away from your defaults inside the Filters panel.`
               : "No props match these filters yet."}
           </div>
         )}
