@@ -433,13 +433,27 @@ function GameByGame({
   sport, games = [], line, isBinary, direction = "over", straightRun = 0,
   marketLine, onDragLine, adjusted, draggable,
 }) {
+  // Non-null only while a drag is in progress -- see startDrag.
+  const [rawLine, setRawLine] = React.useState(null);
   if (!games.length || line == null) return null;
   const H = 224, GUT = 52, MIN_COL = 26;
   const recent = games.map((g) => ({ v: g.v }));
   const scale = feedFormScale(recent, line, isBinary, { height: H, pedestal: 0 });
   const hit = (v) => (direction === "under" ? v < line : v > line);
-  const lineY = Math.max(1, Math.min(H - 1, scale.y(line)));
   const canDrag = draggable && !isBinary && marketLine != null && typeof onDragLine === "function";
+
+  // The handle glides, the value snaps.
+  //
+  // Snapping the *position* to whole steps made the tag jump between rungs and
+  // feel stuck to a ratchet. `rawLine` is the unsnapped position under the
+  // cursor and is what the tag and its rule are drawn at, so the handle tracks
+  // the pointer exactly; the number reported to the page is still snapped to
+  // the nearest increment, so every rate on screen only ever reflects a real
+  // half-value. On release rawLine clears and the tag settles onto the rung it
+  // chose, with a short transition so the settle reads as a landing rather
+  // than a jump.
+  const posLine = rawLine != null ? rawLine : line;
+  const lineY = Math.max(1, Math.min(H - 1, scale.y(posLine)));
 
   const startDrag = (e) => {
     if (!canDrag) return;
@@ -448,12 +462,21 @@ function GameByGame({
     const startY = e.clientY, startVal = line;
     const maxSteps = Math.floor((dragMax - marketLine) / step);
     const minSteps = Math.ceil((0.25 - marketLine) / step);
+    // The same limits the snap uses, expressed as values, so the free-moving
+    // handle cannot glide past the range its snapped value is clamped to.
+    const loVal = marketLine + minSteps * step;
+    const hiVal = marketLine + maxSteps * step;
     const move = (ev) => {
       const raw = startVal + (startY - ev.clientY) / unit;
+      setRawLine(Math.min(hiVal, Math.max(loVal, raw)));
       const steps = Math.min(maxSteps, Math.max(minSteps, Math.round((raw - marketLine) / step)));
       onDragLine(marketLine + steps * step);
     };
-    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+    const up = () => {
+      setRawLine(null);
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   };
@@ -493,18 +516,34 @@ function GameByGame({
                 </div>
               );
             })}
-            <span style={{ position: "absolute", left: 0, right: -GUT, bottom: lineY, borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink)" : "var(--text)"}`, pointerEvents: "none" }} />
+            {/* The rule stops at the plot's right edge instead of running the
+                full gutter. It used to extend under the tag, which was hidden
+                only because the tag is a solid fill -- the moment the tag went
+                outlined for an off-market line, the dashes crossed straight
+                through the number. */}
+            <span style={{
+              position: "absolute", left: 0, right: 0, bottom: lineY,
+              borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink)" : "var(--text)"}`,
+              pointerEvents: "none",
+              transition: rawLine == null ? "bottom 120ms ease-out" : "none",
+            }} />
             <span
               onMouseDown={canDrag ? startDrag : undefined}
               onDoubleClick={canDrag && adjusted ? () => onDragLine(null) : undefined}
               title={canDrag ? "Drag to test a different line · double-click to reset" : undefined}
               style={{
                 position: "absolute", right: -GUT, bottom: lineY, transform: "translateY(50%)",
-                background: adjusted ? "transparent" : "var(--amber)",
+                // Opaque either way. An outlined-but-transparent tag let the
+                // dashed rule show through the digits.
+                background: adjusted ? "var(--surface-1)" : "var(--amber)",
                 color: adjusted ? "var(--amber-ink)" : "#ffffff",
                 border: `1px solid ${adjusted ? "var(--amber-ink)" : "var(--amber)"}`,
                 borderRadius: 3, padding: "3px 7px", fontFamily: MONO, fontSize: 11,
-                fontVariantNumeric: "tabular-nums", cursor: canDrag ? "ns-resize" : "default", userSelect: "none",
+                fontVariantNumeric: "tabular-nums", cursor: canDrag ? "ns-resize" : "default",
+                userSelect: "none", touchAction: "none",
+                // No transition mid-drag: the handle must sit exactly under the
+                // cursor. It only eases on release, to settle onto the rung.
+                transition: rawLine == null ? "bottom 120ms ease-out" : "none",
               }}
             >
               {line}
