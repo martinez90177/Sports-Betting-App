@@ -77,12 +77,16 @@
   --amber-glow: color-mix(in srgb, var(--amber) 28%, transparent);
   --amber-ring: color-mix(in srgb, var(--amber) 35%, transparent);
   --amber-strong: color-mix(in srgb, var(--amber) 85%, black);
-  /* Text-on-dark-surface variant of the accent. Any hue reads fine
-     directly on the near-black dark surfaces, so this is just an
-     alias -- it exists so component code can use one token
-     (--amber-ink) that resolves differently per theme (see the
-     light block below, where a pale accent needs help). */
-  --amber-ink: var(--amber);
+  /* Text-on-dark-surface variant of the accent. It used to be a plain
+     alias for --amber, on the theory that any hue reads fine on
+     near-black. It doesn't: the default lapis #3b5bdb as *text* on
+     #0a0b0d is dark blue on black, which is why the v2 mocks draw
+     accent text at #8fa6ff -- the same hue lifted well clear of the
+     background. Derived from --amber rather than frozen at that hex so
+     it still tracks whatever accent the colour wheel is set to.
+     Every --accent-text call site already carried #8fa6ff as its
+     literal fallback, so this makes the token agree with them. */
+  --amber-ink: color-mix(in oklab, var(--amber) 58%, #ffffff);
   --focus-ring: 0 0 0 3px var(--amber-dim);
   /* Label colour for text on a solid --amber fill. Recomputed in JS
      from the resolved accent (see accentForeground); this is just the
@@ -537,6 +541,30 @@ select.select {
 }
 select.select:hover { border-color: var(--amber); }
 select.select:focus, select.select:focus-visible {
+  outline: none;
+  border-color: var(--amber);
+  box-shadow: var(--focus-ring);
+}
+
+/* The search field. Every rule above is scoped to the `select` *element*
+   (`select.select`), so the global search input -- an <input> wearing
+   className="select" -- matched none of them and rendered as a raw white
+   browser box on a near-black page. It went unnoticed while it sat in the old
+   header; the v2 mocks put it in the centre title block on Prop Feed and
+   Games, where it is the only control in that row.
+   Same panel/line/ink as select.select so the two read as one family. */
+input.pp-search {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 7px 12px;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-family: inherit;
+}
+input.pp-search::placeholder { color: var(--dim); }
+input.pp-search:hover { border-color: var(--amber); }
+input.pp-search:focus, input.pp-search:focus-visible {
   outline: none;
   border-color: var(--amber);
   box-shadow: var(--focus-ring);

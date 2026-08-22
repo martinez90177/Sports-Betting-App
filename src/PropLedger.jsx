@@ -19,6 +19,7 @@ import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import PalaceMark from "./PalaceMark.jsx";
+import NavBar, { NAV_TABS } from "./NavBar.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
@@ -20113,79 +20114,9 @@ function MatchupPanel({ title, opponentAbbr, opponentLogo, lines, loading }) {
   );
 }
 
-// Single lightweight dropdown for the top-level page nav (Prop Feed / NFL /
-// MLB / NBA / WNBA / News) -- replaces the old horizontal-scroll tab strip
-// so the header stays a fixed, light-weight control on mobile regardless of
-// how many pages exist, instead of growing a longer scrollable row. Routing
-// stays exactly the same: it's just `page`/`setPage` behind a closed menu.
-function PageNavDropdown({ page, setPage, options }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = React.useRef(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onDocPointerDown = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocPointerDown);
-    return () => document.removeEventListener("mousedown", onDocPointerDown);
-  }, [open]);
-
-  const active = options.find((p) => p.id === page) || options[0];
-
-  return (
-    <div ref={rootRef} style={{ position: "relative", display: "inline-block" }}>
-      <div
-        onClick={() => setOpen((v) => !v)}
-        role="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="oswald cta-btn"
-        style={{
-          cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8,
-          padding: "8px 14px", borderRadius: 4, fontSize: 13, fontWeight: 600,
-          letterSpacing: "0.03em",
-          border: "1px solid var(--amber)",
-          background: "var(--amber-dim)", color: "var(--amber)",
-        }}
-      >
-        {active.label}
-        <span style={{ fontSize: 9, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s ease" }}>▾</span>
-      </div>
-      {open && (
-        <div
-          role="listbox"
-          style={{
-            position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100,
-            minWidth: 180, background: "var(--panel)", border: "1px solid var(--line)",
-            borderRadius: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.35)", overflow: "hidden",
-          }}
-        >
-          {options.map((p) => (
-            <div
-              key={p.id}
-              role="option"
-              aria-selected={p.id === page}
-              onClick={() => { setPage(p.id); setOpen(false); }}
-              className="oswald"
-              style={{
-                cursor: "pointer", padding: "10px 14px", fontSize: 13, fontWeight: 600,
-                letterSpacing: "0.03em", whiteSpace: "nowrap",
-                background: p.id === page ? "var(--amber-dim)" : "transparent",
-                color: p.id === page ? "var(--amber)" : "var(--dim)",
-              }}
-            >
-              {p.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Global player/team search, rendered once in the header (next to
-// PageNavDropdown) so it's identical on every page instead of duplicated
+// Global player/team search. The v2 mocks put it in the centre title block on
+// Prop Feed and Games, and nowhere else; it used to sit in the header beside a
+// page dropdown that no longer exists. One component either way, so it's identical on every page instead of duplicated
 // per sport. `index` is the flat [{key, sport, sportLabel, label, playerId,
 // market, searchText}] list built once in PropLedger (see searchIndex) --
 // this component only filters/renders it. Picking a result reuses the same
@@ -20223,7 +20154,7 @@ function SearchBar({ index, onSelect, onOpen }) {
         onFocus={() => { setOpen(true); onOpen?.(); }}
         placeholder="Search players or teams…"
         aria-label="Search players or teams"
-        className="select"
+        className="pp-search"
         style={{ width: "min(260px, 46vw)", cursor: "text" }}
       />
       {open && q && (
@@ -21540,6 +21471,12 @@ const PAGES = [
 // wordmark click, which is the one thing the first-run flag exists to stop.
 const PAGE_IDS = new Set(PAGES.filter((p) => p.id !== "landing").map((p) => p.id));
 
+// Who gets the nav bar. The four sport player pages and Landing render their
+// own top row (a breadcrumb and a FIRST VISIT lockup respectively), so giving
+// them this one too would put two lockups on one screen. Derived from NAV_TABS
+// so the set and the row it describes cannot drift apart.
+const NAV_PAGES = new Set(NAV_TABS.map((t) => t.id));
+
 export default function PropLedger() {
   // Read before the page state below, which seeds off it. Safe: PropLedger is
   // rendered inside SettingsProvider (see main.jsx).
@@ -22104,84 +22041,42 @@ export default function PropLedger() {
   };
 
   return (
+    // The v2 container. Every mock wraps the nav *and* the content in one
+    // max-width:1600px element, which is why the logo lines up with the left
+    // rail rather than sitting out at the window edge. The app used to run a
+    // full-bleed header over capped content, so the two never aligned.
     <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
+      <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
-      {/* Header */}
-      <div style={{ borderBottom: "1px solid var(--line)", padding: "16px", background: "linear-gradient(to bottom, rgba(255,255,255,0.015), transparent)" }}>
-        {/* Wordmark + tagline on the left, Settings gear pinned to the right
-             edge of the same row. The gear used to be position:fixed at
-             z-index 4000 so it floated over the player cards for the whole
-             scroll; it's now an ordinary header control that scrolls away
-             with everything else. Nothing else relied on that top layer --
-             every drawer/sheet (2100/3000/3501) simply covers it now, which
-             is the correct reading for a header button. */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", minWidth: 0 }}>
-            {/* The three-bar mark takes var(--amber) rather than a fixed brand
-                 hex so the wordmark tracks whatever accent the user picks in
-                 the color wheel -- it can't clash with their accent because it
-                 is their accent. clamp() covers phone through desktop in one
-                 declaration instead of a breakpoint ternary. */}
-            <h1
-              className="pp-display"
-              onClick={goHome}
-              role="button"
-              tabIndex={0}
-              aria-label="Go to start page"
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } }}
-              style={{
-                fontSize: "clamp(18px, 4vw, 24px)", fontWeight: 600, letterSpacing: "0.06em",
-                margin: 0, color: "var(--text)", display: "flex", alignItems: "center", gap: 10,
-                whiteSpace: "nowrap", cursor: "pointer",
-                // The box grows to the touch floor on a phone; the type does
-                // not. This is a real navigation control -- it goes to the
-                // start page -- and a 24px tall lockup is a 24px tall target.
-                minHeight: "var(--tap, 24px)",
-              }}
-            >
-              {/* The palace mark (see PalaceMark.jsx). Replaces the three
-                  ascending lapis bars that stood here. Its mast and pennant
-                  overflow above the towers, which the header has room for --
-                  don't wrap this in anything that clips. */}
-              <PalaceMark />
-              <span>PROP PALACE</span>
-            </h1>
-            {/* Hidden on a phone: it wrapped to two lines directly under the
-                wordmark, and a tagline is not worth 45px of a 812px screen
-                above the controls. */}
-            <span className="hide-narrow" style={{ color: "var(--dim)", fontSize: 13 }}>your own hit-rate research, before you place it</span>
-          </div>
-          <div
-            onClick={() => setSettingsOpen((v) => !v)}
-            role="button"
-            aria-label="Toggle Settings panel"
-            title="Settings"
-            style={{
-              flexShrink: 0,
-              width: 36, height: 36, borderRadius: 8, cursor: "pointer",
-              // Grows to the touch floor on a phone; stays a compact 36px
-              // square on a pointer device, where it does not need 44.
-              minWidth: "var(--tap, 36px)", minHeight: "var(--tap, 36px)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              border: "1px solid var(--line)", background: "var(--panel2)", color: "var(--dim)", fontSize: 18,
-            }}
-          >
-            ⚙
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <PageNavDropdown
-            page={page}
-            setPage={setPage}
-            options={PAGES}
-          />
-          {/* Global search -- same on every page (see SearchBar), reuses
-               goToProp for navigation so picking a result works exactly like
-               clicking "View Chart" on a Prop Feed row. */}
+      {/* The v2 nav (see NavBar.jsx). The `Page ▾` dropdown and the
+          "your own hit-rate research" tagline that stood here are gone:
+          neither appears in any v2 mock, the tagline included -- Landing
+          draws a FIRST VISIT pill in that slot instead, not a strapline.
+
+          Player Detail gets no nav. Its mock opens on a breadcrumb because it
+          is a drill-down reached from the feed, and the four sport pages
+          already render one. Landing draws its own (screen 5 rebuilds it). */}
+      {NAV_PAGES.has(page) && (
+        <NavBar
+          page={page}
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+        />
+      )}
+
+      {/* Search, on the two screens whose mocks actually draw one: Prop Feed
+          and Games both carry it inside their centre title block, and the
+          Board and News mocks carry none at all -- which is why it is no
+          longer in the header on every page.
+
+          It sits here rather than in those title blocks only until screens 3
+          and 4 rebuild them; then it moves inside and this block goes. */}
+      {(page === "feed" || page === "games") && (
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 32px 0" }}>
           <SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />
         </div>
-      </div>
-
+      )}
       {page === "nba" && (
         <NBAPropsPage
           dataVersion={nbaDataVersion}
@@ -22270,6 +22165,9 @@ export default function PropLedger() {
           />
         </LazyPane>
       )}
+
+      </div>{/* /max-width container -- the overlays below are fixed-position
+                 furniture and sit outside it */}
 
       <MyPicksPanel
         picks={myPicks}
