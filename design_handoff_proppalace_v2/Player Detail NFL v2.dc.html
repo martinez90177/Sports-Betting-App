@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+  body { margin:0; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#8fa6ff; text-decoration:none; }
+  a:hover { color:#e8ecf2; }
+  input[type="range"]::-webkit-slider-runnable-track { height:22px; background:transparent; }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; width:16px; height:16px; margin-top:3px;
+    border-radius:999px; background:#e8ecf2; border:3px solid #3b5bdb; cursor:grab;
+  }
+  input[type="range"]::-webkit-slider-thumb:active { cursor:grabbing; }
+  input[type="range"]::-moz-range-track { height:22px; background:transparent; }
+  input[type="range"]::-moz-range-thumb {
+    width:16px; height:16px; border-radius:999px; background:#e8ecf2;
+    border:3px solid #3b5bdb; cursor:grab;
+  }
+</style>
+</helmet>
+<div style="width:100%; min-width:1280px; max-width:1600px; margin:0 auto; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif;">
+
+  <div style="display:flex; align-items:center; padding:16px 32px; border-bottom:1px solid #2b2f36;">
+    <a href="./PropPalace Prop Feed.dc.html" style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#aab2c0;">← Prop feed</a>
+    <span style="margin:0 auto; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">Rams @ Seahawks · Sun 4:05 PM · <span style="color:#e8ecf2;">{{ marketLabel }}</span></span>
+    <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff;">+ Watch</span>
+  </div>
+
+  <div style="display:grid; grid-template-columns:196px minmax(0, 1fr) 196px; gap:20px; padding:20px 32px 40px; align-items:start;">
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Los Angeles Rams</div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+        <sc-for list="{{ rams }}" as="p" hint-placeholder-count="4">
+          <div onClick="{{ p.pick }}" style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:6px; cursor:pointer; background:{{ p.bg }}; border:1px solid {{ p.border }};">
+            <span style="position:relative; flex:none; width:32px; height:32px;">
+              <span style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:999px; background:#191c21; border:2px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab;">{{ p.initials }}</span>
+              <span style="position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border-radius:999px; border:2px solid {{ p.dotRing }}; background:{{ p.dotFill }}; box-sizing:border-box;"></span>
+            </span>
+            <div style="min-width:0;">
+              <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</div>
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:3px;">{{ p.meta }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:14px; line-height:1.6;">Solid dot: lineup posted. Hollow: projected. No dot: unknown — never assumed.</div>
+    </div>
+
+    <div>
+      <div style="display:flex; align-items:stretch; background:#131519; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+        <div style="display:flex; align-items:center; gap:14px; padding:16px 20px; border-top:3px solid #4a6fd4; flex:1;">
+          <span style="display:flex; align-items:center; justify-content:center; flex:none; width:64px; height:64px; border-radius:6px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:15px; letter-spacing:0.08em; color:#4a6fd4;">LAR</span>
+          <div>
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Away · 6–3</div>
+            <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:22px; margin-top:5px;">Los Angeles Rams</div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:16px 24px; background:#0d0f12; border-left:1px solid #2b2f36; border-right:1px solid #2b2f36;">
+          <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Sun Nov 16</span>
+          <span style="font-family:'Space Mono', monospace; font-size:17px; color:#e8ecf2; font-variant-numeric:tabular-nums;">4:05 PM</span>
+          <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab;">Lumen Field</span>
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:14px; padding:16px 20px; border-top:3px solid #2b6b4a; flex:1;">
+          <div style="text-align:right;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Home · 5–4</div>
+            <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:22px; margin-top:5px;">Seattle Seahawks</div>
+          </div>
+          <span style="display:flex; align-items:center; justify-content:center; flex:none; width:64px; height:64px; border-radius:6px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:15px; letter-spacing:0.08em; color:#2f9d63;">SEA</span>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:0; margin-top:12px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+        <div style="flex:1.1; min-width:0; padding:12px 18px;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">SEA allows</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ defAllowed }}</div>
+        </div>
+        <div style="flex:1; min-width:0; padding:12px 18px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Matchup</div>
+          <div style="display:flex; align-items:baseline; gap:8px; margin-top:6px; white-space:nowrap;">
+            <span style="font-family:'Space Mono', monospace; font-size:15px; font-variant-numeric:tabular-nums;">{{ defRank }}</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:{{ defColor }};">{{ defWord }}</span>
+          </div>
+        </div>
+        <div style="flex:1.3; min-width:0; padding:12px 18px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Last meeting</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ lastMeeting }}</div>
+        </div>
+        <div style="flex:1.3; min-width:0; padding:12px 18px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Weather</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Indoors · roof closed</div>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:stretch; gap:0; margin-top:12px; background:#131519; border:1px solid #2b2f36; border-left:3px solid #4a6fd4; border-radius:6px; overflow:hidden;">
+        <div style="display:flex; align-items:center; gap:20px; padding:20px 24px; flex:1; min-width:0;">
+          <span style="position:relative; flex:none; width:104px; height:104px;">
+            <image-slot id="pd2-headshot" shape="circle" style="width:104px; height:104px;"></image-slot>
+            <span style="position:absolute; right:3px; bottom:3px; width:16px; height:16px; border-radius:999px; background:#2faa72; border:3px solid #131519;"></span>
+          </span>
+          <div style="min-width:330px;">
+            <div style="display:flex; align-items:baseline; gap:12px;">
+              <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:46px; line-height:1; letter-spacing:-0.025em;">Puka Nacua</span>
+              <span style="font-family:'Space Mono', monospace; font-size:24px; color:#4a6fd4; font-variant-numeric:tabular-nums;">12</span>
+            </div>
+            <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color:#aab2c0; margin-top:10px;">Los Angeles Rams · wide receiver · 2026</div>
+            <div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:14px;">
+              <span style="display:flex; align-items:center; gap:6px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#2faa72; border:1px solid #2b6b4a; border-radius:999px; padding:4px 10px; white-space:nowrap;"><span style="width:6px; height:6px; border-radius:999px; background:#2faa72;"></span>Lineup posted</span>
+              <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; border:1px solid #2b2f36; border-radius:999px; padding:4px 10px; white-space:nowrap;">Snaps <span style="color:#e8ecf2;">89%</span></span>
+              <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; border:1px solid #2b2f36; border-radius:999px; padding:4px 10px; white-space:nowrap;">Routes <span style="color:#e8ecf2;">92%</span></span>
+              <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; border:1px solid #2b2f36; border-radius:999px; padding:4px 10px; white-space:nowrap;">Target share <span style="color:#e8ecf2;">26%</span> · 1st on team</span>
+              <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; border:1px solid #2b2f36; border-radius:999px; padding:4px 10px; white-space:nowrap;">aDOT <span style="color:#e8ecf2;">9.4</span></span>
+            </div>
+            <div style="font-size:13.5px; line-height:1.6; color:#aab2c0; margin-top:12px; max-width:52ch; text-wrap:pretty;">Full practice all week. Usage has held since Week 4 — no game under 80% of routes, so the sample below isn't measuring a smaller role than tonight's.</div>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:0; flex:none; background:#0d0f12; border-left:1px solid #2b2f36;">
+          <sc-for list="{{ seasonStats }}" as="st" hint-placeholder-count="3">
+            <div style="text-align:center; padding:20px 14px; min-width:58px;">
+              <div style="font-family:'Space Mono', monospace; font-size:24px; line-height:1; font-variant-numeric:tabular-nums;">{{ st.value }}</div>
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; margin-top:8px; white-space:nowrap;">{{ st.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:flex-end; gap:26px; margin-top:20px; border-bottom:1px solid #2b2f36;">
+        <sc-for list="{{ markets }}" as="m" hint-placeholder-count="5">
+          <span onClick="{{ m.pick }}" style="font-size:15px; padding-bottom:11px; cursor:pointer; color:{{ m.fg }}; border-bottom:2px solid {{ m.rule }}; margin-bottom:-1px;">{{ m.label }}</span>
+        </sc-for>
+        <span onClick="{{ toggleFilters }}" style="margin-left:auto; margin-bottom:8px; display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; border-radius:4px; padding:7px 12px; cursor:pointer; color:{{ filterFg }}; background:{{ filterBg }}; border:1px solid {{ filterBorder }};">Filters<span style="font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab;">{{ filterSummary }}</span></span>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:24px; padding:20px 0;">
+        <div style="display:flex; align-items:baseline; gap:12px;">
+          <span style="font-family:'Space Mono', monospace; font-size:40px; line-height:1; font-variant-numeric:tabular-nums; color:{{ rateColor }};">{{ rate }}</span>
+          <span style="font-size:15px; color:#aab2c0;">{{ verdictSentence }}</span>
+        </div>
+        <div style="margin-left:auto; display:flex; gap:28px;">
+          <div style="text-align:right;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Average</div>
+            <div style="font-family:'Space Mono', monospace; font-size:20px; margin-top:6px; font-variant-numeric:tabular-nums;">{{ average }}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Line</div>
+            <div style="font-family:'Space Mono', monospace; font-size:20px; margin-top:6px; font-variant-numeric:tabular-nums;">{{ line }}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Clears it by</div>
+            <div style="font-family:'Space Mono', monospace; font-size:20px; margin-top:6px; font-variant-numeric:tabular-nums; color:{{ marginColor }};">{{ margin }}</div>
+          </div>
+        </div>
+        <span style="flex:none; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:11px 14px;">{{ sampleVerdict }}</span>
+      </div>
+
+      <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; padding:16px 20px 16px;">
+        <div style="display:flex; align-items:baseline; gap:12px; padding-bottom:14px; margin-bottom:4px; border-bottom:1px solid #2b2f36;">
+          <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:18px;">Game by game</span>
+          <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab;">oldest to newest · bar height is the number</span>
+          <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff;">{{ streakCaption }}</span>
+        </div>
+        <div style="position:relative; padding-right:52px;">
+          <div style="position:relative; display:flex; align-items:stretch; gap:6px; height:224px;">
+            <sc-for list="{{ bars }}" as="b" hint-placeholder-count="9">
+              <div style="flex:1; display:flex; flex-direction:column; justify-content:flex-end; background:{{ b.band }}; border-radius:4px 4px 0 0;">
+                <div style="display:flex; align-items:flex-end; justify-content:center; height:{{ b.h }}px; border-radius:3px 3px 0 0; background:{{ b.bg }}; border:{{ b.border }}; box-sizing:border-box; padding-bottom:8px;">
+                  <span style="font-family:'Space Mono', monospace; font-size:14px; font-variant-numeric:tabular-nums; color:{{ b.labelColor }};">{{ b.value }}</span>
+                </div>
+              </div>
+            </sc-for>
+            <span style="position:absolute; left:0; right:-52px; bottom:{{ lineY }}px; border-top:1.5px dashed #e8ecf2;"></span>
+            <span style="position:absolute; right:-52px; bottom:{{ lineY }}px; transform:translateY(50%); background:#3b5bdb; color:#ffffff; border-radius:3px; padding:3px 7px; font-family:'Space Mono', monospace; font-size:11px; font-variant-numeric:tabular-nums;">{{ line }}</span>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:10px; padding-top:12px; border-top:1px solid #2b2f36;">
+            <sc-for list="{{ bars }}" as="b" hint-placeholder-count="9">
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:5px;">
+                <span style="display:block; width:26px; height:26px; border-radius:999px; background:{{ b.oppTint }}; border:1.5px solid {{ b.oppColor }};"></span>
+                <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.06em; color:{{ b.oppColor }};">{{ b.opp }}</span>
+                <span style="font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab;">{{ b.date }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <sc-if value="{{ filtersOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:16px; padding:16px 20px; background:#0d0f12; border:1px solid #3b5bdb; border-radius:6px;">
+          <div style="display:flex; align-items:baseline; gap:12px; padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid #2b2f36;">
+            <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px;">Filters</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">rates read the full log</span>
+            <span onClick="{{ resetFilters }}" style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">Reset</span>
+            <span onClick="{{ toggleFilters }}" style="font-family:'Space Mono', monospace; font-size:14px; color:#aab2c0; cursor:pointer;">×</span>
+          </div>
+          <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; margin-bottom:9px;">Window</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <sc-for list="{{ splits }}" as="sp" hint-placeholder-count="7">
+            <div onClick="{{ sp.pick }}" style="text-align:center; padding:9px 14px; border-radius:6px; cursor:pointer; background:{{ sp.bg }}; border:1px solid {{ sp.border }};">
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ sp.label }}</div>
+              <div style="font-family:'Space Mono', monospace; font-size:18px; margin-top:7px; font-variant-numeric:tabular-nums; color:{{ sp.color }};">{{ sp.value }}</div>
+              <div style="font-family:'Space Mono', monospace; font-size:10.5px; color:#8b98ab; margin-top:4px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ sp.sample }}</div>
+            </div>
+          </sc-for>
+          <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; font-variant-numeric:tabular-nums; white-space:nowrap;">Games in graph · {{ gamesInGraph }}</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:14px; margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+          <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Sample size</span>
+          <div style="position:relative; flex:1; height:22px; display:flex; align-items:center;">
+            <span style="position:absolute; left:0; right:0; height:4px; border-radius:999px; background:#2b2f36;"></span>
+            <span style="position:absolute; left:0; height:4px; border-radius:999px; width:{{ sliderFill }}; background:#3b5bdb;"></span>
+            <input type="range" min="1" max="{{ sliderMax }}" step="1" value="{{ sliderValue }}" onChange="{{ onSlide }}" onInput="{{ onSlide }}" style="position:relative; width:100%; margin:0; height:22px; background:transparent; cursor:pointer; appearance:none; -webkit-appearance:none;" />
+          </div>
+          <span style="font-family:'Space Mono', monospace; font-size:13px; color:#8fa6ff; font-variant-numeric:tabular-nums; white-space:nowrap; min-width:76px; text-align:right;">{{ sliderLabel }}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin:6px 90px 0 96px;">
+          <sc-for list="{{ sliderStops }}" as="st" hint-placeholder-count="4">
+            <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ st }}</span>
+          </sc-for>
+        </div>
+        <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; color:#8b98ab; margin-top:10px; line-height:1.5;">{{ scopeNote }}</div>
+
+        <div style="margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+          <div style="display:flex; align-items:baseline; gap:12px;">
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Lineup</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab;">tap once to require · twice to exclude</span>
+            <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0;">{{ rosterCount }}</span>
+          </div>
+          <div style="display:flex; align-items:stretch; gap:8px; margin-top:10px;">
+            <span onClick="{{ pageBack }}" style="flex:none; width:26px; display:flex; align-items:center; justify-content:center; border:1px solid #2b2f36; border-radius:6px; cursor:pointer; font-family:'Space Mono', monospace; font-size:13px; color:{{ backFg }};">‹</span>
+            <div style="display:flex; gap:8px; flex:1;">
+              <sc-for list="{{ rosterTiles }}" as="p" hint-placeholder-count="4">
+                <span onClick="{{ p.cycle }}" title="{{ p.name }}" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 8px; border-radius:6px; cursor:pointer; background:{{ p.bg }}; border:1px solid {{ p.border }};">
+                  <span style="display:flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:999px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; color:#8b98ab;">{{ p.initials }}</span>
+                  <span style="font-size:12.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; color:{{ p.fg }};">{{ p.short }}</span>
+                  <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; font-variant-numeric:tabular-nums; color:{{ p.stateColor }};">{{ p.state }}</span>
+                  <span style="font-family:'Space Mono', monospace; font-size:8.5px; letter-spacing:0.12em; text-transform:uppercase; color:{{ p.sub }};">{{ p.side }}</span>
+                </span>
+              </sc-for>
+            </div>
+            <span onClick="{{ pageFwd }}" style="flex:none; width:26px; display:flex; align-items:center; justify-content:center; border:1px solid #2b2f36; border-radius:6px; cursor:pointer; font-family:'Space Mono', monospace; font-size:13px; color:{{ fwdFg }};">›</span>
+          </div>
+        </div>
+        </div>
+      </sc-if>
+
+      <div style="display:flex; align-items:center; gap:20px; margin-top:16px;">
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.05em; color:#8b98ab; line-height:1.6;">2026 regular season · 17 games. Counts finished games only — no live or projected numbers. Not a live odds feed.</span>
+        <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#ffffff; background:#3b5bdb; border-radius:4px; padding:14px 20px;">+ Add to my picks</span>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Seattle Seahawks</div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+        <sc-for list="{{ seahawks }}" as="p" hint-placeholder-count="3">
+          <div style="display:flex; align-items:center; gap:10px; padding:10px; border-radius:6px; border:1px solid #2b2f36;">
+            <span style="position:relative; flex:none; width:32px; height:32px;">
+              <span style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:999px; background:#191c21; border:2px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab;">{{ p.initials }}</span>
+              <span style="position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border-radius:999px; border:2px solid {{ p.dotRing }}; background:{{ p.dotFill }}; box-sizing:border-box;"></span>
+            </span>
+            <div style="min-width:0;">
+              <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</div>
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:3px;">{{ p.meta }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36;">
+        <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Reading the graph</div>
+        <div style="display:flex; flex-direction:column; gap:9px; margin-top:12px;">
+          <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#aab2c0;"><span style="width:8px; height:16px; background:#2faa72; border-radius:2px;"></span>cleared the line</span>
+          <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#aab2c0;"><span style="width:8px; height:16px; border:1.5px solid #ef5b5b; border-radius:2px; box-sizing:border-box;"></span>fell short</span>
+          <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#aab2c0;"><span style="width:16px; border-top:1.5px dashed #e8ecf2;"></span>the line</span>
+        </div>
+        <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:14px; line-height:1.6;">Bar height is the actual number, so a blowout doesn't read like a squeaker.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900}}">
+const OPPS = [
+  { opp:'SEA', date:'Sep 14', home:true },
+  { opp:'ARI', date:'Sep 21', home:false },
+  { opp:'SF', date:'Sep 28', home:true },
+  { opp:'TB', date:'Oct 5', home:false },
+  { opp:'NO', date:'Oct 12', home:true },
+  { opp:'MIN', date:'Oct 19', home:false },
+  { opp:'DAL', date:'Oct 26', home:true },
+  { opp:'CAR', date:'Nov 2', home:false },
+  { opp:'PHI', date:'Nov 9', home:true },
+  { opp:'SF', date:'Nov 16', home:false },
+  { opp:'ARI', date:'Nov 23', home:true },
+  { opp:'TB', date:'Nov 30', home:false },
+  { opp:'NO', date:'Dec 7', home:true },
+  { opp:'MIN', date:'Dec 14', home:false },
+  { opp:'DAL', date:'Dec 21', home:true },
+  { opp:'SEA', date:'Dec 28', home:false },
+  { opp:'SEA', date:'Sep 14', home:true },
+];
+
+const MARKETS = [
+  { label:'Receptions',  line:5.5,  unitLabel:'rec',  g:[8,5,6,6,11,4,8,6,5,6,8,4,5,7,11,5,9] },
+  { label:'Rec yards',   line:68.5, unitLabel:'yds',  g:[96,44,86,71,128,53,81,63,98,60,94,39,74,88,115,67,98] },
+  { label:'Longest rec', line:20.5, unitLabel:'yds',  g:[24,17,29,19,46,11,29,18,31,18,29,12,20,26,42,18,26] },
+  { label:'Targets',     line:8.5,  unitLabel:'tgt',  g:[7,8,8,8,12,6,9,6,7,7,10,6,7,9,13,6,8] },
+  { label:'TDs',         line:0.5,  unitLabel:'td',   g:[1,1,0,0,3,0,2,0,0,2,0,1,0,0,3,0,2] },
+];
+
+const RAMS = [
+  { initials:'PN', name:'Puka Nacua',      meta:'WR · 6.1 rec',   status:'posted' },
+  { initials:'KW', name:'Kyren Williams',  meta:'RB · 68.4 yds',  status:'posted', absent:[3,4,5,11] },
+  { initials:'MS', name:'Matthew Stafford',meta:'QB · 241.7 yds', status:'projected', absent:[10] },
+  { initials:'CP', name:'Colby Parkinson', meta:'TE · 2.4 rec',   status:'unknown', absent:[0,1,2,6,7] },
+];
+
+const SEAHAWKS = [
+  { initials:'JS', name:'Smith-Njigba', meta:'WR · 5.2 rec',   status:'posted', absent:[7,8,12] },
+  { initials:'KW', name:'Kenneth Walker',meta:'RB · 61.8 yds', status:'projected', absent:[2,9] },
+  { initials:'SD', name:'Sam Darnold',   meta:'QB · 219.4 yds',status:'posted', absent:[14] },
+];
+
+// Muted team identity colours for the axis crests. Deliberately desaturated so a
+// red-ish or green-ish club colour can't be mistaken for a bar's cleared/fell-short
+// state a few pixels above it.
+const TEAM = {
+  SEA:'#3f8f6a', ARI:'#a5555f', SF:'#a8635c', TB:'#a05a52', NO:'#8f7f5e',
+  MIN:'#7565a8', DAL:'#6d84ab', CAR:'#4f87ab', PHI:'#4a7d72',
+};
+
+function dot(status) {
+  if (status === 'posted') return { dotFill:'#2faa72', dotRing:'#0a0b0d' };
+  if (status === 'projected') return { dotFill:'transparent', dotRing:'#8b98ab' };
+  return { dotFill:'transparent', dotRing:'transparent' };
+}
+
+class Component extends DCLogic {
+  state = { market:'Receptions', player:'Puka Nacua', window:0, scope:'all', card:true,
+            filtersOpen:false, players:{}, rosterPage:0 };
+
+  // neutral → with → without → neutral
+  cyclePlayer(name) {
+    return () => this.setState(s => {
+      const next = Object.assign({}, s.players);
+      const cur = next[name];
+      if (!cur) next[name] = 'with';
+      else if (cur === 'with') next[name] = 'without';
+      else delete next[name];
+      return { players: next };
+    });
+  }
+
+  pageRoster(d) {
+    return () => this.setState(s => ({ rosterPage: Math.max(0, s.rosterPage + d) }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const m = MARKETS.find(x => x.label === s.market) || MARKETS[0];
+    const line = m.line;
+    const OPPONENT = 'SEA';
+
+    // Which games the graph is showing. Scope picks the pool (all / home / road /
+    // head-to-head), window trims it to the most recent N. Rates in the selector
+    // below always read from the FULL log so the buttons can't move each other.
+    // how many controls sit away from their default — shown on the Filters button
+    const ROSTER = RAMS.filter(p => p.name !== 'Puka Nacua');
+    const OPPROSTER = SEAHAWKS;
+    const activeFilters = (s.scope !== 'all' ? 1 : 0) + (s.window !== 0 ? 1 : 0)
+      + Object.keys(s.players).length;
+    const pool = m.g.map((v, i) => ({ v, i })).filter(o => {
+      const g = OPPS[o.i];
+      if (s.scope === 'home' && !g.home) return false;
+      if (s.scope === 'road' && g.home) return false;
+      if (s.scope === 'h2h' && g.opp !== OPPONENT) return false;
+      // with = that player played this game; without = he missed it
+      const names = Object.keys(s.players);
+      for (let k = 0; k < names.length; k++) {
+        const p = ROSTER.concat(OPPROSTER).find(x => x.name === names[k]);
+        if (!p) continue;
+        const missed = (p.absent || []).indexOf(o.i) !== -1;
+        if (s.players[names[k]] === 'without' && !missed) return false;
+        if (s.players[names[k]] === 'with' && missed) return false;
+      }
+      return true;
+    });
+    const shown = s.window > 0 ? pool.slice(-s.window) : pool;
+    const vals = shown.map(o => o.v);
+
+    const hits = vals.map(v => v > line);
+    const count = hits.filter(Boolean).length;
+    const pct = vals.length ? Math.round((count / vals.length) * 100) : 0;
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+
+    // windowed axis, same model as the feed: frames the data, not zero
+    const H = 224, PEDESTAL = 30;
+    const lo0 = Math.min(Math.min.apply(null, vals.concat(line)), line);
+    const hi0 = Math.max(Math.max.apply(null, vals.concat(line)), line);
+    const pad = Math.max((hi0 - lo0) * 0.16, 0.6);
+    const axisMin = lo0 - pad, span = (hi0 + pad) - axisMin;
+    const y = v => PEDESTAL + Math.round(((v - axisMin) / span) * (H - PEDESTAL));
+    // the matchup card plots the same window in a shorter box
+    const H2 = 96, PEDESTAL2 = 12;
+    const y2 = v => PEDESTAL2 + Math.round(((v - axisMin) / span) * (H2 - PEDESTAL2));
+
+    const band = p => (p >= 60 ? '#2faa72' : p <= 45 ? '#ef5b5b' : '#e8ecf2');
+    const rateOf = idx => {
+      const sub = idx.map(i => m.g[i]);
+      const c = sub.filter(v => v > line).length;
+      return { c, n: sub.length, pct: sub.length ? Math.round((c / sub.length) * 100) : 0 };
+    };
+    const all = m.g.map((_, i) => i);
+    const home = all.filter(i => OPPS[i].home);
+    const road = all.filter(i => !OPPS[i].home);
+    const h2h = all.filter(i => OPPS[i].opp === OPPONENT);
+
+    // Every button reads the full log; picking one only changes what the graph shows.
+    const selector = (label, idx, apply, active) => {
+      const r = rateOf(idx);
+      const thin = r.n < 3;
+      return {
+        label,
+        value: thin ? (r.n ? 'too few' : '—') : r.pct + '%',
+        sample: r.n === 1 ? '1 game' : r.n ? r.c + ' of ' + r.n : 'none',
+        color: thin ? '#aab2c0' : band(r.pct),
+        pick: apply,
+        bg: active ? '#191c21' : 'transparent',
+        border: active ? '#3b5bdb' : 'transparent',
+      };
+    };
+    const winActive = n => s.scope === 'all' && s.window === n;
+    // A NFL season is 17 games, so the slider steps through named stops
+    // rather than one game at a time — a single-game step is invisible at this length.
+    const STOPS = [5, 10, 17].filter(n => n <= m.g.length);
+
+    const decimals = v => (Math.round(v * 10) / 10).toFixed(1);
+
+    const TEAMS = 32;
+    // Opponent defence rank, 1 = stingiest of TEAMS. A high rank is a soft matchup.
+    // Colour rides the words, not a fill, so it can't be mistaken for a bar's
+    // cleared/fell-short state.
+    const DEF = { 'Receptions':24, 'Rec yards':22, 'Longest rec':17, 'Targets':9, 'TDs':4 };
+    const rank = DEF[m.label];
+    const defRead = rank >= 22 ? { word:'soft', color:'#2faa72' }
+      : rank <= 10 ? { word:'tough', color:'#ef5b5b' }
+      : { word:'middling', color:'#aab2c0' };
+    const avgOf = label => {
+      const mk = MARKETS.find(x => x.label === label);
+      return decimals(mk.g.reduce((a, b) => a + b, 0) / mk.g.length);
+    };
+
+    return {
+      marketLabel: m.label,
+      cardOpen: s.card,
+      openCard: () => this.setState({ card: true }),
+      closeCard: () => this.setState({ card: false }),
+      cardProp: m.label.toUpperCase() + ' OVER ' + line.toFixed(1),
+      cardHomeAway: 'Away',
+      h2hOpp: OPPONENT,
+      h2hCount: (function () {
+        const games = m.g.filter((_, i) => OPPS[i].opp === OPPONENT);
+        const c = games.filter(v => v > line).length;
+        return games.length ? c + ' of ' + games.length : 'none';
+      })(),
+      defRank: '#' + rank + ' of ' + TEAMS,
+      defWord: defRead.word,
+      defColor: defRead.color,
+      lastMeeting: m.g[0] + ' ' + m.unitLabel + ' · Sep 14 ’26',
+      defAllowed: m.label === 'Receptions' ? '6.8 rec/g'
+        : m.label === 'Rec yards' ? '82.4 yds/g'
+        : m.label === 'Longest rec' ? '24.1 yds'
+        : m.label === 'Targets' ? '9.6 tgt/g' : '0.7 td/g',
+      markets: MARKETS.map(x => ({
+        label: x.label,
+        pick: () => this.setState({ market: x.label }),
+        fg: x.label === s.market ? '#e8ecf2' : '#aab2c0',
+        rule: x.label === s.market ? '#3b5bdb' : 'transparent',
+      })),
+
+      // Every stat with a market log on this page averages that same log, so the
+      // header can never disagree with the graph beneath it. Only snap %, which has
+      // no log behind it, stays literal.
+      // Snap % moved to a chip beside the name, so the stat block stops competing
+      // with the player's name for width.
+      seasonStats: [
+        { label:'rec/g', value:avgOf('Receptions') },
+        { label:'tgt/g', value:avgOf('Targets') },
+        { label:'yds/g', value:avgOf('Rec yards') },
+      ],
+
+      streakCaption: (function () {
+        if (!hits.length) return '';
+        let run = 1;
+        for (let i = hits.length - 2; i >= 0 && hits[i] === hits[hits.length - 1]; i--) run++;
+        return run + (hits[hits.length - 1] ? ' straight over' : ' straight under');
+      })(),
+      rate: pct + '%',
+      rateColor: band(pct),
+      verdictSentence: s.scope === 'h2h'
+        ? 'cleared ' + line + ' in ' + count + ' of ' + vals.length + ' meetings with ' + OPPONENT
+        : 'cleared ' + line + ' in ' + count + ' of ' + vals.length + (s.window > 0 ? ' recent games' : ' games'),
+      average: decimals(avg),
+      line: line.toFixed(1),
+      margin: (avg - line >= 0 ? '+' : '') + decimals(avg - line),
+      // measured against the line the user is researching, so green/red is the
+      // same cleared/fell-short meaning the bars carry
+      marginColor: avg > line ? '#2faa72' : '#ef5b5b',
+      sampleVerdict: vals.length < 10 ? 'Fair sample · ' + vals.length + ' games' : vals.length + ' games',
+
+      bars: shown.map((o, k) => {
+        const v = o.v, i = o.i;
+        const cleared = v > line;
+        return {
+          value: v,
+          h: y(v),
+          cardH: y2(v),
+          opp: OPPS[i].opp,
+          date: OPPS[i].date,
+          bg: cleared ? '#2faa72' : 'transparent',
+          border: cleared ? 'none' : '1.5px solid #ef5b5b',
+          labelColor: cleared ? '#0a0b0d' : '#ef5b5b',
+          band: k % 2 === 0 ? '#101318' : 'transparent',
+          oppColor: TEAM[OPPS[i].opp] || '#8b98ab',
+          oppTint: (TEAM[OPPS[i].opp] || '#8b98ab') + '26',
+        };
+      }),
+      lineY: y(line),
+      cardLineY: y2(line),
+
+      splits: STOPS.slice(0, -1).map(n => selector('L' + n, all.slice(-n),
+        () => this.setState({ scope:'all', window:n }), winActive(n))).concat([
+        selector('Season', all, () => this.setState({ scope:'all', window:0 }), winActive(0)),
+        selector('At home', home, () => this.setState({ scope:'home', window:0 }), s.scope === 'home'),
+        selector('On road', road, () => this.setState({ scope:'road', window:0 }), s.scope === 'road'),
+        selector('H2H · ' + OPPONENT, h2h, () => this.setState({ scope:'h2h', window:0 }), s.scope === 'h2h'),
+      ]),
+      gamesInGraph: vals.length + ' of ' + m.g.length,
+      filtersOpen: s.filtersOpen,
+      toggleFilters: () => this.setState(st => ({ filtersOpen: !st.filtersOpen })),
+      resetFilters: () => this.setState({ window: 0, scope: 'all', players: {}, rosterPage: 0 }),
+      rosterTiles: (function () {
+        const all = ROSTER.concat(OPPROSTER);
+        const page = all.slice(s.rosterPage * 4, s.rosterPage * 4 + 4);
+        const base = m.g.reduce((a, b) => a + b, 0) / m.g.length;
+        return page.map(p => {
+          const st = s.players[p.name];
+          const played = m.g.filter((_, i) => (p.absent || []).indexOf(i) === -1);
+          const withAvg = played.length ? played.reduce((a, b) => a + b, 0) / played.length : base;
+          const d = Math.round((withAvg - base) * 10) / 10;
+          const parts = p.name.split(' ');
+          return {
+            name: p.name,
+            short: parts.length > 1 ? parts[0][0] + '. ' + parts.slice(1).join(' ') : p.name,
+            initials: p.initials,
+            side: OPPROSTER.indexOf(p) > -1 ? 'OPP' : 'TEAM',
+            state: st === 'with' ? 'with' : st === 'without' ? 'w/o' : (d >= 0 ? '+' : '') + d.toFixed(1),
+            stateColor: st ? '#0a0b0d' : d >= 0 ? '#2faa72' : '#ef5b5b',
+            cycle: this.cyclePlayer(p.name),
+            bg: st === 'with' ? '#2faa72' : st === 'without' ? '#c9515b' : '#131519',
+            fg: st ? '#0a0b0d' : '#e8ecf2',
+            sub: st ? '#0a0b0d' : '#8b98ab',
+            border: st === 'with' ? '#2faa72' : st === 'without' ? '#c9515b' : '#2b2f36',
+            slotId: 'pd-face-' + p.initials + '-' + (OPPROSTER.indexOf(p) > -1 ? 'o' : 't'),
+          };
+        });
+      }).call(this),
+      pageBack: this.pageRoster(-1),
+      pageFwd: this.pageRoster(1),
+      backFg: s.rosterPage > 0 ? '#aab2c0' : '#3a4048',
+      fwdFg: (s.rosterPage + 1) * 4 < ROSTER.length + OPPROSTER.length ? '#aab2c0' : '#3a4048',
+      rosterCount: Object.keys(s.players).filter(n => s.players[n] === 'with').length + ' with · '
+        + Object.keys(s.players).filter(n => s.players[n] === 'without').length + ' without',
+      filterFg: activeFilters ? '#8fa6ff' : '#aab2c0',
+      filterBg: s.filtersOpen ? '#191c21' : 'transparent',
+      filterBorder: activeFilters || s.filtersOpen ? '#3b5bdb' : '#2b2f36',
+      filterSummary: activeFilters ? String(activeFilters) : '',
+      scopeNote: s.scope === 'h2h'
+        ? 'Career meetings with ' + OPPONENT + ' only. Two games is a result, not a pattern.'
+        : s.scope === 'home' ? 'Home games only.'
+        : s.scope === 'road' ? 'Road games only.'
+        : 'Sample size sets the games in the graph. The rates above always read the full log.',
+      sliderMax: STOPS.length - 1,
+      sliderValue: (function () {
+        const cur = s.window === 0 ? m.g.length : s.window;
+        let idx = STOPS.indexOf(cur);
+        if (idx === -1) idx = STOPS.length - 1;
+        return idx;
+      })(),
+      sliderFill: ((function () {
+        const cur = s.window === 0 ? m.g.length : s.window;
+        let idx = STOPS.indexOf(cur);
+        if (idx === -1) idx = STOPS.length - 1;
+        return idx;
+      })() / (STOPS.length - 1)) * 100 + '%',
+      sliderStops: STOPS.map(n => (n === m.g.length ? 'All' : 'L' + n)),
+      onSlide: e => {
+        const n = STOPS[parseInt(e.target.value, 10)];
+        this.setState({ scope: 'all', window: n === m.g.length ? 0 : n });
+      },
+      sliderLabel: s.window === 0 ? 'All (' + m.g.length + ')' : 'Last ' + s.window,
+      emptyGraph: vals.length === 0,
+
+      rams: RAMS.map(p => Object.assign({}, p, dot(p.status), {
+        meta: p.name === 'Puka Nacua' ? 'WR · ' + avgOf('Receptions') + ' rec' : p.meta,
+        pick: () => this.setState({ player: p.name }),
+        bg: p.name === s.player ? '#131519' : 'transparent',
+        border: p.name === s.player ? '#3b5bdb' : '#2b2f36',
+      })),
+      seahawks: SEAHAWKS.map(p => Object.assign({}, p, dot(p.status))),
+    };
+  }
+}
+</script>
+</body>
+</html>

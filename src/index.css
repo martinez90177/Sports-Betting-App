@@ -100,6 +100,16 @@
   --neg: var(--red);
   --pos-dim: color-mix(in srgb, var(--pos) 14%, transparent);
   --neg-dim: var(--red-dim);
+  /* The *filled* state of an outcome bar. A cleared game draws as a solid
+     fill and a missed one as a 1.5px outline, so shape carries the meaning
+     before colour does -- but --pos at full strength is glaring as a large
+     fill on a dark ground, reading as a light source rather than as a bar.
+     v2 specifies #2faa72; this reproduces it (~#33aa74) by darkening --pos
+     rather than hardcoding the hex, so it follows whatever outcome colour
+     the user picks in Settings instead of stranding a green literal in a
+     palette they have changed. Outlines and caption text keep --pos/--neg,
+     which stay brighter because thin strokes and small text need it. */
+  --pos-solid: color-mix(in srgb, var(--pos) 82%, #000);
   /* --line-strong matches --line here -- dark mode already reads
      fine at the default border contrast, it only needs to diverge
      in light mode (see below). --dim-strong instead matches --text
@@ -183,6 +193,9 @@
   --neg: var(--red);
   --pos-dim: color-mix(in srgb, var(--pos) 10%, transparent);
   --neg-dim: var(--red-dim);
+  /* Light mode's --pos (#1f9d68) is already dark enough to read as a fill on
+     a white panel; darkening it the way dark mode does would only muddy it. */
+  --pos-solid: var(--pos);
   --shadow-1: 0 1px 2px rgba(30,41,59,0.05);
   --shadow-2: 0 1px 2px rgba(30,41,59,0.06), 0 2px 6px rgba(30,41,59,0.08);
   --shadow-3: 0 12px 28px rgba(30,41,59,0.12), 0 2px 6px rgba(30,41,59,0.06);
@@ -319,6 +332,67 @@ img { max-width: 100%; }
 .page-shell { padding: 24px 32px; width: 100%; }
 @media (max-width: 640px) {
   .page-shell { padding: 16px; }
+}
+
+/* ---------- the fluid desktop shell ----------
+   Fluid, not fixed: 100% wide between a 1280 floor and a 1600 ceiling, so a
+   wide monitor buys wider bars rather than wider margins. Paired with
+   .pp-body-grid below, where the rails are fixed and the centre column
+   absorbs everything the extra width gives.
+
+   Scoped to a media query rather than set outright. `min-width: 1280px` on
+   the shell itself would apply at every size, so a 390px phone would render
+   the entire app 1280px wide and scroll sideways -- and the mobile designs
+   are 390px. This is the desktop rule; the narrow breakpoints upstream
+   (useIsNarrow 560 Prop Feed, 720 Games, 900 News, 1100 MobilePlayerNav)
+   own everything below it. Nothing between 390 and 1280 is designed, so the
+   grid simply collapses to one column there. */
+@media (min-width: 1280px) {
+  .page-shell {
+    width: 100%;
+    min-width: 1280px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+}
+
+/* Rails fixed, centre absorbs. minmax(0, 1fr) on the centre track is load
+   bearing: a bare `1fr` floors at min-content, so one nowrap cell in a wide
+   table pushes the whole centre column past its share and shoves the right
+   rail off the shell. */
+.pp-body-grid {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr) 196px;
+  gap: 20px;
+  align-items: start;
+}
+/* News is its own shape -- feed plus a 372px rail, per NewsPageRedesign. */
+.pp-body-grid--news { grid-template-columns: minmax(0, 1fr) 372px; }
+@media (max-width: 1279px) {
+  .pp-body-grid,
+  .pp-body-grid--news { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- compact rows ----------
+   Three rules that only work together; drop any one and the row re-breaks.
+   Every value is nowrap so a figure never wraps mid-number, every cell gets
+   min-width: 0 so nowrap children can still shrink their track instead of
+   overflowing it, and cells carrying dates or long labels get a wider basis
+   so they are not the ones that clip. A wide table scrolls inside its own
+   wrapper rather than widening the page. */
+.pp-cell { min-width: 0; }
+.pp-value { white-space: nowrap; }
+.pp-cell--wide { flex: 1.6 1 0; min-width: 0; }
+.pp-table-scroll { overflow-x: auto; max-width: 100%; }
+
+/* Touch targets declare their height. Padding alone leaves the height
+   line-box driven, which produced 28-43px controls repeatedly -- all four
+   declarations are needed, not just the min-height. */
+.pp-touch {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
 }
 .oswald { font-family: 'Space Grotesk', sans-serif; }
 .mono { font-family: 'JetBrains Mono', monospace; }
@@ -1042,4 +1116,55 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
   --status-available: #3ecf8e;
   --status-questionable: #e8b13a;
   --status-out: #ef5b5b;
+}
+
+/* ---------- game state ----------
+   Where a game is in its life. Rendered as *squares*, so shape separates them
+   from outcome colour before hue has to.
+
+   One hue per *pair*, with fill carrying the split inside it: the active half
+   of a pair is filled, the paused or not-yet half is hollow. That is four
+   hues for the nine GAME_STATUS values in lib/gamesData.js rather than nine,
+   and it means a reader learns four colours and one rule instead of a legend.
+
+     --state-live     LIVE filled · HALFTIME, INTERMISSION hollow
+     --state-pre      STARTING_SOON filled · UPCOMING hollow
+     --state-delayed  DELAYED filled · SUSPENDED hollow
+     --state-final    FINAL filled · POSTPONED hollow
+
+   The pre-game pair is white and final is dim, which is deliberate on two
+   counts. Semantically, a finished game is the least urgent thing on a slate
+   and should not be the brightest -- it was #e8ecf2 in the v2 mocks, louder
+   than a game about to start. And structurally, pre-game used to be lapis
+   #8fa6ff, which is the default accent's own hue: an "upcoming" square and a
+   selected control were the same colour, and would have re-tinted together if
+   anyone had reached for --amber-ink. Moving the pair off lapis removes that
+   collision at its source rather than managing it.
+
+   --state-pre and --state-final share a hue (216) and are told apart by
+   lightness, 0.93 against 0.61. That is the intended mechanism, not a
+   near-miss: across these four families hue only has to avoid being
+   *identical*, and shape, placement and lightness do the rest.
+
+   Fixed in both themes for the same reason availability is: a game is not
+   more live in light mode. */
+:root {
+  --state-live: #22c9d6;
+  --state-pre: #e8ecf2;
+  --state-delayed: #9b8cf0;
+  --state-final: #8b98ab;
+}
+
+/* ---------- sport identity ----------
+   Low-chroma neutrals, chosen to collide with no state hex, no outcome and no
+   accent preset. They tint a sport's divider and glyph on a mixed slate; they
+   never carry meaning about a game or a player, so they must stay quiet
+   enough that a reader does not mistake one for a status. Team crest tones
+   are desaturated on the same principle -- a club's red or green must not
+   read as an outcome. */
+:root {
+  --sport-mlb: #8a8f7a;
+  --sport-nfl: #9a8072;
+  --sport-nba: #7f8a9a;
+  --sport-wnba: #93808f;
 }

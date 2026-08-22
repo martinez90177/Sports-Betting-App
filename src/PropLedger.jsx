@@ -1,10 +1,10 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
 } from "recharts";
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
-import { useSettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits } from "./settings.jsx";
+import { useSettings, useDisplaySettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits, isFirstRun, markTourDismissed, DEFAULTS } from "./settings.jsx";
 import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
 import AltLineLadder, { SlipLeg } from "./AltLineLadder.jsx";
@@ -20955,8 +20955,62 @@ function getPropsCountForGame(sport, awayAbbr, homeAbbr) {
 }
 
 
+// The pages the nav can reach, in the order it lists them. One array so the
+// dropdown and the start-page validation cannot drift apart.
+const PAGES = [
+  { id: "landing", label: "Home" },
+  { id: "feed", label: "Prop Feed" },
+  { id: "games", label: "Games" },
+  { id: "board", label: "The Board" },
+  { id: "nfl", label: "NFL Props" },
+  { id: "mlb", label: "MLB Props" },
+  { id: "nba", label: "NBA Props" },
+  { id: "wnba", label: "WNBA Props" },
+  { id: "news", label: "News" },
+];
+
+// Valid destinations for display.startPage and the wordmark -- everything
+// except the intro. The intro is first-run state, not a page to return to:
+// a startPage of "landing" would put it back on every load and on every
+// wordmark click, which is the one thing the first-run flag exists to stop.
+const PAGE_IDS = new Set(PAGES.filter((p) => p.id !== "landing").map((p) => p.id));
+
 export default function PropLedger() {
-  const [page, setPage] = useState("feed");
+  // Read before the page state below, which seeds off it. Safe: PropLedger is
+  // rendered inside SettingsProvider (see main.jsx).
+  const { startPage } = useDisplaySettings();
+
+  // Where the app opens. Two separate questions, deliberately not conflated:
+  //
+  //   * Has this browser been here before? If not, the intro runs -- once
+  //     ever, off propPalaceTour.dismissed. That is the newcomer's answer to
+  //     "what is this", and it is why the intro is not a preference.
+  //   * Otherwise, wherever the user asked to start. That is a preference,
+  //     and it defaults to "feed", which is what this app opened on before
+  //     the setting existed -- so adding it moves nobody.
+  //
+  // Lazy initialiser, so the localStorage read happens once on mount rather
+  // than on every render, and an unknown stored value falls back rather than
+  // routing to a page that does not exist.
+  const [page, setPage] = useState(() => {
+    if (isFirstRun()) return "landing";
+    return PAGE_IDS.has(startPage) ? startPage : DEFAULTS.display.startPage;
+  });
+
+  // The wordmark's destination. Never the intro: the intro is first-run
+  // state, not a page someone navigates back to. It stays reachable from
+  // "How we count" and, once the tutorial track lands, Settings > Tutorial.
+  const goHome = useCallback(() => {
+    setPage(PAGE_IDS.has(startPage) ? startPage : DEFAULTS.display.startPage);
+  }, [startPage]);
+
+  // Opening the board is what ends the first run -- not rendering the intro.
+  // Someone who loads the page and reloads before engaging has not seen it
+  // yet, and spending a once-ever prompt on a bounce is how it gets missed.
+  const openBoardFromIntro = useCallback(() => {
+    markTourDismissed();
+    setPage("board");
+  }, []);
 
   // Real rows for the landing page's hero and teaser cards. NFL because its
   // logs are real 2025 box scores that are always present, where MLB's depend
@@ -21438,11 +21492,11 @@ export default function PropLedger() {
                  declaration instead of a breakpoint ternary. */}
             <h1
               className="pp-display"
-              onClick={() => setPage("feed")}
+              onClick={goHome}
               role="button"
               tabIndex={0}
-              aria-label="Go to feed"
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPage("feed"); } }}
+              aria-label="Go to start page"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goHome(); } }}
               style={{
                 fontSize: "clamp(18px, 4vw, 24px)", fontWeight: 600, letterSpacing: "0.06em",
                 margin: 0, color: "var(--text)", display: "flex", alignItems: "center", gap: 10,
@@ -21480,17 +21534,7 @@ export default function PropLedger() {
           <PageNavDropdown
             page={page}
             setPage={setPage}
-            options={[
-              { id: "landing", label: "Home" },
-              { id: "feed", label: "Prop Feed" },
-              { id: "games", label: "Games" },
-              { id: "board", label: "The Board" },
-              { id: "nfl", label: "NFL Props" },
-              { id: "mlb", label: "MLB Props" },
-              { id: "nba", label: "NBA Props" },
-              { id: "wnba", label: "WNBA Props" },
-              { id: "news", label: "News" },
-            ]}
+            options={PAGES}
           />
           {/* Global search -- same on every page (see SearchBar), reuses
                goToProp for navigation so picking a result works exactly like
@@ -21548,7 +21592,7 @@ export default function PropLedger() {
         <LazyPane minHeight={400}>
           <LandingPage
             rows={landingRows}
-            onOpenBoard={() => setPage("games")}
+            onOpenBoard={openBoardFromIntro}
             onOpenFeed={() => setPage("feed")}
             onOpenNews={() => setPage("news")}
             onOpenProp={goToProp}

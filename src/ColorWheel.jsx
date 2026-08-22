@@ -45,13 +45,33 @@ function hexToHsl(hex) {
 // Lapis leads the row because it's the new app-wide default accent -- see
 // --amber's fallback in index.css -- so the preset a reset lands on is the
 // same one drawn first here.
+// Six hue families, none of them within reach of an outcome colour. Green
+// #22c55e and Red #ef4444 used to sit here and were dropped in v2: both landed
+// within about ten degrees of the outcome pair (--pos #3ecf8e, --neg #ef5b5b),
+// so an accent-coloured control could be read as a hit or a miss. The accent
+// means "selected" and must never be mistakable for an outcome -- the same
+// separation the availability tokens keep in index.css.
+//
+// Teal and Rust replace them. Purple and Pink are renamed and Pink is retuned
+// to a hue further from --neg. Nobody loses a colour they had picked: the
+// accent persists as a hex in propPalaceSettings, not as a preset id, so an
+// existing Green or Red simply stops matching a swatch -- the wheel still
+// shows it and the hex readout still prints it. The only thing that goes
+// missing is the "· GREEN" name caption below the readout, which is guarded
+// by PRESET_BY_HEX.has() and renders nothing when there is no match.
 export const ACCENT_PRESETS = [
   { label: "Lapis", hex: "#3b5bdb" },
-  { label: "Gold", hex: "#c9a24a" },
-  { label: "Purple", hex: "#8b5cf6" },
-  { label: "Green", hex: "#22c55e" },
-  { label: "Red", hex: "#ef4444" },
-  { label: "Pink", hex: "#ec4899" },
+  { label: "Teal", hex: "#14b8a6" },
+  // Deepened from #c9a24a, which sat 0.5deg and 0.03 lightness from
+  // --status-questionable #e8b13a -- not a near-miss but the same colour, and
+  // on a feed row the availability dot and the accent-filled add button are
+  // about 40px apart. Moved in *lightness* rather than hue (0.54 -> 0.42, a
+  // 5x wider gap) so the swatch is still recognisably gold; shifting the hue
+  // would have walked it into Rust.
+  { label: "Gold", hex: "#a87d2e" },
+  { label: "Rust", hex: "#c2622d" },
+  { label: "Violet", hex: "#8b5cf6" },
+  { label: "Magenta", hex: "#d6409f" },
 ];
 
 const PRESET_BY_HEX = new Map(ACCENT_PRESETS.map((p) => [p.hex.toLowerCase(), p.label]));

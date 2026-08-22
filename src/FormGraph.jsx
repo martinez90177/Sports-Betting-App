@@ -9,15 +9,15 @@ import { feedIsHit } from "./lib/altLines.js";
 // axis is the single most-specified thing in the handoff and the one most
 // likely to be built wrong; there is exactly one copy of it, here.
 
-// The row's last ten games as bars, oldest to newest, with the prop line
-// drawn across them as a dashed rule.
+// The row's last N games as bars, oldest to newest, with the prop line drawn
+// across them as a dashed rule.
 //
 // ---- The axis ----
 //
 // **Windowed, not grounded at zero.** The axis brackets the range the games
 // and the line actually occupy -- `lo = min(values, line)`, `hi = max(values,
 // line)` -- padded 18% on each side, and everything is drawn on a pedestal so
-// the shortest bar is still 8px of visible bar rather than a sliver.
+// the shortest bar is still a visible bar rather than a sliver.
 //
 // This is the third scaling this component has had, and the reasoning behind
 // each replacement is worth keeping so none of them gets reinstated by
@@ -46,28 +46,66 @@ import { feedIsHit } from "./lib/altLines.js";
 // which is why every row still prints its counts underneath and the per-game
 // values stay in the hover popover.
 //
-// ---- The drag step ----
+// ---- Two places this deliberately overrules the v2 README ----
 //
-// `step` widens with the magnitude of the market: 0.5 under 25, 1 under 100,
-// 5 at 100 and above. Half-yard increments on a passing-yards line meant a
-// forty-step drag to ask a question worth asking.
+// Both were raised with Alex on 2026-08-21 and both were decided in favour of
+// the code. The README is the spec everywhere else; these two lines of it are
+// wrong and are being corrected in the bundle itself. Noted here so the next
+// reader finds a decision rather than what looks like drift:
 //
-// Steps are anchored on the *market* line rather than on 0.5, so the posted
-// line is always on the grid and a small drag can return to it exactly. (The
-// mock anchors on 0.5, which for a 257.5 line puts the nearest rungs at 255.5
-// and 260.5 -- the posted number itself unreachable without a reset.)
-//
-// Binary markets have no magnitude to scale, so their bars stay full height
-// and no line is drawn.
-export const FORM_PLOT_H = 58;
-// Floor under every bar. A zero-value game has to remain a visible mark: an
-// absent bar reads as missing data, which is the one thing it must never say.
-const FORM_PEDESTAL = 8;
+//   * **Drag step.** The README's step table says 0.5 / 1 / 5 anchored on
+//     half-values. A 0.5 step off an X.5 line lands half its rungs on whole
+//     numbers -- 2.5 -> 3.0 -> 3.5 -- and a whole-number line can push, which
+//     is the reason the README states a half-value rule two paragraphs above
+//     its own table. It also puts the posted number out of reach: on a 257.5
+//     line the nearest rungs become 255.5 and 260.5. Whole steps anchored on
+//     the *market* line, below. `lib/altLines.js` makes the same call for the
+//     same reason and states it as a correctness constraint rather than a
+//     taste one: no logged integer can sit exactly on an X.5 line, so there
+//     are no pushes and `1 - rate` is the exact Under rate.
+//   * **Axis padding.** The README gives `span = max(hi-lo, 1) * 1.25` and
+//     `axisMin = lo - max(hi-lo, 1) * 0.18`, which pads 18% below but only
+//     ~7% above, and guards the degenerate case with an absolute floor of 1
+//     -- too coarse for a market whose whole range is under a point. The 0.6
+//     floor on the *pad* below handles the same case (ten identical values,
+//     or a single game, collapsing the span to zero) at every market size.
+export const FORM_PEDESTAL = 10;
 
-export function feedFormScale(recent, line, isBinary) {
-  const plot = FORM_PLOT_H - FORM_PEDESTAL;
+// Build once, reuse at five sizes -- the handoff's table, in one place, so a
+// caller asks for a context rather than re-deriving pixel pairs. `height` is
+// what y() tops out at and `pedestal` is the floor under a bar; the plot the
+// axis is drawn over is the difference, so the tallest bar reaches exactly
+// the top of the row and the shortest is still a mark.
+export const FORM_SIZES = {
+  hero:   { height: 120, pedestal: 16, gap: 6, gutter: 54 },
+  player: { height: 224, pedestal: 30, gap: 6, gutter: 54 },
+  feed:   { height: 60,  pedestal: 10, gap: 5, gutter: 54 },
+  board:  { height: 64,  pedestal: 12, gap: 4, gutter: 44 },
+  mobile: { height: 52,  pedestal: 10, gap: 4, gutter: 42 },
+};
+
+// The value y() tops out at for the default (feed) size. Exported for the
+// callers that draw their own miniature bars off feedFormScale's `y` and need
+// to know what to scale it against.
+export const FORM_PLOT_H = FORM_SIZES.feed.height;
+
+// A short sample must not get fat bars, so the grid has a floor of ten
+// columns whatever the sample is. Windows longer than ten (L20, L40) expand
+// past it -- the floor exists to stop four games filling the row, not to cap
+// how much log a player-detail graph can show.
+//
+// It is a default, not a constant: a surface drawing a different window passes
+// its own `slots`. The Board slices to eight games, so a board card left at
+// ten would label two columns "no games yet" about a player who has more --
+// a false statement about the log rather than an honest thin sample.
+const MIN_SLOTS = 10;
+
+export function feedFormScale(recent, line, isBinary, opts = {}) {
+  const height = opts.height ?? FORM_SIZES.feed.height;
+  const pedestal = opts.pedestal ?? FORM_SIZES.feed.pedestal;
+  const plot = height - pedestal;
   if (isBinary) {
-    return { unit: plot, y: () => FORM_PLOT_H, step: 0.5, dragMax: 1, axisMin: 0, span: 1 };
+    return { unit: plot, y: () => height, step: 0.5, dragMax: 1, axisMin: 0, span: 1 };
   }
   const vals = (recent || []).map((g) => g.v);
   // `line` is included in both bounds on purpose: a line outside the range of
@@ -80,18 +118,12 @@ export function feedFormScale(recent, line, isBinary) {
   const pad = Math.max((hi0 - lo0) * 0.18, 0.6);
   const axisMin = lo0 - pad;
   const span = (hi0 + pad) - axisMin;
-  // Whole numbers only -- a deliberate departure from the mock, which uses
-  // 0.5 under 25. Every line this app posts is an X.5 and steps are taken off
-  // that line, so a 0.5 step would put half the rungs on whole numbers:
-  // 2.5 -> 3.0 -> 3.5 -> 4.0. A whole-number line can push, which is the whole
-  // reason the half-value rule exists -- and the mock states that rule itself,
-  // a few lines above its own step table. 1 keeps 0.5 -> 1.5 -> 2.5; 5 keeps
-  // 257.5 -> 262.5.
+  // Whole numbers only, anchored on the market line -- see the note above.
   const step = hi0 >= 100 ? 5 : 1;
   return {
     axisMin, span, step,
     unit: plot / span,
-    y: (v) => FORM_PEDESTAL + Math.round(((v - axisMin) / span) * plot),
+    y: (v) => pedestal + Math.round(((v - axisMin) / span) * plot),
     // One step of headroom above the best game, so the reader can ask "what
     // if it were higher than he's ever gone" and see every bar go red.
     dragMax: (vals.length ? Math.max(...vals) : line) + step,
@@ -99,31 +131,40 @@ export function feedFormScale(recent, line, isBinary) {
 }
 
 export default function FeedFormStrip({
-  // 60px bar row, 5px gaps, 54px right gutter for the line tag -- the
-  // handoff's "full-size treatment". The axis itself is plotted over
-  // FORM_PLOT_H (58), the figure the spec's arithmetic uses, so the tallest
-  // bar clears the top of the row by a hair instead of touching it.
-  //
-  // The phone card passes the smaller set (48 / 4 / 42) and `tag` without
-  // `onDragLine`: the design draws the line tag there but specifies dragging
-  // only on desktop, and a 24px handle is not a touch target. `caption` is
-  // off there too -- the phone card states its sample beside the rate figure
-  // and its streak in the meta line, so the desktop caption would be the
-  // third printing of the same two numbers.
-  r, direction, streak = 0, height = 60, gap = 5, gutter = 54,
+  // `size` names one of the five contexts above. Explicit height/gap/gutter
+  // still win, so the call sites that predate the size table keep rendering
+  // exactly as they did until their own screen is rebuilt.
+  size = "feed",
+  r, direction, streak = 0,
+  height, pedestal, gap, gutter, slots,
   tag = false, caption = true,
   line, onDragLine, onResetLine, adjusted,
 }) {
+  const preset = FORM_SIZES[size] || FORM_SIZES.feed;
+  const H = height ?? preset.height;
+  const P = pedestal ?? preset.pedestal;
+  const G = gap ?? preset.gap;
+  const GUT = gutter ?? preset.gutter;
+
   const recent = r.recent;
   if (!recent || !recent.length) return null;
   // `line` is the live (possibly dragged) value; r.line is what the market
   // posted. Falling back to r.line keeps every non-draggable caller working
   // unchanged.
   const lineVal = line == null ? r.line : line;
-  const { y: barY } = feedFormScale(recent, lineVal, r.isBinary);
+  const { y: barY } = feedFormScale(recent, lineVal, r.isBinary, { height: H, pedestal: P });
 
   const hits = recent.map((g) => feedIsHit(g.v, lineVal, r.isBinary, direction));
   const hitCount = hits.filter(Boolean).length;
+
+  const n = recent.length;
+  // Fixed columns, never `flex: 1` per bar. With flex, a four-game sample
+  // renders bars two and a half times wider than a ten-game one, which makes
+  // the *thinnest* sample the loudest thing on the screen -- the exact
+  // opposite of what this product says about small samples. The shortfall
+  // stays visibly empty instead.
+  const cols = Math.max(slots ?? MIN_SLOTS, n);
+  const shortfall = cols - n;
 
   // The trailing run is recomputed from these bars rather than taken from
   // `streak` whenever the line has been dragged -- a streak counted against
@@ -135,7 +176,8 @@ export default function FeedFormStrip({
   const shownRun = useLiveRun ? runLength : Math.min(Math.abs(streak), recent.length);
   const shownRunHit = useLiveRun ? runHit : streak > 0;
   const showRun = shownRun >= 3;
-  const runColor = shownRunHit ? "var(--pos)" : "var(--neg)";
+  const runFill = shownRunHit ? "var(--pos-solid, var(--pos))" : "var(--neg)";
+  const runInk = shownRunHit ? "var(--pos)" : "var(--neg)";
 
   const hasPlayoff = recent.some((g) => g.po);
   const draggable = !!onDragLine && !r.isBinary;
@@ -145,37 +187,87 @@ export default function FeedFormStrip({
   // bars are drawn on, so "clears the line" is literally "taller than the
   // dashes" at every market size.
   const lineY = barY(lineVal);
+  // The rule stops at the last real game -- it is not drawn across games that
+  // do not exist. It only runs out to meet the tag when the sample fills the
+  // row, which is the one case where there is nothing between them.
+  const extendToTag = showTag && shortfall === 0;
+  const grid = { display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: G };
 
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ position: "relative", paddingRight: showTag ? gutter : 0 }}>
-        <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap, height }}>
+      <div style={{ position: "relative", paddingRight: showTag ? GUT : 0 }}>
+        <div style={{ ...grid, position: "relative", alignItems: "end", height: H }}>
           {recent.map((g, i) => (
             <div
               key={i}
               title={`${g.opp ? `vs ${g.opp} · ` : ""}${g.v}${g.po ? " · playoff game" : ""}`}
               style={{
-                flex: 1,
+                // Explicit column, not auto-placement. The dashed-rule
+                // overlay below is explicitly placed across columns 1..n, and
+                // an *auto*-placed item is never allowed to overlap one that
+                // is explicitly placed -- so with `auto` here the bars get
+                // pushed out into implicit columns past the end of the grid,
+                // where they have no width and the graph draws nothing at
+                // all. Overlap is legal once both sides are explicit, which
+                // is what lets the rule cross the bars.
+                gridRow: 1, gridColumn: i + 1,
                 height: r.isBinary
-                  ? Math.max(4, Math.round((hits[i] ? 1 : 0.35) * height))
+                  ? Math.max(4, Math.round((hits[i] ? 1 : 0.35) * H))
                   : barY(g.v),
                 borderRadius: "2px 2px 0 0",
                 boxSizing: "border-box",
-                background: hits[i] ? "var(--pos)" : "transparent",
+                // Fill = cleared, outline = fell short, so the two states are
+                // told apart by shape and not by hue alone.
+                background: hits[i] ? "var(--pos-solid, var(--pos))" : "transparent",
                 border: hits[i] ? "none" : "1.5px solid var(--neg)",
               }}
             />
           ))}
-          {!r.isBinary && (
-            <span style={{
-              position: "absolute", left: 0, right: showTag ? -gutter : 0, bottom: lineY,
-              // White, not accent: at accent lightness the rule disappeared
-              // against the green fills. It goes accent-ink only once the
-              // reader has dragged it off the posted line.
-              borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink, var(--amber))" : "var(--text)"}`,
-              pointerEvents: "none",
-            }} />
+
+          {/* The games this window does not have. Held open and labelled
+              rather than closed up: an absent column is a fact about the
+              sample, and collapsing it would hide the very thing the minimum
+              sample rule exists to make visible. The label needs two columns
+              of room to sit in; under that the dashed divider carries it
+              alone rather than spilling across the bars. */}
+          {shortfall > 0 && (
+            <div
+              style={{
+                gridRow: 1, gridColumn: `${n + 1} / -1`, alignSelf: "stretch",
+                borderLeft: "1px dashed var(--line)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                minWidth: 0, overflow: "hidden",
+              }}
+            >
+              {shortfall >= 2 && (
+                <span
+                  className="pp-mono"
+                  style={{
+                    fontSize: 9.5, letterSpacing: "0.08em", color: "var(--dim)",
+                    whiteSpace: "nowrap", textAlign: "center", padding: "0 2px",
+                  }}
+                >
+                  no games yet
+                </span>
+              )}
+            </div>
           )}
+
+          {!r.isBinary && (
+            <div
+              style={{ gridRow: 1, gridColumn: `1 / ${n + 1}`, alignSelf: "stretch", position: "relative", pointerEvents: "none" }}
+              aria-hidden
+            >
+              <span style={{
+                position: "absolute", left: 0, right: extendToTag ? -GUT : 0, bottom: lineY,
+                // White, not accent: at accent lightness the rule disappeared
+                // against the green fills. It goes accent-ink only once the
+                // reader has dragged it off the posted line.
+                borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink, var(--amber))" : "var(--text)"}`,
+              }} />
+            </div>
+          )}
+
           {showTag && (
             <span
               onMouseDown={onDragLine || undefined}
@@ -183,7 +275,7 @@ export default function FeedFormStrip({
               title={draggable ? "Drag to move the line · double-click to reset" : "The prop line"}
               className="pp-mono"
               style={{
-                position: "absolute", right: -gutter, bottom: lineY, transform: "translateY(50%)",
+                position: "absolute", right: -GUT, bottom: lineY, transform: "translateY(50%)",
                 // Solid accent by default, per the handoff -- it re-tints
                 // with the user's chosen hue and never encodes hit/miss.
                 // Off-market it inverts to accent-ink on the row ground, the
@@ -191,7 +283,7 @@ export default function FeedFormStrip({
                 // an adjusted row is legible as adjusted at a glance.
                 background: adjusted ? "transparent" : "var(--amber)",
                 color: adjusted ? "var(--amber-ink, var(--amber))" : "var(--accent-on)",
-                border: `1px solid ${adjusted ? "var(--amber)" : "var(--amber)"}`,
+                border: "1px solid var(--amber)",
                 borderRadius: 3, padding: "3px 6px", fontSize: 10.5,
                 fontVariantNumeric: "tabular-nums", userSelect: "none",
                 cursor: draggable ? "ns-resize" : "default",
@@ -201,19 +293,20 @@ export default function FeedFormStrip({
             </span>
           )}
         </div>
+
         {/* Playoff games, marked. Decision 1 says a playoff game has to look
-             like one wherever a game appears, and these bars are four pixels
+             like one wherever a game appears, and these bars are a few pixels
              wide -- there is no room for the "PO" tag the chart axis and the
              game-log table use, so it becomes a dot on its own track, on the
-             same flex layout as the bars so it sits exactly under one.
+             same grid as the bars so it sits exactly under one.
 
              Rendered only when the window actually contains a playoff game,
              so the overwhelming majority of rows keep their current height
              and nothing shifts. */}
         {hasPlayoff && (
-          <div style={{ display: "flex", gap, marginTop: 3 }} aria-hidden>
+          <div style={{ ...grid, marginTop: 3 }} aria-hidden>
             {recent.map((g, i) => (
-              <span key={i} style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+              <span key={i} style={{ gridColumn: i + 1, display: "flex", justifyContent: "center" }}>
                 <span style={{
                   width: 3, height: 3, borderRadius: "50%",
                   // Neutral ink: green and red are already spoken for by
@@ -224,21 +317,22 @@ export default function FeedFormStrip({
             ))}
           </div>
         )}
+
         {/* The run rule sits under the trailing bars only, so the words
-             below tie to the games above. Laid out on the same flex track
-             as the bars so it lines up exactly at any column width. */}
+             below tie to the games above. Laid out on the same grid as the
+             bars so it lines up exactly at any column width. */}
         {showRun && (
-          <div style={{ display: "flex", gap, marginTop: 5 }}>
-            <span style={{ flex: recent.length - shownRun }} />
-            <span style={{ flex: shownRun, height: 2, borderRadius: 1, background: runColor }} />
+          <div style={{ ...grid, marginTop: 5 }}>
+            <span style={{ gridColumn: `${n - shownRun + 1} / ${n + 1}`, height: 2, borderRadius: 1, background: runFill }} />
           </div>
         )}
       </div>
+
       {/* Counts first: "N of M" is the sample the bars above actually draw,
            shown every time so a hit rate is never on screen without its own
            sample size next to it. */}
       {caption && (
-        <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: showRun ? runColor : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
+        <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: showRun ? runInk : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
           {hitCount} of {recent.length}{showRun ? ` · ${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
         </div>
       )}

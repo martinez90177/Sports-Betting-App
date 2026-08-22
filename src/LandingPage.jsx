@@ -270,6 +270,13 @@ function HeroCard({ row, onOpen }) {
   // heading can say "last N" and mean the games the percentage counted.
   const shown = (row.recent || []).slice(-n);
 
+  // Derived from `shown`, the same array the bars plot -- not from a separate
+  // average on the row. Two sources for one number is the bug this product
+  // cannot ship, and an "avg" that disagreed with the graph beside it would
+  // be exactly that.
+  const avg = shown.length ? shown.reduce((t, g) => t + g.v, 0) / shown.length : 0;
+  const margin = avg - row.line;
+
   return (
     <div
       role={open ? "button" : undefined}
@@ -320,14 +327,36 @@ function HeroCard({ row, onOpen }) {
         </div>
         <div style={{ marginTop: 14 }}>
           <FeedFormStrip
+            size="hero"
             r={{ recent: shown, line: row.line, isBinary: !!row.isBinary, subtitle: row.subtitle }}
             direction={row.direction || "over"}
             streak={null}
-            height={74}
-            gap={5}
-            gutter={44}
             tag
           />
+          {/* Per-game values, on the same grid as the bars so each sits under
+              its own game. The hero is the one place with room for them, and
+              they are what lets a reader check the bars against the numbers
+              instead of taking the shape on trust -- the windowed axis makes
+              heights comparable within this row only, so the figures are how
+              the row states quantity. */}
+          <div
+            className="pp-mono"
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${Math.max(10, shown.length)}, 1fr)`,
+              gap: 6, marginTop: 8, paddingRight: 54,
+              fontSize: 11, color: "var(--dim)",
+            }}
+          >
+            {shown.map((g, i) => (
+              <span key={i} style={{ textAlign: "center" }}>{g.v}</span>
+            ))}
+          </div>
+        </div>
+        {/* Average and margin, both off the same game log the bars draw, so
+            they cannot disagree with the graph above them. */}
+        <div className="pp-mono" style={{ fontSize: 12, color: "var(--text-2, var(--dim))", marginTop: 10 }}>
+          avg {avg.toFixed(1)} · {margin >= 0 ? "+" : "−"}{Math.abs(margin).toFixed(1)} vs. line
         </div>
         <div style={{ display: "flex", gap: 14, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
           <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
@@ -337,7 +366,7 @@ function HeroCard({ row, onOpen }) {
             <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box" }} />fell short
           </span>
           <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
-            <span style={{ width: 14, borderTop: "1.5px dashed var(--text)" }} />the line
+            <span style={{ width: 14, borderTop: "1.5px dashed var(--text)" }} />the line {row.line}
           </span>
         </div>
       </div>

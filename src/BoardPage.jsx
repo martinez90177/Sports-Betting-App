@@ -405,24 +405,27 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen }) {
         )}
       </div>
 
-      {/* The compact treatment: no tag, no caption. A short sample draws only
-          the games it has and holds the rest of the width open, so bars stay
-          on the same track down the column instead of stretching to fill. */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 8, minWidth: 0 }}>
+      {/* The compact treatment: no tag, no caption. Holding a short sample's
+          unused columns open used to be done here, with an outer flex spacer
+          counting to eight; the graph owns its own fixed grid now, so doing
+          it out here as well would reserve the gap twice and squeeze the bars
+          into the left third of the card. */}
+      <div style={{ minWidth: 0 }}>
         {bars.length > 0 ? (
-          <>
-            <div style={{ flex: bars.length, minWidth: 0 }}>
-              <FeedFormStrip
-                r={{ recent: bars, line: row.line, isBinary: !!row.isBinary, subtitle: row.subtitle }}
-                direction={row.direction || "over"}
-                streak={null}
-                height={34}
-                gap={4}
-                caption={false}
-              />
-            </div>
-            {bars.length < 8 && <span style={{ flex: 8 - bars.length }} />}
-          </>
+          /* Eight slots, matching the slice above rather than taking the
+             ten-slot default. The empty columns say "no games yet", and on a
+             card that deliberately shows the last eight of a longer log that
+             would be untrue -- those games exist, this card just isn't the
+             surface for them. The grid has to describe the window the card
+             actually draws. */
+          <FeedFormStrip
+            size="board"
+            slots={8}
+            r={{ recent: bars, line: row.line, isBinary: !!row.isBinary, subtitle: row.subtitle }}
+            direction={row.direction || "over"}
+            streak={null}
+            caption={false}
+          />
         ) : (
           <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)" }}>no games logged</span>
         )}

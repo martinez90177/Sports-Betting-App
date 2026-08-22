@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#8fa6ff; text-decoration:none; }
+  a:hover { color:#e8ecf2; }
+</style>
+</helmet>
+<div style="padding:32px 40px 64px; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif;">
+
+  <div style="display:flex; align-items:baseline; gap:14px;">
+    <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; color:#ffffff; background:#3b5bdb; border-radius:4px; padding:4px 9px;">v2</span>
+    <h1 style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:30px; margin:0; letter-spacing:-0.02em;">Mobile · 390px</h1>
+  </div>
+  <p style="font-size:15px; line-height:1.6; color:#aab2c0; max-width:80ch; margin:12px 0 0;">Four screens on the v2 system: the games slate with its sport dividers and state swatches, the prop feed, the filters sheet, and player detail. Every target is 44px or larger, the desktop rails collapse into sheets, and the graph keeps its windowed axis so bar height still reads as margin over the line.</p>
+
+  <div style="display:flex; gap:24px; align-items:flex-start; margin-top:28px; flex-wrap:wrap;">
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-bottom:12px;">Games</div>
+      <div style="width:390px; background:#0a0b0d; border:1px solid #2b2f36; border-radius:10px; overflow:hidden;">
+
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:13px 16px; border-bottom:1px solid #2b2f36;">
+          <div style="display:flex; align-items:center; gap:9px;">
+            <span style="position:relative; display:flex; align-items:flex-end; gap:2px;">
+              <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+              <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+              <span style="position:relative; width:4px; height:23px; background:#3ecf8e; border-radius:2px 2px 0 0;">
+                <span style="position:absolute; left:1px; bottom:23px; width:2px; height:9px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+                <span style="position:absolute; left:3px; bottom:26px; width:9px; height:6px; background:#3ecf8e; clip-path:polygon(0 0, 100% 50%, 0 100%);"></span>
+              </span>
+              <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+              <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+              <span style="position:absolute; left:-3px; right:-3px; bottom:11px; border-top:1.5px dashed #e8ecf2;"></span>
+            </span>
+            <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;">Prop Palace</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:4px;">
+            <span style="width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:15px; color:#8b98ab;">⌕</span>
+            <span style="width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:15px; color:#8b98ab;">⚙</span>
+          </div>
+        </div>
+
+        <div style="display:flex; border-bottom:1px solid #2b2f36;">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+            <span style="flex:1; text-align:center; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; padding:14px 0 12px; color:{{ t.fg }}; border-bottom:2px solid {{ t.rule }}; margin-bottom:-1px;">{{ t.label }}</span>
+          </sc-for>
+        </div>
+
+        <div style="display:flex; gap:8px; padding:12px 16px; overflow-x:auto; border-bottom:1px solid #2b2f36;">
+          <span style="flex:none; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; padding:14px 18px; border-radius:4px; background:#3b5bdb; color:#ffffff;">All</span>
+          <span style="flex:none; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; padding:14px 18px; border-radius:4px; border:1px solid #2b2f36; color:#aab2c0;">MLB</span>
+          <span style="flex:none; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; padding:14px 18px; border-radius:4px; border:1px solid #2b2f36; color:#aab2c0;">NFL</span>
+          <span style="flex:none; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.1em; padding:14px 18px; border-radius:4px; border:1px solid #2b2f36; color:#aab2c0;">WNBA</span>
+        </div>
+
+        <sc-for list="{{ slateGroups }}" as="grp" hint-placeholder-count="2">
+          <div>
+            <div style="display:flex; align-items:center; gap:10px; padding:14px 16px 8px;">
+              <span style="display:flex; align-items:center; gap:7px; color:{{ grp.tone }};">
+                <span style="flex:none; width:14px; height:14px; box-sizing:border-box; border:1.5px solid {{ grp.tone }}; border-radius:{{ grp.glyphRadius }};"></span>
+                <span style="font-family:'Space Mono', monospace; font-size:13px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase;">{{ grp.label }}</span>
+              </span>
+              <span style="font-family:'Space Mono', monospace; font-size:11px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; white-space:nowrap;">{{ grp.count }}</span>
+              <span style="flex:1; height:1px; background:#2b2f36;"></span>
+            </div>
+            <sc-for list="{{ grp.games }}" as="g" hint-placeholder-count="2">
+              <div style="padding:12px 16px; border-top:1px solid #2b2f36; border-left:3px solid {{ g.edge }};">
+                <div style="display:flex; align-items:center; gap:9px;">
+                  <span style="width:8px; height:8px; border-radius:2px; flex:none; box-sizing:border-box; background:{{ g.dotBg }}; border:1.5px solid {{ g.dotBorder }};"></span>
+                  <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; white-space:nowrap; color:{{ g.stateFg }};">{{ g.state }}</span>
+                  <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.08em; color:#8b98ab; white-space:nowrap;">{{ g.props }} props</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                  <span style="display:flex; align-items:center; justify-content:center; flex:none; width:28px; height:28px; border-radius:5px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:9px; color:{{ g.awayTone }};">{{ g.awayAb }}</span>
+                  <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ g.away }}</span>
+                  <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:17px; font-variant-numeric:tabular-nums; color:{{ g.awayFg }};">{{ g.awayScore }}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:7px;">
+                  <span style="display:flex; align-items:center; justify-content:center; flex:none; width:28px; height:28px; border-radius:5px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:9px; color:{{ g.homeTone }};">{{ g.homeAb }}</span>
+                  <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ g.home }}</span>
+                  <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:17px; font-variant-numeric:tabular-nums; color:{{ g.homeFg }};">{{ g.homeScore }}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:11px;">
+                  <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.06em; color:#8b98ab; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ g.detail }}</span>
+                  <span style="margin-left:auto; flex:none; display:flex; align-items:center; min-height:44px; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:{{ g.actionFg }}; padding-left:12px;">{{ g.action }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+
+
+
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-bottom:12px;">Prop feed</div>
+      <div style="width:390px; background:#0a0b0d; border:1px solid #2b2f36; border-radius:10px; overflow:hidden;">
+
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px; border-bottom:1px solid #2b2f36;">
+          <div>
+            <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:20px;">Prop Feed</div>
+            <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:4px;">Every row states its sample</div>
+          </div>
+          <span style="flex:none; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:15px 15px;">Filters 2</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px; padding:11px 16px; background:#0d0f12; border-bottom:1px solid #2b2f36;">
+          <div style="min-width:0;">
+            <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">Showing</div>
+            <div style="font-family:'Space Mono', monospace; font-size:13px; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">8 of 353 · L10 · Over</div>
+          </div>
+          <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff;">L10 ▾</span>
+        </div>
+
+        <sc-for list="{{ feedRows }}" as="r" hint-placeholder-count="3">
+          <div style="padding:14px 16px; border-bottom:1px solid #2b2f36;">
+            <div style="display:flex; align-items:center; gap:11px;">
+              <span style="position:relative; flex:none; width:38px; height:38px;">
+                <span style="display:flex; align-items:center; justify-content:center; width:38px; height:38px; border-radius:999px; background:#191c21; border:1.5px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab;">{{ r.initials }}</span>
+                <span style="position:absolute; right:-1px; bottom:-1px; width:11px; height:11px; border-radius:999px; box-sizing:border-box; background:{{ r.dotFill }}; border:2px solid {{ r.dotRing }};"></span>
+              </span>
+              <div style="min-width:0; flex:1;">
+                <div style="display:flex; align-items:baseline; gap:7px;">
+                  <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:17px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ r.name }}</span>
+                  <span style="flex:none; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; color:#8b98ab;">{{ r.team }}</span>
+                </div>
+                <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.04em; text-transform:uppercase; color:#e8ecf2; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.prop }}</div>
+              </div>
+              <div style="flex:none; text-align:right;">
+                <div style="font-family:'Space Mono', monospace; font-size:19px; font-variant-numeric:tabular-nums; color:{{ r.rateColor }};">{{ r.rate }}</div>
+                <div style="font-family:'Space Mono', monospace; font-size:9.5px; color:#8b98ab; margin-top:3px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ r.sample }}</div>
+              </div>
+            </div>
+
+            <div style="position:relative; padding-right:44px; margin-top:12px;">
+              <div style="position:relative; display:grid; grid-template-columns:repeat(10, 1fr); gap:4px; height:52px;">
+                <sc-for list="{{ r.bars }}" as="b" hint-placeholder-count="10">
+                  <div style="display:flex; flex-direction:column; justify-content:flex-end; min-width:0;">
+                    <div style="height:{{ b.h }}px; border-radius:2px 2px 0 0; box-sizing:border-box; background:{{ b.bg }}; border:{{ b.border }};"></div>
+                  </div>
+                </sc-for>
+                <span style="position:absolute; left:0; right:-44px; bottom:{{ r.lineY }}px; border-top:1.5px dashed #e8ecf2;"></span>
+                <span style="position:absolute; right:-44px; bottom:{{ r.lineY }}px; transform:translateY(50%); background:#3b5bdb; color:#ffffff; border-radius:3px; padding:2px 5px; font-family:'Space Mono', monospace; font-size:10px; font-variant-numeric:tabular-nums;">{{ r.line }}</span>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:baseline; gap:10px; margin-top:9px;">
+              <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ r.runColor }};">{{ r.caption }}</span>
+              <span style="font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ r.matchup }}</span>
+              <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10.5px; font-variant-numeric:tabular-nums; color:#aab2c0; white-space:nowrap;">{{ r.odds }}</span>
+            </div>
+          </div>
+        </sc-for>
+
+        <div style="padding:14px 16px; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.04em; color:#8b98ab; line-height:1.6;">Real 2026 game logs, finished games only. Rates under the minimum read “too few”.</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-bottom:12px;">Filters sheet</div>
+      <div style="width:390px; height:720px; position:relative; background:#0a0b0d; border:1px solid #2b2f36; border-radius:10px; overflow:hidden;">
+        <div style="position:absolute; inset:0; background:rgba(6,7,9,0.72);"></div>
+        <div style="position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; background:#0d0f12; border:1px solid #2b2f36; border-bottom:none; border-radius:16px 16px 0 0; max-height:92%; overflow:hidden; box-shadow:0 18px 48px rgba(0,0,0,0.5);">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:15px 18px; border-bottom:1px solid #2b2f36; flex-shrink:0;">
+            <span style="font-family:'Space Mono', monospace; font-size:13px; font-weight:700; letter-spacing:0.03em; text-transform:uppercase;">Filters &amp; saved screens</span>
+            <span style="width:44px; height:44px; margin:-11px -14px -11px 0; display:flex; align-items:center; justify-content:flex-end; font-size:20px; line-height:1; color:#8b98ab;">×</span>
+          </div>
+
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:16px 18px;">
+          <div style="font-family:'Space Mono', monospace; font-size:12px; font-weight:600; letter-spacing:0.03em; text-transform:uppercase; color:#8b98ab;">Save this screen</div>
+          <div style="display:flex; gap:8px; margin-top:9px;">
+            <span style="flex:1; min-width:0; font-size:13px; color:#8b98ab; background:#131519; border:1px solid #2b2f36; border-radius:4px; padding:14px 12px;">Name it — e.g. Sunday NFL</span>
+            <span style="flex:none; display:flex; align-items:center; justify-content:center; min-height:44px; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.06em; color:#aab2c0; border:1px solid #2b2f36; border-radius:4px; padding:0 16px;">Save</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:10px;">
+            <sc-for list="{{ sheetChips }}" as="c" hint-placeholder-count="4">
+              <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:4px 8px; border-radius:4px; background:#191c21; border:1px solid #2b2f36; white-space:nowrap;"><span style="color:#8b98ab;">{{ c.k }}</span><span style="color:#e8ecf2; font-weight:600;">{{ c.v }}</span></span>
+            </sc-for>
+          </div>
+
+          <div style="font-family:'Space Mono', monospace; font-size:12px; font-weight:600; letter-spacing:0.03em; text-transform:uppercase; color:#8b98ab; margin-top:20px;">Your screens</div>
+          <div style="border:1px solid #3b5bdb; border-radius:10px; background:#131519; margin-top:9px; overflow:hidden;">
+            <div style="padding:12px 14px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:'Space Mono', monospace; font-size:13px; font-weight:700; letter-spacing:0.02em; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Sunday NFL</span>
+                <span style="flex:none; font-family:'Space Mono', monospace; font-size:9px; font-weight:700; letter-spacing:0.06em; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:1px 7px;">DEFAULT</span>
+                <span style="margin-left:auto; flex:none; color:#8b98ab; font-size:15px;">›</span>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:8px;">
+                <sc-for list="{{ savedChips }}" as="c" hint-placeholder-count="3">
+                  <span style="display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:4px 8px; border-radius:4px; background:#191c21; border:1px solid #2b2f36; white-space:nowrap;"><span style="color:#8b98ab;">{{ c.k }}</span><span style="color:#e8ecf2; font-weight:600;">{{ c.v }}</span></span>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex; border-top:1px solid #2b2f36;">
+              <sc-for list="{{ presetActions }}" as="a" hint-placeholder-count="4">
+                <span style="flex:1; text-align:center; padding:14px 4px; font-size:11px; font-weight:600; white-space:nowrap; color:{{ a.fg }}; border-left:{{ a.rule }};">{{ a.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36;">Markets</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+            <sc-for list="{{ sheetMarkets }}" as="m" hint-placeholder-count="6">
+              <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.04em; border-radius:4px; padding:15px 14px; white-space:nowrap; background:{{ m.bg }}; color:{{ m.fg }}; border:1px solid {{ m.border }};">{{ m.label }}</span>
+            </sc-for>
+          </div>
+
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36;">Window</div>
+          <div style="display:flex; gap:2px; margin-top:10px;">
+            <sc-for list="{{ sheetWindows }}" as="w" hint-placeholder-count="4">
+              <span style="flex:1; text-align:center; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.06em; padding:14px 0; white-space:nowrap; background:{{ w.bg }}; color:{{ w.fg }}; border:1px solid {{ w.border }};">{{ w.label }}</span>
+            </sc-for>
+          </div>
+
+          <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Minimum sample</span>
+            <span style="font-family:'Space Mono', monospace; font-size:13px; color:#8fa6ff; font-variant-numeric:tabular-nums;">9+ games</span>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <sc-for list="{{ sheetPresets }}" as="p" hint-placeholder-count="4">
+              <span style="font-family:'Space Mono', monospace; font-size:11.5px; border-radius:4px; padding:15px 14px; white-space:nowrap; font-variant-numeric:tabular-nums; background:{{ p.bg }}; color:{{ p.fg }}; border:1px solid {{ p.border }};">{{ p.label }}</span>
+            </sc-for>
+          </div>
+          <div style="display:flex; align-items:flex-end; gap:3px; height:44px; margin-top:14px;">
+            <sc-for list="{{ sheetTicks }}" as="t" hint-placeholder-count="17">
+              <span style="flex:1; height:100%; display:flex; align-items:flex-end;"><span style="width:100%; height:{{ t.h }}px; border-radius:1px; background:{{ t.bg }};"></span></span>
+            </sc-for>
+          </div>
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.04em; color:#8b98ab; margin-top:10px; line-height:1.5;">Props under 9 games still appear, without a rate.</div>
+
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36;">Lineup</div>
+          <div style="display:flex; align-items:stretch; gap:8px; margin-top:10px;">
+            <span style="flex:none; width:30px; display:flex; align-items:center; justify-content:center; border:1px solid #2b2f36; border-radius:6px; font-family:'Space Mono', monospace; font-size:13px; color:#5c6470;">‹</span>
+            <div style="display:flex; gap:8px; flex:1;">
+              <sc-for list="{{ sheetRoster }}" as="p" hint-placeholder-count="3">
+                <span style="flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; padding:10px 4px; border-radius:6px; background:{{ p.bg }}; border:1px solid {{ p.border }};">
+                  <span style="display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:999px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:9px; color:#8b98ab;">{{ p.initials }}</span>
+                  <span style="font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; color:{{ p.fg }};">{{ p.short }}</span>
+                  <span style="font-family:'Space Mono', monospace; font-size:8.5px; letter-spacing:0.08em; text-transform:uppercase; font-variant-numeric:tabular-nums; color:{{ p.stateFg }};">{{ p.state }}</span>
+                </span>
+              </sc-for>
+            </div>
+            <span style="flex:none; width:30px; display:flex; align-items:center; justify-content:center; border:1px solid #2b2f36; border-radius:6px; font-family:'Space Mono', monospace; font-size:13px; color:#aab2c0;">›</span>
+          </div>
+
+          </div>
+
+          <div style="flex-shrink:0; border-top:1px solid #2b2f36; padding:12px 18px max(12px, env(safe-area-inset-bottom));">
+            <span style="display:block; text-align:center; font-family:'Space Mono', monospace; font-size:12.5px; font-weight:700; letter-spacing:0.03em; text-transform:uppercase; color:#ffffff; background:#3b5bdb; border-radius:8px; padding:15px 0;">Show 8 props</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-bottom:12px;">Player detail</div>
+      <div style="width:390px; background:#0a0b0d; border:1px solid #2b2f36; border-radius:10px; overflow:hidden;">
+
+        <div style="display:flex; align-items:center; gap:12px; padding:13px 16px; border-bottom:1px solid #2b2f36;">
+          <span style="width:44px; height:44px; display:flex; align-items:center; justify-content:center; margin-left:-10px; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; color:#aab2c0;">←</span>
+          <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">LAR @ SEA · 4:05 PM</span>
+          <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff;">+ Watch</span>
+        </div>
+
+        <div style="display:flex; align-items:stretch; border-bottom:1px solid #2b2f36;">
+          <div style="flex:1; min-width:0; display:flex; align-items:center; gap:9px; padding:12px 14px; border-top:3px solid #4a6fd4;">
+            <span style="display:flex; align-items:center; justify-content:center; flex:none; width:34px; height:34px; border-radius:5px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:10px; color:#4a6fd4;">LAR</span>
+            <div style="min-width:0;">
+              <div style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Away · 6–3</div>
+              <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:14px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Rams</div>
+            </div>
+          </div>
+          <div style="flex:1; min-width:0; display:flex; align-items:center; justify-content:flex-end; gap:9px; padding:12px 14px; border-top:3px solid #4a8f6d;">
+            <div style="min-width:0; text-align:right;">
+              <div style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Home · 5–4</div>
+              <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:14px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Seahawks</div>
+            </div>
+            <span style="display:flex; align-items:center; justify-content:center; flex:none; width:34px; height:34px; border-radius:5px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:10px; color:#4a8f6d;">SEA</span>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid #2b2f36;">
+          <span style="position:relative; flex:none; width:56px; height:56px;">
+            <span style="display:block; width:56px; height:56px; border-radius:999px; background:#191c21; border:1px solid #2b2f36;"></span>
+            <span style="position:absolute; right:1px; bottom:1px; width:13px; height:13px; border-radius:999px; background:#2faa72; border:2.5px solid #0a0b0d;"></span>
+          </span>
+          <div style="min-width:0;">
+            <div style="display:flex; align-items:baseline; gap:9px;">
+              <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:23px; letter-spacing:-0.02em; white-space:nowrap;">Puka Nacua</span>
+              <span style="font-family:'Space Mono', monospace; font-size:14px; color:#4a6fd4; font-variant-numeric:tabular-nums;">12</span>
+            </div>
+            <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:#aab2c0; margin-top:5px;">LAR · wide receiver</div>
+          </div>
+        </div>
+
+        <div style="display:flex; border-bottom:1px solid #2b2f36;">
+          <div style="flex:1; padding:10px 14px;">
+            <div style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">SEA allows</div>
+            <div style="font-family:'Space Mono', monospace; font-size:13px; margin-top:5px; font-variant-numeric:tabular-nums; white-space:nowrap;">6.8 rec/g</div>
+          </div>
+          <div style="flex:1; padding:10px 14px; border-left:1px solid #2b2f36;">
+            <div style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Matchup</div>
+            <div style="display:flex; align-items:baseline; gap:6px; margin-top:5px;">
+              <span style="font-family:'Space Mono', monospace; font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap;">#27</span>
+              <span style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:#2faa72;">easy</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:20px; padding:12px 16px; overflow-x:auto; border-bottom:1px solid #2b2f36;">
+          <sc-for list="{{ detailTabs }}" as="t" hint-placeholder-count="4">
+            <span style="flex:none; display:inline-flex; align-items:center; min-height:44px; box-sizing:border-box; padding:12px 6px 10px; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; text-transform:uppercase; color:{{ t.fg }}; border-bottom:2px solid {{ t.rule }};">{{ t.label }}</span>
+          </sc-for>
+        </div>
+
+        <div style="display:flex; align-items:baseline; gap:12px; padding:14px 16px 0;">
+          <span style="font-family:'Space Mono', monospace; font-size:32px; line-height:1; font-variant-numeric:tabular-nums; color:#2faa72;">70%</span>
+          <div style="min-width:0;">
+            <div style="font-size:13px; color:#aab2c0; line-height:1.4;">cleared 5.5 in 7 of 10</div>
+            <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:4px;">avg 6.4 · clears by +0.9</div>
+          </div>
+          <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:16px 13px;">Filters</span>
+        </div>
+
+        <div style="padding:14px 16px 16px;">
+          <div style="position:relative; padding-right:40px;">
+            <div style="position:relative; display:grid; grid-template-columns:repeat(10, 1fr); gap:5px; height:104px;">
+              <sc-for list="{{ detailBars }}" as="b" hint-placeholder-count="10">
+                <div style="display:flex; flex-direction:column; justify-content:flex-end; min-width:0;">
+                  <div style="display:flex; align-items:flex-end; justify-content:center; height:{{ b.h }}px; border-radius:2px 2px 0 0; box-sizing:border-box; background:{{ b.bg }}; border:{{ b.border }}; padding-bottom:4px;">
+                    <span style="font-family:'Space Mono', monospace; font-size:9.5px; font-variant-numeric:tabular-nums; color:{{ b.labelFg }};">{{ b.v }}</span>
+                  </div>
+                </div>
+              </sc-for>
+              <span style="position:absolute; left:0; right:-40px; bottom:{{ detailLineY }}px; border-top:1.5px dashed #e8ecf2;"></span>
+              <span style="position:absolute; right:-40px; bottom:{{ detailLineY }}px; transform:translateY(50%); background:#3b5bdb; color:#ffffff; border-radius:3px; padding:2px 5px; font-family:'Space Mono', monospace; font-size:10px; font-variant-numeric:tabular-nums;">5.5</span>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(10, 1fr); gap:5px; margin-top:8px; padding-top:8px; border-top:1px solid #2b2f36;">
+            <sc-for list="{{ detailBars }}" as="b" hint-placeholder-count="10">
+              <span style="display:flex; flex-direction:column; align-items:center; gap:3px; min-width:0;">
+                <span style="width:7px; height:7px; border-radius:2px; background:{{ b.oppTone }};"></span>
+                <span style="font-family:'Space Mono', monospace; font-size:8px; letter-spacing:0.02em; color:#8b98ab; white-space:nowrap;">{{ b.opp }}</span>
+              </span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:8px; padding:0 16px 16px; overflow-x:auto;">
+          <sc-for list="{{ detailSplits }}" as="sp" hint-placeholder-count="4">
+            <span style="flex:none; display:flex; align-items:baseline; gap:7px; padding:11px 12px; border-radius:6px; background:{{ sp.bg }}; border:1px solid {{ sp.border }};">
+              <span style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ sp.label }}</span>
+              <span style="font-family:'Space Mono', monospace; font-size:14px; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ sp.color }};">{{ sp.value }}</span>
+              <span style="font-family:'Space Mono', monospace; font-size:9px; color:#8b98ab; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ sp.sample }}</span>
+            </span>
+          </sc-for>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px; padding:12px 16px 22px; border-top:1px solid #2b2f36;">
+          <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.04em; color:#8b98ab; line-height:1.5; min-width:0;">2026 game logs, finished games only.</span>
+          <span style="margin-left:auto; flex:none; display:flex; align-items:center; justify-content:center; min-height:44px; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#ffffff; background:#3b5bdb; border-radius:6px; padding:0 16px;">+ Track</span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 10px max(8px, env(safe-area-inset-bottom)); background:#131519; border-top:1px solid #2b2f36; box-shadow:0 14px 34px rgba(0,0,0,0.55);">
+          <span style="flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; width:52px; height:52px; border-radius:10px; border:1px solid #3b5bdb; background:rgba(59,91,219,0.14); color:#8fa6ff; font-family:'Space Mono', monospace; font-size:9.5px; font-weight:700; letter-spacing:0.03em; text-transform:uppercase;">
+            <span style="font-size:14px; line-height:1;">☰</span>Lineup
+          </span>
+          <span style="flex:none; align-self:stretch; width:1px; margin:4px 2px; background:#2b2f36;"></span>
+          <span style="display:flex; gap:8px; flex:1; overflow-x:auto;">
+            <sc-for list="{{ stripPlayers }}" as="p" hint-placeholder-count="4">
+              <span style="flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; width:52px; height:52px; border-radius:10px; box-sizing:border-box; background:{{ p.bg }}; border:1px solid {{ p.border }};">
+                <span style="display:flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:999px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:8.5px; color:#8b98ab;">{{ p.initials }}</span>
+                <span style="font-family:'Space Mono', monospace; font-size:8px; letter-spacing:0.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; color:{{ p.fg }};">{{ p.short }}</span>
+              </span>
+            </sc-for>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:32px; padding-top:20px; border-top:1px solid #2b2f36; display:flex; gap:32px; flex-wrap:wrap;">
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">What changed from v1</div>
+      <div style="font-size:13.5px; color:#aab2c0; line-height:1.7; margin-top:10px; max-width:52ch;">
+        <div>· Games screen added, with sport dividers and the state swatches.</div>
+        <div>· Sheet follows FeedPresets' saved-screens shape and placement.</div>
+        <div>· Player screen pins the real <span style="font-family:'Space Mono', monospace; font-size:12px;">.mobile-player-strip</span> — 52px Lineup button, scrolling switcher, safe-area padding, no invented tab bar.</div>
+        <div>· Rate colour bands at 65% and 45%, matching the desktop feed.</div>
+        <div>· Ten fixed bar slots, so a thin sample never renders wider bars.</div>
+      </div>
+    </div>
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Touch targets</div>
+      <div style="font-size:13.5px; color:#aab2c0; line-height:1.7; margin-top:10px; max-width:46ch;">
+        <div>· Chips, tabs and buttons measure 44px or taller.</div>
+        <div>· Sample ticks are 44px tall with a 26px painted bar.</div>
+        <div>· Sheet and strip both pad with max(12px, env(safe-area-inset-bottom)).</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1720,&quot;height&quot;:1100}}">
+// Mobile v2 — the same system as the desktop pages, folded to 390px: rails
+// become sheets, the games list keeps its sport dividers and state swatches,
+// and the form graph keeps the windowed axis and ten fixed slots.
+//
+// Game-state hues stay disjoint from cleared/short/questionable, same as
+// PropPalace Games v2: cyan live, lapis scheduled, white final.
+const STATE = {
+  live:  { label:'Live',      fg:'#22c9d6', bg:'#22c9d6', border:'#22c9d6', edge:'#22c9d6' },
+  soon:  { label:'4:25 PM',   fg:'#aab2c0', bg:'transparent', border:'#8fa6ff', edge:'#2b2f36' },
+  final: { label:'Final',     fg:'#e8ecf2', bg:'#e8ecf2', border:'#e8ecf2', edge:'#5c6470' },
+};
+const SPORT = { mlb:{ label:'MLB', tone:'#8a8f7a' }, nfl:{ label:'NFL', tone:'#9a8072' } };
+
+const SLATE = [
+  { sport:'mlb', state:'live', props:174, detail:'TOP 6 · 1 OUT',
+    away:{ ab:'WSH', name:'Nationals', score:3, tone:'#a5555f' },
+    home:{ ab:'TEX', name:'Rangers', score:4, tone:'#4f87ab' } },
+  { sport:'mlb', state:'final', props:168, detail:'Phillies by four',
+    away:{ ab:'STL', name:'Cardinals', score:2, tone:'#a5555f' },
+    home:{ ab:'PHI', name:'Phillies', score:6, tone:'#4f7fa5' } },
+  { sport:'nfl', state:'live', props:148, detail:'3RD · 7:42 · 2ND & 7',
+    away:{ ab:'LAR', name:'Rams', score:17, tone:'#4a6fd4' },
+    home:{ ab:'SEA', name:'Seahawks', score:13, tone:'#4a8f6d' } },
+  { sport:'nfl', state:'soon', props:163, detail:'Arrowhead · 42°F',
+    away:{ ab:'CIN', name:'Bengals', score:null, tone:'#c2622d' },
+    home:{ ab:'KC', name:'Chiefs', score:null, tone:'#a5555f' } },
+];
+
+const FEED = [
+  { name:'Puka Nacua', team:'LAR', prop:'Receptions o5.5', avail:'posted', line:5.5, odds:'\u2212118',
+    matchup:'#27 of 32', g:[8,4,7,6,9,5,7,6,7,5] },
+  { name:"Ja'Marr Chase", team:'CIN', prop:'Receptions o6.5', avail:'posted', line:6.5, odds:'\u2212105',
+    matchup:'#19 of 32', g:[9,5,8,7,11,6,8,7,9,6] },
+  { name:'Xavier Worthy', team:'KC', prop:'Receptions o3.5', avail:'unknown', line:3.5, odds:'\u2212102',
+    matchup:'#30 of 32', g:[4,2,5,3] },
+];
+
+const DETAIL_G = [
+  [8,'SEA','#3f8f6a'], [4,'ARI','#a5555f'], [7,'SF','#a8635c'], [6,'TB','#a05a52'],
+  [9,'NO','#8f7f5e'], [5,'MIN','#7565a8'], [7,'DAL','#6d84ab'], [6,'CAR','#4f87ab'],
+  [7,'PHI','#4a7d72'], [5,'SF','#a8635c'],
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const initials = n => n.split(' ').map(w => w[0]).join('').slice(0, 2);
+    const band = p => (p >= 65 ? '#2faa72' : p < 45 ? '#ef5b5b' : '#e8ecf2');
+    const chip = on => ({
+      bg: on ? '#3b5bdb' : 'transparent',
+      fg: on ? '#ffffff' : '#aab2c0',
+      border: on ? '#3b5bdb' : '#2b2f36',
+    });
+
+    // windowed axis, ten fixed slots — identical model to the desktop pages
+    const graph = (vals, line, H, PED, withLabels) => {
+      const lo = Math.min(Math.min.apply(null, vals), line);
+      const hi = Math.max(Math.max.apply(null, vals), line);
+      const span = Math.max(hi - lo, 1) * 1.25;
+      const axisMin = lo - Math.max(hi - lo, 1) * 0.18;
+      const y = v => PED + Math.round(((v - axisMin) / span) * (H - PED));
+      return {
+        bars: vals.map((v, i) => {
+          const cleared = v > line;
+          return {
+            h: y(v), v: String(v),
+            bg: cleared ? '#2faa72' : 'transparent',
+            border: cleared ? 'none' : '1.5px solid #ef5b5b',
+            labelFg: cleared ? '#0a0b0d' : '#ef5b5b',
+            opp: withLabels ? DETAIL_G[i][1] : '',
+            oppTone: withLabels ? DETAIL_G[i][2] : 'transparent',
+          };
+        }),
+        lineY: y(line),
+      };
+    };
+
+    const detail = graph(DETAIL_G.map(d => d[0]), 5.5, 104, 22, true);
+
+    return {
+      tabs: [['Games', true], ['The Board', false], ['Prop Feed', false], ['News', false]]
+        .map(([label, on]) => ({ label, fg: on ? '#8fa6ff' : '#8b98ab', rule: on ? '#3b5bdb' : 'transparent' })),
+      navItems: [['⌂', 'Games', true], ['▦', 'Board', false], ['≡', 'Feed', false], ['✦', 'Picks', false]]
+        .map(([icon, label, on]) => ({ icon, label, fg: on ? '#8fa6ff' : '#8b98ab' })),
+
+      slateGroups: ['mlb', 'nfl'].map(sp => {
+        const games = SLATE.filter(g => g.sport === sp);
+        return {
+          label: SPORT[sp].label,
+          tone: SPORT[sp].tone,
+          glyphRadius: sp === 'nfl' ? '50% / 64%' : '50%',
+          count: games.length + (games.length === 1 ? ' game' : ' games'),
+          games: games.map(g => {
+            const st = STATE[g.state];
+            const started = g.away.score != null;
+            const isFinal = g.state === 'final';
+            return {
+              away: g.away.name, home: g.home.name,
+              awayAb: g.away.ab, homeAb: g.home.ab,
+              awayTone: g.away.tone, homeTone: g.home.tone,
+              awayScore: started ? String(g.away.score) : '\u2013',
+              homeScore: started ? String(g.home.score) : '\u2013',
+              awayFg: !started ? '#5c6470'
+                : isFinal && g.away.score < g.home.score ? '#8b98ab' : '#e8ecf2',
+              homeFg: !started ? '#5c6470'
+                : isFinal && g.home.score < g.away.score ? '#8b98ab' : '#e8ecf2',
+              state: st.label, stateFg: st.fg,
+              dotBg: st.bg, dotBorder: st.border, edge: st.edge,
+              detail: g.detail, props: g.props,
+              action: started ? 'Gamecast →' : 'Preview →',
+              actionFg: started ? '#8fa6ff' : '#aab2c0',
+            };
+          }),
+        };
+      }),
+
+      feedRows: FEED.map(r => {
+        const hits = r.g.filter(v => v > r.line).length;
+        const played = r.g.length;
+        const thin = played < 10;
+        const pct = Math.round((hits / played) * 100);
+        let run = 1;
+        const outcomes = r.g.map(v => v > r.line);
+        for (let i = outcomes.length - 2; i >= 0 && outcomes[i] === outcomes[outcomes.length - 1]; i--) run++;
+        const runHit = outcomes[outcomes.length - 1];
+        const gr = graph(r.g, r.line, 52, 10, false);
+        // ten fixed slots: a four-game sample keeps bar width, leaving the rest empty
+        return {
+          name: r.name, team: r.team, prop: r.prop, odds: r.odds, matchup: r.matchup,
+          initials: initials(r.name),
+          dotFill: r.avail === 'posted' ? '#2faa72' : 'transparent',
+          dotRing: r.avail === 'unknown' ? 'transparent' : r.avail === 'projected' ? '#2faa72' : '#0a0b0d',
+          rate: thin ? '\u2014' : pct + '%',
+          sample: thin ? 'too few' : hits + ' of ' + played,
+          rateColor: thin ? '#aab2c0' : band(pct),
+          bars: gr.bars,
+          lineY: gr.lineY,
+          line: String(r.line),
+          caption: hits + ' of ' + played + ' · ' + run + (runHit ? ' straight' : ' cold'),
+          runColor: runHit ? '#2faa72' : '#ef5b5b',
+        };
+      }),
+
+      // FeedPresets shows the live filter set as k/v chips, so the sheet says
+      // what it is about to apply before you commit
+      sheetChips: [{ k:'Sport', v:'NFL' }, { k:'Prop', v:'Receptions' }, { k:'Side', v:'Over' }, { k:'Sample', v:'L10' }],
+      savedChips: [{ k:'Sport', v:'NFL' }, { k:'Prop', v:'Receptions' }, { k:'Min', v:'9+' }],
+      presetActions: [['Share', '#8b98ab', 'none'], ['Set default', '#8b98ab', '1px solid #2b2f36'],
+                      ['Rename', '#8b98ab', '1px solid #2b2f36'], ['Delete', '#ef5b5b', '1px solid #2b2f36']]
+        .map(([label, fg, rule]) => ({ label, fg, rule })),
+      sheetMarkets: ['Receptions', 'Rec yards', 'Rush yards', 'Targets', 'Anytime TD', 'Longest rec']
+        .map((label, i) => Object.assign({ label }, chip(i === 0))),
+      sheetWindows: ['L5', 'L10', 'L20', 'Season']
+        .map((label, i) => Object.assign({ label }, chip(i === 1))),
+      sheetPresets: ['5+', '9+', '12+', 'All']
+        .map((label, i) => Object.assign({ label }, chip(i === 1))),
+      sheetTicks: Array.from({ length: 17 }, (_, i) => i + 1).map(n => ({
+        h: 10 + n, bg: n <= 9 ? '#3b5bdb' : '#2b2f36',
+      })),
+      sheetRoster: [['KW', 'K. Williams', 'with', '#2faa72'], ['MS', 'M. Stafford', '+0.2', '#131519'], ['CP', 'C. Parkinson', '\u22120.1', '#131519']]
+        .map(([ini, short, state, bg]) => ({
+          initials: ini, short, state,
+          bg: state === 'with' ? '#2faa72' : bg,
+          border: state === 'with' ? '#2faa72' : '#2b2f36',
+          fg: state === 'with' ? '#0a0b0d' : '#e8ecf2',
+          stateFg: state === 'with' ? '#0a0b0d' : state.charAt(0) === '\u2212' ? '#ef5b5b' : '#2faa72',
+        })),
+
+      // .mobile-player-strip's scrolling switcher: current player highlighted,
+      // teammates then the divider then the opposition, as MobilePlayerNav does
+      stripPlayers: [['PN', 'Nacua', true], ['KW', 'Kyren', false], ['MS', 'Stafford', false],
+                     ['CP', 'Parkinson', false], ['JS', 'JSN', false]]
+        .map(([initials, short, on]) => ({
+          initials, short,
+          bg: on ? 'rgba(59,91,219,0.14)' : 'transparent',
+          border: on ? '#3b5bdb' : '#2b2f36',
+          fg: on ? '#8fa6ff' : '#aab2c0',
+        })),
+      detailTabs: [['Receptions', true], ['Rec yards', false], ['Targets', false], ['TDs', false]]
+        .map(([label, on]) => ({ label, fg: on ? '#e8ecf2' : '#8b98ab', rule: on ? '#3b5bdb' : 'transparent' })),
+      detailBars: detail.bars,
+      detailLineY: detail.lineY,
+      detailSplits: [['Season', '70%', '7 of 10', '#2faa72', true], ['At home', '80%', '4 of 5', '#2faa72', false],
+                     ['On road', '60%', '3 of 5', '#e8ecf2', false], ['H2H · SEA', '100%', '2 of 2', '#2faa72', false]]
+        .map(([label, value, sample, color, on]) => ({
+          label, value, sample, color,
+          bg: on ? '#191c21' : 'transparent',
+          border: on ? '#3b5bdb' : '#2b2f36',
+        })),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -33,6 +33,33 @@ export const DEFAULTS = {
     uiScale: "default", // small | default | large
     timeZone: "auto", // "auto" | an IANA zone name
     reduceMotion: null, // null = follow prefers-reduced-motion
+    // Which page the app opens on, and where the wordmark goes -- the
+    // wordmark never returns to the intro, which is first-run only (see
+    // TOUR_STORAGE_KEY below).
+    //
+    // Defaults to "feed", which is what the app opens on today, so adding
+    // this preference moves nobody. The newcomer problem -- "what is this
+    // and where do I start" -- is the intro's job, and relocating the daily
+    // user's start page does not help a newcomer while costing a returning
+    // user the habit they already have. Two different problems.
+    //
+    // Specified in docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md as one of two new
+    // display prefs; the other, "compact rows", belongs to that track and is
+    // deliberately not added here. Values are page ids from PageNavDropdown:
+    // landing | feed | games | board | nfl | mlb | nba | wnba | news.
+    startPage: "feed",
+    // Outcome colours, user-settable independently of the accent, for
+    // readers who cannot separate the default green/red pair. Offered as
+    // *pairs* rather than two free pickers: two independent wheels let
+    // someone choose hues 15 degrees apart and break every graph in the app,
+    // and a pair can be checked as a pair. posColor/negColor stay null
+    // unless someone overrides a preset with the wheels.
+    //
+    // Availability is deliberately NOT affected by this -- see the status
+    // block in index.css. A palette preference must not retint injury status.
+    statusPalette: "green-red", // green-red | blue-orange | teal-magenta | high-contrast | no-hue
+    posColor: null,
+    negColor: null,
   },
   betting: {
     defaultSport: "auto", // "auto" keeps defaultFeedSport()'s seasonal pick
@@ -97,6 +124,55 @@ function readStored() {
   // previous one saved before falling through to defaults.
   if (!parsed || typeof parsed !== "object") return withDefaults(readLegacy());
   return withDefaults(parsed);
+}
+
+// --------------------------------------------------------------------------
+// First-run state
+// --------------------------------------------------------------------------
+// Separate from propPalaceSettings on purpose: this is not a preference, it
+// is a record of whether someone has been here before, and the guided tour
+// will keep its progress in the same object.
+//
+// The shape is `{ step, completed, dismissed }`, specified in
+// docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md. Only `dismissed` is read or written
+// here -- `step` and `completed` belong to the tutorial track, which has not
+// started. Writes therefore *merge* rather than replace, so when that track
+// lands it can add its own fields without this code overwriting them, and
+// vice versa.
+//
+// It lives in localStorage rather than memory because the requirement is
+// "once ever, per browser": clearing site data legitimately resets it, and a
+// reload must not re-prompt.
+export const TOUR_STORAGE_KEY = "propPalaceTour";
+
+export function readTourState() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TOUR_STORAGE_KEY) || "null");
+    if (parsed && typeof parsed === "object") return parsed;
+  } catch {
+    // Private-mode Safari throws on localStorage access. Treating that as
+    // "never seen" shows the intro every time, which is the harmless side to
+    // fail on -- the alternative hides an onboarding screen from someone who
+    // has never seen it.
+  }
+  return {};
+}
+
+// True only for someone who has never dismissed the intro.
+export function isFirstRun() {
+  return readTourState().dismissed !== true;
+}
+
+// Flipped when someone actually opens the board, not when the intro renders.
+// Dismissing on render would spend the one-time prompt on a bounce -- a
+// first-time visitor who reloads before engaging has still not seen it.
+export function markTourDismissed() {
+  try {
+    const next = { ...readTourState(), dismissed: true };
+    localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Nothing to do -- the intro will show again next load.
+  }
 }
 
 const SettingsContext = createContext(null);

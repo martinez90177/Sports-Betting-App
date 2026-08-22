@@ -24,7 +24,7 @@ export function InjuryAndNews({ status, statusNote, items = [], summary }) {
             borderBottom: i === items.length - 1 ? "1px solid var(--line)" : "none",
           }}
         >
-          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.08em", color: it.tone === "current" ? "var(--accent-text, #8fa6ff)" : "var(--amber, #e8b13a)" }}>
+          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.08em", color: it.tone === "current" ? "var(--accent-text, #8fa6ff)" : "var(--amber, #3b5bdb)" }}>
             {it.when}
           </span>
           <span style={{ fontSize: 13.5, lineHeight: 1.5, color: it.tone === "current" ? "var(--text)" : "var(--dim-strong, #aab2c0)" }}>
