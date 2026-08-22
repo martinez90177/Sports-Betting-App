@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#8fa6ff; text-decoration:none; }
+  a:hover { color:#e8ecf2; }
+  input[type=range] { appearance:none; -webkit-appearance:none; background:transparent; }
+  input[type=range]::-webkit-slider-thumb { appearance:none; -webkit-appearance:none; width:14px; height:14px; border-radius:999px; background:#e8ecf2; border:2px solid #0a0b0d; cursor:pointer; }
+  input[type=range]::-moz-range-thumb { width:14px; height:14px; border-radius:999px; background:#e8ecf2; border:2px solid #0a0b0d; cursor:pointer; }
+</style>
+</helmet>
+<div style="width:100%; min-width:1280px; max-width:1600px; margin:0 auto; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif;">
+
+  <div style="display:flex; align-items:center; gap:32px; padding:16px 32px; border-bottom:1px solid #2b2f36;">
+    <a href="./PropPalace Landing.dc.html" style="display:flex; align-items:center; gap:10px; color:#e8ecf2;">
+      <span style="position:relative; display:flex; align-items:flex-end; gap:2px;">
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="position:relative; width:4px; height:23px; background:#3ecf8e; border-radius:2px 2px 0 0;">
+          <span style="position:absolute; left:1px; bottom:23px; width:2px; height:9px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+          <span style="position:absolute; left:3px; bottom:26px; width:9px; height:6px; background:#3ecf8e; clip-path:polygon(0 0, 100% 50%, 0 100%);"></span>
+        </span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="position:absolute; left:-3px; right:-3px; bottom:11px; border-top:1.5px dashed #e8ecf2;"></span>
+      </span>
+      <span style="font-family:'Space Mono', monospace; font-size:13px; letter-spacing:0.14em; text-transform:uppercase;">Prop Palace</span>
+    </a>
+    <div style="display:flex; align-items:center; gap:26px; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;">
+      <a href="./PropPalace Games.dc.html" style="color:#aab2c0;">Games</a>
+      <span style="color:#8fa6ff; padding-bottom:4px; border-bottom:2px solid #3b5bdb;">Prop Feed</span>
+      <span style="color:#aab2c0;">News</span>
+    </div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:16px;">
+      <span onClick="{{ toggleSettings }}" title="Settings" style="display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; cursor:pointer; font-size:15px; line-height:1; color:{{ cogFg }}; background:{{ cogBg }}; border:1px solid {{ cogBorder }};">⚙</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8b98ab;">SIGN IN</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 12px;">21+</span>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:196px minmax(0, 1fr) 196px; gap:20px; padding:20px 32px 40px; align-items:start;">
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Tonight's slate</div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+        <sc-for list="{{ slate }}" as="g" hint-placeholder-count="4">
+          <div onClick="{{ g.toggle }}" style="padding:10px 11px; border-radius:6px; cursor:pointer; background:{{ g.bg }}; border:1px solid {{ g.border }};">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="display:flex; align-items:center; justify-content:center; flex:none; width:22px; height:22px; border-radius:4px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:8.5px; letter-spacing:0.02em; color:{{ g.awayTone }};">{{ g.awayAb }}</span>
+              <span style="font-family:'Space Mono', monospace; font-size:9px; color:#8b98ab; flex:none;">@</span>
+              <span style="display:flex; align-items:center; justify-content:center; flex:none; width:22px; height:22px; border-radius:4px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:8.5px; letter-spacing:0.02em; color:{{ g.homeTone }};">{{ g.homeAb }}</span>
+            </div>
+            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-top:6px;">
+              <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ g.time }}</span>
+              <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ g.props }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div onClick="{{ allGames }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; margin-top:12px; cursor:pointer;">All of today's games</div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:16px; line-height:1.6;">Real 2026 game logs. Not a live odds feed.</div>
+    </div>
+
+    <div>
+      <div style="display:flex; align-items:flex-end; gap:20px;">
+        <div>
+          <h1 style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-0.02em;">Prop Feed</h1>
+          <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:7px;">Every row states its sample · counts first, rate second</div>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:9px; border:1px solid #2b2f36; border-radius:6px; background:#131519; padding:9px 13px; width:260px;">
+          <span style="font-family:'Space Mono', monospace; font-size:12px; color:#8b98ab;">⌕</span>
+          <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.06em; color:#8b98ab;">Search players or teams</span>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:flex-end; gap:26px; margin-top:16px; border-bottom:1px solid #2b2f36;">
+        <sc-for list="{{ leagues }}" as="lg" hint-placeholder-count="4">
+          <span onClick="{{ lg.pick }}" style="display:flex; align-items:baseline; gap:7px; padding-bottom:11px; cursor:pointer; margin-bottom:-1px; border-bottom:2px solid {{ lg.rule }};">
+            <span style="font-size:15px; color:{{ lg.fg }};">{{ lg.label }}</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ lg.count }}</span>
+          </span>
+        </sc-for>
+        <span onClick="{{ toggleFilters }}" style="margin-left:auto; margin-bottom:8px; display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; border-radius:4px; padding:7px 12px; cursor:pointer; color:{{ filterFg }}; background:{{ filterBg }}; border:1px solid {{ filterBorder }};">Filters<span style="font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab;">{{ filterSummary }}</span></span>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:0; margin-top:12px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+        <div style="flex:1.2; min-width:0; padding:12px 18px;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Showing</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ showing }}</div>
+        </div>
+        <div style="flex:1.2; min-width:0; padding:12px 18px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Markets</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ marketSummary }}</div>
+        </div>
+        <div style="flex:1; min-width:0; padding:12px 18px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Window</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ windowLabel }}</div>
+        </div>
+        <div style="flex:1.7; min-width:0; padding:12px 18px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Thin samples</div>
+          <div style="font-family:'Space Mono', monospace; font-size:14px; margin-top:6px; white-space:nowrap;">{{ thinLabel }}</div>
+        </div>
+      </div>
+
+      <sc-if value="{{ filtersOpen }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:12px; padding:16px 18px; background:#0d0f12; border:1px solid #3b5bdb; border-radius:6px;">
+          <div style="display:flex; align-items:baseline; gap:12px; padding-bottom:12px; border-bottom:1px solid #2b2f36;">
+            <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px;">Filters</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">rates always read the full log</span>
+            <span onClick="{{ resetFilters }}" style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">Reset</span>
+            <span onClick="{{ toggleFilters }}" style="font-family:'Space Mono', monospace; font-size:14px; color:#aab2c0; cursor:pointer;">×</span>
+          </div>
+
+          <div style="display:flex; align-items:baseline; gap:12px; margin-top:14px;">
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Markets</span>
+            <span onClick="{{ clearMarkets }}" style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">All markets</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:9px;">
+            <sc-for list="{{ marketChips }}" as="m" hint-placeholder-count="7">
+              <span onClick="{{ m.toggle }}" style="display:flex; align-items:baseline; gap:7px; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.05em; border-radius:4px; padding:7px 11px; cursor:pointer; white-space:nowrap; background:{{ m.bg }}; color:{{ m.fg }}; border:1px solid {{ m.border }};">{{ m.label }}<span style="font-size:9.5px; color:{{ m.sub }};">{{ m.count }}</span></span>
+            </sc-for>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px 24px; margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+            <div>
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Side</div>
+              <div style="display:flex; gap:6px; margin-top:9px;">
+                <sc-for list="{{ sides }}" as="s" hint-placeholder-count="2">
+                  <span onClick="{{ s.pick }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; border-radius:4px; padding:7px 12px; cursor:pointer; white-space:nowrap; background:{{ s.bg }}; color:{{ s.fg }}; border:1px solid {{ s.border }};">{{ s.label }}</span>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Defence vs. this market</div>
+              <div style="display:flex; gap:6px; margin-top:9px;">
+                <sc-for list="{{ tiers }}" as="t" hint-placeholder-count="4">
+                  <span onClick="{{ t.pick }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; border-radius:4px; padding:7px 11px; cursor:pointer; white-space:nowrap; background:{{ t.bg }}; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}</span>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Lines</div>
+              <div style="display:flex; gap:6px; margin-top:9px;">
+                <sc-for list="{{ lineModes }}" as="l" hint-placeholder-count="2">
+                  <span onClick="{{ l.pick }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; border-radius:4px; padding:7px 11px; cursor:pointer; white-space:nowrap; background:{{ l.bg }}; color:{{ l.fg }}; border:1px solid {{ l.border }};">{{ l.label }}</span>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:14px; margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Games counted</span>
+            <div style="position:relative; flex:1; height:22px; display:flex; align-items:center;">
+              <span style="position:absolute; left:0; right:0; height:4px; border-radius:999px; background:#2b2f36;"></span>
+              <span style="position:absolute; left:0; height:4px; border-radius:999px; width:{{ sliderFill }}; background:#3b5bdb;"></span>
+              <input type="range" min="0" max="{{ sliderMax }}" step="1" value="{{ sliderValue }}" onChange="{{ onSlide }}" onInput="{{ onSlide }}" style="position:relative; width:100%; margin:0; height:22px; cursor:pointer;" />
+            </div>
+            <span style="font-family:'Space Mono', monospace; font-size:13px; color:#8fa6ff; font-variant-numeric:tabular-nums; white-space:nowrap; min-width:78px; text-align:right;">{{ windowLabel }}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin:6px 92px 0 118px;">
+            <sc-for list="{{ sliderStops }}" as="st" hint-placeholder-count="4">
+              <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ st }}</span>
+            </sc-for>
+          </div>
+
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+            <div style="display:flex; align-items:baseline; gap:12px;">
+              <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Minimum sample</span>
+              <span onClick="{{ savePreset }}" style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; cursor:pointer; white-space:nowrap; color:{{ saveFg }};">{{ saveLabel }}</span>
+              <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:13px; color:#8fa6ff; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ minValueLabel }}</span>
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:7px; margin-top:9px;">
+              <sc-for list="{{ minChips }}" as="mn" hint-placeholder-count="4">
+                <span onClick="{{ mn.pick }}" style="display:flex; align-items:center; gap:6px; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.06em; border-radius:4px; padding:7px 11px; cursor:pointer; white-space:nowrap; font-variant-numeric:tabular-nums; background:{{ mn.bg }}; color:{{ mn.fg }}; border:1px solid {{ mn.border }};">{{ mn.label }}<sc-if value="{{ mn.removable }}" hint-placeholder-val="{{ true }}"><span onClick="{{ mn.remove }}" style="opacity:0.7; font-weight:700;">×</span></sc-if></span>
+              </sc-for>
+            </div>
+            <div style="display:flex; align-items:flex-end; gap:3px; height:30px; margin-top:11px;">
+              <sc-for list="{{ minTicks }}" as="t" hint-placeholder-count="17">
+                <span onClick="{{ t.pick }}" style="flex:1; height:100%; display:flex; align-items:flex-end; cursor:pointer;"><span style="width:100%; height:{{ t.h }}px; border-radius:1px; background:{{ t.bg }};"></span></span>
+              </sc-for>
+            </div>
+            <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:9px; line-height:1.5;">{{ minNote }}</div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:14px; margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Odds format</span>
+            <div style="display:flex; gap:6px;">
+              <sc-for list="{{ oddsFormats }}" as="o" hint-placeholder-count="3">
+                <span onClick="{{ o.pick }}" style="display:flex; align-items:baseline; gap:7px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; border-radius:4px; padding:7px 11px; cursor:pointer; white-space:nowrap; background:{{ o.bg }}; color:{{ o.fg }}; border:1px solid {{ o.border }};">{{ o.label }}<span style="font-size:10px; font-variant-numeric:tabular-nums; opacity:0.75;">{{ o.sample }}</span></span>
+              </sc-for>
+            </div>
+            <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; line-height:1.5;">Saved to Settings · Display</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="margin-top:12px; overflow-x:auto;">
+      <div style="min-width:1000px;">
+      <div style="display:grid; grid-template-columns:34px minmax(200px, 2.3fr) minmax(210px, 2.6fr) 92px 84px minmax(264px, 2.5fr); gap:14px; align-items:center; padding:12px 16px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px 6px 0 0;">
+        <span></span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color:#aab2c0; white-space:nowrap;">Proposition</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color:#aab2c0; white-space:nowrap;">Form vs. line</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color:#aab2c0; white-space:nowrap;">Line</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.14em; text-transform:uppercase; color:#aab2c0; white-space:nowrap;">Odds</span>
+        <span style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+          <sc-for list="{{ rateCols }}" as="c" hint-placeholder-count="4">
+            <span onClick="{{ c.sort }}" style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; text-align:center; cursor:pointer; white-space:nowrap; color:{{ c.fg }};">{{ c.label }} {{ c.arrow }}</span>
+          </sc-for>
+        </span>
+      </div>
+
+      <div style="background:#131519; border:1px solid #2b2f36; border-top:none; border-radius:0 0 6px 6px;">
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="8">
+          <div style="display:grid; grid-template-columns:34px minmax(200px, 2.3fr) minmax(210px, 2.6fr) 92px 84px minmax(264px, 2.5fr); gap:14px; align-items:center; padding:14px 16px; border-top:1px solid #2b2f36;">
+            <span onClick="{{ r.togglePick }}" style="width:30px; height:30px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:'Space Mono', monospace; font-size:15px; cursor:pointer; background:{{ r.pickBg }}; color:{{ r.pickFg }}; border:1px solid {{ r.pickBorder }};">{{ r.pickGlyph }}</span>
+
+            <div style="display:flex; align-items:center; gap:11px; min-width:0;">
+              <span style="position:relative; flex:none; width:36px; height:36px;">
+                <span style="display:flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:999px; background:#191c21; border:2px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab;">{{ r.initials }}</span>
+                <span style="position:absolute; right:-1px; bottom:-1px; width:10px; height:10px; border-radius:999px; border:2px solid {{ r.dotRing }}; background:{{ r.dotFill }}; box-sizing:border-box;"></span>
+              </span>
+              <div style="min-width:0;">
+                <div style="display:flex; align-items:baseline; gap:7px;">
+                  <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px; letter-spacing:-0.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
+                  <span style="display:flex; align-items:center; gap:5px; flex:none;">
+                    <span style="display:flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:3px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:7px; letter-spacing:0.02em; color:{{ r.teamTone }};">{{ r.team }}</span>
+                    <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; color:#8b98ab; white-space:nowrap;">{{ r.team }}</span>
+                  </span>
+                </div>
+                <div style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.04em; text-transform:uppercase; color:#e8ecf2; margin-top:4px; line-height:1.35;">{{ r.prop }}</div>
+                <div style="display:flex; align-items:baseline; gap:8px; margin-top:4px;">
+                  <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ r.matchup }}</span>
+                  <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; font-variant-numeric:tabular-nums; color:{{ r.tierColor }};">{{ r.tier }}</span>
+                  <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; color:#8b98ab;">{{ r.tierWord }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="min-width:0;">
+              <div style="position:relative; padding-right:50px;">
+                <div style="position:relative; display:flex; align-items:stretch; gap:4px; height:56px;">
+                  <sc-for list="{{ r.bars }}" as="b" hint-placeholder-count="10">
+                    <div style="flex:1; display:flex; flex-direction:column; justify-content:flex-end; background:{{ b.band }}; border-radius:3px 3px 0 0;">
+                      <div style="height:{{ b.h }}px; border-radius:2px 2px 0 0; background:{{ b.bg }}; border:{{ b.border }}; box-sizing:border-box;"></div>
+                    </div>
+                  </sc-for>
+                  <span style="position:absolute; left:0; right:-50px; bottom:{{ r.lineY }}px; border-top:1.5px dashed #e8ecf2;"></span>
+                  <span onMouseDown="{{ r.startDrag }}" onDoubleClick="{{ r.resetLine }}" title="Drag to move the line" style="position:absolute; right:-50px; bottom:{{ r.lineY }}px; transform:translateY(50%); border-radius:3px; padding:3px 6px; font-family:'Space Mono', monospace; font-size:10.5px; font-variant-numeric:tabular-nums; cursor:ns-resize; user-select:none; background:{{ r.lineTagBg }}; color:{{ r.lineTagFg }};">{{ r.lineLabel }}</span>
+                </div>
+              </div>
+              <div style="display:flex; align-items:baseline; gap:10px; margin-top:7px;">
+                <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.06em; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ r.runColor }};">{{ r.formCaption }}</span>
+                <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.06em; color:#8b98ab; font-variant-numeric:tabular-nums; white-space:nowrap;">avg {{ r.avg }}</span>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-family:'Space Mono', monospace; font-size:15px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ r.lineLabel }}</div>
+              <div onClick="{{ r.resetLine }}" style="font-family:'Space Mono', monospace; font-size:10px; margin-top:5px; font-variant-numeric:tabular-nums; cursor:pointer; white-space:nowrap; color:{{ r.marketNoteColor }};">{{ r.marketNote }}</div>
+            </div>
+
+            <div style="font-family:'Space Mono', monospace; font-size:14px; font-variant-numeric:tabular-nums; color:#aab2c0; white-space:nowrap;">{{ r.odds }}</div>
+
+            <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
+              <sc-for list="{{ r.rates }}" as="c" hint-placeholder-count="4">
+                <div style="border-radius:4px; padding:8px 5px; text-align:center; background:{{ c.bg }}; border:1px solid {{ c.border }};">
+                  <div style="font-family:'Space Mono', monospace; font-size:14px; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ c.fg }};">{{ c.pct }}</div>
+                  <div style="height:3px; border-radius:2px; margin:6px 5px 0; background:#2b2f36;">
+                    <div style="height:3px; border-radius:2px; width:{{ c.fill }}; background:{{ c.barColor }};"></div>
+                  </div>
+                  <div style="font-family:'Space Mono', monospace; font-size:9.5px; color:#8b98ab; margin-top:5px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ c.sample }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:16px; margin-top:16px;">
+        <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:11px 16px; cursor:pointer;">Load 24 more props</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; color:#8b98ab; line-height:1.6;">Real 2026 regular-season game logs, finished games only. Rates under the minimum read “too few”, never a percentage.</span>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">My picks</div>
+      <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; padding:14px; margin-top:12px;">
+        <div style="display:flex; align-items:baseline; justify-content:space-between;">
+          <span style="font-family:'Space Mono', monospace; font-size:26px; line-height:1; color:#8fa6ff; font-variant-numeric:tabular-nums;">{{ pickCount }}</span>
+          <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">tracked</span>
+        </div>
+        <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:9px; line-height:1.5;">{{ pickNote }}</div>
+      </div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:20px;">Reading the graph</div>
+      <div style="display:flex; flex-direction:column; gap:9px; margin-top:12px;">
+        <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:8px; height:17px; background:#2faa72; border-radius:2px; flex:none;"></span>cleared the line</span>
+        <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:8px; height:17px; border:1.5px solid #ef5b5b; border-radius:2px; box-sizing:border-box; flex:none;"></span>fell short</span>
+        <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:16px; border-top:1.5px dashed #e8ecf2; flex:none;"></span>the line</span>
+      </div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:14px; line-height:1.6;">Bar height is the number he put up. Drag a line tag to test a different number — every rate on that row recomputes.</div>
+    </div>
+  </div>
+
+  <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed; top:0; right:0; bottom:0; width:372px; background:#0d0f12; border-left:1px solid #2b2f36; padding:20px 22px 40px; overflow:auto; z-index:60;">
+      <div style="display:flex; align-items:baseline; gap:12px; padding-bottom:14px; border-bottom:1px solid #2b2f36;">
+        <span style="font-family:'Space Mono', monospace; font-size:13px; letter-spacing:0.14em; text-transform:uppercase;">Settings</span>
+        <a href="./PropPalace Settings.dc.html" style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase;">All settings</a>
+        <span onClick="{{ toggleSettings }}" style="font-family:'Space Mono', monospace; font-size:15px; color:#aab2c0; cursor:pointer;">×</span>
+      </div>
+
+      <div style="display:flex; gap:22px; margin-top:16px; border-bottom:1px solid #2b2f36;">
+        <sc-for list="{{ settingsSections }}" as="sc" hint-placeholder-count="2">
+          <span onClick="{{ sc.pick }}" style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; padding-bottom:10px; margin-bottom:-1px; cursor:pointer; color:{{ sc.fg }}; border-bottom:2px solid {{ sc.rule }};">{{ sc.label }}</span>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{ onDisplay }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="margin-top:18px;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Theme</div>
+            <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Auto follows your device's light/dark setting as it changes.</div>
+            <div style="display:flex; gap:2px; margin-top:9px;">
+              <sc-for list="{{ themes }}" as="t" hint-placeholder-count="3">
+                <span onClick="{{ t.pick }}" style="flex:1 1 0; min-width:70px; text-align:center; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; border-radius:4px; padding:9px 6px; cursor:pointer; white-space:nowrap; background:{{ t.bg }}; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:flex-start; gap:12px; margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <div style="min-width:0;">
+              <div style="font-size:13px; color:#e8ecf2;">Reduce motion</div>
+              <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Turns off transitions and animations. Starts from your device setting.</div>
+            </div>
+            <span onClick="{{ toggleMotion }}" style="margin-left:auto; flex:none; width:40px; height:23px; border-radius:999px; cursor:pointer; display:flex; align-items:center; padding:2px; box-sizing:border-box; justify-content:{{ motionJustify }}; background:{{ motionBg }}; border:1px solid {{ motionBorder }};"><span style="width:17px; height:17px; border-radius:999px; background:#e8ecf2;"></span></span>
+          </div>
+
+          <div style="margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Accent colour</div>
+            <div style="display:flex; gap:12px; margin-top:12px;">
+              <sc-for list="{{ accents }}" as="a" hint-placeholder-count="6">
+                <span onClick="{{ a.pick }}" title="{{ a.label }}" style="width:26px; height:26px; border-radius:50%; cursor:pointer; flex:none; box-sizing:border-box; background:{{ a.hex }}; border:2px solid {{ a.ring }};"></span>
+              </sc-for>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:14px;">
+              <span style="width:26px; height:26px; flex:none; border:1px solid #2b2f36; background:{{ accentHex }};"></span>
+              <span style="font-family:'Space Mono', monospace; font-size:14px; letter-spacing:0.04em; color:#e8ecf2;">{{ accentHex }}</span>
+              <span style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.12em; color:#8b98ab;">{{ accentLabel }}</span>
+            </div>
+            <sc-if value="{{ showReset }}" hint-placeholder-val="{{ false }}">
+              <div onClick="{{ resetAccent }}" style="font-size:11.5px; color:#8b98ab; margin-top:12px; cursor:pointer; text-decoration:underline;">Reset to default</div>
+            </sc-if>
+            <div style="font-size:12.5px; color:#aab2c0; line-height:1.6; margin-top:14px;">Active tabs, buttons, links and the wordmark. It never colours a hit rate — cleared and missed stay green and red at every accent.</div>
+            <div style="display:flex; gap:8px; margin-top:12px;">
+              <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.06em; color:#08131c; background:#2faa72; padding:4px 9px;">CLEARED</span>
+              <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.06em; color:#ef5b5b; border:1.5px solid #ef5b5b; padding:3px 9px;">SHORT</span>
+              <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.06em; color:#ffffff; background:{{ accentHex }}; padding:4px 9px;">ACCENT</span>
+            </div>
+          </div>
+
+          <div style="margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Odds format</div>
+            <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Applied everywhere odds appear. Currently showing {{ sampleOdds }}.</div>
+            <div style="display:flex; gap:2px; margin-top:9px;">
+              <sc-for list="{{ oddsFormats }}" as="o" hint-placeholder-count="3">
+                <span onClick="{{ o.pick }}" style="flex:1 1 0; min-width:70px; text-align:center; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; border-radius:4px; padding:9px 6px; cursor:pointer; white-space:nowrap; background:{{ o.bg }}; color:{{ o.fg }}; border:1px solid {{ o.border }};">{{ o.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Display size</div>
+            <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Scales the whole interface, not just text.</div>
+            <div style="display:flex; gap:2px; margin-top:9px;">
+              <sc-for list="{{ scales }}" as="u" hint-placeholder-count="3">
+                <span onClick="{{ u.pick }}" style="flex:1 1 0; min-width:70px; text-align:center; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; border-radius:4px; padding:9px 6px; cursor:pointer; white-space:nowrap; background:{{ u.bg }}; color:{{ u.fg }}; border:1px solid {{ u.border }};">{{ u.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Time zone</div>
+            <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Game times are shown in this zone.</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:9px;">
+              <sc-for list="{{ timeZones }}" as="z" hint-placeholder-count="8">
+                <span onClick="{{ z.pick }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; border-radius:4px; padding:7px 10px; cursor:pointer; white-space:nowrap; background:{{ z.bg }}; color:{{ z.fg }}; border:1px solid {{ z.border }};">{{ z.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ onBetting }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="margin-top:18px;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Default sport</div>
+            <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Which board the app opens on. Auto picks whatever is in season.</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:9px;">
+              <sc-for list="{{ sportOptions }}" as="d" hint-placeholder-count="5">
+                <span onClick="{{ d.pick }}" style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; border-radius:4px; padding:7px 10px; cursor:pointer; white-space:nowrap; background:{{ d.bg }}; color:{{ d.fg }}; border:1px solid {{ d.border }};">{{ d.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Default sample size</div>
+            <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Which hit-rate window the Prop Feed opens on.</div>
+            <div style="display:flex; gap:2px; margin-top:9px;">
+              <sc-for list="{{ sampleWindows }}" as="w" hint-placeholder-count="4">
+                <span onClick="{{ w.pick }}" style="flex:1 1 0; min-width:70px; text-align:center; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; border-radius:4px; padding:9px 6px; cursor:pointer; white-space:nowrap; background:{{ w.bg }}; color:{{ w.fg }}; border:1px solid {{ w.border }};">{{ w.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">
+            <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab;">Default side</div>
+            <div style="font-size:11.5px; color:#8b98ab; line-height:1.45; margin-top:6px;">Which side of the line the feed is priced from when it loads.</div>
+            <div style="display:flex; gap:2px; margin-top:9px;">
+              <sc-for list="{{ leans }}" as="l" hint-placeholder-count="2">
+                <span onClick="{{ l.pick }}" style="flex:1 1 0; min-width:70px; text-align:center; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; border-radius:4px; padding:9px 6px; cursor:pointer; white-space:nowrap; background:{{ l.bg }}; color:{{ l.fg }}; border:1px solid {{ l.border }};">{{ l.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="font-size:12.5px; color:#8b98ab; line-height:1.6; margin-top:18px; padding-top:16px; border-top:1px solid #2b2f36;">Bankroll, unit size and default sportsbook are on the full settings page — they change how the Ledger reports, not how the feed reads.</div>
+        </div>
+      </sc-if>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36; line-height:1.6;">Saved on this device under propPalaceSettings.</div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1100}}">
+const ROWS = [
+  { id:'nacua', name:'Puka Nacua', team:'LAR', game:'LAR @ SEA', matchup:'vs SEA', tier:'soft',
+    market:'Receptions', prop:'Receptions over 5.5', line:'5.5', odds:-118, status:'posted',
+    g:[8,4,7,6,9,5,7,6,7,5,8,3,6,7,9,6], season:[12,16] },
+  { id:'chase', name:"Ja'Marr Chase", team:'CIN', game:'CIN @ KC', matchup:'vs KC', tier:'middling',
+    market:'Receptions', prop:'Receptions over 6.5', line:'6.5', odds:-105, status:'posted',
+    g:[9,5,8,7,11,6,8,7,9,6,10,4,7,8,10,7], season:[11,16] },
+  { id:'kwilliams', name:'Kyren Williams', team:'LAR', game:'LAR @ SEA', matchup:'vs SEA', tier:'tough',
+    market:'Rush yards', prop:'Rush yards over 58.5', line:'58.5', odds:-114, status:'posted',
+    g:[74,42,88,61,96,38,71,54,83,47,79,31,66,72,91,58], season:[9,16] },
+  { id:'jsn', name:'Jaxon Smith-Njigba', team:'SEA', game:'LAR @ SEA', matchup:'vs LAR', tier:'middling',
+    market:'Rec yards', prop:'Rec yards over 64.5', line:'64.5', odds:-122, status:'projected',
+    g:[82,44,71,58,104,49,67,53,88,41,76,36,62,69,97,55], season:[8,16] },
+  { id:'bijan', name:'Bijan Robinson', team:'ATL', game:'ATL @ MIN', matchup:'vs MIN', tier:'soft',
+    market:'Rush + rec yds', prop:'Rush + rec yds over 104.5', line:'104.5', odds:-130, status:'posted',
+    g:[128,86,141,97,164,78,119,102,147,84,133,71,111,124,158,96], season:[10,16] },
+  { id:'gwilson', name:'Garrett Wilson', team:'NYJ', game:'NYJ @ BUF', matchup:'vs BUF', tier:'tough',
+    market:'Receptions', prop:'Receptions over 5.5', line:'5.5', odds:104, status:'posted',
+    g:[6,3,7,5,8,4,6,5,7,3,6,2,5,6,8,4], season:[7,16] },
+  { id:'kelce', name:'Travis Kelce', team:'KC', game:'CIN @ KC', matchup:'vs CIN', tier:'middling',
+    market:'Rec yards', prop:'Rec yards over 52.5', line:'52.5', odds:-110, status:'posted',
+    g:[64,38,71,47,82,41,58,49,68,36,61,29,53,57,74,44], season:[9,16] },
+  { id:'worthy', name:'Xavier Worthy', team:'KC', game:'CIN @ KC', matchup:'vs CIN', tier:'middling',
+    market:'Receptions', prop:'Receptions over 3.5', line:'3.5', odds:-102, status:'unknown',
+    g:[4,2,5,3], season:[3,4] },
+];
+
+// Crest tones stay desaturated: a club's red or green must never be mistaken for a
+// bar's cleared/fell-short state elsewhere on the page.
+const SLATE = [
+  { id:'lar-sea', label:'LAR @ SEA', time:'4:05 PM', props:'148 props',
+    awayAb:'LAR', homeAb:'SEA', awayTone:'#4a6fd4', homeTone:'#4a8f6d' },
+  { id:'cin-kc',  label:'CIN @ KC',  time:'4:25 PM', props:'163 props',
+    awayAb:'CIN', homeAb:'KC',  awayTone:'#a5734f', homeTone:'#a5555f' },
+  { id:'atl-min', label:'ATL @ MIN', time:'1:00 PM', props:'139 props',
+    awayAb:'ATL', homeAb:'MIN', awayTone:'#a5555f', homeTone:'#7565a8' },
+  { id:'nyj-buf', label:'NYJ @ BUF', time:'8:20 PM', props:'152 props',
+    awayAb:'NYJ', homeAb:'BUF', awayTone:'#4a7d5e', homeTone:'#4f87ab' },
+];
+
+const MARKETS = ['Receptions', 'Rec yards', 'Rush yards', 'Rush + rec yds', 'Targets', 'Anytime TD', 'Longest rec'];
+
+// Mirrors DEFAULTS in src/settings.jsx — one versioned object under
+// propPalaceSettings, sections display.* and betting.*
+const SETTINGS = {
+  display: { theme:'dark', accentColor:null, oddsFormat:'american', uiScale:'default', timeZone:'auto' },
+  betting: { defaultSport:'auto', sportsbook:'draftkings', sampleWindow:'l10', lean:'over', defaultStake:1 },
+};
+// betting.sampleWindow vocabulary, verbatim from the store
+const WINDOWS = [['l5', 5], ['l10', 10], ['l20', 20], ['season', 0]];
+// src/MinSampleControl.jsx: 17 ticks (one NFL season), MIN_SAMPLE_ALL = 1,
+// DEFAULT_PRESETS = [5, 9, 12], persisted under propPalaceSamplePresets
+const MIN_TICKS = 17, MIN_ALL = 1;
+const DEFAULT_PRESETS = [5, 9, 12];
+
+// src/ColorWheel.jsx — ACCENT_PRESETS, order and hexes as shipped
+const ACCENT_PRESETS = [
+  { label:'Lapis', hex:'#3b5bdb' }, { label:'Teal', hex:'#14b8a6' },
+  { label:'Gold', hex:'#c9a24a' }, { label:'Rust', hex:'#c2622d' },
+  { label:'Violet', hex:'#8b5cf6' }, { label:'Magenta', hex:'#d6409f' },
+];
+// src/SettingsModal.jsx — option lists, verbatim
+const THEMES = [{ id:'light', label:'Light' }, { id:'dark', label:'Dark' }, { id:'auto', label:'Auto' }];
+const ODDS_FORMATS = [{ id:'american', label:'American' }, { id:'decimal', label:'Decimal' }, { id:'fractional', label:'Fractional' }];
+const UI_SCALE = [{ id:'small', label:'Small' }, { id:'default', label:'Default' }, { id:'large', label:'Large' }];
+const SAMPLE_WINDOWS = [{ id:'l5', label:'L5' }, { id:'l10', label:'L10' }, { id:'l20', label:'L20' }, { id:'all', label:'All' }];
+const LEANS = [{ id:'over', label:'Over' }, { id:'under', label:'Under' }];
+const SPORT_OPTIONS = [
+  { id:'auto', label:'Auto (in season)' }, { id:'nfl', label:'NFL' },
+  { id:'mlb', label:'MLB' }, { id:'nba', label:'NBA' }, { id:'wnba', label:'WNBA' },
+];
+const TIME_ZONES = [
+  { id:'auto', label:'Auto — follow this device' }, { id:'America/New_York', label:'Eastern' },
+  { id:'America/Chicago', label:'Central' }, { id:'America/Denver', label:'Mountain' },
+  { id:'America/Phoenix', label:'Arizona (no DST)' }, { id:'America/Los_Angeles', label:'Pacific' },
+  { id:'America/Anchorage', label:'Alaska' }, { id:'Pacific/Honolulu', label:'Hawaii' },
+];
+
+// src/odds.js — American is the internal representation; only display converts
+const americanToDecimal = o => (o > 0 ? 1 + o / 100 : 1 + 100 / Math.abs(o));
+const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+function formatOdds(o, fmt) {
+  if (o == null || !Number.isFinite(o)) return '\u2014';
+  if (fmt === 'decimal') return americanToDecimal(o).toFixed(2);
+  if (fmt === 'fractional') {
+    const [num, den] = o > 0 ? [Math.round(o), 100] : [100, Math.round(Math.abs(o))];
+    const g = gcd(num, den) || 1;
+    return (num / g) + '/' + (den / g);
+  }
+  // U+2212, not a hyphen: at tabular-nums a hyphen sits low beside the '+'
+  return o > 0 ? '+' + o : '\u2212' + Math.abs(o);
+}
+// Defensive rank is per DEFENCE and per MARKET — a team soft against receptions can
+// be stingy against receiving yards, so one rank per team is wrong. 1 = stingiest of 32.
+const DEF_RANK = {
+  SEA: { 'Receptions':27, 'Rec yards':12, 'Rush yards':6,  'Rush + rec yds':9,  'Targets':24, 'Anytime TD':14, 'Longest rec':8 },
+  KC:  { 'Receptions':19, 'Rec yards':23, 'Rush yards':11, 'Rush + rec yds':17, 'Targets':21, 'Anytime TD':26, 'Longest rec':29 },
+  LAR: { 'Receptions':15, 'Rec yards':22, 'Rush yards':18, 'Rush + rec yds':20, 'Targets':13, 'Anytime TD':16, 'Longest rec':25 },
+  CIN: { 'Receptions':30, 'Rec yards':28, 'Rush yards':24, 'Rush + rec yds':26, 'Targets':31, 'Anytime TD':22, 'Longest rec':19 },
+  MIN: { 'Receptions':29, 'Rec yards':16, 'Rush yards':31, 'Rush + rec yds':28, 'Targets':27, 'Anytime TD':20, 'Longest rec':11 },
+  BUF: { 'Receptions':4,  'Rec yards':9,  'Rush yards':14, 'Rush + rec yds':7,  'Targets':6,  'Anytime TD':10, 'Longest rec':17 },
+};
+const rankRead = n => n >= 22 ? { word:'easy', color:'#2faa72' }
+  : n <= 10 ? { word:'tough', color:'#ef5b5b' }
+  : { word:'mid', color:'#aab2c0' };
+// the defence a row faces, from its matchup label
+const oppOf = r => r.matchup.replace('vs ', '');
+const rankOf = r => (DEF_RANK[oppOf(r)] || {})[r.market];
+const TEAM_TONE = { LAR:'#4a6fd4', SEA:'#4a8f6d', CIN:'#a5734f', KC:'#a5555f',
+  ATL:'#a5555f', MIN:'#7565a8', NYJ:'#4a7d5e', BUF:'#4f87ab' };
+
+class Component extends DCLogic {
+  state = {
+    league:'NFL', games:[], markets:[], lineMode:'Main line', tier:'any',
+    sort:'L10', picks:[], lines:{}, filtersOpen:false, settingsOpen:false,
+    // display.* mirrors of the live store, editable from the quick panel
+    theme: SETTINGS.display.theme,
+    accentColor: SETTINGS.display.accentColor,
+    uiScale: SETTINGS.display.uiScale,
+    timeZone: SETTINGS.display.timeZone,
+    reduceMotion: SETTINGS.display.reduceMotion === true,
+    defaultSport: SETTINGS.betting.defaultSport,
+    sampleWindow: SETTINGS.betting.sampleWindow,
+    lean: SETTINGS.betting.lean,
+    settingsSection: 'display',
+    // seeded from the live store rather than page-local guesses
+    side: SETTINGS.betting.lean === 'under' ? 'Under' : 'Over',
+    window: (WINDOWS.find(w => w[0] === SETTINGS.betting.sampleWindow) || WINDOWS[1])[1],
+    minSample: DEFAULT_PRESETS[0],
+    presets: DEFAULT_PRESETS.slice(),
+    oddsFormat: SETTINGS.display.oddsFormat,
+  };
+
+  savePreset() {
+    return () => this.setState(s => (s.presets.includes(s.minSample)
+      ? s
+      : { presets: s.presets.concat(s.minSample).sort((a, b) => a - b) }));
+  }
+
+  removePreset(n) {
+    return e => {
+      e.stopPropagation();
+      this.setState(s => ({ presets: s.presets.filter(p => p !== n) }));
+    };
+  }
+
+  set(k, v) { return () => this.setState({ [k]: v }); }
+
+  startDrag(id, marketLine, unit, max) {
+    return e => {
+      e.preventDefault();
+      const startY = e.clientY;
+      const startVal = this.state.lines[id] ?? marketLine;
+      const step = marketLine >= 40 ? 5 : marketLine >= 15 ? 1 : 0.5;
+      const move = ev => {
+        let v = startVal + (startY - ev.clientY) / unit;
+        v = Math.max(step, Math.min(max - step, Math.round(v / step) * step));
+        // never land on a whole number for a half-point market — a whole line can push
+        if (step === 0.5) v = Math.round(v + 0.5) - 0.5;
+        this.setState(st => ({ lines: Object.assign({}, st.lines, { [id]: v }) }));
+      };
+      const up = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', up);
+      };
+      window.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', up);
+    };
+  }
+
+  resetLine(id) {
+    return e => {
+      e.stopPropagation();
+      this.setState(st => {
+        const next = Object.assign({}, st.lines);
+        delete next[id];
+        return { lines: next };
+      });
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const dec = v => (Math.round(v * 10) / 10).toFixed(1);
+    const chip = on => ({
+      bg: on ? '#3b5bdb' : 'transparent',
+      fg: on ? '#ffffff' : '#aab2c0',
+      border: on ? '#3b5bdb' : '#2b2f36',
+    });
+    const seg = (list, cur, key) => list.map(label => Object.assign({
+      label, pick: this.set(key, label),
+    }, chip(cur === label)));
+
+    const visible = ROWS.filter(r =>
+      (s.games.length === 0 || s.games.includes(r.game)) &&
+      (s.markets.length === 0 || s.markets.includes(r.market)) &&
+      (s.tier === 'any'
+        || (s.tier === 'soft' && rankOf(r) >= 22)
+        || (s.tier === 'tough' && rankOf(r) <= 10)
+        || (s.tier === 'middling' && rankOf(r) > 10 && rankOf(r) < 22)));
+
+    // counted against the store's defaults, so "off default" means off the
+    // user's own saved preferences, not off a hard-coded page state
+    const defWindow = (WINDOWS.find(w => w[0] === SETTINGS.betting.sampleWindow) || WINDOWS[1])[1];
+    const defSide = SETTINGS.betting.lean === 'under' ? 'Under' : 'Over';
+    const activeFilters = (s.markets.length ? 1 : 0) + (s.games.length ? 1 : 0)
+      + (s.side !== defSide ? 1 : 0) + (s.tier !== 'any' ? 1 : 0)
+      + (s.window !== defWindow ? 1 : 0) + (s.minSample !== DEFAULT_PRESETS[0] ? 1 : 0)
+      + (s.lineMode !== 'Main line' ? 1 : 0);
+
+    const cols = WINDOWS.map(([id, n]) => [id === 'season' ? 'SEASON' : id.toUpperCase(), n]);
+    const stops = WINDOWS.map(w => w[1]);
+    const winIdx = stops.indexOf(s.window) === -1 ? stops.length - 1 : stops.indexOf(s.window);
+
+    return {
+      leagues: ['NFL', 'MLB', 'NBA', 'WNBA'].map(label => ({
+        label,
+        count: label === 'NFL' ? '353' : label === 'MLB' ? '612' : label === 'NBA' ? '481' : '104',
+        pick: this.set('league', label),
+        fg: label === s.league ? '#e8ecf2' : '#8b98ab',
+        rule: label === s.league ? '#3b5bdb' : 'transparent',
+      })),
+
+      slate: SLATE.map(g => {
+        const on = s.games.includes(g.label);
+        return Object.assign({}, g, {
+          toggle: () => this.setState(st => ({
+            games: on ? st.games.filter(x => x !== g.label) : st.games.concat(g.label),
+          })),
+          bg: on ? '#131519' : 'transparent',
+          border: on ? '#3b5bdb' : '#2b2f36',
+          fg: on ? '#e8ecf2' : '#aab2c0',
+        });
+      }),
+      allGames: this.set('games', []),
+
+      showing: visible.length + ' of 353 props',
+      marketSummary: s.markets.length === 0 ? 'All markets'
+        : s.markets.length <= 2 ? s.markets.join(' + ') : s.markets.length + ' selected',
+      windowLabel: s.window === 0 ? 'Full season' : 'Last ' + s.window,
+      thinLabel: s.minSample <= MIN_ALL ? 'No minimum' : 'Under ' + s.minSample + ' gm \u2192 too few',
+
+      filtersOpen: s.filtersOpen,
+      toggleFilters: () => this.setState(st => ({ filtersOpen: !st.filtersOpen })),
+      resetFilters: () => this.setState({ games:[], markets:[], side:defSide, window:defWindow,
+        lineMode:'Main line', tier:'any', minSample:DEFAULT_PRESETS[0] }),
+
+      // --- quick settings panel: the Display section of src/SettingsModal.jsx
+      settingsOpen: s.settingsOpen,
+      toggleSettings: () => this.setState(st => ({ settingsOpen: !st.settingsOpen })),
+      cogFg: s.settingsOpen ? '#8fa6ff' : '#aab2c0',
+      cogBg: s.settingsOpen ? '#191c21' : 'transparent',
+      cogBorder: s.settingsOpen ? '#3b5bdb' : '#2b2f36',
+      // ACCENT_PRESETS from src/ColorWheel.jsx — six, in that order, with the
+      // labels. The full wheel stays on the settings page; a quick panel gets
+      // the presets and links out.
+      accents: ACCENT_PRESETS.map(p => Object.assign({}, p, {
+        pick: this.set('accentColor', p.hex),
+        ring: (s.accentColor || '').toLowerCase() === p.hex ? '#e8ecf2' : '#2b2f36',
+      })),
+      resetAccent: this.set('accentColor', null),
+      accentHex: (s.accentColor || ACCENT_PRESETS[0].hex).toUpperCase(),
+      accentLabel: (function () {
+        const hit = ACCENT_PRESETS.find(p => p.hex === (s.accentColor || ACCENT_PRESETS[0].hex).toLowerCase());
+        if (!hit) return '';
+        return '· ' + hit.label.toUpperCase() + (s.accentColor ? '' : ', THE DEFAULT');
+      })(),
+      showReset: !!s.accentColor,
+      themes: THEMES.map(o => Object.assign({ label: o.label, pick: this.set('theme', o.id) }, chip(s.theme === o.id))),
+      scales: UI_SCALE.map(o => Object.assign({ label: o.label, pick: this.set('uiScale', o.id) }, chip(s.uiScale === o.id))),
+      sampleWindows: SAMPLE_WINDOWS.map(o => Object.assign({
+        label: o.label,
+        pick: () => this.setState({ sampleWindow: o.id, window: (WINDOWS.find(w => w[0] === o.id) || WINDOWS[3])[1] }),
+      }, chip(s.sampleWindow === o.id))),
+      leans: LEANS.map(o => Object.assign({
+        label: o.label, pick: () => this.setState({ lean: o.id, side: o.id === 'under' ? 'Under' : 'Over' }),
+      }, chip(s.lean === o.id))),
+      sportOptions: SPORT_OPTIONS.map(o => Object.assign({ label: o.label, pick: this.set('defaultSport', o.id) }, chip(s.defaultSport === o.id))),
+      timeZones: TIME_ZONES.map(o => Object.assign({ label: o.label, pick: this.set('timeZone', o.id) }, chip(s.timeZone === o.id))),
+      sampleOdds: formatOdds(150, s.oddsFormat) + ' and ' + formatOdds(-180, s.oddsFormat),
+      settingsSections: [['display', 'Display'], ['betting', 'Betting']]
+        .map(([id, label]) => ({
+          label, pick: this.set('settingsSection', id),
+          fg: s.settingsSection === id ? '#8fa6ff' : '#aab2c0',
+          rule: s.settingsSection === id ? '#3b5bdb' : 'transparent',
+        })),
+      onDisplay: s.settingsSection === 'display',
+      onBetting: s.settingsSection === 'betting',
+      toggleMotion: () => this.setState(st => ({ reduceMotion: !st.reduceMotion })),
+      motionJustify: s.reduceMotion ? 'flex-end' : 'flex-start',
+      motionBg: s.reduceMotion ? '#3b5bdb' : 'transparent',
+      motionBorder: s.reduceMotion ? '#3b5bdb' : '#2b2f36',
+      filterFg: activeFilters ? '#8fa6ff' : '#aab2c0',
+      filterBg: s.filtersOpen ? '#191c21' : 'transparent',
+      filterBorder: activeFilters || s.filtersOpen ? '#3b5bdb' : '#2b2f36',
+      filterSummary: activeFilters ? String(activeFilters) : '',
+
+      marketChips: MARKETS.map(label => {
+        const on = s.markets.includes(label);
+        return Object.assign({
+          label,
+          count: String(ROWS.filter(r => r.market === label).length),
+          sub: on ? '#c8d4ff' : '#8b98ab',
+          toggle: () => this.setState(st => ({
+            markets: on ? st.markets.filter(x => x !== label) : st.markets.concat(label),
+          })),
+        }, chip(on));
+      }),
+      clearMarkets: this.set('markets', []),
+      sides: seg(['Over', 'Under'], s.side, 'side'),
+      lineModes: seg(['Main line', 'Alt lines'], s.lineMode, 'lineMode'),
+      tiers: [['any', 'Any'], ['soft', 'Easy'], ['middling', 'Mid'], ['tough', 'Tough']]
+        .map(([val, label]) => Object.assign({ label, pick: this.set('tier', val) }, chip(s.tier === val))),
+
+      sliderMax: stops.length - 1,
+      sliderValue: winIdx,
+      sliderFill: (winIdx / (stops.length - 1)) * 100 + '%',
+      sliderStops: WINDOWS.map(([, n]) => (n === 0 ? 'Season' : 'L' + n)),
+      onSlide: e => this.setState({ window: stops[parseInt(e.target.value, 10)] }),
+
+      minChips: s.presets.map(n => Object.assign({
+        label: n + '+', pick: this.set('minSample', n), remove: this.removePreset(n), removable: true,
+      }, chip(s.minSample > MIN_ALL && s.minSample === n)))
+        .concat([Object.assign({ label: 'All', pick: this.set('minSample', MIN_ALL), removable: false },
+          chip(s.minSample <= MIN_ALL))]),
+      saveLabel: s.presets.includes(s.minSample) || s.minSample <= MIN_ALL ? 'saved' : 'save ' + s.minSample + '+',
+      savePreset: this.savePreset(),
+      saveFg: s.presets.includes(s.minSample) || s.minSample <= MIN_ALL ? '#8b98ab' : '#8fa6ff',
+      minTicks: Array.from({ length: MIN_TICKS }, (_, i) => i + 1).map(n => ({
+        h: 10 + n,
+        bg: s.minSample > MIN_ALL && n <= s.minSample ? '#3b5bdb' : '#2b2f36',
+        pick: this.set('minSample', n),
+      })),
+      minValueLabel: s.minSample <= MIN_ALL ? 'No minimum' : s.minSample + '+ games',
+      minNote: s.minSample <= MIN_ALL
+        ? 'Every prop states a rate, however few games are behind it.'
+        : 'Props under ' + s.minSample + ' games still appear, without a rate.',
+      oddsFormats: ODDS_FORMATS.map(o => Object.assign({
+        label: o.label, sample: formatOdds(-118, o.id), pick: this.set('oddsFormat', o.id),
+      }, chip(s.oddsFormat === o.id))),
+
+      rateCols: cols.map(([label]) => ({
+        label,
+        arrow: s.sort === label ? '▾' : '↕',
+        sort: this.set('sort', label),
+        fg: s.sort === label ? '#8fa6ff' : '#aab2c0',
+      })),
+
+      pickCount: s.picks.length,
+      pickNote: s.picks.length
+        ? 'Tracked for research. No wagers placed, no picks sold.'
+        : 'Add a row to track it. Research only — nothing is wagered here.',
+
+      rows: visible.map(r => {
+        const marketLine = parseFloat(r.line);
+        const lineVal = s.lines[r.id] ?? marketLine;
+        const adjusted = lineVal !== marketLine;
+        const window = s.window === 0 ? r.g.length : Math.min(s.window, r.g.length);
+        const vals = r.g.slice(-window);
+
+        // windowed axis: pad below the lower of (min, line) so the line is never
+        // pinned to the floor of a 0-based scale
+        const lo = Math.min(Math.min.apply(null, vals), lineVal);
+        const hi = Math.max(Math.max.apply(null, vals), lineVal);
+        const span = Math.max(hi - lo, 1) * 1.25;
+        const axisMin = lo - Math.max(hi - lo, 1) * 0.18;
+        const H = 56, PED = 10;
+        const y = v => PED + Math.round(((v - axisMin) / span) * (H - PED));
+
+        const hits = vals.map(v => v > lineVal);
+        const cleared = hits.filter(Boolean).length;
+        let run = 1;
+        for (let i = hits.length - 2; i >= 0 && hits[i] === hits[hits.length - 1]; i--) run++;
+        const runHit = hits[hits.length - 1];
+        const runColor = runHit ? '#2faa72' : '#ef5b5b';
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const thin = s.minSample > MIN_ALL && r.season[1] < s.minSample;
+        const picked = s.picks.includes(r.id);
+        const unit = (H - PED) / span;
+
+        return {
+          name: r.name, team: r.team, prop: r.prop, odds: formatOdds(r.odds, s.oddsFormat), matchup: r.matchup,
+          initials: r.name.split(' ').map(w => w[0]).join('').slice(0, 2),
+          tier: '#' + rankOf(r) + ' of 32',
+          tierWord: rankRead(rankOf(r)).word,
+          tierColor: rankRead(rankOf(r)).color,
+          teamTone: TEAM_TONE[r.team] || '#8b98ab',
+          dotFill: r.status === 'posted' ? '#2faa72' : r.status === 'projected' ? 'transparent' : 'transparent',
+          dotRing: r.status === 'unknown' ? 'transparent' : r.status === 'projected' ? '#2faa72' : '#131519',
+
+          togglePick: () => this.setState(st => ({
+            picks: picked ? st.picks.filter(x => x !== r.id) : st.picks.concat(r.id),
+          })),
+          pickGlyph: picked ? '✓' : '+',
+          pickBg: picked ? '#3b5bdb' : 'transparent',
+          pickFg: picked ? '#ffffff' : '#8fa6ff',
+          pickBorder: picked ? '#3b5bdb' : '#2b2f36',
+
+          bars: vals.map((v, i) => ({
+            h: y(v),
+            band: i % 2 === 0 ? '#101318' : 'transparent',
+            bg: v > lineVal ? '#2faa72' : 'transparent',
+            border: v > lineVal ? 'none' : '1.5px solid #ef5b5b',
+          })),
+          lineY: y(lineVal),
+          lineLabel: marketLine >= 15 ? String(lineVal) : lineVal.toFixed(1),
+          lineTagBg: adjusted ? '#8fa6ff' : '#3b5bdb',
+          lineTagFg: adjusted ? '#0a0b0d' : '#ffffff',
+          startDrag: this.startDrag(r.id, marketLine, unit, hi + span * 0.4),
+          resetLine: this.resetLine(r.id),
+          marketNote: adjusted ? 'market ' + r.line + ' · reset' : 'market line',
+          marketNoteColor: adjusted ? '#8fa6ff' : '#8b98ab',
+
+          formCaption: cleared + ' of ' + vals.length + ' · ' + run + (runHit ? ' straight' : ' cold'),
+          runColor,
+          avg: dec(avg),
+
+          rates: cols.map(([label, n]) => {
+            const slice = n === 0 ? r.g : r.g.slice(-Math.min(n, r.g.length));
+            const c = slice.filter(v => v > lineVal).length;
+            const pct = Math.round((c / slice.length) * 100);
+            const active = (n === 0 && s.window === 0) || n === s.window;
+            // over 65% cleared, under 45% fell short — green/red keep their one
+            // meaning; the band in between stays neutral rather than nudging a lean
+            const band = pct >= 65 ? '#2faa72' : pct < 45 ? '#ef5b5b' : '#aab2c0';
+            return {
+              pct: thin ? '\u2014' : pct + '%',
+              fill: (thin ? 0 : pct) + '%',
+              sample: thin ? 'too few' : c + ' of ' + slice.length,
+              bg: active ? '#191c21' : 'transparent',
+              border: active ? '#2b2f36' : 'transparent',
+              fg: thin ? '#aab2c0' : band,
+              barColor: thin ? '#2b2f36' : band,
+            };
+          }),
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

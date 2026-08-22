@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#8fa6ff; text-decoration:none; }
+  a:hover { color:#e8ecf2; }
+</style>
+</helmet>
+<div style="width:100%; min-width:1280px; max-width:1600px; margin:0 auto; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif;">
+
+  <div style="display:flex; align-items:center; gap:32px; padding:16px 32px; border-bottom:1px solid #2b2f36;">
+    <a href="./PropPalace Landing.dc.html" style="display:flex; align-items:center; gap:10px; color:#e8ecf2;">
+      <span style="position:relative; display:flex; align-items:flex-end; gap:2px;">
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="position:relative; width:4px; height:23px; background:#3ecf8e; border-radius:2px 2px 0 0;">
+          <span style="position:absolute; left:1px; bottom:23px; width:2px; height:9px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+          <span style="position:absolute; left:3px; bottom:26px; width:9px; height:6px; background:#3ecf8e; clip-path:polygon(0 0, 100% 50%, 0 100%);"></span>
+        </span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="position:absolute; left:-3px; right:-3px; bottom:11px; border-top:1.5px dashed #e8ecf2;"></span>
+      </span>
+      <span style="font-family:'Space Mono', monospace; font-size:13px; letter-spacing:0.14em; text-transform:uppercase;">Prop Palace</span>
+    </a>
+    <div style="display:flex; align-items:center; gap:26px; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;">
+      <a href="./PropPalace Games.dc.html" style="color:#aab2c0;">Games</a>
+      <span style="color:#8fa6ff; padding-bottom:4px; border-bottom:2px solid #3b5bdb;">The Board</span>
+      <a href="./PropPalace Prop Feed v2.dc.html" style="color:#aab2c0;">Prop Feed</a>
+      <span style="color:#aab2c0;">News</span>
+    </div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:16px;">
+      <a href="./PropPalace Settings.dc.html" title="Settings" style="display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; font-size:15px; line-height:1; color:#aab2c0; border:1px solid #2b2f36;">⚙</a>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8b98ab;">SIGN IN</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 12px;">21+</span>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:196px minmax(0, 1fr) 196px; gap:20px; padding:20px 32px 40px; align-items:start;">
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">League</div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+        <sc-for list="{{ leagues }}" as="lg" hint-placeholder-count="4">
+          <div onClick="{{ lg.pick }}" style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:9px 11px; border-radius:6px; cursor:pointer; background:{{ lg.bg }}; border:1px solid {{ lg.border }};">
+            <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; color:{{ lg.fg }};">{{ lg.label }}</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ lg.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36;">Sort games by</div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+        <sc-for list="{{ sorts }}" as="so" hint-placeholder-count="3">
+          <span onClick="{{ so.pick }}" style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; padding:8px 11px; border-radius:6px; cursor:pointer; background:{{ so.bg }}; color:{{ so.fg }}; border:1px solid {{ so.border }};">{{ so.label }}</span>
+        </sc-for>
+      </div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36;">Show</div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+        <sc-for list="{{ statusFilters }}" as="st" hint-placeholder-count="3">
+          <span onClick="{{ st.pick }}" style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; padding:8px 11px; border-radius:6px; cursor:pointer; background:{{ st.bg }}; color:{{ st.fg }}; border:1px solid {{ st.border }};">{{ st.label }}</span>
+        </sc-for>
+      </div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36; line-height:1.6;">Real 2026 game logs, finished games only. Not a live odds feed.</div>
+    </div>
+
+    <div>
+      <div style="display:flex; align-items:flex-end; gap:20px;">
+        <div>
+          <h1 style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-0.02em;">The Board</h1>
+          <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:7px;">Research by matchup · <a href="./PropPalace Games.dc.html" style="color:#8fa6ff;">Games</a> has scores and live state</div>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:14px; border:1px solid #2b2f36; border-radius:6px; background:#131519; padding:8px 14px;">
+          <span onClick="{{ prevDay }}" style="font-family:'Space Mono', monospace; font-size:13px; color:#aab2c0; cursor:pointer;">‹</span>
+          <span style="font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#e8ecf2; white-space:nowrap;">{{ dateLabel }}</span>
+          <span onClick="{{ nextDay }}" style="font-family:'Space Mono', monospace; font-size:13px; color:#aab2c0; cursor:pointer;">›</span>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:0; margin-top:14px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+        <div style="flex:1; min-width:0; padding:11px 16px;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Games</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ gameCount }}</div>
+        </div>
+        <div style="flex:1; min-width:0; padding:11px 16px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Props</div>
+          <div style="display:flex; align-items:baseline; gap:7px; margin-top:6px;">
+            <span style="font-family:'Space Mono', monospace; font-size:15px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ propCount }}</span>
+            <span style="font-family:'Space Mono', monospace; font-size:9.5px; color:#8b98ab; white-space:nowrap;">{{ propScope }}</span>
+          </div>
+        </div>
+        <div style="flex:1.2; min-width:0; padding:11px 16px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Lineups posted</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ postedCount }}</div>
+        </div>
+        <div style="flex:1.4; min-width:0; padding:11px 16px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">First kickoff</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ firstKick }}</div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:14px; margin-top:16px;">
+        <sc-for list="{{ games }}" as="g" hint-placeholder-count="4">
+          <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+
+            <div style="display:flex; align-items:stretch;">
+              <div style="display:flex; align-items:center; gap:12px; padding:14px 18px; border-top:3px solid {{ g.awayTone }}; flex:1; min-width:0;">
+                <span style="display:flex; align-items:center; justify-content:center; flex:none; width:44px; height:44px; border-radius:6px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.06em; color:{{ g.awayTone }};">{{ g.awayAb }}</span>
+                <div style="min-width:0;">
+                  <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Away · {{ g.awayRec }}</div>
+                  <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:17px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.away }}</div>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; padding:12px 18px; background:#0d0f12; border-left:1px solid #2b2f36; border-right:1px solid #2b2f36; flex:none;">
+                <span style="font-family:'Space Mono', monospace; font-size:14px; color:#e8ecf2; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ g.time }}</span>
+                <span style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ g.venue }}</span>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:14px 18px; border-top:3px solid {{ g.homeTone }}; flex:1; min-width:0;">
+                <div style="text-align:right; min-width:0;">
+                  <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Home · {{ g.homeRec }}</div>
+                  <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:17px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.home }}</div>
+                </div>
+                <span style="display:flex; align-items:center; justify-content:center; flex:none; width:44px; height:44px; border-radius:6px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.06em; color:{{ g.homeTone }};">{{ g.homeAb }}</span>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:16px; padding:10px 18px; background:#0d0f12; border-top:1px solid #2b2f36; border-bottom:1px solid #2b2f36;">
+              <span style="display:flex; align-items:center; gap:7px; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; color:{{ g.statusColor }};"><span style="width:6px; height:6px; border-radius:999px; flex:none; background:{{ g.statusDot }}; border:1.5px solid {{ g.statusColor }}; box-sizing:border-box;"></span>{{ g.status }}</span>
+              <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; white-space:nowrap; font-variant-numeric:tabular-nums;">{{ g.props }} props</span>
+              <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ g.weather }}</span>
+              <a href="./PropPalace Prop Feed v2.dc.html" style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase;">All {{ g.props }} props →</a>
+            </div>
+
+            <div style="padding:4px 18px 14px;">
+              <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; padding:10px 0 4px;">{{ g.standoutLabel }}</div>
+              <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+                <a href="./PropPalace Player Detail v2.dc.html" style="display:grid; grid-template-columns:minmax(0, 2.2fr) minmax(0, 2.2fr) 116px minmax(0, 1.2fr); gap:16px; align-items:center; padding:14px 0; border-top:1px solid #2b2f36; color:#e8ecf2;">
+                  <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                    <span style="position:relative; flex:none; width:30px; height:30px;">
+                      <span style="display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:999px; background:#191c21; border:1.5px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:9px; color:#8b98ab;">{{ r.initials }}</span>
+                      <span style="position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border-radius:999px; box-sizing:border-box; background:{{ r.dotFill }}; border:2px solid {{ r.dotRing }};"></span>
+                    </span>
+                    <div style="min-width:0;">
+                      <div style="display:flex; align-items:baseline; gap:7px;">
+                        <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
+                        <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; color:#8b98ab; white-space:nowrap;">{{ r.team }}</span>
+                      </div>
+                      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.prop }}</div>
+                    </div>
+                  </div>
+
+                  <div style="position:relative; display:grid; grid-template-columns:repeat(10, 1fr); gap:4px; height:64px; min-width:0;">
+                    <sc-for list="{{ r.bars }}" as="b" hint-placeholder-count="10">
+                      <div style="display:flex; flex-direction:column; justify-content:flex-end; min-width:0;">
+                        <div style="height:{{ b.h }}px; border-radius:2px 2px 0 0; box-sizing:border-box; background:{{ b.bg }}; border:{{ b.border }};"></div>
+                      </div>
+                    </sc-for>
+                    <span style="position:absolute; left:0; right:{{ r.emptyRight }}; bottom:{{ r.lineY }}px; border-top:1.5px dashed #e8ecf2;"></span>
+                    <sc-if value="{{ r.thin }}" hint-placeholder-val="{{ false }}">
+                      <span style="position:absolute; left:{{ r.emptyLeft }}; right:0; bottom:0; top:0; display:flex; align-items:center; justify-content:center; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; border-left:1px dashed #2b2f36;">no games yet</span>
+                    </sc-if>
+                  </div>
+
+                  <div>
+                    <div style="display:flex; align-items:baseline; gap:7px;">
+                      <span style="font-family:'Space Mono', monospace; font-size:16px; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ r.rateColor }};">{{ r.rate }}</span>
+                      <span style="font-family:'Space Mono', monospace; font-size:9.5px; color:#8b98ab; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ r.sampleTop }}</span>
+                    </div>
+                    <div style="font-family:'Space Mono', monospace; font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:4px; white-space:nowrap;">{{ r.sampleNote }}</div>
+                    <div style="height:3px; border-radius:2px; margin-top:5px; background:#2b2f36;">
+                      <div style="height:3px; border-radius:2px; width:{{ r.fill }}; background:{{ r.rateColor }};"></div>
+                    </div>
+                  </div>
+
+                  <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; border-radius:999px; padding:5px 10px; white-space:nowrap; color:{{ r.verdictFg }}; border:1px solid {{ r.verdictBorder }};">{{ r.verdict }}</span>
+                </a>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:16px; margin-top:18px;">
+        <span onClick="{{ showAll }}" style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:11px 16px; cursor:pointer;">{{ moreLabel }}</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; color:#8b98ab; line-height:1.6;">Each game shows its three strongest samples. Everything else is in the feed.</span>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Reading a card</div>
+      <div style="display:flex; flex-direction:column; gap:9px; margin-top:12px;">
+        <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:8px; height:17px; background:#2faa72; border-radius:2px; flex:none;"></span>cleared the line</span>
+        <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:8px; height:17px; border:1.5px solid #ef5b5b; border-radius:2px; box-sizing:border-box; flex:none;"></span>fell short</span>
+        <span style="display:flex; align-items:center; gap:8px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:16px; border-top:1.5px dashed #e8ecf2; flex:none;"></span>the line</span>
+      </div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36;">Lineups</div>
+      <div style="display:flex; flex-direction:column; gap:9px; margin-top:12px;">
+        <span style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:9px; height:9px; border-radius:999px; background:#2faa72; flex:none;"></span>posted</span>
+        <span style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:9px; height:9px; border-radius:999px; border:1.5px solid #2faa72; box-sizing:border-box; flex:none;"></span>projected</span>
+        <span style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:9px; height:9px; flex:none;"></span>no dot · unknown</span>
+      </div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:14px; line-height:1.6;">Unknown is never assumed to be available.</div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36;">Verdicts</div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:12px; line-height:1.7;">
+        <div><span style="color:#8fa6ff;">Leans over</span> — 65%+ on ten or more games.</div>
+        <div style="margin-top:7px;"><span style="color:#8fa6ff;">Leans under</span> — below 45% on ten or more games.</div>
+        <div style="margin-top:7px;"><span style="color:#aab2c0;">Coin flip</span> — inside 45–65%.</div>
+        <div style="margin-top:7px;"><span style="color:#aab2c0;">Too few</span> — under the minimum, no rate stated.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1200}}">
+// Slate-first board: a game is the unit, and each card carries only its three
+// strongest samples. The full prop table is the feed's job — this page answers
+// "what is on today and where is it worth looking", not "compare every prop".
+const GAMES = [
+  { id:'lar-sea', away:'Los Angeles Rams', home:'Seattle Seahawks', awayAb:'LAR', homeAb:'SEA',
+    awayTone:'#4a6fd4', homeTone:'#4a8f6d', awayRec:'6–3', homeRec:'5–4',
+    time:'4:05 PM', venue:'Lumen Field', props:148, status:'posted', weather:'Indoors · roof closed',
+    rows:[
+      { name:'Puka Nacua', team:'LAR', prop:'Receptions over 5.5', line:5.5, avail:'posted',
+        g:[8,4,7,6,9,5,7,6,7,5] },
+      { name:'Kyren Williams', team:'LAR', prop:'Rush yards over 58.5', line:58.5, avail:'posted',
+        g:[74,42,88,61,96,38,71,54,83,47] },
+      { name:'Jaxon Smith-Njigba', team:'SEA', prop:'Rec yards over 64.5', line:64.5, avail:'projected',
+        g:[82,44,71,58,104,49,67,53,88,41] },
+    ] },
+  { id:'cin-kc', away:'Cincinnati Bengals', home:'Kansas City Chiefs', awayAb:'CIN', homeAb:'KC',
+    awayTone:'#c2622d', homeTone:'#a5555f', awayRec:'5–4', homeRec:'7–2',
+    time:'4:25 PM', venue:'Arrowhead', props:163, status:'posted', weather:'42°F · wind 14mph',
+    rows:[
+      { name:"Ja'Marr Chase", team:'CIN', prop:'Receptions over 6.5', line:6.5, avail:'posted',
+        g:[9,5,8,7,11,6,8,7,9,6] },
+      { name:'Travis Kelce', team:'KC', prop:'Rec yards over 52.5', line:52.5, avail:'posted',
+        g:[64,38,71,47,82,41,58,49,68,36] },
+      { name:'Xavier Worthy', team:'KC', prop:'Receptions over 3.5', line:3.5, avail:'unknown',
+        g:[4,2,5,3] },
+    ] },
+  { id:'atl-min', away:'Atlanta Falcons', home:'Minnesota Vikings', awayAb:'ATL', homeAb:'MIN',
+    awayTone:'#a5555f', homeTone:'#7565a8', awayRec:'4–5', homeRec:'6–3',
+    time:'1:00 PM', venue:'U.S. Bank', props:139, status:'projected', weather:'Indoors',
+    rows:[
+      { name:'Bijan Robinson', team:'ATL', prop:'Rush + rec yds over 104.5', line:104.5, avail:'posted',
+        g:[128,86,141,97,164,78,119,102,147,84] },
+      { name:'Justin Jefferson', team:'MIN', prop:'Rec yards over 78.5', line:78.5, avail:'posted',
+        g:[104,62,91,74,128,58,86,71,112,66] },
+      { name:'Drake London', team:'ATL', prop:'Receptions over 5.5', line:5.5, avail:'projected',
+        g:[7,4,6,5,8,4,6,5,7,4] },
+    ] },
+  { id:'nyj-buf', away:'New York Jets', home:'Buffalo Bills', awayAb:'NYJ', homeAb:'BUF',
+    awayTone:'#4a7d5e', homeTone:'#4f87ab', awayRec:'3–6', homeRec:'7–2',
+    time:'8:20 PM', venue:'Highmark', props:152, status:'unknown', weather:'38°F · snow likely',
+    rows:[
+      { name:'Garrett Wilson', team:'NYJ', prop:'Receptions over 5.5', line:5.5, avail:'posted',
+        g:[6,3,7,5,8,4,6,5,7,3] },
+      { name:'James Cook', team:'BUF', prop:'Rush yards over 64.5', line:64.5, avail:'posted',
+        g:[88,51,74,62,102,44,79,58,91,49] },
+      { name:'Khalil Shakir', team:'BUF', prop:'Rec yards over 44.5', line:44.5, avail:'unknown',
+        g:[52,31,48,39,64,28,44,36] },
+    ] },
+];
+
+const STATUS = {
+  posted:    { label:'Lineup posted',   color:'#2faa72', dot:'#2faa72' },
+  projected: { label:'Projected lineup', color:'#2faa72', dot:'transparent' },
+  unknown:   { label:'Lineup not out',  color:'#aab2c0', dot:'transparent' },
+};
+
+class Component extends DCLogic {
+  state = { league:'NFL', sort:'time', status:'all', day:0, expanded:false };
+
+  set(k, v) { return () => this.setState({ [k]: v }); }
+
+  renderVals() {
+    const s = this.state;
+    const chip = on => ({
+      bg: on ? '#3b5bdb' : 'transparent',
+      fg: on ? '#ffffff' : '#aab2c0',
+      border: on ? '#3b5bdb' : '#2b2f36',
+    });
+
+    const parseTime = t => {
+      const [hm, ap] = t.split(' ');
+      let [h, m] = hm.split(':').map(Number);
+      if (ap === 'PM' && h !== 12) h += 12;
+      return h * 60 + m;
+    };
+
+    let list = GAMES.filter(g => s.status === 'all' || g.status === s.status);
+    if (s.sort === 'time') list = list.slice().sort((a, b) => parseTime(a.time) - parseTime(b.time));
+    if (s.sort === 'props') list = list.slice().sort((a, b) => b.props - a.props);
+    if (s.sort === 'signal') {
+      // strongest single sample on the card — what a researcher opens first
+      const best = g => Math.max.apply(null, g.rows.map(r =>
+        (r.g.length >= 10 ? r.g.filter(v => v > r.line).length / r.g.length : 0)));
+      list = list.slice().sort((a, b) => best(b) - best(a));
+    }
+    const shown = s.expanded ? list : list.slice(0, 3);
+    const days = ['Sun, Nov 16', 'Mon, Nov 17', 'Thu, Nov 20'];
+
+    return {
+      dateLabel: days[((s.day % days.length) + days.length) % days.length],
+      prevDay: () => this.setState(st => ({ day: st.day - 1 })),
+      nextDay: () => this.setState(st => ({ day: st.day + 1 })),
+
+      // derived, so the rail can never assert a slate size the page does not show
+      leagues: [['NFL', GAMES.length + ' games'], ['MLB', 'Off-season'], ['NBA', 'Off-season'], ['WNBA', 'Off-season']]
+        .map(([label, count]) => Object.assign({ label, count, pick: this.set('league', label) },
+          chip(s.league === label))),
+      sorts: [['time', 'Kickoff'], ['props', 'Most props'], ['signal', 'Strongest sample']]
+        .map(([v, label]) => Object.assign({ label, pick: this.set('sort', v) }, chip(s.sort === v))),
+      statusFilters: [['all', 'All games'], ['posted', 'Lineups posted'], ['unknown', 'Lineups pending']]
+        .map(([v, label]) => Object.assign({ label, pick: this.set('status', v) }, chip(s.status === v))),
+
+      gameCount: list.length === GAMES.length ? String(GAMES.length) : list.length + ' of ' + GAMES.length,
+      propScope: list.length === GAMES.length ? 'across the slate' : 'in these ' + list.length,
+      propCount: String(list.reduce((a, g) => a + g.props, 0)),
+      postedCount: list.filter(g => g.status === 'posted').length + ' of ' + list.length,
+      firstKick: list.length
+        ? list.slice().sort((a, b) => parseTime(a.time) - parseTime(b.time))[0].time
+        : '\u2014',
+      moreLabel: (function () {
+        if (s.expanded) return 'Show fewer games';
+        const n = Math.max(0, list.length - 3);
+        return 'Show ' + n + (n === 1 ? ' more game' : ' more games');
+      })(),
+      showAll: () => this.setState(st => ({ expanded: !st.expanded })),
+
+      games: shown.map(g => {
+        const st = STATUS[g.status];
+        return Object.assign({}, g, {
+          status: st.label,
+          statusColor: st.color,
+          statusDot: st.dot,
+          standoutLabel: 'Three strongest samples',
+          rows: g.rows.map(r => {
+            // one source of truth: the game log, tested against this row's line
+            const hits = r.g.filter(v => v > r.line).length;
+            const played = r.g.length;
+            const thin = played < 10;
+            const pct = Math.round((hits / played) * 100);
+            const band = thin ? '#aab2c0' : pct >= 65 ? '#2faa72' : pct < 45 ? '#ef5b5b' : '#aab2c0';
+            // windowed axis, same model as the feed and the player pages
+            const lo = Math.min(Math.min.apply(null, r.g), r.line);
+            const hi = Math.max(Math.max.apply(null, r.g), r.line);
+            const span = Math.max(hi - lo, 1) * 1.25;
+            const axisMin = lo - Math.max(hi - lo, 1) * 0.18;
+            const H = 64, PED = 12;
+            const y = v => PED + Math.round(((v - axisMin) / span) * (H - PED));
+            const SLOTS = 10;
+            const filledPct = (played / SLOTS) * 100;
+            return {
+              name: r.name,
+              team: r.team,
+              prop: r.prop,
+              initials: r.name.split(' ').map(w => w[0]).join('').slice(0, 2),
+              dotFill: r.avail === 'posted' ? '#2faa72' : 'transparent',
+              dotRing: r.avail === 'unknown' ? 'transparent' : r.avail === 'projected' ? '#2faa72' : '#131519',
+              bars: r.g.map(v => ({
+                h: y(v),
+                bg: v > r.line ? '#2faa72' : 'transparent',
+                border: v > r.line ? 'none' : '1.5px solid #ef5b5b',
+              })),
+              lineY: y(r.line),
+              thin,
+              emptyLeft: 'calc(' + filledPct + '% + 2px)',
+              emptyRight: played >= SLOTS ? '0%' : 'calc(' + (100 - filledPct) + '% + 2px)',
+              rate: thin ? '\u2014' : pct + '%',
+              sampleTop: hits + ' of ' + played,
+              sampleNote: thin ? 'too few to rate' : 'games cleared',
+              fill: (thin ? 0 : pct) + '%',
+              rateColor: band,
+              verdict: thin ? 'Too few' : pct >= 65 ? 'Leans over' : pct < 45 ? 'Leans under' : 'Coin flip',
+              verdictFg: thin ? '#aab2c0' : pct >= 65 || pct < 45 ? '#8fa6ff' : '#aab2c0',
+              verdictBorder: thin ? '#2b2f36' : pct >= 65 || pct < 45 ? '#3b5bdb' : '#2b2f36',
+            };
+          }),
+        });
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

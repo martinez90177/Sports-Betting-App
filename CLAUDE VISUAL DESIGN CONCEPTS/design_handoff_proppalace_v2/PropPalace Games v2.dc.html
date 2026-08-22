@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#8fa6ff; text-decoration:none; }
+  a:hover { color:#e8ecf2; }
+</style>
+</helmet>
+<div style="width:100%; min-width:1280px; max-width:1600px; margin:0 auto; background:#0a0b0d; color:#e8ecf2; font-family:Archivo, sans-serif;">
+
+  <div style="display:flex; align-items:center; gap:32px; padding:16px 32px; border-bottom:1px solid #2b2f36;">
+    <a href="./PropPalace Landing.dc.html" style="display:flex; align-items:center; gap:10px; color:#e8ecf2;">
+      <span style="position:relative; display:flex; align-items:flex-end; gap:2px;">
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="position:relative; width:4px; height:23px; background:#3ecf8e; border-radius:2px 2px 0 0;">
+          <span style="position:absolute; left:1px; bottom:23px; width:2px; height:9px; background:#3ecf8e; border-radius:1px 1px 0 0;"></span>
+          <span style="position:absolute; left:3px; bottom:26px; width:9px; height:6px; background:#3ecf8e; clip-path:polygon(0 0, 100% 50%, 0 100%);"></span>
+        </span>
+        <span style="width:4px; height:16px; background:#3ecf8e; border-radius:2px 2px 0 0;"></span>
+        <span style="width:4px; height:9px; border:1.5px solid #ef5b5b; border-bottom:none; border-radius:2px 2px 0 0; box-sizing:border-box;"></span>
+        <span style="position:absolute; left:-3px; right:-3px; bottom:11px; border-top:1.5px dashed #e8ecf2;"></span>
+      </span>
+      <span style="font-family:'Space Mono', monospace; font-size:13px; letter-spacing:0.14em; text-transform:uppercase;">Prop Palace</span>
+    </a>
+    <div style="display:flex; align-items:center; gap:26px; font-family:'Space Mono', monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;">
+      <span style="color:#8fa6ff; padding-bottom:4px; border-bottom:2px solid #3b5bdb;">Games</span>
+      <a href="./PropPalace Board v2.dc.html" style="color:#aab2c0;">The Board</a>
+      <a href="./PropPalace Prop Feed v2.dc.html" style="color:#aab2c0;">Prop Feed</a>
+      <span style="color:#aab2c0;">News</span>
+    </div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:16px;">
+      <a href="./PropPalace Settings.dc.html" title="Settings" style="display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:6px; font-size:15px; line-height:1; color:#aab2c0; border:1px solid #2b2f36;">⚙</a>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8b98ab;">SIGN IN</span>
+      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 12px;">21+</span>
+    </div>
+  </div>
+
+  <div style="display:grid; grid-template-columns:196px minmax(0, 1fr) 196px; gap:20px; padding:20px 32px 40px; align-items:start;">
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">League</div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+        <sc-for list="{{ leagues }}" as="lg" hint-placeholder-count="5">
+          <div onClick="{{ lg.pick }}" style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:9px 11px; border-radius:6px; cursor:pointer; background:{{ lg.bg }}; border:1px solid {{ lg.border }};">
+            <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.1em; color:{{ lg.fg }};">{{ lg.label }}</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; color:{{ lg.sub }}; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ lg.count }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36;">Show</div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+        <sc-for list="{{ stateFilters }}" as="st" hint-placeholder-count="4">
+          <span onClick="{{ st.pick }}" style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; padding:8px 11px; border-radius:6px; cursor:pointer; background:{{ st.bg }}; color:{{ st.fg }}; border:1px solid {{ st.border }};">
+            <sc-if value="{{ st.hasDot }}" hint-placeholder-val="{{ true }}">
+              <span style="width:8px; height:8px; border-radius:2px; flex:none; box-sizing:border-box; background:{{ st.dotBg }}; border:1.5px solid {{ st.dotBorder }};"></span>
+            </sc-if>
+            {{ st.label }}
+          </span>
+        </sc-for>
+      </div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36; line-height:1.6;">Live state comes from the provider, never from the clock. Hit rates count finished games only.</div>
+    </div>
+
+    <div>
+      <div style="display:flex; align-items:flex-end; gap:20px;">
+        <div>
+          <h1 style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:34px; margin:0; letter-spacing:-0.02em;">Games</h1>
+          <div style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:7px;">{{ slateLabel }} · <a href="./PropPalace Board v2.dc.html" style="color:#8fa6ff;">The Board</a> has the research view</div>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:9px; border:1px solid #2b2f36; border-radius:6px; background:#131519; padding:9px 13px; width:240px;">
+          <span style="font-family:'Space Mono', monospace; font-size:12px; color:#8b98ab;">⌕</span>
+          <span style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.06em; color:#8b98ab;">Search players or teams</span>
+        </div>
+      </div>
+
+      <div style="display:flex; margin-top:16px; border-top:1px solid #2b2f36; border-bottom:1px solid #2b2f36;">
+        <sc-for list="{{ dates }}" as="d" hint-placeholder-count="4">
+          <span onClick="{{ d.pick }}" style="display:flex; flex-direction:column; gap:5px; padding:12px 22px 10px; cursor:pointer; margin-bottom:-1px; border-bottom:2px solid {{ d.rule }};">
+            <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px; white-space:nowrap; color:{{ d.fg }};">{{ d.label }}</span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ d.sub }}</span>
+          </span>
+        </sc-for>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:0; margin-top:14px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+        <div style="flex:1; min-width:0; padding:11px 16px;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Showing</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ showing }}</div>
+        </div>
+        <div style="flex:1; min-width:0; padding:11px 16px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">In progress</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ liveColor }};">{{ liveCount }}</div>
+        </div>
+        <div style="flex:1; min-width:0; padding:11px 16px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Final</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ finalCount }}</div>
+        </div>
+        <div style="flex:1.3; min-width:0; padding:11px 16px; border-left:1px solid #2b2f36;">
+          <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.16em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">Next start</div>
+          <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:6px; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ nextStart }}</div>
+        </div>
+      </div>
+
+      <sc-for list="{{ groups }}" as="grp" hint-placeholder-count="2">
+        <div style="margin-top:22px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span style="display:flex; align-items:center; gap:8px; color:{{ grp.tone }};">
+              <span style="flex:none; width:15px; height:15px; box-sizing:border-box; border:1.5px solid {{ grp.tone }}; border-radius:{{ grp.glyphRadius }};"></span>
+              <span style="font-family:'Space Mono', monospace; font-size:14px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase;">{{ grp.label }}</span>
+            </span>
+            <span style="font-family:'Space Mono', monospace; font-size:11.5px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#aab2c0; white-space:nowrap; font-variant-numeric:tabular-nums;">{{ grp.count }}</span>
+            <span style="flex:1; height:1px; background:#2b2f36;"></span>
+            <span style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ grp.note }}</span>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+            <sc-for list="{{ grp.games }}" as="g" hint-placeholder-count="3">
+              <div style="background:#131519; border:1px solid #2b2f36; border-left:3px solid {{ g.stateEdge }}; border-radius:6px; overflow:hidden;">
+
+                <div onClick="{{ g.toggle }}" style="display:grid; grid-template-columns:minmax(0, 1fr) 176px 128px; gap:16px; align-items:center; padding:12px 18px; cursor:pointer;">
+                  <div style="min-width:0;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <span style="display:flex; align-items:center; justify-content:center; flex:none; width:30px; height:30px; border-radius:5px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:9.5px; color:{{ g.awayTone }};">{{ g.awayAb }}</span>
+                      <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ g.away }}</span>
+                      <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ g.awayRec }}</span>
+                      <span style="flex:none; width:32px; text-align:right; font-family:'Space Mono', monospace; font-size:18px; font-variant-numeric:tabular-nums; color:{{ g.awayScoreFg }};">{{ g.awayScore }}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-top:7px;">
+                      <span style="display:flex; align-items:center; justify-content:center; flex:none; width:30px; height:30px; border-radius:5px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:9.5px; color:{{ g.homeTone }};">{{ g.homeAb }}</span>
+                      <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ g.home }}</span>
+                      <span style="margin-left:auto; flex:none; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ g.homeRec }}</span>
+                      <span style="flex:none; width:32px; text-align:right; font-family:'Space Mono', monospace; font-size:18px; font-variant-numeric:tabular-nums; color:{{ g.homeScoreFg }};">{{ g.homeScore }}</span>
+                    </div>
+                  </div>
+
+                  <div style="min-width:0;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span style="width:8px; height:8px; border-radius:2px; flex:none; box-sizing:border-box; background:{{ g.dotBg }}; border:1.5px solid {{ g.dotBorder }};"></span>
+                      <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.12em; text-transform:uppercase; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ g.statusColor }};">{{ g.statusText }}</span>
+                    </div>
+                    <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.06em; color:#8b98ab; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.statusDetail }}</div>
+                  </div>
+
+                  <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; color:{{ g.actionColor }};">{{ g.action }}</span>
+                </div>
+
+                <sc-if value="{{ g.open }}" hint-placeholder-val="{{ false }}">
+                  <div style="background:#0d0f12; border-top:1px solid #2b2f36; padding:18px;">
+
+                    <sc-if value="{{ g.hasLinescore }}" hint-placeholder-val="{{ true }}">
+                      <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+                        <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:#0d0f12; border-bottom:1px solid #2b2f36;">
+                          <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px;">Linescore</span>
+                          <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:{{ g.sportTone }};">{{ g.sportLabel }}</span>
+                          <span style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.06em; color:#8b98ab; white-space:nowrap;">{{ g.periodLabel }}</span>
+                        </div>
+                        <div style="overflow-x:auto; padding:14px 16px;">
+                          <div style="display:grid; grid-template-columns:{{ g.gridCols }}; gap:0; min-width:min-content;">
+                            <sc-for list="{{ g.cells }}" as="c" hint-placeholder-count="39">
+                              <span style="padding:8px 9px; text-align:{{ c.align }}; font-family:'Space Mono', monospace; font-size:{{ c.size }}; font-weight:{{ c.weight }}; font-variant-numeric:tabular-nums; white-space:nowrap; color:{{ c.fg }}; border-top:{{ c.top }}; border-left:{{ c.left }};">{{ c.v }}</span>
+                            </sc-for>
+                          </div>
+                        </div>
+                        <sc-if value="{{ g.hasDiamond }}" hint-placeholder-val="{{ false }}">
+                          <div style="display:flex; align-items:center; gap:20px; padding:12px 16px; border-top:1px solid #2b2f36;">
+                            <div>
+                              <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">On base</div>
+                              <span style="position:relative; display:block; width:50px; height:50px; margin-top:8px;">
+                                <span style="position:absolute; left:18px; top:0; width:14px; height:14px; transform:rotate(45deg); box-sizing:border-box; background:{{ g.base2 }}; border:1.5px solid {{ g.base2Border }};"></span>
+                                <span style="position:absolute; right:0; top:18px; width:14px; height:14px; transform:rotate(45deg); box-sizing:border-box; background:{{ g.base1 }}; border:1.5px solid {{ g.base1Border }};"></span>
+                                <span style="position:absolute; left:0; top:18px; width:14px; height:14px; transform:rotate(45deg); box-sizing:border-box; background:{{ g.base3 }}; border:1.5px solid {{ g.base3Border }};"></span>
+                                <span style="position:absolute; left:18px; bottom:0; width:14px; height:14px; transform:rotate(45deg); box-sizing:border-box; background:transparent; border:1.5px solid #2b2f36;"></span>
+                              </span>
+                            </div>
+                            <div>
+                              <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Count</div>
+                              <div style="font-family:'Space Mono', monospace; font-size:15px; margin-top:7px; font-variant-numeric:tabular-nums;">{{ g.count }}</div>
+                            </div>
+                            <div>
+                              <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">At bat</div>
+                              <div style="font-size:14px; font-weight:500; margin-top:6px; white-space:nowrap;">{{ g.atBat }}</div>
+                            </div>
+                            <div style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.06em; color:#8b98ab; line-height:1.5; max-width:190px;">{{ g.runnerNote }}</div>
+                          </div>
+                        </sc-if>
+
+                        <sc-if value="{{ g.hasDecisions }}" hint-placeholder-val="{{ false }}">
+                          <div style="display:flex; gap:26px; padding:12px 16px; border-top:1px solid #2b2f36;">
+                            <sc-for list="{{ g.decisions }}" as="d" hint-placeholder-count="3">
+                              <div>
+                                <div style="font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">{{ d.role }}</div>
+                                <div style="font-size:13px; font-weight:500; margin-top:3px; white-space:nowrap;">{{ d.name }}</div>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ g.noLinescore }}" hint-placeholder-val="{{ false }}">
+                      <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; padding:18px; text-align:center; font-size:12.5px; color:#8b98ab;">{{ g.emptyNote }}</div>
+                    </sc-if>
+
+                    <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; margin-top:14px; overflow:hidden;">
+                      <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:#0d0f12; border-bottom:1px solid #2b2f36;">
+                        <span style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:16px;">Props in play</span>
+                        <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">tonight against the line</span>
+                        <a href="./PropPalace Prop Feed v2.dc.html" style="margin-left:auto; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; white-space:nowrap;">All {{ g.props }} props →</a>
+                      </div>
+                      <div style="padding:4px 16px 14px;">
+                        <sc-for list="{{ g.live }}" as="p" hint-placeholder-count="4">
+                          <a href="./PropPalace Player Detail v2.dc.html" style="display:grid; grid-template-columns:minmax(150px, 1.5fr) minmax(120px, 1.1fr) minmax(170px, 2fr) 112px; gap:16px; align-items:center; padding:12px 0; border-top:1px solid #2b2f36; color:#e8ecf2;">
+                            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                              <span style="position:relative; flex:none; width:30px; height:30px;">
+                                <span style="display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:999px; background:#191c21; border:1.5px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono', monospace; font-size:9px; color:#8b98ab;">{{ p.initials }}</span>
+                                <span style="position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border-radius:999px; box-sizing:border-box; background:{{ p.dotFill }}; border:2px solid {{ p.dotRing }};"></span>
+                              </span>
+                              <div style="min-width:0;">
+                                <div style="font-family:'Bricolage Grotesque', sans-serif; font-weight:600; font-size:14.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.name }}</div>
+                                <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:#8b98ab; margin-top:3px; white-space:nowrap;">{{ p.team }}</div>
+                              </div>
+                            </div>
+
+                            <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; text-transform:uppercase; color:#e8ecf2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.prop }}</span>
+
+                            <div style="min-width:0;">
+                              <div style="position:relative; height:9px; border-radius:2px; background:#191c21; border:1px solid #2b2f36;">
+                                <div style="height:100%; border-radius:2px; width:{{ p.fill }}; background:{{ p.fillColor }};"></div>
+                                <span style="position:absolute; top:-4px; bottom:-4px; left:{{ p.lineAt }}; border-left:1.5px dashed #e8ecf2;"></span>
+                              </div>
+                              <div style="display:flex; justify-content:space-between; gap:10px; margin-top:6px; font-family:'Space Mono', monospace; font-size:10px; color:#8b98ab; font-variant-numeric:tabular-nums;">
+                                <span style="white-space:nowrap;">{{ p.progress }}</span>
+                                <span style="white-space:nowrap;">{{ p.season }}</span>
+                              </div>
+                            </div>
+
+                            <span style="justify-self:end; font-family:'Space Mono', monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase; border-radius:999px; padding:5px 10px; white-space:nowrap; color:{{ p.verdictFg }}; border:1px solid {{ p.verdictBorder }};">{{ p.verdict }}</span>
+                          </a>
+                        </sc-for>
+                      </div>
+                    </div>
+
+                    <sc-if value="{{ g.hasLeaders }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px;">
+                        <sc-for list="{{ g.leaders }}" as="t" hint-placeholder-count="2">
+                          <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+                            <div style="display:flex; align-items:center; gap:10px; padding:11px 16px; background:#0d0f12; border-bottom:1px solid #2b2f36;">
+                              <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.1em; color:{{ t.tone }};">{{ t.abbr }}</span>
+                              <span style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Leaders</span>
+                            </div>
+                            <sc-for list="{{ t.items }}" as="it" hint-placeholder-count="2">
+                              <div style="display:flex; align-items:center; gap:11px; padding:10px 16px; border-top:1px solid #2b2f36;">
+                                <span style="display:flex; align-items:center; justify-content:center; flex:none; width:32px; height:32px; border-radius:999px; background:#191c21; border:1px solid #2b2f36; font-family:'Space Mono', monospace; font-size:9px; color:#8b98ab;">{{ it.initials }}</span>
+                                <div style="min-width:0; flex:1;">
+                                  <div style="font-family:'Space Mono', monospace; font-size:9.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8b98ab;">{{ it.category }}</div>
+                                  <div style="font-size:13px; font-weight:500; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ it.name }}</div>
+                                </div>
+                                <span style="flex:none; font-family:'Space Mono', monospace; font-size:11.5px; color:#aab2c0; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ it.statLine }}</span>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+
+                    <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:14px; line-height:1.6;">{{ g.scoreNote }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+
+      <div style="display:flex; align-items:center; gap:16px; margin-top:20px;">
+        <span onClick="{{ toggleAll }}" style="font-family:'Space Mono', monospace; font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:11px 16px; cursor:pointer;">{{ moreLabel }}</span>
+        <span style="font-family:'Space Mono', monospace; font-size:11px; letter-spacing:0.04em; color:#8b98ab; line-height:1.6;">Nothing here is synthesized — if a provider has nothing yet, the section says so. Research tool, no picks, no wagers.</span>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab;">Game state</div>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:12px;">
+        <sc-for list="{{ stateLegend }}" as="l" hint-placeholder-count="4">
+          <span style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:8px; height:8px; border-radius:2px; flex:none; box-sizing:border-box; background:{{ l.dotBg }}; border:1.5px solid {{ l.dotBorder }};"></span>{{ l.label }}</span>
+        </sc-for>
+      </div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:14px; line-height:1.6;">A game is only live when the provider says so — never inferred from the clock.</div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36;">Props in play</div>
+      <div style="display:flex; flex-direction:column; gap:9px; margin-top:12px;">
+        <span style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:16px; height:9px; border-radius:2px; background:#2faa72; flex:none;"></span>past the line</span>
+        <span style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:16px; height:9px; border-radius:2px; background:#5c6470; flex:none;"></span>still short</span>
+        <span style="display:flex; align-items:center; gap:9px; font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:#aab2c0;"><span style="width:16px; border-top:1.5px dashed #e8ecf2; flex:none;"></span>tonight's line</span>
+      </div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:14px; line-height:1.6;">A live bar is what has happened so far tonight, not a rate. It counts toward a hit rate only once the game is final.</div>
+
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:#8b98ab; margin-top:22px; padding-top:18px; border-top:1px solid #2b2f36;">Linescores</div>
+      <div style="font-family:'Space Mono', monospace; font-size:10.5px; letter-spacing:0.04em; color:#8b98ab; margin-top:12px; line-height:1.7;">
+        <div>MLB — innings, then R H E.</div>
+        <div style="margin-top:7px;">NFL · NBA · WNBA — quarters, then T. Overtime adds OT1.</div>
+        <div style="margin-top:7px;">A period not yet played stays blank, never a zero.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1200}}">
+// Grounded in the connected repo, not invented:
+//   src/lib/gamesData.js — GAME_STATUS, statusSortKey, isActiveStatus,
+//     opensGamecast, mlbPeriodLabel/espnPeriodLabel, and the normalized
+//     linescore shape { columns[{key,label,total}], rows[{abbr,cells}] }:
+//     MLB gets R/H/E, ESPN sports get T, and a period not yet played is BLANK
+//     rather than 0.
+//   src/GamecastPage.jsx — Linescore → Decisions → Leaders section order and
+//     the "no synthesized data; say so instead" empty states.
+// Props in play is this design's own addition on top of that shape.
+
+// Game-state colours are their own family, deliberately separated from
+// cleared/short: four distinct hues, and each is a SQUARE swatch while
+// outcome colours are bars or round dots. Green is never used here — it means
+// cleared, and a green "live" dot beside a green "past the line" bar is the
+// collision this product exists to avoid.
+const STATE_STYLE = {
+  LIVE:          { label:'Live',          fg:'#22c9d6', bg:'#22c9d6', border:'#22c9d6', edge:'#22c9d6' },
+  HALFTIME:      { label:'Halftime',      fg:'#22c9d6', bg:'transparent', border:'#22c9d6', edge:'#22c9d6' },
+  STARTING_SOON: { label:'Starting soon', fg:'#8fa6ff', bg:'#8fa6ff', border:'#8fa6ff', edge:'#3b5bdb' },
+  UPCOMING:      { label:'Scheduled',     fg:'#aab2c0', bg:'transparent', border:'#8fa6ff', edge:'#2b2f36' },
+  DELAYED:       { label:'Delayed',       fg:'#9b8cf0', bg:'#9b8cf0', border:'#9b8cf0', edge:'#9b8cf0' },
+  SUSPENDED:     { label:'Suspended',     fg:'#9b8cf0', bg:'transparent', border:'#9b8cf0', edge:'#9b8cf0' },
+  POSTPONED:     { label:'Postponed',     fg:'#8b98ab', bg:'transparent', border:'#8b98ab', edge:'#2b2f36' },
+  FINAL:         { label:'Final',         fg:'#e8ecf2', bg:'#e8ecf2', border:'#e8ecf2', edge:'#5c6470' },
+};
+
+const SORT_KEY = { LIVE:0, HALFTIME:0, INTERMISSION:0, STARTING_SOON:1, UPCOMING:2, DELAYED:3, SUSPENDED:3, POSTPONED:4, FINAL:5 };
+const isLiveState = st => st === 'LIVE' || st === 'HALFTIME' || st === 'INTERMISSION';
+// opensGamecast: a started or finished game has a linescore; STARTING_SOON does not
+const opensGamecast = st => isLiveState(st) || st === 'DELAYED' || st === 'SUSPENDED' || st === 'FINAL';
+
+// Sport identity, used for the group divider and the linescore badge. Muted so
+// a league tone is never mistaken for a state or an outcome.
+// Sport identity is its own family: warm, desaturated, and deliberately
+// disjoint from every STATE_STYLE hex above — a league tone must never be
+// mistakable for a game state, or for green/red/amber.
+const SPORTS = {
+  mlb:  { label:'MLB',  tone:'#8a8f7a' },
+  nfl:  { label:'NFL',  tone:'#9a8072' },
+  nba:  { label:'NBA',  tone:'#7f8a9a' },
+  wnba: { label:'WNBA', tone:'#93808f' },
+};
+
+const GAMES = [
+  { id:'mlb-1', sport:'mlb', props:174, status:'LIVE', startsAt:'8:05 PM',
+    away:{ ab:'WSH', name:'Nationals', rec:'61-68', score:3, tone:'#a5555f' },
+    home:{ ab:'TEX', name:'Rangers',   rec:'76-51', score:4, tone:'#4f87ab' },
+    periodLabel:'TOP 6 · 1 OUT', detail:'Rangers lead by one',
+    bases:{ first:true, second:true, third:false }, count:'2–1', atBat:'K. Ruiz',
+    periods:[['1',0,1],['2',2,0],['3',0,0],['4',1,3],['5',0,0],['6',null,null],['7',null,null],['8',null,null],['9',null,null]],
+    totals:[['R',3,4],['H',7,9],['E',0,1]],
+    leaders:[
+      { ab:'WSH', tone:'#a5555f', items:[['Batting','Keibert Ruiz','1-3, RBI'],['Pitching','Jake Irvin','5.0 IP, 4 ER, 6 K']] },
+      { ab:'TEX', tone:'#4f87ab', items:[['Batting','Corey Seager','2-3, 2B, RBI'],['Pitching','Nathan Eovaldi','5.1 IP, 3 ER, 7 K']] }],
+    live:[
+      ['Keibert Ruiz','WSH','Over 0.5 hits','posted',1,0.5,3,'70% · 7 of 10'],
+      ['Corey Seager','TEX','Over 1.5 total bases','posted',2,1.5,4,'56% · 9 of 16'],
+      ['Jake Burger','TEX','Over 0.5 RBIs','posted',0,0.5,3,'44% · 7 of 16'],
+      ['Andrés Chaparro','WSH','Over 1.5 total bases','projected',1,1.5,4,'50% · 8 of 16']] },
+
+  { id:'mlb-2', sport:'mlb', props:172, status:'STARTING_SOON', startsAt:'4:10 PM',
+    away:{ ab:'ATL', name:'Braves',  rec:'75-53', score:null, tone:'#a5555f' },
+    home:{ ab:'MIL', name:'Brewers', rec:'79-49', score:null, tone:'#8f7f5e' },
+    periodLabel:null, detail:'American Family Field',
+    periods:null, totals:null, leaders:null,
+    live:[
+      ['Ronald Acuña Jr.','ATL','Over 1.5 total bases','posted',0,1.5,4,'62% · 10 of 16'],
+      ['Christian Yelich','MIL','Over 0.5 hits','posted',0,0.5,3,'75% · 12 of 16'],
+      ['Matt Olson','ATL','Over 1.5 total bases','projected',0,1.5,4,'50% · 8 of 16']] },
+
+  { id:'mlb-3', sport:'mlb', props:168, status:'FINAL', startsAt:'6:40 PM',
+    away:{ ab:'STL', name:'Cardinals', rec:'66-63', score:2, tone:'#a5555f' },
+    home:{ ab:'PHI', name:'Phillies',  rec:'70-58', score:6, tone:'#4f7fa5' },
+    periodLabel:null, detail:'Phillies win by four',
+    periods:[['1',0,2],['2',0,0],['3',1,0],['4',0,3],['5',0,0],['6',0,1],['7',1,0],['8',0,0],['9',0,null]],
+    totals:[['R',2,6],['H',6,11],['E',1,0]],
+    decisions:[['Win','Z. Wheeler'],['Loss','S. Gray'],['Save','J. Romano']],
+    leaders:[
+      { ab:'STL', tone:'#a5555f', items:[['Batting','Willson Contreras','1-4, RBI']] },
+      { ab:'PHI', tone:'#4f7fa5', items:[['Batting','Bryce Harper','2-4, HR, 3 RBI'],['Pitching','Zack Wheeler','7.0 IP, 2 ER, 9 K']] }],
+    live:[
+      ['Bryce Harper','PHI','Over 1.5 total bases','posted',5,1.5,6,'62% · 10 of 16'],
+      ['Willson Contreras','STL','Over 0.5 hits','posted',1,0.5,3,'69% · 11 of 16']] },
+
+  { id:'nfl-1', sport:'nfl', props:148, status:'LIVE', startsAt:'4:05 PM',
+    away:{ ab:'LAR', name:'Rams',      rec:'6-3', score:17, tone:'#4a6fd4' },
+    home:{ ab:'SEA', name:'Seahawks',  rec:'5-4', score:13, tone:'#4a8f6d' },
+    // espnPeriodLabel: ordinal + clock, then down-and-distance
+    periodLabel:'3RD · 7:42 · 2ND & 7', detail:'LAR ball at SEA 38',
+    periods:[['1',7,3],['2',3,7],['3',7,3],['4',null,null]],
+    totals:[['T',17,13]],
+    leaders:[
+      { ab:'LAR', tone:'#4a6fd4', items:[['Passing','Matthew Stafford','218 YDS, 2 TD'],['Receiving','Puka Nacua','4 REC, 61 YDS']] },
+      { ab:'SEA', tone:'#4a8f6d', items:[['Passing','Sam Darnold','174 YDS, 1 TD'],['Rushing','Kenneth Walker','14 CAR, 68 YDS']] }],
+    live:[
+      ['Puka Nacua','LAR','Over 5.5 receptions','posted',4,5.5,10,'70% · 7 of 10'],
+      ['Kyren Williams','LAR','Over 58.5 rush yards','posted',71,58.5,120,'60% · 6 of 10'],
+      ['Jaxon Smith-Njigba','SEA','Over 64.5 rec yards','posted',38,64.5,120,'50% · 5 of 10']] },
+
+  { id:'nfl-2', sport:'nfl', props:163, status:'UPCOMING', startsAt:'4:25 PM',
+    away:{ ab:'CIN', name:'Bengals', rec:'5-4', score:null, tone:'#c2622d' },
+    home:{ ab:'KC',  name:'Chiefs',  rec:'7-2', score:null, tone:'#a5555f' },
+    periodLabel:null, detail:'Arrowhead · 42°F, wind 14mph',
+    periods:null, totals:null, leaders:null,
+    live:[
+      ["Ja'Marr Chase",'CIN','Over 6.5 receptions','posted',0,6.5,12,'69% · 11 of 16'],
+      ['Travis Kelce','KC','Over 52.5 rec yards','posted',0,52.5,110,'56% · 9 of 16'],
+      ['Xavier Worthy','KC','Over 3.5 receptions','unknown',0,3.5,8,'too few · 4 games']] },
+];
+
+class Component extends DCLogic {
+  state = { league:'All', filter:'all', day:2, open:'mlb-1', expanded:false };
+
+  set(k, v) { return () => this.setState({ [k]: v }); }
+
+  renderVals() {
+    const s = this.state;
+    const chip = on => ({
+      bg: on ? '#3b5bdb' : 'transparent',
+      fg: on ? '#ffffff' : '#aab2c0',
+      border: on ? '#3b5bdb' : '#2b2f36',
+    });
+    const initials = n => n.split(' ').map(w => w[0]).join('').slice(0, 2);
+
+    const list = GAMES
+      .filter(g => s.league === 'All' || SPORTS[g.sport].label === s.league)
+      .filter(g => s.filter === 'all'
+        || (s.filter === 'live' && isLiveState(g.status))
+        || (s.filter === 'pre' && (g.status === 'UPCOMING' || g.status === 'STARTING_SOON'))
+        || (s.filter === 'final' && g.status === 'FINAL'))
+      .slice()
+      .sort((a, b) => (SORT_KEY[a.status] - SORT_KEY[b.status]));
+    const shown = s.expanded ? list : list.slice(0, 5);
+
+    // Grouped by sport with a labelled divider: an MLB game and an NFL game in
+    // one undifferentiated stack is a real misread, since their linescores,
+    // markets and state vocabulary all differ.
+    const order = ['mlb', 'nfl', 'nba', 'wnba'];
+    const groups = order.filter(sp => shown.some(g => g.sport === sp)).map(sp => {
+      const inSport = shown.filter(g => g.sport === sp);
+      const liveN = inSport.filter(g => isLiveState(g.status)).length;
+      return {
+        label: SPORTS[sp].label,
+        tone: SPORTS[sp].tone,
+        // a circle for the round-ball sports, an ellipse for the prolate one
+        glyphRadius: sp === 'nfl' ? '50% / 64%' : '50%',
+        count: inSport.length + (inSport.length === 1 ? ' game' : ' games'),
+        note: liveN ? liveN + ' in progress' : 'none in progress',
+        games: inSport.map(g => this.buildGame(g, s, initials)),
+      };
+    });
+
+    const dates = [
+      { label:'Aug 19', sub:'Wed · 15' }, { label:'Aug 20', sub:'Thu · 9' },
+      { label:'Aug 21', sub:'Fri · 15' }, { label:'Aug 22', sub:'Sat · 15' },
+    ];
+
+    return {
+      slateLabel: list.length + ' shown · Friday, August 21',
+      dates: dates.map((d, i) => Object.assign({}, d, {
+        pick: this.set('day', i),
+        fg: s.day === i ? '#e8ecf2' : '#8b98ab',
+        rule: s.day === i ? '#3b5bdb' : 'transparent',
+      })),
+
+      leagues: ['All', 'MLB', 'NFL', 'WNBA'].map(label => {
+        const n = label === 'All' ? GAMES.length : GAMES.filter(g => SPORTS[g.sport].label === label).length;
+        return Object.assign({
+          label,
+          count: n === 0 ? 'off-season' : n + (n === 1 ? ' game' : ' games'),
+          sub: n === 0 ? '#5c6470' : '#8b98ab',
+          pick: this.set('league', label),
+        }, chip(s.league === label));
+      }),
+
+      // "All games" carries no state dot — it is the absence of a filter, not a
+      // state, and giving it one was what made these four read alike.
+      stateFilters: [
+        ['all', 'All games', null],
+        ['live', 'Live', 'LIVE'],
+        ['pre', 'Scheduled', 'UPCOMING'],
+        ['final', 'Final', 'FINAL'],
+      ].map(([v, label, st]) => Object.assign({
+        label,
+        pick: this.set('filter', v),
+        hasDot: !!st,
+        dotBg: st ? STATE_STYLE[st].bg : 'transparent',
+        dotBorder: st ? STATE_STYLE[st].border : 'transparent',
+      }, chip(s.filter === v))),
+
+      stateLegend: [
+        { label:'Live · halftime', dotBg:STATE_STYLE.LIVE.bg, dotBorder:STATE_STYLE.LIVE.border },
+        { label:'Starting soon', dotBg:STATE_STYLE.STARTING_SOON.bg, dotBorder:STATE_STYLE.STARTING_SOON.border },
+        { label:'Scheduled', dotBg:'transparent', dotBorder:STATE_STYLE.UPCOMING.border },
+        { label:'Delayed · suspended', dotBg:STATE_STYLE.DELAYED.bg, dotBorder:STATE_STYLE.DELAYED.border },
+        { label:'Final', dotBg:STATE_STYLE.FINAL.bg, dotBorder:STATE_STYLE.FINAL.border },
+      ],
+
+      showing: list.length === GAMES.length ? String(GAMES.length) : list.length + ' of ' + GAMES.length,
+      liveCount: String(list.filter(g => isLiveState(g.status)).length),
+      liveColor: list.some(g => isLiveState(g.status)) ? '#22c9d6' : '#aab2c0',
+      finalCount: String(list.filter(g => g.status === 'FINAL').length),
+      nextStart: (function () {
+        const next = list.filter(g => g.status === 'UPCOMING' || g.status === 'STARTING_SOON')[0];
+        return next ? next.startsAt : '\u2014';
+      })(),
+      moreLabel: s.expanded ? 'Show fewer games'
+        : 'Show ' + Math.max(0, list.length - 5) + (list.length - 5 === 1 ? ' more game' : ' more games'),
+      toggleAll: () => this.setState(st => ({ expanded: !st.expanded })),
+
+      groups,
+    };
+  }
+
+  buildGame(g, s, initials) {
+    const sp = SPORTS[g.sport];
+    const st = STATE_STYLE[g.status];
+    const started = g.away.score != null;
+    const showGamecast = opensGamecast(g.status);
+    const hasLine = showGamecast && !!g.periods;
+
+    // one flat cell list, three rows deep, so the grid stays a single sc-for
+    const cells = [];
+    const push = (v, o) => cells.push(Object.assign({
+      v: v === null || v === undefined || v === '' ? '' : String(v),
+      align:'center', size:'12.5px', weight:'400', fg:'#e8ecf2', top:'none', left:'none',
+    }, o || {}));
+
+    if (hasLine) {
+      const firstTotalIdx = g.periods.length;
+      push('', { align:'left', size:'11px' });
+      g.periods.forEach(p => push(p[0], { size:'11px', weight:'700', fg:'#8b98ab' }));
+      g.totals.forEach((t, i) => push(t[0], {
+        size:'11px', weight:'700', fg:'#e8ecf2',
+        left: i === 0 ? '1px solid #2b2f36' : 'none',
+      }));
+      [1, 2].forEach(side => {
+        const team = side === 1 ? g.away : g.home;
+        push(team.ab, { align:'left', weight:'700', top:'1px solid #2b2f36' });
+        g.periods.forEach(p => push(p[side], {
+          fg: p[side] == null ? '#5c6470' : '#aab2c0', top:'1px solid #2b2f36',
+        }));
+        g.totals.forEach((t, i) => push(t[side], {
+          weight:'700', fg:'#e8ecf2', top:'1px solid #2b2f36',
+          left: i === 0 ? '1px solid #2b2f36' : 'none',
+        }));
+      });
+    }
+
+    return {
+      away: g.away.name, home: g.home.name,
+      awayAb: g.away.ab, homeAb: g.home.ab,
+      awayRec: g.away.rec, homeRec: g.home.rec,
+      awayTone: g.away.tone, homeTone: g.home.tone,
+      awayScore: g.away.score == null ? '\u2013' : String(g.away.score),
+      homeScore: g.home.score == null ? '\u2013' : String(g.home.score),
+      // on a final the loser dims so the result reads at a glance
+      awayScoreFg: !started ? '#5c6470'
+        : g.status === 'FINAL' && g.away.score < g.home.score ? '#8b98ab' : '#e8ecf2',
+      homeScoreFg: !started ? '#5c6470'
+        : g.status === 'FINAL' && g.home.score < g.away.score ? '#8b98ab' : '#e8ecf2',
+
+      statusText: isLiveState(g.status) && g.periodLabel ? g.periodLabel
+        : g.status === 'FINAL' ? 'Final'
+        : g.status === 'STARTING_SOON' ? 'Starting soon · ' + g.startsAt
+        : g.status === 'UPCOMING' ? g.startsAt : st.label,
+      statusDetail: g.detail,
+      statusColor: st.fg,
+      dotBg: st.bg, dotBorder: st.border, stateEdge: st.edge,
+      action: showGamecast ? 'Gamecast →' : 'Preview →',
+      actionColor: showGamecast ? '#8fa6ff' : '#aab2c0',
+
+      sportLabel: sp.label, sportTone: sp.tone,
+      open: s.open === g.id,
+      toggle: () => this.setState(cur => ({ open: cur.open === g.id ? null : g.id })),
+
+      hasLinescore: hasLine,
+      noLinescore: !hasLine,
+      emptyNote: showGamecast ? 'No linescore available yet.'
+        : 'Not started — there is no linescore to show. Season history is below.',
+      periodLabel: g.periodLabel || (g.status === 'FINAL' ? 'Final' : g.startsAt),
+      gridCols: hasLine
+        ? '56px repeat(' + g.periods.length + ', minmax(30px, 1fr)) ' + g.totals.map(() => '38px').join(' ')
+        : '1fr',
+      cells,
+
+      // MLB live only — a diamond on a scheduled or final game would assert a
+      // base state the provider isn't reporting
+      hasDiamond: g.sport === 'mlb' && isLiveState(g.status) && !!g.bases,
+      base1: g.bases && g.bases.first ? '#22c9d6' : 'transparent',
+      base1Border: g.bases && g.bases.first ? '#22c9d6' : '#2b2f36',
+      base2: g.bases && g.bases.second ? '#22c9d6' : 'transparent',
+      base2Border: g.bases && g.bases.second ? '#22c9d6' : '#2b2f36',
+      base3: g.bases && g.bases.third ? '#22c9d6' : 'transparent',
+      base3Border: g.bases && g.bases.third ? '#22c9d6' : '#2b2f36',
+      count: g.count, atBat: g.atBat,
+      runnerNote: (function () {
+        if (!g.bases) return '';
+        const on = [];
+        if (g.bases.first) on.push('1st');
+        if (g.bases.second) on.push('2nd');
+        if (g.bases.third) on.push('3rd');
+        return on.length ? 'Runners on ' + on.join(', ') + '.' : 'Bases empty.';
+      })(),
+      hasDecisions: !!g.decisions,
+      decisions: (g.decisions || []).map(d => ({ role:d[0], name:d[1] })),
+      hasLeaders: !!g.leaders,
+      leaders: (g.leaders || []).map(t => ({
+        abbr: t.ab, tone: t.tone,
+        items: t.items.map(i => ({ category:i[0], name:i[1], statLine:i[2], initials:initials(i[1]) })),
+      })),
+      props: g.props,
+      scoreNote: g.status === 'FINAL'
+        ? 'Final. These games now count toward the season rates.'
+        : isLiveState(g.status)
+          ? 'Live game state. Season rates below count finished games only.'
+          : 'Not started. Everything below is season history.',
+
+      live: g.live.map(p => {
+        const [name, team, prop, avail, done, line, max, season] = p;
+        const pct = Math.min(100, Math.round((done / max) * 100));
+        const past = done > line;
+        return {
+          name, team, prop, season, initials: initials(name),
+          dotFill: avail === 'posted' ? '#2faa72' : 'transparent',
+          dotRing: avail === 'unknown' ? 'transparent' : avail === 'projected' ? '#2faa72' : '#131519',
+          fill: pct + '%',
+          fillColor: past ? '#2faa72' : '#5c6470',
+          lineAt: Math.min(100, Math.round((line / max) * 100)) + '%',
+          progress: started ? done + ' so far' : 'not started',
+          verdict: !started ? 'Pending' : past ? 'Cleared' : g.status === 'FINAL' ? 'Short' : 'Live',
+          verdictFg: past ? '#2faa72' : g.status === 'FINAL' && started ? '#ef5b5b' : '#aab2c0',
+          verdictBorder: past ? '#2b6b4a' : g.status === 'FINAL' && started ? '#7d3238' : '#2b2f36',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

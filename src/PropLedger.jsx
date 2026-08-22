@@ -14228,6 +14228,36 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // variable (same pattern as nextGamePill/tabsBar/activeTabContent above)
   // so it can render as a compact top header on mobile instead of after
   // the whole tab content, where it used to land at the bottom of the page.
+  // Shared by the v1 selector below and the v2 breadcrumb switcher, so the two
+  // can never drift into picking a game differently.
+  const pickMatchup = (mo) => {
+    // Always the home team (teams[1], not the away team at teams[0])
+    // -- picking a *different* matchup only fires this once, but
+    // selecting this same option again later (e.g. after clicking away
+    // to another game and back) re-fires it too, and defaulting to
+    // teams[0] every time meant that second pick flipped left/right
+    // from whichever side you'd actually been viewing, since it always
+    // landed on the away team regardless. A fixed side for a given
+    // matchup is stable across re-selections.
+    const nextTeam = mo.teams[1];
+    // startTransition marks this whole batch of state (which cascades
+    // into re-fetching nextGame/teamActiveRoster/oppActiveRoster and
+    // re-deriving both roster columns, the chart, and the game log)
+    // as lower priority than the dropdown's own click response -- lets
+    // React keep the UI responsive through the switch instead of the
+    // whole cascade blocking one big paint.
+    React.startTransition(() => {
+      setTeamAbbr(nextTeam);
+      setPickedGamePk(mo.gamePk);
+      setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
+      setLine(null);
+      setH2h(false);
+    });
+  };
+
+  const matchupGroups = matchupOptions.length ? [{ label: mlbSlateDayLabel, matchups: matchupOptions }] : [];
+  const matchupEmptyLabel = mlbSlate ? "No games today" : "Loading today's games…";
+
   const matchupSelectorBlock = (
     <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20, width: compact ? "100%" : "auto" }}>
       {/* GameSelect rather than a native <select>: this was the only sport
@@ -14236,35 +14266,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           because this slate is always exactly one day (fetchMLBDaySlate), as
           opposed to NFL/WNBA which span a week. */}
       <GameSelect
-        groups={matchupOptions.length ? [{ label: mlbSlateDayLabel, matchups: matchupOptions }] : []}
+        groups={matchupGroups}
         value={activeMatchupId}
         logoFn={mlbTeamLogo}
         compact={compact}
-        emptyLabel={mlbSlate ? "No games today" : "Loading today's games…"}
-        onChange={(mo) => {
-          // Always the home team (teams[1], not the away team at teams[0])
-          // -- picking a *different* matchup only fires this once, but
-          // selecting this same option again later (e.g. after clicking away
-          // to another game and back) re-fires it too, and defaulting to
-          // teams[0] every time meant that second pick flipped left/right
-          // from whichever side you'd actually been viewing, since it always
-          // landed on the away team regardless. A fixed side for a given
-          // matchup is stable across re-selections.
-          const nextTeam = mo.teams[1];
-          // startTransition marks this whole batch of state (which cascades
-          // into re-fetching nextGame/teamActiveRoster/oppActiveRoster and
-          // re-deriving both roster columns, the chart, and the game log)
-          // as lower priority than the dropdown's own click response -- lets
-          // React keep the UI responsive through the switch instead of the
-          // whole cascade blocking one big paint.
-          React.startTransition(() => {
-            setTeamAbbr(nextTeam);
-            setPickedGamePk(mo.gamePk);
-            setPlayerId(MLB_TEAM_ROSTERS[nextTeam].players[0].id);
-            setLine(null);
-            setH2h(false);
-          });
-        }}
+        emptyLabel={matchupEmptyLabel}
+        onChange={pickMatchup}
       />
     </div>
   );
@@ -14283,7 +14290,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // real and does render, off the posted lineup.
   const battingOrder = (() => {
     const ids = (nextGame && nextGame.ourLineupIds) || [];
-    const i = ids.indexOf(player.id);
+    // Match on mlbId, not id. `ourLineupIds` are MLB person ids straight off
+    // the schedule's lineups hydrate -- the same id space applyConfirmedLineup
+    // matches on -- while `player.id` is this app's own roster key. Comparing
+    // the two never matched, so this returned null for every batter and the
+    // batting-order pill had never once rendered.
+    const i = ids.indexOf(player.mlbId);
     if (i < 0) return null;
     const n = i + 1;
     const suffix = n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th";
@@ -14717,7 +14729,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const [, bumpStatcast] = useState(0);
   React.useEffect(() => { fetchStatcast(isPitcher ? "pitcher" : "batter").then(() => bumpStatcast((v) => v + 1)); }, [isPitcher]);
   const jerseyNumber = useMlbJersey(player.mlbId);
-  const postedIds = (nextGame && nextGame.ourLineupIds) || [];
+  // Each rail reads its own side's posted lineup. Using the team's list for
+  // both would number the opponent's rail against a lineup they aren't in.
+  const postedIdsFor = (side) =>
+    (nextGame && (side === "opp" ? nextGame.oppLineupIds : nextGame.ourLineupIds)) || [];
 
   const railPlayer = (p, side) => ({
     id: p.id,
@@ -14726,12 +14741,20 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     active: p.id === playerId,
     dotFill: (STATUS[mlbStatusOf(p)] || {}).dot || null,
     dotRing: "var(--surface-1)",
+    // Batting order, and the only place lineup state shows in the rail. The
+    // list is in batting order (see fetchMLBTeamNextGame), so the index is the
+    // slot; indexOf returns -1 for anyone not in it, and -1 + 1 = 0 is falsy,
+    // so a player outside the posted lineup carries no number rather than a
+    // guessed one. Before the lineup posts, nobody has one.
+    // Keyed on mlbId because that is the id space the lineups hydrate returns
+    // (see applyConfirmedLineup) -- `p.id` is this app's own roster key and
+    // would never match.
+    order: postedIdsFor(side).indexOf(p.mlbId) + 1 || null,
     avatar: (
       <PlayerAvatar
         name={p.name} team={p.team} sport="mlb" colorMap={MLB_TEAM_COLORS}
         headshotSrc={mlbHeadshot(p.mlbId)} fallbackSrc={mlbEspnHeadshot(p.id)}
-        lineup={postedIds.length ? (postedIds.includes(p.id) ? "posted" : undefined) : "projected"}
-        size={32} surface="var(--bg)"
+        size={32} inset={2} surface="var(--bg)"
       />
     ),
     onSelect: () => {
@@ -14745,10 +14768,30 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const v2Meetings = allGames.filter((g) => g.opp === (nextGame && nextGame.opp));
   const v2Last = v2Meetings.length ? v2Meetings[v2Meetings.length - 1] : null;
 
+  // "NYY @ BOS · FRI 7:10 PM", the mock's own crumb form. Day and first pitch
+  // drop out individually when the schedule hasn't answered yet rather than
+  // printing a placeholder, so the line shortens instead of lying.
+  const v2Fixture = [
+    `${(slateCells.band && slateCells.band.awayAbbr) || teamAbbr} @ ${(slateCells.band && slateCells.band.homeAbbr) || (nextGame && nextGame.opp) || ""}`,
+    nextGame && nextGame.date ? new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short" }) : null,
+    (slateCells.band && slateCells.band.start) || (nextGame && nextGame.date ? matchupTimeLabel(nextGame.date) : null),
+  ].filter(Boolean).join(" · ");
+
   const v2Page = (
     <PlayerDetailV2
       sport="mlb"
-      crumbFixture={`${(slateCells.band && slateCells.band.awayAbbr) || teamAbbr} @ ${(slateCells.band && slateCells.band.homeAbbr) || (nextGame && nextGame.opp) || ""}`}
+      crumbFixture={v2Fixture}
+      crumbSelect={
+        <GameSelect
+          variant="crumb"
+          triggerLabel={v2Fixture}
+          groups={matchupGroups}
+          value={activeMatchupId}
+          logoFn={mlbTeamLogo}
+          emptyLabel={matchupEmptyLabel}
+          onChange={pickMatchup}
+        />
+      }
       marketLabel={marketLabel}
       onBack={onBack || (() => {})}
       onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
@@ -15570,7 +15613,20 @@ function GameOptionRow({ logoFn, teams, time, label, onClick, indicator, highlig
 // `emptyLabel` covers the case where the slate hasn't arrived yet -- MLB's
 // games are fetched live, so its dropdown has a real loading state that the
 // static NFL/WNBA/NBA slates don't.
-function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel }) {
+// `variant`:
+//   "button" (default) -- the standing control: bordered, panel background,
+//                         15px, both crests on the trigger.
+//   "crumb"            -- the same dropdown hung off the v2 player-detail
+//                         breadcrumb, where the fixture is already printed as
+//                         11.5px uppercase Space Mono. The trigger there has
+//                         to *be* that line, not a button sitting in it, so it
+//                         drops the chrome and the crests and inherits the
+//                         crumb's own type; only the ▾ is added. The panel is
+//                         identical in both, which is the point of doing this
+//                         as a variant rather than a second component.
+// `triggerLabel` overrides what the trigger prints (the crumb passes its own
+// short "NYY @ BOS · FRI 7:10 PM" form; the panel keeps the full team names).
+function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel, variant = "button", triggerLabel }) {
   const [open, setOpen] = useState(false);
   const wrapRef = React.useRef(null);
   const { floatRef, anchorStyle } = useCenteredPanel(open);
@@ -15611,15 +15667,26 @@ function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel }) {
   const current = groups.flatMap((g) => g.matchups).find((m) => m.id === value);
   const currentTeams = current ? teamsOf(current) : null;
 
+  const isCrumb = variant === "crumb";
+
   return (
     <div
       ref={wrapRef}
-      style={{ position: "relative", display: compact ? "block" : "inline-block", width: compact ? "100%" : "auto" }}
+      style={{
+        position: "relative",
+        display: isCrumb ? "inline-block" : compact ? "block" : "inline-block",
+        width: isCrumb ? "auto" : compact ? "100%" : "auto",
+      }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        style={{
+        style={isCrumb ? {
+          cursor: "pointer", padding: 0, border: "none", background: "none",
+          font: "inherit", color: open ? "var(--amber-ink)" : "inherit",
+          letterSpacing: "inherit", textTransform: "inherit",
+          display: "inline-flex", alignItems: "center", gap: 6,
+        } : {
           cursor: "pointer", padding: "7px 12px", borderRadius: 6, fontSize: 15, width: "100%",
           fontFamily: "inherit",
           border: `1px solid ${open ? "var(--amber)" : "var(--line)"}`,
@@ -15628,16 +15695,16 @@ function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel }) {
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
         }}
       >
-        {currentTeams && logoFn && (
+        {!isCrumb && currentTeams && logoFn && (
           <span style={{ display: "flex", flexShrink: 0 }}>
             <img src={logoFn(currentTeams[0])} alt="" width={18} height={18} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)" }} />
             <img src={logoFn(currentTeams[1])} alt="" width={18} height={18} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)", marginLeft: -5, border: "1.5px solid var(--panel)" }} />
           </span>
         )}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-          {current ? current.label : emptyLabel || "Select a game"}
+          {triggerLabel || (current ? current.label : emptyLabel || "Select a game")}
         </span>
-        <span className="mono" style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>▾</span>
+        <span className="mono" style={{ fontSize: 10, color: open ? "var(--amber-ink)" : "var(--dim)", flexShrink: 0 }}>▾</span>
       </button>
       {open && (
         <div ref={floatRef} style={{ ...DROPDOWN_PANEL_STYLE, ...anchorStyle }}>

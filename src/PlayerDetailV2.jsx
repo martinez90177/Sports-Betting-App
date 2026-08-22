@@ -48,11 +48,13 @@ function RosterRow({ p, sport, onSelect }) {
     >
       <span style={{ position: "relative", flex: "none", width: 32, height: 32 }}>
         {/* The mock draws initials because it could not carry images. This is
-            the real headshot in the same 32px disc, with the same ring, and it
-            falls back to those initials rather than to nothing. */}
+            the real headshot in the same 32px disc -- the app's standard
+            avatar at rail size, so the team-colour ring reads the same here as
+            it does on the board, the feed and the gamecast -- and it falls
+            back to those initials rather than to nothing. */}
         {p.avatar}
-        {/* Availability, not lineup state: it is the fact all four leagues
-            report. Lineup posted/projected rides the avatar's ring. */}
+        {/* Availability, and the only thing in this corner (CLAUDE.md rule 3).
+            Lineup state is the batting-order number on the other end. */}
         {p.dotFill && (
           <span style={{
             position: "absolute", right: -1, bottom: -1, width: 9, height: 9, borderRadius: 999,
@@ -60,7 +62,7 @@ function RosterRow({ p, sport, onSelect }) {
           }} />
         )}
       </span>
-      <div style={{ minWidth: 0 }}>
+      <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {p.name}
         </div>
@@ -68,6 +70,24 @@ function RosterRow({ p, sport, onSelect }) {
           {p.meta}
         </div>
       </div>
+      {/* Batting order, which is also how this rail says "in the posted
+          lineup" -- the two are one fact for a batter. Absent until the lineup
+          posts, and absent for anyone left out of it, so an empty slot here
+          never reads as a guess. */}
+      {p.order != null && (
+        <span
+          title={`Batting ${p.order} in the posted lineup`}
+          style={{
+            flex: "none", width: 18, height: 18, borderRadius: 4,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            border: "1px solid var(--line)", background: "var(--surface-sunken)",
+            fontFamily: MONO, fontSize: 10, color: "var(--text-2)",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {p.order}
+        </span>
+      )}
     </div>
   );
 }
@@ -127,7 +147,13 @@ function BandHalf({ sport, team, side, align, tone }) {
 
 export default function PlayerDetailV2({
   sport,
-  crumbFixture, marketLabel, onBack, onWatch, watching,
+  // `crumbSelect` is the game switcher, rendered in place of the plain
+  // fixture text. The mock prints the fixture as static type because it has
+  // nowhere else to go; a real page needs a way off this game without going
+  // back to the feed first, and the fixture line already names the game, so
+  // it becomes the trigger rather than the page growing a region the mock
+  // does not have. Falls back to the text when a page has no slate to offer.
+  crumbFixture, crumbSelect, marketLabel, onBack, onWatch, watching,
   ownRail, oppRail,
   band,
   context,
@@ -153,7 +179,7 @@ export default function PlayerDetailV2({
           ← Prop feed
         </span>
         <span style={{ ...crumb, margin: "0 auto", color: "var(--dim)" }}>
-          {crumbFixture} · <span style={{ color: "var(--text)" }}>{marketLabel}</span>
+          {crumbSelect || crumbFixture} · <span style={{ color: "var(--text)" }}>{marketLabel}</span>
         </span>
         <span
           role="button" tabIndex={0} onClick={onWatch}
@@ -177,10 +203,13 @@ export default function PlayerDetailV2({
             ))}
           </div>
           <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
-            {/* The mock's wording, with the mark it describes moved: lineup
-                state is the avatar's ring here, because the corner dot is
-                availability in all four leagues and lineups are MLB-only. */}
-            Solid ring: lineup posted. Dashed: projected. No ring: unknown — never assumed.
+            {/* The mock's legend describes one corner dot carrying lineup
+                state. Here the corner is availability -- the fact all four
+                leagues report, and the corner CLAUDE.md rule 3 reserves --
+                while lineup state is the batting-order number, which is the
+                same fact said more usefully. The mock's closing clause is
+                kept because it still governs both: nothing is assumed. */}
+            Dot: green available, amber questionable, red out. Number: batting order once the lineup posts. Neither shown when unknown — never assumed.
           </div>
         </div>
 
