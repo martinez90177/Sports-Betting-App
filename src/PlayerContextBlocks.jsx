@@ -1,6 +1,98 @@
 import React from "react";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 
+// The matchup context row: what this opponent gives up, how that ranks, and
+// what happened the last time these two met.
+//
+// Every cell is optional and a cell with nothing behind it is *omitted*, not
+// filled with a dash or a placeholder. The handoff draws a fourth cell for
+// conditions (weather, roof, wind); no provider this app reads carries them,
+// so that cell does not exist here rather than existing empty. A row of three
+// real facts is worth more than four cells one of which is furniture.
+//
+// `allowsLabel` is passed in rather than assumed, because what the number
+// measures differs by league and by how much data has loaded -- the NFL table
+// is points allowed per game for every market, not a per-market split, and
+// the page already knows how to say so (nflDefIsPointsAllowed). The mock
+// labels this cell "6.8 rec/g", a per-market figure this app does not have
+// for every sport; printing that shape would be claiming a measurement.
+export function MatchupContextRow({
+  oppAbbr, allows, allowsLabel, rank, teams, tier, lastMeeting, marketLabel,
+}) {
+  const cells = [];
+
+  if (allows != null && oppAbbr) {
+    cells.push({
+      key: "allows",
+      label: `${oppAbbr} allows`,
+      value: String(allows),
+      sub: allowsLabel || null,
+    });
+  }
+
+  if (rank != null && teams) {
+    cells.push({
+      key: "matchup",
+      label: "Matchup",
+      // The denominator travels with the rank: "#27" means nothing until you
+      // know whether the league has 32 teams or 15.
+      value: `#${rank} of ${teams}`,
+      // tier is computed by defTier, which reads the rank against this
+      // league's own thirds and against the side being looked at.
+      sub: tier ? (tier === "soft" ? "easy" : tier) : null,
+    });
+  }
+
+  if (lastMeeting) {
+    cells.push({
+      key: "last",
+      label: "Last meeting",
+      value: lastMeeting.value != null ? String(lastMeeting.value) : "—",
+      sub: [lastMeeting.date, marketLabel].filter(Boolean).join(" · ") || null,
+    });
+  }
+
+  if (!cells.length) return null;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
+      {cells.map((c, i) => (
+        <div
+          key={c.key}
+          style={{
+            padding: "16px 20px", minWidth: 0,
+            borderLeft: i === 0 ? "none" : "1px solid var(--line)",
+          }}
+        >
+          <div
+            className="pp-mono"
+            style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          >
+            {c.label}
+          </div>
+          <div className="pp-mono" style={{ fontSize: 19, marginTop: 6, color: "var(--text)", whiteSpace: "nowrap" }}>
+            {c.value}
+          </div>
+          {c.sub && (
+            <div
+              className="pp-mono"
+              style={{ fontSize: 11, marginTop: 3, color: "var(--text-2, var(--dim))", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+            >
+              {c.sub}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Injury + news timeline for a single player's prop page.
 // items: [{ when, tone: "current"|"scare", text, result: "over"|"under"|null }]
 // `status` has no default on purpose. It used to default to "active", which

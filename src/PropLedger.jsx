@@ -29,7 +29,7 @@ import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
   MatchupBreadcrumb, MatchupVerdictBlock, GameLogTable, TheRead, MatchupSplits, ValueDistribution,
 } from "./player/MatchupPlayerBlocks.jsx";
-import { InjuryAndNews, MissingAround } from "./PlayerContextBlocks.jsx";
+import { InjuryAndNews, MissingAround, MatchupContextRow } from "./PlayerContextBlocks.jsx";
 import { fetchNews, timeAgo } from "./lib/newsdata.js";
 // MLB availability lives in lib because the matchup overview needs it too and
 // cannot import from this file (see the note at the top of mlbStatus.js). The
@@ -1356,6 +1356,31 @@ function usePlayerNewsTimeline(playerName, limit = 3) {
 // Neither block carries a data disclaimer. The card already has exactly one, at
 // its foot; a page that disclaims itself three times reads as less trustworthy,
 // not more.
+// Builds MatchupContextRow's props out of what a player page already holds.
+// Shared so the four pages compute "last meeting" the same way -- the most
+// recent finished game against this opponent, read off the same scoped log the
+// chart draws, not a separate lookup that could disagree with it.
+//
+// Returns null when there is no opponent to describe, so the row disappears
+// rather than rendering three empty cells.
+function matchupContextProps({ allGames, oppAbbr, def, teams, statValue, marketLabel, allowsLabel }) {
+  if (!oppAbbr) return null;
+  const meetings = (allGames || []).filter((g) => g.opp === oppAbbr);
+  const last = meetings.length ? meetings[meetings.length - 1] : null;
+  return {
+    oppAbbr,
+    allows: def ? def.rating : null,
+    allowsLabel,
+    rank: def ? def.rank : null,
+    teams,
+    // No direction passed: this cell describes the defence itself, not a side
+    // of a prop. defTier's side inversion is for callers reading a row.
+    tier: def ? defTier(def.rank, teams) : null,
+    lastMeeting: last ? { value: statValue(last), date: last.date } : null,
+    marketLabel,
+  };
+}
+
 function PlayerPropContextBlocks({
   playerName, status, statusNote, sport, colorMap,
   hits, total, line, absences, availabilityNote,
@@ -2551,6 +2576,21 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         )}
 
         {chartBlock}
+
+        {/* What this opponent gives up, how that ranks in a 30-team league,
+            and the last time these two met -- read off the same scoped log
+            the chart above draws. */}
+        <MatchupContextRow
+          {...(matchupContextProps({
+            allGames,
+            oppAbbr: nbaNextGameForTeam(player.team)?.opp,
+            def: (() => { const o = nbaNextGameForTeam(player.team)?.opp; return o ? getNBADefRank(market, o) : null; })(),
+            teams: TEAMS.length,
+            statValue: (g) => statValue(g, market, rebSplit),
+            marketLabel,
+            allowsLabel: nbaDefIsPointsAllowed(nbaNextGameForTeam(player.team)?.opp) ? "pts allowed per game" : nbaDefCategoryLabel(market),
+          }) || {})}
+        />
 
         <PlayerPropContextBlocks
           playerName={player.name}
@@ -9717,6 +9757,20 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
         {chartBlock}
 
+        {/* Same three cells as the other pages, against a 15-team league --
+            the denominator is why the rank is printed with one. */}
+        <MatchupContextRow
+          {...(matchupContextProps({
+            allGames,
+            oppAbbr: wnbaNextGameForTeam(player.team)?.opp,
+            def: (() => { const o = wnbaNextGameForTeam(player.team)?.opp; return o ? getWNBADefRank(market, o) : null; })(),
+            teams: WNBA_TEAMS.length,
+            statValue: (g) => statValue(g, market, rebSplit),
+            marketLabel,
+            allowsLabel: wnbaDefIsPointsAllowed(wnbaNextGameForTeam(player.team)?.opp) ? "pts allowed per game" : wnbaDefCategoryLabel(market),
+          }) || {})}
+        />
+
         <PlayerPropContextBlocks
           playerName={player.name}
           sport="wnba"
@@ -13749,6 +13803,21 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           />
         )}
       </div>
+
+      {/* MLB's defence table is per market (getMLBDefRank takes one), so
+          this cell names the market rather than falling back to a
+          league-wide figure the way the basketball pages must. */}
+      <MatchupContextRow
+        {...(matchupContextProps({
+          allGames,
+          oppAbbr: nextGame?.opp,
+          def: nextGame?.opp ? getMLBDefRank(market, nextGame.opp) : null,
+          teams: MLB_TEAMS.length,
+          statValue: (g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)),
+          marketLabel,
+          allowsLabel: marketLabel ? `${marketLabel} allowed` : null,
+        }) || {})}
+      />
 
       <PlayerPropContextBlocks
         playerName={player.name}
