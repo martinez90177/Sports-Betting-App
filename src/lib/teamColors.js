@@ -200,3 +200,114 @@ export const STATUS = {
   questionable: { label: "QUEST", dot: "var(--status-questionable, #e8b13a)", border: "#4a3d1c" },
   out: { label: "OUT", dot: "var(--status-out, #ef5b5b)", border: "#4a2323" },
 };
+
+// ---------------------------------------------------------------------------
+// Muted team tones, for the places that name a team rather than score it.
+//
+// The v2 handoff hand-writes a small map of desaturated hexes (SEA #3f8f6a,
+// ARI #a5555f, MIN #7565a8 ...) instead of using brand colour, and the reason
+// is meaning rather than taste: raw brand reds like Boston's #bd3039 or
+// Cincinnati's #c6011f land close enough to --neg #ef5b5b to be read as "fell
+// short", and a bright brand green reads as "cleared". Naming an opponent is
+// not a claim about an outcome.
+//
+// Measured off that map, its entries sit around S 0.27-0.39 and L 0.40-0.55.
+// This pins every team to the middle of that band and keeps only the hue, so
+// it covers all four leagues rather than the handful the mocks happened to
+// draw, and nothing it produces can collide with --pos (S 0.60 / L 0.53) or
+// --neg (S 0.80 / L 0.65).
+const MUTED_S = 0.32;
+const MUTED_L = 0.48;
+// Below this a brand colour is a grey/silver/black rather than a hue -- the
+// Yankees' #C4CED4, the White Sox's #27251F. Forcing those to MUTED_S would
+// invent a colour the team does not have, so they render as a neutral slate.
+//
+// The test is *chroma* (max-min of the raw channels), not HSL saturation.
+// Saturation is unreliable at the extremes of lightness: the Yankees' silver
+// scores S 0.157 -- above any sane threshold -- purely because it sits at
+// L 0.80, and would be treated as a blue. Its chroma is 0.06, which is what
+// the eye actually reports. (The same trap produced a false "your accent
+// clashes" warning in Settings; see the sat/chroma pair guarding paletteWarning.)
+const ACHROMATIC_C = 0.12;
+const NEUTRAL_S = 0.08;
+
+export function hslOfHex(hex) {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return null;
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (!d) return { h: 0, s: 0, l, c: 0 };
+  const s = d / (1 - Math.abs(2 * l - 1));
+  let deg;
+  if (max === r) deg = ((g - b) / d) % 6;
+  else if (max === g) deg = (b - r) / d + 2;
+  else deg = (r - g) / d + 4;
+  deg *= 60;
+  return { h: deg < 0 ? deg + 360 : deg, s, l, c: d };
+}
+
+// Shortest distance between two hues, in degrees (0-180).
+export function hueGap(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function toneFrom(hsl, alpha) {
+  if (!hsl) return alpha == null ? "var(--dim)" : "transparent";
+  const s = hsl.c < ACHROMATIC_C ? NEUTRAL_S : MUTED_S;
+  const base = `${Math.round(hsl.h)} ${Math.round(s * 100)}% ${Math.round(MUTED_L * 100)}%`;
+  return alpha == null ? `hsl(${base})` : `hsl(${base} / ${alpha})`;
+}
+
+function brand(sport, abbr) {
+  return (TEAM_COLORS_BY_SPORT[sport] || {})[abbr] || null;
+}
+
+// One team, on its own -- the chart axis, where every column is a different
+// opponent and there is no pair to confuse.
+export function mutedTeamColor(sport, abbr, alpha) {
+  const c = brand(sport, abbr);
+  return toneFrom(hslOfHex(c ? c.primary : null), alpha);
+}
+
+// Two teams shown side by side -- a matchup band's halves, a game card's away
+// and home crests. Keeping only the hue means two same-hue clubs collapse to
+// the same tone: Toronto's #134A8E and the Yankees' #0C2340 are both hue 214,
+// so a TOR @ NYY band drew two identical halves and the tint stopped saying
+// anything.
+//
+// When the two primaries land within HUE_CLASH, the *home* side falls back to
+// its secondary. Home rather than away on purpose: a club then looks the same
+// in every away fixture and only shifts in the one place it would otherwise
+// clash, instead of changing colour depending on who it is visiting.
+//
+// A secondary that is itself a grey (the Yankees' silver) is still used -- it
+// renders as a neutral slate, which is what that team's second colour actually
+// is, and reads as clearly distinct from the away side's hue.
+const HUE_CLASH = 30;
+
+export function matchupTones(sport, awayAbbr, homeAbbr, alpha) {
+  const awayHsl = hslOfHex((brand(sport, awayAbbr) || {}).primary);
+  const homeBrand = brand(sport, homeAbbr) || {};
+  let homeHsl = hslOfHex(homeBrand.primary);
+
+  const clashes = (a, b) => a && b && a.c >= ACHROMATIC_C && b.c >= ACHROMATIC_C
+    && hueGap(a.h, b.h) < HUE_CLASH;
+
+  if (clashes(awayHsl, homeHsl)) {
+    const alt = hslOfHex(homeBrand.secondary);
+    // The secondary only helps if it actually separates the two. A club whose
+    // second colour is another shade of the same hue gains nothing by
+    // swapping -- Toronto's #134A8E against the Yankees' #0C2340 is hue 214
+    // twice over. Where it does not separate them, the home side goes neutral,
+    // which always reads as distinct from a hue.
+    homeHsl = alt && !clashes(awayHsl, alt) ? alt : { h: homeHsl.h, s: 0, l: homeHsl.l, c: 0 };
+  }
+
+  return { away: toneFrom(awayHsl, alpha), home: toneFrom(homeHsl, alpha) };
+}
