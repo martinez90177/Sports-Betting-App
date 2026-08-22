@@ -146,7 +146,12 @@ function rateFor(row, activeSplits) {
   return { games, n: games.length, over, rate: over / games.length };
 }
 
-export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, dataUnavailable = false, slateByTeam = null, timeLabel = null }) {
+// `loading` is a separate claim from an empty board. MLB's rows arrive over the
+// network (see useMlbFeedData), so an empty array there means "not back yet",
+// while for the synchronous leagues it means the builders really found nothing.
+// Reading the difference off rows.length alone is what makes a slow fetch look
+// like an empty slate.
+export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, loading = false, slateByTeam = null, timeLabel = null }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
   const [minGames, setMinGames] = useState(10);
   const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
@@ -171,7 +176,16 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
   const grouped = useMemo(() => {
     const byGame = new Map();
     filtered.forEach((r) => {
-      const key = r.gameKey || `${r.team}-${r.opp}`;
+      // gameId before the team-opp fallback, because that fallback is
+      // *directional*: the same fixture reaches this loop once as TB-BAL and
+      // once as BAL-TB, and the board drew both -- two cards for one game, a
+      // slate of 15 counted as 30, each card holding half the props and each
+      // claiming to be the whole matchup. Only the builders that know which
+      // side is home can settle that, so a row that carries a canonical game
+      // id gets grouped by it. The fallback stays for the builders that have
+      // no fixture behind them at all (see the NFL/NBA rows, whose "games"
+      // are last-opponent pairings rather than a real slate).
+      const key = r.gameKey || r.gameId || `${r.team}-${r.opp}`;
       if (!byGame.has(key)) byGame.set(key, { key, label: r.gameLabelFull || `${r.team} vs ${r.opp}`, time: r.gameTime || "", rows: [] });
       byGame.get(key).rows.push(r);
     });
@@ -504,8 +518,8 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                     it can empty the board on three of the four sports --
                     lineupConfirmed is MLB batters only -- and "no props
                     match your markets" would be the wrong thing to fix. */}
-                {dataUnavailable
-                  ? "The MLB board isn't wired to its data yet. MLB props are built from a live feed that today only the Prop Feed loads, so this board has nothing real to show for it — and showing another league's props here instead would be worse than showing none. MLB props are on the Prop Feed in the meantime."
+                {loading
+                  ? "Loading today’s slate…"
                   : rows.length === 0
                   ? "No props have loaded for this league yet."
                   : lineupFilter !== "all" && grouped.length > 0
@@ -540,7 +554,13 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                       {g.slate.venue.name}{g.slate.venue.indoor ? " · indoors" : ""}
                     </span>
                   )}
-                  {g.time && <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))" }}>{g.time}</span>}
+                  {/* The row's own kickoff label, and only when the slate join
+                      didn't already supply one -- both were printing, so an
+                      MLB card read "2:10 PM ... 2:10 PM". The slate's time is
+                      preferred because it is the one that keeps updating. */}
+                  {g.time && !(g.slate?.startsAt && timeLabel) && (
+                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))" }}>{g.time}</span>
+                  )}
                   {/* The count is what the card knows about this game; the
                       action is a move to the feed. Deliberately not phrased
                       "All 148 props ->" the way the mock draws it: the feed

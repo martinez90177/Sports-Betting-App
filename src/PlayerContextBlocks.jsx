@@ -5,10 +5,15 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 // what happened the last time these two met.
 //
 // Every cell is optional and a cell with nothing behind it is *omitted*, not
-// filled with a dash or a placeholder. The handoff draws a fourth cell for
-// conditions (weather, roof, wind); no provider this app reads carries them,
-// so that cell does not exist here rather than existing empty. A row of three
-// real facts is worth more than four cells one of which is furniture.
+// filled with a dash or a placeholder. A row of three real facts is worth more
+// than five cells two of which are furniture.
+//
+// `game` and `conditions` both come off the day's slate (see usePlayerSlateGame),
+// joined on *both* teams -- looking one team up finds a game it plays, which is
+// not the same as finding this game. Out of season, or when the log's opponent
+// isn't who the slate has this team facing, there is no join and these two
+// cells are simply absent: the page says nothing about kickoff or venue rather
+// than saying something untrue.
 //
 // `allowsLabel` is passed in rather than assumed, because what the number
 // measures differs by league and by how much data has loaded -- the NFL table
@@ -17,7 +22,7 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 // labels this cell "6.8 rec/g", a per-market figure this app does not have
 // for every sport; printing that shape would be claiming a measurement.
 export function MatchupContextRow({
-  oppAbbr, allows, allowsLabel, rank, teams, tier, lastMeeting, marketLabel, conditions,
+  oppAbbr, allows, allowsLabel, rank, teams, tier, lastMeeting, marketLabel, conditions, game,
 }) {
   const cells = [];
 
@@ -52,9 +57,25 @@ export function MatchupContextRow({
     });
   }
 
+  // When this game starts, and how the two teams have done getting to it.
+  // Both come off the slate rather than the prop builders: the builders
+  // describe a player's log, and a log has never carried a kickoff time or a
+  // record. That is why the Board's "first kickoff" sort had nothing to sort
+  // on until the same join was threaded to it.
+  if (game && (game.value || game.sub)) {
+    cells.push({
+      key: "game",
+      // "Kickoff" / "First pitch" / "Tip-off" -- the leagues do not share a
+      // word for it, and the generic one belongs to none of them.
+      label: game.label || "Start",
+      value: game.value || "—",
+      sub: game.sub || null,
+    });
+  }
+
   // Conditions, where a provider actually reports them. MLB hydrates weather
-  // and venue on its schedule; the other leagues do not, so this cell is
-  // simply absent there rather than present and empty.
+  // on its schedule and the other leagues do not, so outside MLB this cell
+  // carries the venue alone rather than claiming a forecast nobody supplied.
   if (conditions && conditions.value) {
     cells.push({
       key: "conditions",
@@ -67,19 +88,25 @@ export function MatchupContextRow({
   if (!cells.length) return null;
 
   return (
+    // Flex-wrap with the gap doing the dividing, not a fixed column count with
+    // a border on each cell. Five cells at 1/5 of a phone's width is ~50px of
+    // content under a 20px pad -- every value ellipsed to nothing. Wrapping
+    // costs a row and keeps the numbers readable, and because the gap is the
+    // container's own colour showing through, the rules land between cells in
+    // both directions without a cell having to know where a row broke.
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+        display: "flex", flexWrap: "wrap", gap: 1,
+        background: "var(--line)",
         borderBottom: "1px solid var(--line)",
       }}
     >
-      {cells.map((c, i) => (
+      {cells.map((c) => (
         <div
           key={c.key}
           style={{
-            padding: "16px 20px", minWidth: 0,
-            borderLeft: i === 0 ? "none" : "1px solid var(--line)",
+            flex: "1 1 150px", padding: "16px 20px", minWidth: 0,
+            background: "var(--panel)",
           }}
         >
           <div

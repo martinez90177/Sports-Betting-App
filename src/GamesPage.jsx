@@ -698,6 +698,30 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     return () => { cancelled = true; };
   }, [sport, activeKey]);
 
+  // The one place the viewed slate is resolved, and the one place that knows
+  // each sport answers a different question: All merges four leagues for one
+  // calendar day, NFL loads a whole week and filters it down to the open date
+  // tab, everything else is already a single day's fetch.
+  //
+  // Four call sites below used to re-derive this themselves from an identical
+  // `const base = sport === "nfl" ? ...` expression, and identical twins are
+  // exactly how the All tab shipped broken: an edit meant for the `games`
+  // memo matched the poller's copy of the same text instead, so the poller
+  // learned about All and the list didn't, and the view kept rendering
+  // whichever single league had been visited last. Two of the other twins
+  // never learned about All at all -- `slate` still read the previous
+  // league's `dayGames` for its loading and unreadable counts, and `selected`
+  // resolved against it too, so a game opened from the All tab stopped
+  // tracking the live poller. Keep this the only definition.
+  const slate = sport === ALL_SPORT.id ? allDayGames : sport === "nfl" ? nflWeek : dayGames;
+  const slateGames = useMemo(() => {
+    if (sport === ALL_SPORT.id) return allDayGames?.games || [];
+    if (sport === "nfl") {
+      return (nflWeek?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey);
+    }
+    return dayGames?.games || [];
+  }, [sport, nflWeek, dayGames, allDayGames, activeKey]);
+
   // Light live polling only for the currently viewed day when any game is
   // still active. Pauses when the tab is hidden. Stops once everything is FINAL.
   useEffect(() => {
@@ -713,12 +737,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       loadSlate(sport, activeKey, { silent: true });
     };
 
-    const base = sport === ALL_SPORT.id
-      ? (allDayGames?.games || [])
-      : sport === "nfl"
-      ? (nflWeek?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
-      : (dayGames?.games || []);
-    const needsPoll = base.some((g) => isActiveStatus(g.status));
+    const needsPoll = slateGames.some((g) => isActiveStatus(g.status));
 
     clearPoll();
     if (needsPoll) {
@@ -726,24 +745,18 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       pollRef.current = setInterval(tick, 20_000);
     }
     return clearPoll;
-  }, [sport, activeKey, dayGames, nflWeek, loadSlate]);
+  }, [sport, activeKey, slateGames, loadSlate]);
 
-  const slate = sport === "nfl" ? nflWeek : dayGames;
   const slateFailed = !!loadError;
   const slateLoading = slate === null && !slateFailed;
   // Games the feed returned that could not be built into a row. Surfaced at the
   // foot of the table rather than hidden -- see the footer below.
   const unreadable = slate?.unreadable || 0;
   const games = useMemo(() => {
-    const base = sport === ALL_SPORT.id
-      ? (allDayGames?.games || [])
-      : sport === "nfl"
-      ? (nflWeek?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey)
-      : (dayGames?.games || []);
     const q = query.trim().toLowerCase();
-    let list = base;
+    let list = slateGames;
     if (q) {
-      list = base.filter((g) =>
+      list = slateGames.filter((g) =>
         [g.away.full, g.home.full, g.away.abbr, g.home.abbr, g.away.name, g.home.name]
           .some((s) => String(s).toLowerCase().includes(q))
       );
@@ -755,7 +768,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       if (sa !== sb) return sa - sb;
       return new Date(a.startsAt) - new Date(b.startsAt);
     });
-  }, [sport, nflWeek, dayGames, allDayGames, activeKey, query]);
+  }, [slateGames, query]);
 
   // The All view's groups: one per league that is actually playing today, in
   // the tab order, each already live-first because `games` is sorted that way
@@ -782,13 +795,13 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
 
   // Re-resolved from the slate on every render, so the open page tracks the
   // poller's fresh status/score/periodLabel with no extra fetch of its own.
-  // Searched against the unfiltered slate: typing in the search box must not
-  // pull the game out from under an open page.
+  // Searched against `slateGames`, which the search box does not filter:
+  // typing must not pull the game out from under an open page. The snapshot
+  // still backs it up for a game that leaves the slate entirely.
   const selected = useMemo(() => {
     if (!selectedId) return null;
-    const base = (sport === "nfl" ? nflWeek?.games : dayGames?.games) || [];
-    return base.find((g) => g.id === selectedId) || selectedSnap.current;
-  }, [selectedId, sport, nflWeek, dayGames]);
+    return slateGames.find((g) => g.id === selectedId) || selectedSnap.current;
+  }, [selectedId, slateGames]);
 
   // Re-runs the same loader the effects run, so the retry cannot diverge from
   // the load it is retrying. Clearing the error first puts the screen back into

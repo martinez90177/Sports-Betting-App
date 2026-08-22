@@ -9,7 +9,7 @@ import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
 import AltLineLadder, { SlipLeg } from "./AltLineLadder.jsx";
 import {
-  fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflWeekOneSlate,
+  fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflWeekOneSlate, fetchNbaOpenerDay,
   dayKey as slateDayKey,
 } from "./lib/gamesData.js";
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
@@ -1385,6 +1385,80 @@ function matchupContextProps({ allGames, oppAbbr, def, teams, statValue, marketL
   };
 }
 
+// The day's slate row for one player's next game, or null.
+//
+// Same join the Board makes (see boardSlate), and deliberately the same strict
+// rule: *both* teams have to be on the same slate row. Looking up one team
+// finds a game it plays, which is how the Board once hung Tampa Bay's record
+// on a card headed CIN vs CLE. It matters more here, not less: the NBA and NFL
+// prop builders describe the last opponent a player actually faced -- a 2025
+// fixture -- while the slate holds 2026. Those will not join, and not joining
+// is the correct answer. The cells that depend on it just don't render.
+//
+// Every fetcher below is the cached, TTL'd one the Games page and the Board
+// already call, so a player page and the Board can never disagree about a
+// kickoff time, and asking costs nothing on a warm cache.
+async function playerSlateGames(sport) {
+  if (sport === "nfl") return (await fetchNflWeekOneSlate())?.games || [];
+  const fetcher = sport === "mlb" ? fetchMlbSlate : sport === "wnba" ? fetchWnbaSlate : fetchNbaSlate;
+  const today = (await fetcher(slateDayKey(new Date())))?.games || [];
+  if (today.length || sport !== "nba") return today;
+  // Out of season the NBA has no "today" to join to, but the prop pages are
+  // already describing the opener (their own breadcrumb reads OCT 20). The
+  // Games page solves the same problem the same way -- see fetchNbaOpenerDay,
+  // whose answer comes from ESPN's season record rather than a typed-in date.
+  const opener = await fetchNbaOpenerDay();
+  return opener ? (await fetchNbaSlate(opener))?.games || [] : [];
+}
+
+function usePlayerSlateGame(sport, teamAbbr, oppAbbr) {
+  const [game, setGame] = useState(null);
+  React.useEffect(() => {
+    if (!sport || !teamAbbr || !oppAbbr) { setGame(null); return undefined; }
+    let cancelled = false;
+    setGame(null);
+    playerSlateGames(sport)
+      .then((games) => {
+        if (cancelled) return;
+        const hit = games.find((g) => {
+          const sides = [g.away?.abbr, g.home?.abbr];
+          return sides.includes(teamAbbr) && sides.includes(oppAbbr);
+        });
+        setGame(hit || null);
+      })
+      .catch(() => { if (!cancelled) setGame(null); });
+    return () => { cancelled = true; };
+  }, [sport, teamAbbr, oppAbbr]);
+  return game;
+}
+
+const SLATE_START_LABEL = { mlb: "First pitch", nfl: "Kickoff", nba: "Tip-off", wnba: "Tip-off" };
+
+// Turns that slate row into MatchupContextRow's two slate-fed cells. Each half
+// is independent: a game with a start time but no venue still gets its start
+// time. Records are the sub-line under the start because they answer a
+// different question from "when" and don't deserve a column of their own.
+function slateMatchupCells(game, sport) {
+  if (!game) return { game: null, conditions: null };
+  const records = game.away?.record && game.home?.record
+    ? `${game.away.abbr} ${game.away.record} · ${game.home.abbr} ${game.home.record}`
+    : null;
+  const start = game.startsAt ? slateTimeLabel(game.startsAt) : null;
+  return {
+    game: start || records
+      ? { label: SLATE_START_LABEL[sport] || "Start", value: start, sub: records }
+      : null,
+    conditions: game.venue?.name
+      ? {
+          value: game.venue.name,
+          // Indoors is a fact about the game; the city is only worth the line
+          // when there is nothing more useful to say.
+          sub: game.venue.indoor ? "Indoors" : game.venue.city || null,
+        }
+      : null,
+  };
+}
+
 function PlayerPropContextBlocks({
   playerName, status, statusNote, sport, colorMap,
   hits, total, line, absences, availabilityNote,
@@ -1783,6 +1857,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const gameOppRoster = playerOnTeamA ? matchup.teamB : matchup.teamA;
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getNBADefRank(market, gameOppAbbr) : null;
+  // The slate row for this fixture, if the slate has it (see
+  // usePlayerSlateGame). Out of season -- or when the log's opponent is not
+  // who the slate has this team facing -- this stays null and the kickoff
+  // and venue cells below simply do not render.
+  const slateGame = usePlayerSlateGame("nba", player?.team, nbaNextGameForTeam(player?.team)?.opp);
   const gameOppTier = gameOppDef ? defTier(gameOppDef.rank, TEAMS.length) : null;
   // Once the real points-allowed table has loaded the rank is that, whatever
   // market is selected, so the label has to say so rather than naming a
@@ -2594,6 +2673,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             marketLabel,
             allowsLabel: nbaDefIsPointsAllowed(nbaNextGameForTeam(player.team)?.opp) ? "pts allowed per game" : nbaDefCategoryLabel(market),
           }) || {})}
+          {...slateMatchupCells(slateGame, "nba")}
         />
 
         <PlayerPropContextBlocks
@@ -6879,6 +6959,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const gameOppRoster = playerOnTeamA ? oppRoster : teamRoster;
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getNFLDefRank(market, player.pos, gameOppAbbr) : null;
+  // The slate row for this fixture, if the slate has it (see
+  // usePlayerSlateGame). Out of season -- or when the log's opponent is not
+  // who the slate has this team facing -- this stays null and the kickoff
+  // and venue cells below simply do not render.
+  const slateGame = usePlayerSlateGame("nfl", player?.team, gameOppAbbr);
   const gameOppTier = gameOppDef ? nflDefTier(gameOppDef.rank) : null;
   // Once the real defense table has loaded, the rank/rating is points allowed
   // per game for every market, not a per-market split -- so the Game Info
@@ -7622,6 +7707,25 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         )}
 
         {chartBlock}
+
+        {/* The same row the other three pages carry. NFL had none, which left
+            it the one page where the opponent's rank, the last meeting and
+            the kickoff had nowhere to go. getNFLDefRank is per position as
+            well as per market, so `allows` is scoped tighter here than on the
+            basketball pages -- and gameDefLabel already knows to say "points
+            allowed" once the real table has loaded. */}
+        <MatchupContextRow
+          {...(matchupContextProps({
+            allGames,
+            oppAbbr: gameOppAbbr,
+            def: gameOppDef,
+            teams: NFL_TEAMS.length,
+            statValue: (g) => statValueNFL(g, market),
+            marketLabel,
+            allowsLabel: gameDefLabel,
+          }) || {})}
+          {...slateMatchupCells(slateGame, "nfl")}
+        />
 
         <PlayerPropContextBlocks
           playerName={player.name}
@@ -9146,6 +9250,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const gameOppRoster = playerOnTeamA ? matchup.teamB : matchup.teamA;
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getWNBADefRank(market, gameOppAbbr) : null;
+  // The slate row for this fixture, if the slate has it (see
+  // usePlayerSlateGame). Out of season -- or when the log's opponent is not
+  // who the slate has this team facing -- this stays null and the kickoff
+  // and venue cells below simply do not render.
+  const slateGame = usePlayerSlateGame("wnba", player?.team, wnbaNextGameForTeam(player?.team)?.opp);
   const gameOppTier = gameOppDef ? defTier(gameOppDef.rank, WNBA_TEAMS.length) : null;
   // Once the real defense table has loaded, the rank/rating is points allowed
   // per game for every market, not a per-market split -- so the Game Info
@@ -9910,6 +10019,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             marketLabel,
             allowsLabel: wnbaDefIsPointsAllowed(wnbaNextGameForTeam(player.team)?.opp) ? "pts allowed per game" : wnbaDefCategoryLabel(market),
           }) || {})}
+          {...slateMatchupCells(slateGame, "wnba")}
         />
 
         <PlayerPropContextBlocks
@@ -12635,6 +12745,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, [teamAbbr, pickedGamePk]);
   const oppRoster = (nextGame && MLB_TEAM_ROSTERS[nextGame.opp]) || null;
+  // Same slate row the Board joins to. MLB already gets venue and weather off
+  // its own schedule request (nextGame), so what this adds here is first pitch
+  // and the two records -- the facts that live on the slate and nowhere else.
+  const slateCells = slateMatchupCells(usePlayerSlateGame("mlb", teamAbbr, nextGame?.opp), "mlb");
 
   // Live active-roster safety filter (see fetchMLBTeamActiveRoster) -- keyed
   // by mlbId -> {name, pos}, refetched whenever the selected team or its real
@@ -13958,9 +14072,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           marketLabel,
           allowsLabel: marketLabel ? `${marketLabel} allowed` : null,
         }) || {})}
+        game={slateCells.game}
         // Real weather, hydrated on the schedule request -- MLB is the only
         // league whose provider reports it, and a dome shows as its own
-        // condition rather than being inferred.
+        // condition rather than being inferred. The slate's venue is the last
+        // fallback, so a schedule request that hasn't landed yet still leaves
+        // the cell saying something true.
         conditions={nextGame?.weather?.condition
           ? {
               value: nextGame.weather.temp ? `${nextGame.weather.temp}° ${nextGame.weather.condition}` : nextGame.weather.condition,
@@ -13968,7 +14085,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             }
           : nextGame?.venue
           ? { value: nextGame.venue, sub: null }
-          : null}
+          : slateCells.conditions}
       />
 
       <PlayerPropContextBlocks
@@ -14352,8 +14469,18 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     </div>
   );
 
+  // "@" is a claim about which dugout, and this used to print the selected
+  // team first whichever way the fixture ran -- so a Yankees player at home
+  // against Toronto got a breadcrumb reading "NYY @ TORONTO BLUE JAYS" over a
+  // page whose venue cell said Yankee Stadium. nextGame.home has always known
+  // the answer (see fetchMLBTeamNextGame); the label just never asked.
   const centerBreadcrumbLabel = nextGame
-    ? `${teamAbbr || "TEAM"} @ ${(liveOppRoster && (liveOppRoster.abbr || liveOppRoster.label)) || "OPP"} · ${new Date(nextGame.date || Date.now()).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
+    ? (() => {
+        const us = teamAbbr || "TEAM";
+        const them = (liveOppRoster && (liveOppRoster.abbr || liveOppRoster.label)) || "OPP";
+        const fixture = nextGame.home ? `${them} @ ${us}` : `${us} @ ${them}`;
+        return `${fixture} · ${new Date(nextGame.date || Date.now()).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`;
+      })()
     : (market || "").toUpperCase();
 
   const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
@@ -17319,10 +17446,24 @@ function buildNFLFeedRows() {
 // NFL builders above, this one takes data in rather than generating it, so
 // fetching stays in the page effect and this stays a pure function.
 // teamsData: one entry per MLB team -- { players, gameLogsById, nextGame }.
+// The fixture these rows belong to, written the same way from either dugout.
+// Both teams' rows carry the same gameId, so the Board groups them onto one
+// card -- but the card's title is taken from whichever row happens to sort
+// first, and "BAL vs TB" for the away team's props reads as a different game
+// from "TB vs BAL" for the home team's. Away-first, always, because that is
+// how every other surface in the app writes a matchup.
+function mlbGameLabelFull(teamAbbr, nextGame) {
+  if (!teamAbbr || !nextGame?.opp) return null;
+  const away = nextGame.home ? nextGame.opp : teamAbbr;
+  const home = nextGame.home ? teamAbbr : nextGame.opp;
+  return `${away} vs ${home}`;
+}
+
 function buildMLBFeedRows(teamsData) {
   const rows = [];
-  teamsData.forEach(({ players, gameLogsById, gameId, nextGame, lineupConfirmed }) => {
+  teamsData.forEach(({ teamAbbr, players, gameLogsById, gameId, nextGame, lineupConfirmed }) => {
     if (!nextGame) return;
+    const gameLabelFull = mlbGameLabelFull(teamAbbr, nextGame);
     // Empty on an ordinary day, so both the row key (and therefore the
     // persisted My Picks id built from it) and the displayed opponent stay
     // exactly as they were -- see mlbGameNumber.
@@ -17343,6 +17484,8 @@ function buildMLBFeedRows(teamsData) {
         rows.push({
           key: `mlb_${player.id}_${m.id}${gameKeySuffix}`,
           gameId,
+          gameLabelFull,
+          gameTime: matchupTimeLabel(nextGame.date),
           gameLabel,
           playerId: player.id,
           marketId: m.id,
@@ -17431,6 +17574,7 @@ function buildMLBPitcherFeedRows(teamsData) {
     // the second starter, when both halves can still report the same one.
     const gameKeySuffix = nextGame.gameNumber ? `_g${nextGame.gameNumber}` : "";
     const gameLabel = nextGame.gameNumber ? `Gm ${nextGame.gameNumber}` : null;
+    const gameLabelFull = mlbGameLabelFull(teamAbbr, nextGame);
     MLB_PITCHER_MARKETS.forEach((m) => {
       const def = getMLBDefRank(m.id, nextGame.opp);
       const rank = def ? def.rank : null;
@@ -17443,6 +17587,8 @@ function buildMLBPitcherFeedRows(teamsData) {
       rows.push({
         key: `mlb_pitcher_${pitcher.mlbId}_${m.id}${gameKeySuffix}`,
         gameId,
+        gameLabelFull,
+        gameTime: matchupTimeLabel(nextGame.date),
         gameLabel,
         playerId: mlbLivePitcherId(teamAbbr, pitcher.mlbId),
         marketId: m.id,
@@ -17677,7 +17823,171 @@ const FEED_LABEL_STYLE = { fontSize: 12, fontWeight: 600, color: "var(--dim)", l
 const FEED_FILTER_ROW_STYLE = { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 };
 const FEED_CONTROL_WIDTH = 190;
 
-function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport }) {
+// Today's MLB props, fetched once for whichever surface is asking.
+//
+// This used to live inside PropFeedPage, which is why the Board had no MLB
+// rows at all: the data sat two components away from it and the board's
+// synchronous memo could not reach it. It is a hook rather than a lift into
+// PropLedger so the fetch still only runs when something is actually showing
+// MLB -- `active` is the caller's question, not a sport string, because the
+// feed and the board each track their own league and either one on MLB is
+// reason enough to load. Both then read the same rows out of the same state,
+// so the two surfaces cannot disagree about who is playing today.
+//
+// MLB rows depend on live data -- today's real MLB slate (see
+// fetchMLBDaySlate, one fetch for the whole league) plus each playing
+// team's per-player game logs and probable pitcher, handed to the pure
+// buildMLBFeedRows/buildMLBPitcherFeedRows builders rather than generated
+// synchronously like NBA/NFL. Only teams actually on today's slate get
+// fetched/shown -- a team with an off day just doesn't appear.
+function useMlbFeedData(active) {
+  const [mlbSlate, setMlbSlate] = useState(null);
+  const [mlbTeamsData, setMlbTeamsData] = useState(null);
+  const [mlbLoading, setMlbLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (!active) return undefined;
+    let cancelled = false;
+    const load = () => {
+      setMlbLoading((prev) => (mlbTeamsData ? prev : true));
+      fetchMLBDaySlate()
+        .then((slate) => {
+          if (cancelled) return null;
+          setMlbSlate(slate);
+          const teamEntries = [];
+          slate.forEach((game, gameIndex) => {
+            // A doubleheader puts the same team on the slate twice, so this
+            // pushes two entries for it -- one per game, each with that
+            // game's own probable starter and first pitch. gameNumber is what
+            // keeps the two sets of rows distinct downstream; it's null on an
+            // ordinary day (see mlbGameNumber).
+            const gameNumber = mlbGameNumber(slate, game);
+            [
+              { abbr: game.awayAbbr, isHome: false },
+              { abbr: game.homeAbbr, isHome: true },
+            ].forEach(({ abbr, isHome }) => {
+              const roster = MLB_TEAM_ROSTERS[abbr];
+              if (!roster) return;
+              teamEntries.push({
+                abbr,
+                roster,
+                lineupIds: isHome ? game.homeLineupIds : game.awayLineupIds,
+                // Same id the MATCHUP dropdown builds its options with (see
+                // mlbMatchupOptions), so the game filter can narrow to one
+                // half of a doubleheader instead of matching on team alone
+                // and catching both.
+                gameId: `${game.awayAbbr}-${game.homeAbbr}-${gameIndex}`,
+                nextGame: {
+                  date: game.date,
+                  opp: isHome ? game.awayAbbr : game.homeAbbr,
+                  home: isHome,
+                  status: game.status,
+                  gameNumber,
+                  probablePitcher: isHome ? game.homeProbablePitcher : game.awayProbablePitcher,
+                },
+              });
+            });
+          });
+          // Only the announced probable starter's log is fetched per team --
+          // pitcher props roll to whoever that is once MLB names a new one.
+          //
+          // The active-roster fetch is awaited *before* the game logs, not
+          // alongside them: the feed used to build its rows straight off the
+          // static MLB_TEAM_ROSTERS arrays, which is why an IL'd player (or
+          // one traded away at the deadline) kept getting props built for
+          // him here long after the MLB player page had already stopped
+          // showing him. Running the same reconcileMlbLineup pipeline first
+          // means only players really available today are fetched at all --
+          // fewer game-log requests, not more, since a trimmed nine is never
+          // larger than the static one.
+          return Promise.all(
+            teamEntries.map(({ abbr, roster, lineupIds, gameId, nextGame }) =>
+              fetchMLBTeamActiveRoster(MLB_ABBR_TEAM_ID[abbr])
+                .then((activeRoster) => reconcileMlbLineup(roster, { activeRoster, lineupIds, abbr }))
+                .then((liveRoster) =>
+                  Promise.all([
+                    Promise.all(liveRoster.players.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
+                    nextGame.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
+                  ]).then(([entries, pitcherGames]) => ({
+                    teamAbbr: abbr,
+                    players: liveRoster.players,
+                    gameLogsById: Object.fromEntries(entries),
+                    pitcherGames,
+                    gameId,
+                    nextGame,
+                    // Already hydrated by fetchMLBDaySlate -- carried through
+                    // so feed rows can distinguish a posted batting order from
+                    // our projected one without any additional request.
+                    lineupConfirmed: (lineupIds?.length || 0) > 0,
+                  }))
+                )
+            )
+          );
+        })
+        .then((results) => {
+          if (cancelled || !results) return;
+          setMlbTeamsData(results);
+          setMlbLoading(false);
+        })
+        .catch(() => { if (!cancelled) setMlbLoading(false); });
+    };
+    load();
+    const interval = setInterval(load, MLB_SLATE_TTL_MS);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [active]);
+
+  const mlbRows = useMemo(() => {
+    if (!mlbTeamsData) return [];
+    const batterRows = buildMLBFeedRows(mlbTeamsData);
+    const pitcherRows = buildMLBPitcherFeedRows(mlbTeamsData);
+    return [...batterRows, ...pitcherRows];
+  }, [mlbTeamsData]);
+
+  // Availability for every MLB team on today's slate. pickStatus reads the
+  // 40-man status cache synchronously, but nothing in the feed used to fill
+  // it -- the only callers were the MLB player and matchup pages, so a cold
+  // load straight into the feed left every MLB row dotless no matter how
+  // healthy or hurt the player was. Warming it here is what makes rule 1 hold
+  // on first paint rather than only after a detour through another page.
+  //
+  // The counter exists because that cache is a module Map, not state: filling
+  // it changes what pickStatus returns without React knowing anything
+  // happened. Bumping it once, after the whole slate has landed, re-renders
+  // the rows exactly once instead of per team.
+  const mlbStatusTeams = useMemo(
+    () => (active && mlbSlate
+      ? [...new Set(mlbSlate.flatMap((g) => [g.awayAbbr, g.homeAbbr]).filter(Boolean))].sort().join(",")
+      : ""),
+    [active, mlbSlate]
+  );
+  const [mlbStatusVersion, setMlbStatusVersion] = useState(0);
+  React.useEffect(() => {
+    if (!mlbStatusTeams) return undefined;
+    let cancelled = false;
+    Promise.all(
+      mlbStatusTeams
+        .split(",")
+        .map((abbr) => MLB_ABBR_TEAM_ID[abbr])
+        .filter(Boolean)
+        .map((teamId) => fetchMLBTeamRosterStatus(teamId).catch(() => null))
+    ).then(() => { if (!cancelled) setMlbStatusVersion((n) => n + 1); });
+    return () => { cancelled = true; };
+  }, [mlbStatusTeams]);
+
+  // mlbStatusVersion is returned rather than kept private because it is the
+  // only signal that the availability cache changed -- pickStatus reads a
+  // module Map, so a consumer that does not depend on this number will keep
+  // rendering the dots it resolved before the 40-man rosters landed.
+  return { mlbSlate, mlbTeamsData, mlbLoading, mlbRows, mlbStatusVersion };
+}
+
+// `mlb` is the shared useMlbFeedData result, owned by PropLedger. It is a prop
+// rather than a hook call of this component's own so the board and the feed
+// read one fetch between them -- and so the data survives navigating away from
+// the feed, which used to throw it away on unmount and re-fetch every roster
+// and game log on the way back.
+function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport, mlb }) {
+  const { mlbSlate, mlbLoading, mlbRows, mlbStatusVersion } = mlb;
   const isNarrow = useIsNarrow(560);
   // Settings > Betting seeds the two controls below. Read once as an initial
   // value, for the same reason feedSport is: changing a default should decide
@@ -17877,145 +18187,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     return () => { cancelled = true; clearInterval(interval); };
   }, [sport]);
 
-  // MLB rows depend on live data -- today's real MLB slate (see
-  // fetchMLBDaySlate, one fetch for the whole league) plus each playing
-  // team's per-player game logs and probable pitcher, handed to the pure
-  // buildMLBFeedRows/buildMLBPitcherFeedRows builders rather than generated
-  // synchronously like NBA/NFL. Only teams actually on today's slate get
-  // fetched/shown -- a team with an off day just doesn't appear.
-  const [mlbSlate, setMlbSlate] = useState(null);
-  const [mlbTeamsData, setMlbTeamsData] = useState(null);
-  const [mlbLoading, setMlbLoading] = useState(false);
   const [matchupFilter, setMatchupFilter] = useState("all");
-
-  React.useEffect(() => {
-    if (sport !== "mlb") return;
-    let cancelled = false;
-    const load = () => {
-      setMlbLoading((prev) => (mlbTeamsData ? prev : true));
-      fetchMLBDaySlate()
-        .then((slate) => {
-          if (cancelled) return null;
-          setMlbSlate(slate);
-          const teamEntries = [];
-          slate.forEach((game, gameIndex) => {
-            // A doubleheader puts the same team on the slate twice, so this
-            // pushes two entries for it -- one per game, each with that
-            // game's own probable starter and first pitch. gameNumber is what
-            // keeps the two sets of rows distinct downstream; it's null on an
-            // ordinary day (see mlbGameNumber).
-            const gameNumber = mlbGameNumber(slate, game);
-            [
-              { abbr: game.awayAbbr, isHome: false },
-              { abbr: game.homeAbbr, isHome: true },
-            ].forEach(({ abbr, isHome }) => {
-              const roster = MLB_TEAM_ROSTERS[abbr];
-              if (!roster) return;
-              teamEntries.push({
-                abbr,
-                roster,
-                lineupIds: isHome ? game.homeLineupIds : game.awayLineupIds,
-                // Same id the MATCHUP dropdown builds its options with (see
-                // mlbMatchupOptions), so the game filter can narrow to one
-                // half of a doubleheader instead of matching on team alone
-                // and catching both.
-                gameId: `${game.awayAbbr}-${game.homeAbbr}-${gameIndex}`,
-                nextGame: {
-                  date: game.date,
-                  opp: isHome ? game.awayAbbr : game.homeAbbr,
-                  home: isHome,
-                  status: game.status,
-                  gameNumber,
-                  probablePitcher: isHome ? game.homeProbablePitcher : game.awayProbablePitcher,
-                },
-              });
-            });
-          });
-          // Only the announced probable starter's log is fetched per team --
-          // pitcher props roll to whoever that is once MLB names a new one.
-          //
-          // The active-roster fetch is awaited *before* the game logs, not
-          // alongside them: the feed used to build its rows straight off the
-          // static MLB_TEAM_ROSTERS arrays, which is why an IL'd player (or
-          // one traded away at the deadline) kept getting props built for
-          // him here long after the MLB player page had already stopped
-          // showing him. Running the same reconcileMlbLineup pipeline first
-          // means only players really available today are fetched at all --
-          // fewer game-log requests, not more, since a trimmed nine is never
-          // larger than the static one.
-          return Promise.all(
-            teamEntries.map(({ abbr, roster, lineupIds, gameId, nextGame }) =>
-              fetchMLBTeamActiveRoster(MLB_ABBR_TEAM_ID[abbr])
-                .then((activeRoster) => reconcileMlbLineup(roster, { activeRoster, lineupIds, abbr }))
-                .then((liveRoster) =>
-                  Promise.all([
-                    Promise.all(liveRoster.players.map((p) => fetchMLBGameLog(p.mlbId).then((games) => [p.id, games]))),
-                    nextGame.probablePitcher ? fetchMLBPitcherGameLog(nextGame.probablePitcher.mlbId) : Promise.resolve([]),
-                  ]).then(([entries, pitcherGames]) => ({
-                    teamAbbr: abbr,
-                    players: liveRoster.players,
-                    gameLogsById: Object.fromEntries(entries),
-                    pitcherGames,
-                    gameId,
-                    nextGame,
-                    // Already hydrated by fetchMLBDaySlate -- carried through
-                    // so feed rows can distinguish a posted batting order from
-                    // our projected one without any additional request.
-                    lineupConfirmed: (lineupIds?.length || 0) > 0,
-                  }))
-                )
-            )
-          );
-        })
-        .then((results) => {
-          if (cancelled || !results) return;
-          setMlbTeamsData(results);
-          setMlbLoading(false);
-        })
-        .catch(() => { if (!cancelled) setMlbLoading(false); });
-    };
-    load();
-    const interval = setInterval(load, MLB_SLATE_TTL_MS);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [sport]);
-
-  const mlbRows = useMemo(() => {
-    if (!mlbTeamsData) return [];
-    const batterRows = buildMLBFeedRows(mlbTeamsData);
-    const pitcherRows = buildMLBPitcherFeedRows(mlbTeamsData);
-    return [...batterRows, ...pitcherRows];
-  }, [mlbTeamsData]);
-
-  // Availability for every MLB team on today's slate. pickStatus reads the
-  // 40-man status cache synchronously, but nothing in the feed used to fill
-  // it -- the only callers were the MLB player and matchup pages, so a cold
-  // load straight into the feed left every MLB row dotless no matter how
-  // healthy or hurt the player was. Warming it here is what makes rule 1 hold
-  // on first paint rather than only after a detour through another page.
-  //
-  // The counter exists because that cache is a module Map, not state: filling
-  // it changes what pickStatus returns without React knowing anything
-  // happened. Bumping it once, after the whole slate has landed, re-renders
-  // the rows exactly once instead of per team.
-  const mlbStatusTeams = useMemo(
-    () => (sport === "mlb" && mlbSlate
-      ? [...new Set(mlbSlate.flatMap((g) => [g.awayAbbr, g.homeAbbr]).filter(Boolean))].sort().join(",")
-      : ""),
-    [sport, mlbSlate]
-  );
-  const [mlbStatusVersion, setMlbStatusVersion] = useState(0);
-  React.useEffect(() => {
-    if (!mlbStatusTeams) return undefined;
-    let cancelled = false;
-    Promise.all(
-      mlbStatusTeams
-        .split(",")
-        .map((abbr) => MLB_ABBR_TEAM_ID[abbr])
-        .filter(Boolean)
-        .map((teamId) => fetchMLBTeamRosterStatus(teamId).catch(() => null))
-    ).then(() => { if (!cancelled) setMlbStatusVersion((n) => n + 1); });
-    return () => { cancelled = true; };
-  }, [mlbStatusTeams]);
 
   // Rule 1: every named player carries their availability, not just the WNBA
   // ones. One resolver for the whole feed, so a row and the ladder expanded
@@ -21721,24 +21893,46 @@ export default function PropLedger() {
   // that builds clean and throws at runtime, which is this repo's signature
   // failure (see docs/PROJECT_NOTES.md).
   const [boardSport, setBoardSport] = useState("nfl");
+
+  // One MLB fetch for both surfaces that can ask for it. Either the feed or
+  // the board being on MLB is reason enough to load, and neither one owns the
+  // result -- which is what closed the board's MLB gap. Before this, the data
+  // lived inside PropFeedPage and the board could only say so.
+  //
+  // Deliberately not gated on `page`: the feed and the board are the only two
+  // readers, and both are reached from the nav rather than from each other, so
+  // keeping the fetch alive across a hop between them is the point. It still
+  // does nothing at all while both are on another league.
+  const mlb = useMlbFeedData(
+    (page === "feed" && feedSport === "mlb") || (page === "board" && boardSport === "mlb")
+  );
+
   const boardRows = useMemo(() => {
     if (page !== "board") return [];
-    if (boardSport === "nba") return buildNBAFeedRows();
-    if (boardSport === "wnba") return buildWNBAFeedRows();
-    if (boardSport === "nfl") return buildNFLFeedRows();
-    // MLB has no branch here on purpose. Its rows come from
-    // buildMLBFeedRows(mlbTeamsData), and that data is fetched inside
-    // PropFeedPage -- this synchronous memo cannot reach it.
-    //
-    // Returning [] rather than falling through to buildNFLFeedRows(), which
-    // is what this did: selecting MLB rendered NFL props (RUSH ATT, REC YDS)
-    // underneath an MLB market rail (Hits, RBIs, Home Runs), and choosing any
-    // MLB market then filtered NFL rows by an MLB marketId and emptied the
-    // board. Wrong data that looks right is worse than none, so the board
-    // states the gap instead. Threading mlbTeamsData up to here is its own
-    // item -- see boardDataUnavailable below.
-    return [];
-  }, [page, boardSport, nflDataVersion, wnbaDataVersion, nbaDataVersion]);
+    let rows;
+    if (boardSport === "nba") rows = buildNBAFeedRows();
+    else if (boardSport === "wnba") rows = buildWNBAFeedRows();
+    else if (boardSport === "nfl") rows = buildNFLFeedRows();
+    // MLB rows are the same ones the feed shows, off the same fetch (see
+    // useMlbFeedData). They arrive asynchronously, so an empty array here
+    // means "not loaded yet", not "no games" -- which is why the board's
+    // loading state below reads mlb.mlbLoading rather than rows.length.
+    else rows = mlb.mlbRows;
+
+    // Rule 1: a named player carries their availability wherever they appear,
+    // and the board renders row.status directly. The builders don't set it --
+    // the feed resolves it at render time instead -- so the board has to do
+    // the same resolving here or every face on it comes out dotless. NBA and
+    // NFL have no availability feed at all and resolve to undefined, which is
+    // no dot: the honest reading, never a default to green.
+    return rows.map((r) => {
+      const status = pickStatus({ sport: boardSport, gradeId: r.gradeId, espnId: r.espnId });
+      return status ? { ...r, status } : r;
+    });
+    // mlbStatusVersion: pickStatus reads a module-level Map, so the 40-man
+    // rosters landing is invisible to React without it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, boardSport, nflDataVersion, wnbaDataVersion, nbaDataVersion, mlb.mlbRows, mlb.mlbStatusVersion]);
 
   // The day's slate for whichever league the board is showing, keyed by team
   // abbreviation.
@@ -22030,7 +22224,7 @@ export default function PropLedger() {
       )}
 
       {page === "feed" && (
-        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} />
+        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} />
       )}
 
       {page === "landing" && (
@@ -22055,7 +22249,7 @@ export default function PropLedger() {
             disclaimer={BOARD_DISCLAIMER[boardSport] || BOARD_DISCLAIMER.nfl}
             onOpenProp={goToProp}
             onOpenGameProps={(g) => goToGameProps({ ...g, sport: boardSport })}
-            dataUnavailable={boardSport === "mlb"}
+            loading={boardSport === "mlb" && mlb.mlbLoading}
             slateByTeam={boardSlate}
             timeLabel={slateTimeLabel}
           />
