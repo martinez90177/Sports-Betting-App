@@ -231,6 +231,57 @@ function MatchupSubline({ game, showScore }) {
   );
 }
 
+// Where a game is in its life, as a swatch.
+//
+// A **square**, deliberately. The only other filled marks in this app are the
+// form graph's bars, and those are green for cleared and red for fell short,
+// so shape is what stops "live" reading as "this prop hit". The live marker
+// here used to be a green circle on --pos -- the outcome colour, carrying a
+// state meaning -- which is the collision the four colour families exist to
+// prevent.
+//
+// One hue per *pair*, split by fill: the active half of a pair is filled, the
+// paused or not-yet half is hollow. Four hues cover all nine GAME_STATUS
+// values, so a reader learns four colours and one rule instead of a legend.
+// See the --state-* block in index.css for why pre-game is white and final is
+// dim rather than the other way round.
+const STATE_STYLE = {
+  [GAME_STATUS.LIVE]:          { token: "--state-live",    fill: true },
+  [GAME_STATUS.HALFTIME]:      { token: "--state-live",    fill: false },
+  [GAME_STATUS.INTERMISSION]:  { token: "--state-live",    fill: false },
+  [GAME_STATUS.STARTING_SOON]: { token: "--state-pre",     fill: true },
+  [GAME_STATUS.UPCOMING]:      { token: "--state-pre",     fill: false },
+  [GAME_STATUS.DELAYED]:       { token: "--state-delayed", fill: true },
+  [GAME_STATUS.SUSPENDED]:     { token: "--state-delayed", fill: false },
+  [GAME_STATUS.FINAL]:         { token: "--state-final",   fill: true },
+  [GAME_STATUS.POSTPONED]:     { token: "--state-final",   fill: false },
+};
+
+function StateSwatch({ status, size = 8 }) {
+  // A *missing* status is treated as UPCOMING, the same default
+  // statusCenterContent and the slate sort already apply -- the slate
+  // fetchers leave it unset on plain scheduled games. A status that is
+  // present but unrecognised is different and gets no swatch: a state this
+  // app does not know is not "scheduled", and colouring it as though it were
+  // would invent the one fact the swatch exists to report.
+  const st = STATE_STYLE[status || GAME_STATUS.UPCOMING];
+  if (!st) return null;
+  const c = `var(${st.token})`;
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: size, height: size, flexShrink: 0, boxSizing: "border-box",
+        background: st.fill ? c : "transparent",
+        border: `1.5px solid ${c}`,
+        // Only a genuinely live game pulses. A halftime or delayed game is
+        // stopped, and a pulsing marker would say otherwise.
+        animation: status === GAME_STATUS.LIVE ? "gm-live-pulse 1.6s ease-out infinite" : undefined,
+      }}
+    />
+  );
+}
+
 function statusCenterContent(game, isMobile) {
   const status = game.status || GAME_STATUS.UPCOMING;
 
@@ -349,18 +400,15 @@ function GameRow({ game, isMobile, onSelect, isLast, expanded, getPropsCount }) 
       <div className="pp-mono tnum" style={{
         display: "flex", alignItems: "center", gap: 7,
         fontSize: isMobile ? 12 : 13,
-        color: center.live ? "var(--accent-text)" : "var(--dim-strong)",
+        // The state's own colour, not the accent. Game state is its own
+        // family: the accent means "selected" and re-tints to whatever hue
+        // the user picked, which could be one that reads as dead.
+        color: STATE_STYLE[game.status || GAME_STATUS.UPCOMING]
+          ? `var(${STATE_STYLE[game.status || GAME_STATUS.UPCOMING].token})`
+          : "var(--dim-strong)",
         whiteSpace: "nowrap",
       }}>
-        {center.live && (
-          <span style={{
-            width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-            // Green, not the accent: a live dot is a state, and the accent
-            // can be re-tinted to any hue including one that reads as dead.
-            background: "var(--pos)",
-            animation: "gm-live-pulse 1.6s ease-out infinite",
-          }} />
-        )}
+        <StateSwatch status={game.status} size={isMobile ? 7 : 8} />
         {center.primary}
         {center.secondary && center.live && ` · ${center.secondary}`}
       </div>
