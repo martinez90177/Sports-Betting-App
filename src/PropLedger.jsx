@@ -105,7 +105,37 @@ const TEAM_DEF = (() => {
   return byTeam;
 })();
 
-const defTier = (rank) => (rank <= 10 ? "tough" : rank >= 21 ? "soft" : "mid");
+// The opponent's defence in one word, as a proportion of its own league.
+//
+// ---- Two inversions live here, and both are load-bearing ----
+//
+// Simplify either away and the word still reads plausibly while meaning the
+// opposite of the truth, which is the worst way for this to fail:
+//
+//   1. **The number runs backwards to the word.** Rank #1 is the *toughest*
+//      defence for this market, not the best matchup. A high rank is a soft
+//      defence. `rank <= third` is therefore "tough", not "soft".
+//   2. **The side flips it.** A defence that suppresses a stat is hard to go
+//      over and, for exactly the same reason, easy to go under. So an under
+//      row reads the same defence the opposite way. Callers describing the
+//      defence *itself* -- a chart tooltip, a game-info badge -- pass no
+//      direction and get reading 1 alone, which is correct for them: a
+//      tooltip is stating a fact about the opponent, not about a side.
+//
+// ---- Thirds of the real league, not fixed ranks ----
+//
+// This cut at `<= 10` and `>= 21` before, which silently assumed 32 teams.
+// Rank 21 does not exist in a 15-team WNBA, so no WNBA matchup could ever
+// come back soft and every rank from 11 to 15 collapsed to "mid". Callers
+// pass the real count -- feedTeamCount(sport) holds them: 32 NFL, 30 MLB,
+// 30 NBA, 15 WNBA.
+const defTier = (rank, teams, direction) => {
+  if (rank == null || !teams) return null;
+  const third = teams / 3;
+  const forOver = rank <= third ? "tough" : rank > teams - third ? "soft" : "mid";
+  if (direction !== "under") return forOver;
+  return forOver === "tough" ? "soft" : forOver === "soft" ? "tough" : "mid";
+};
 
 // Team abbreviation -> ESPN team-logo CDN slug (mostly lowercase of the
 // abbreviation itself; only a handful of teams use a different slug).
@@ -1721,7 +1751,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const gameOppRoster = playerOnTeamA ? matchup.teamB : matchup.teamA;
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getNBADefRank(market, gameOppAbbr) : null;
-  const gameOppTier = gameOppDef ? defTier(gameOppDef.rank) : null;
+  const gameOppTier = gameOppDef ? defTier(gameOppDef.rank, TEAMS.length) : null;
   // Once the real points-allowed table has loaded the rank is that, whatever
   // market is selected, so the label has to say so rather than naming a
   // per-market defensive category the number is not measuring.
@@ -2018,7 +2048,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
           />
           <Tooltip
-            content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} />}
+            content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} teams={TEAMS.length} />}
             cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
           />
           <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
@@ -2073,7 +2103,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
                 const over = v > effectiveLine;
                 const push = !isBinary && v === effectiveLine;
                 const def = TEAM_DEF[g.opp];
-                const tier = defTier(def.rank);
+                const tier = defTier(def.rank, TEAMS.length);
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
@@ -2700,7 +2730,10 @@ function nflDefCategoryLabel() {
   return "points allowed per game";
 }
 
-const nflDefTier = (rank) => (rank <= 10 ? "tough" : rank >= 22 ? "soft" : "mid");
+// Delegates to defTier so the league thirds live in one place. Identical
+// output to the hand-tuned cut this replaces -- thirds of 32 are 10.67 and
+// 21.33, so tough stays ranks 1-10 and soft stays 22-32.
+const nflDefTier = (rank) => defTier(rank, NFL_TEAMS.length);
 
 // Team abbreviation -> ESPN team-logo CDN slug (mostly lowercase of the
 // abbreviation itself; only a handful of teams use a different slug).
@@ -5809,12 +5842,12 @@ function DateAxisTick({ x, y, payload, compact }) {
   );
 }
 
-function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, footerLabel = (d) => `${d.minutes} min played`, logoFn }) {
+function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, footerLabel = (d) => `${d.minutes} min played`, logoFn, teams }) {
   if (!active || !payload || !payload.length) return null;
   const d = payload[0].payload;
   const over = isBinary ? d.value === 1 : d.value > effectiveLine;
   const push = !isBinary && d.value === effectiveLine;
-  const tier = defTier(d.defRank);
+  const tier = defTier(d.defRank, teams);
   const resultLabel = isBinary ? (d.value === 1 ? "YES" : "NO") : push ? "PUSH" : over ? "OVER" : "UNDER";
   const resultColor = push ? "var(--dim)" : over ? "var(--green)" : "var(--red)";
   const tierColor = tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)";
@@ -6888,6 +6921,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
                 marketLabel={marketLabel}
                 footerLabel={(d) => (d.snapPct == null ? "no offensive snaps" : `${d.snapPct}% offensive snaps`)}
                 logoFn={nflTeamLogo}
+                teams={NFL_TEAMS.length}
               />
             }
             cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
@@ -8875,7 +8909,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const gameOppRoster = playerOnTeamA ? matchup.teamB : matchup.teamA;
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getWNBADefRank(market, gameOppAbbr) : null;
-  const gameOppTier = gameOppDef ? defTier(gameOppDef.rank) : null;
+  const gameOppTier = gameOppDef ? defTier(gameOppDef.rank, WNBA_TEAMS.length) : null;
   // Once the real defense table has loaded, the rank/rating is points allowed
   // per game for every market, not a per-market split -- so the Game Info
   // badge has to be labelled for what the number actually is. Only while the
@@ -9126,7 +9160,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
           />
           <Tooltip
-            content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} />}
+            content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} teams={WNBA_TEAMS.length} />}
             cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
           />
           <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
@@ -9181,7 +9215,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
                 const over = v > effectiveLine;
                 const push = !isBinary && v === effectiveLine;
                 const def = getWNBADefRank(market, g.opp);
-                const tier = def ? defTier(def.rank) : null;
+                const tier = def ? defTier(def.rank, WNBA_TEAMS.length) : null;
                 return (
                   <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
                     <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
@@ -9730,7 +9764,9 @@ const MLB_TEAM_DEF = (() => {
   raw.forEach((r) => (byTeam[r.team] = r));
   return byTeam;
 })();
-const mlbDefTier = (rank) => (rank <= 10 ? "tough" : rank >= 21 ? "soft" : "mid");
+// Same delegation as nflDefTier. Thirds of 30 are exactly 10 and 20, so
+// this reproduces the previous cut (tough 1-10, soft 21-30) exactly.
+const mlbDefTier = (rank) => defTier(rank, MLB_TEAMS.length);
 
 // Mutates MLB_TEAM_DEF's existing entries in place (rather than replacing
 // the object) so every place in this file that already read MLB_TEAM_DEF[abbr]
@@ -13618,7 +13654,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
               label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
             />
             <Tooltip
-              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} />}
+              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} teams={MLB_TEAMS.length} />}
               cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
             />
             <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
@@ -14583,7 +14619,7 @@ function buildWNBAFeedRows() {
       const isBinary = m.id === "dd" || m.id === "td";
       const def = nextOpp ? getWNBADefRank(m.id, nextOpp) : null;
       const rank = def ? def.rank : null;
-      const tier = rank == null ? null : defTier(rank);
+      const tier = rank == null ? null : defTier(rank, WNBA_TEAMS.length);
       const values = games.map((g) => statValue(g, m.id));
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = isBinary ? 0.5 : fairFeedLine(values);
@@ -15493,13 +15529,13 @@ function feedRateColor(v) {
 // on every feed row and flipFeedRowToUnder's inversion of it collapses to
 // "mid" for all unders.
 function feedMatchupRead(rank, sport, direction) {
-  if (rank == null) return null;
-  const teams = feedTeamCount(sport);
-  if (!teams) return null;
-  const third = teams / 3;
-  const forOver = rank <= third ? "tough" : rank > teams - third ? "easy" : "mid";
-  if (direction !== "under") return forOver;
-  return forOver === "tough" ? "easy" : forOver === "easy" ? "tough" : "mid";
+  // Delegates rather than re-deriving: defTier owns the league thirds and
+  // both inversions, and a second copy of that arithmetic is exactly how the
+  // two would drift apart. The feed only renames the result -- "soft" is a
+  // fact about the defence, "easy" is what it means for the row's side, and
+  // the row is what a reader is looking at here.
+  const tier = defTier(rank, feedTeamCount(sport), direction);
+  return tier === "soft" ? "easy" : tier;
 }
 
 // `active` marks the cell whose window matches the Games counted control --
@@ -15724,6 +15760,9 @@ function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status })
     // rows every day).
     snap: {
       l5: r.l5, l10: r.l10, l20: r.l20, all: r.all,
+      // Copied, not recomputed: every builder sets `tier` and
+      // flipFeedRowToUnder has already inverted it for under rows, so
+      // deriving it again here would apply the side inversion twice.
       rank: r.rank, tier: r.tier, streak, cushion,
       cushionWindow: sampleWindow,
       lineupConfirmed: typeof r.lineupConfirmed === "boolean" ? r.lineupConfirmed : null,
@@ -16476,6 +16515,12 @@ function flipFeedRowToUnder(r) {
     l10: flipRate(r.l10),
     l20: flipRate(r.l20),
     all: flipRate(r.all),
+    // Every builder sets `tier` for the over side, so flipping it here is
+    // what makes it true for this row: a defence that suppresses a stat is
+    // hard to go over and easy to go under. This is the only place the side
+    // inversion happens for a row -- defTier's `direction` argument exists
+    // for callers computing a tier from scratch, not for re-flipping one
+    // that has already been flipped here.
     tier: r.tier === "soft" ? "tough" : r.tier === "tough" ? "soft" : "mid",
     matchupScore: -r.rank,
     subtitle: r.isBinary ? `No ${r.marketLabel}` : `Under ${r.line} ${r.marketLabel}`,
@@ -16890,7 +16935,7 @@ function buildNBAFeedRows() {
       const isBinary = m.id === "dd" || m.id === "td";
       const def = nextOpp ? getNBADefRank(m.id, nextOpp) : null;
       const rank = def ? def.rank : null;
-      const tier = rank == null ? null : defTier(rank);
+      const tier = rank == null ? null : defTier(rank, TEAMS.length);
       const values = games.map((g) => statValue(g, m.id));
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = isBinary ? 0.5 : fairFeedLine(values);
