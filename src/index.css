@@ -1016,7 +1016,11 @@ select.select-sm:focus, select.select-sm:focus-visible {
    in that range, replaced by MobilePlayerNav's fixed bottom strip +
    Lineup drawer (below), so the quick-switch is still there on mobile,
    just pinned to the viewport instead of inline in the column flow. */
-.roster-layout { display: grid; grid-template-columns: 240px 1fr 240px; gap: 20px; align-items: start; margin-bottom: var(--s-4); }
+/* 196px rails, not 240 -- the width every v2 mock uses on Player Detail,
+   Board, Prop Feed and Games. minmax(0, 1fr) rather than a bare 1fr so a wide
+   centre child (the game-by-game chart's scroller) cannot push the grid past
+   the viewport instead of scrolling inside itself. */
+.roster-layout { display: grid; grid-template-columns: 196px minmax(0, 1fr) 196px; gap: 20px; align-items: start; margin-bottom: var(--s-4); }
 .roster-layout-center { display: flex; flex-direction: column; justify-content: flex-start; }
 @media (max-width: 1100px) {
   .roster-layout { display: block; }

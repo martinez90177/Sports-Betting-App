@@ -32,6 +32,7 @@ export default function PlayerAvatar({
   headshotSrc,
   fallbackSrc,
   status,                    // "active" | "questionable" | "out" -- omit when unknown
+  lineup,                    // "posted" | "projected" -- omit when unknown
   size = 52,
   ringColor,
   surface = "var(--panel)",  // colour the status-dot border punches through
@@ -79,6 +80,27 @@ export default function PlayerAvatar({
   const dotBorder = size >= 60 ? 3 : 2;
   const st = STATUS[status];
 
+  // Lineup state rides the ring, not the corner dot.
+  //
+  // The v2 Player Detail mock draws lineup state in the bottom-right corner,
+  // which is the slot CLAUDE.md rule 3 reserves for availability -- and its
+  // "posted" green sits a few points off the availability green, so the two
+  // would be read as the same claim. Availability keeps the corner because it
+  // is the fact all four leagues report; posted-vs-projected lineups exist
+  // only in MLB, and carving an exception into an invariant for one sport's
+  // rail is the worse trade.
+  //
+  // Same fill/hollow/absent device the design uses everywhere, moved to a
+  // different element: solid ring posted, dashed ring projected, no ring
+  // unknown -- never assumed. Deliberately *not* an outcome or availability
+  // hue: those are the reader's to re-tint (see --status-* in index.css), and
+  // a lineup that changed colour with the outcome palette would be a bug.
+  const lineupRing = lineup === "posted"
+    ? { width: 2, style: "solid", color: "var(--text-2)" }
+    : lineup === "projected"
+    ? { width: 2, style: "dashed", color: "var(--dim)" }
+    : null;
+
   return (
     <span style={{ position: "relative", flexShrink: 0, width: size, height: size, display: "inline-block", ...style }}>
       <span
@@ -88,7 +110,9 @@ export default function PlayerAvatar({
           width: size, height: size, borderRadius: "50%", overflow: "hidden",
           position: "relative", boxSizing: "border-box",
           background: background || avatarBackgroundFor({ colorMap, sport, team }),
-          border: inset ? "none" : `2px solid ${ringColor || "var(--line)"}`,
+          border: lineupRing
+            ? `${lineupRing.width}px ${lineupRing.style} ${lineupRing.color}`
+            : inset ? "none" : `2px solid ${ringColor || "var(--line)"}`,
           boxShadow: shadow,
           fontSize: Math.max(9, Math.round(size * 0.25)),
           color: "var(--text)", letterSpacing: "0.02em",

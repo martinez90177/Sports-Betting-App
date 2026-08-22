@@ -20,6 +20,7 @@ import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./prese
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import PalaceMark from "./PalaceMark.jsx";
 import NavBar, { NAV_TABS } from "./NavBar.jsx";
+import { MatchupBand, PlayerHeaderCard, GameByGameChart, ReadingTheGraph } from "./PlayerDetail.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
@@ -1440,15 +1441,15 @@ const SLATE_START_LABEL = { mlb: "First pitch", nfl: "Kickoff", nba: "Tip-off", 
 // time. Records are the sub-line under the start because they answer a
 // different question from "when" and don't deserve a column of their own.
 function slateMatchupCells(game, sport) {
-  if (!game) return { game: null, conditions: null };
+  if (!game) return { band: null, conditions: null };
   const records = game.away?.record && game.home?.record
     ? `${game.away.abbr} ${game.away.record} · ${game.home.abbr} ${game.home.record}`
     : null;
   const start = game.startsAt ? slateTimeLabel(game.startsAt) : null;
   return {
-    game: start || records
-      ? { label: SLATE_START_LABEL[sport] || "Start", value: start, sub: records }
-      : null,
+    // Records, date and first pitch feed the matchup band card above the
+    // context row -- not a cell in the row itself. See MatchupBand.
+    band: { awayAbbr: game.away?.abbr, awayRecord: game.away?.record, homeAbbr: game.home?.abbr, homeRecord: game.home?.record, startsAt: game.startsAt, start, records },
     conditions: game.venue?.name
       ? {
           value: game.venue.name,
@@ -13822,17 +13823,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
            overlapping it. Mobile still gets its own full-width
            GameConditionsBar above the card (see the
            {compact && <GameConditionsBar/>} render above). */}
-      {!compact && (
-        <GameConditionsBar
-          nextGame={nextGame}
-          teamAbbr={teamAbbr}
-          isPitcher={isPitcher}
-          variant="compact"
-          opponentLabel={(liveOppRoster || {}).label}
-          market={market}
-        />
-      )}
-
       {playerIdentityRow}
 
       {/* Market selector lives at the top of the card, directly under player
@@ -13859,7 +13849,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         />
       </div>
 
-      {sampleStatsRow}
       {metricRail}
       {isNarrow && (
         <PlayerFormVerdict
@@ -13950,16 +13939,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       <div
         ref={chartRef}
         style={{
-          position: "relative", boxSizing: "border-box",
-          height: chartSize?.h || MLB_GRAPH_CHART_HEIGHT,
-          width: chartSize?.w || "100%",
-          resize: "both", overflow: "hidden",
-          minHeight: 240, minWidth: 280, maxWidth: "100%",
-          // A nested strip, not a second card: graphCard()'s own wrapper
-          // already supplies the border/shadow for the whole card, so this
-          // only needs a subtle background to read as its own section
-          // without a competing outline.
-          background: "var(--surface-2)", borderRadius: "var(--r-md)",
+          // Height comes from the chart itself now. This used to be a fixed,
+          // user-resizable box sized for a recharts canvas; with a CSS-grid
+          // chart inside it, a fixed height is just dead space under the bars.
+          position: "relative", boxSizing: "border-box", width: "100%",
         }}
       >
         {/* The launcher owns the popover, bottom sheet, click-outside and
@@ -13981,148 +13964,36 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           {filtersBody}
         </FilterPanelLauncher>
         <ContextStatToggle stat={mlbContextStat} value={showContext} onChange={setShowContext} compact={isNarrow} />
-        <div style={{
-          height: "100%", width: "100%", boxSizing: "border-box",
-          padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
-          touchAction: "pan-y",
-        }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart
-            data={chartData}
-            // right clears LineHandle, which anchors to the container's right
-            // edge: it needs right:8 + its 52px minimum, less the 6px the
-            // narrow chart wrapper already pads, so 54 is the floor. 30 left
-            // the pill sitting on top of the last bar.
-            margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
-            barCategoryGap={isNarrow ? "4%" : "6%"}
-          >
-            {/* Invisible (stroke="transparent"), not removed: rendered fully
-                 open per the PropsMadness reference (no grid lines, just
-                 floating y-tick labels), but LineHandle's drag math
-                 (getPlotBoundsY, above) measures the plot's top/bottom by
-                 querying this component's own rendered .recharts-cartesian-
-                 grid-horizontal line elements -- removing the component
-                 entirely would silently break the drag handle instead of
-                 just hiding a visual grid. */}
-            <CartesianGrid stroke="transparent" vertical={false} />
-            <XAxis
-              dataKey={manyGames ? "date" : "axisKey"}
-              interval={manyGames ? Math.max(0, Math.ceil(chartData.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(chartData.length, isNarrow, chartWidth)}
-              tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={mlbTeamLogo} compact={isNarrow} />}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              domain={[0, chartMax]}
-              ticks={chartTicks}
-              tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
-              axisLine={false}
-              tickLine={false}
-              allowDecimals={false}
-              width={isNarrow ? 32 : 60}
-              label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
-            />
-            <Tooltip
-              content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} footerLabel={(d) => (isPitcher ? `${d.minutes} IP` : `${d.minutes} PA`)} logoFn={mlbTeamLogo} teams={MLB_TEAMS.length} />}
-              cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
-            />
-            <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
-              {chartData.map((d, i) => {
-                if (d.isPlaceholder) {
-                  return <Cell key={i} fill="transparent" stroke="var(--amber)" strokeWidth={1.5} strokeDasharray="4 3" />;
-                }
-                const fill = isBinary ? (d.value === 1 ? CHART_GREEN : "transparent") : (d.value > effectiveLine ? CHART_GREEN : CHART_RED);
-                // Teammate-chip hover preview: games he sat out wash out,
-                // games he played get an accent outline.
-                if (d.previewOut === true) return <Cell key={i} fill={fill} fillOpacity={0.22} />;
-                if (d.previewOut === false) return <Cell key={i} fill={fill} stroke="var(--amber)" strokeWidth={1.5} />;
-                return <Cell key={i} fill={fill} />;
-              })}
-              <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
-            </Bar>
-            {contextStatChartParts(mlbContextStat, showContext, isNarrow)}
-            {/* Rendered after Bar (not before) so the dashed threshold line
-                 draws on top of the bars instead of being clipped underneath
-                 them -- later JSX = higher SVG paint order in Recharts. */}
-            {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-          </ComposedChart>
-        </ResponsiveContainer>
-        </div>
-        {!isBinary && (
-          <LineHandle
-            value={effectiveLine}
-            onChange={(v) => setLine(v)}
-            onDragValue={setDragLine}
-            min={0}
-            max={chartMax}
-            containerRef={chartRef}
-          />
-        )}
+        {/* The v2 game-by-game chart (see GameByGameChart in PlayerDetail.jsx).
+            This was a recharts ComposedChart drawing fell-short bars as a solid
+            red fill under a blue dashed reference line. Both were wrong, and the
+            fill was the worse of the two: fill-vs-outline is the device that
+            still reads after someone re-tints the outcome colours in Settings,
+            so it outranks every other detail in the graph. Cleared is filled,
+            fell short is a 1px outline with no fill, and the prop line is a
+            white dashed rule.
+
+            The mock draws no y-axis, no gridline labels and no axis title --
+            the number is printed in the foot of its own bar, and the opponent
+            and date sit under the axis instead. */}
+        <GameByGameChart
+          games={chartData.map((d) => ({ v: d.value, opp: d.opp, date: d.date, po: d.playoff }))}
+          line={dragLine !== null ? dragLine : effectiveLine}
+          isBinary={isBinary}
+          direction="over"
+        />
+        {/* LineHandle used to sit here. It positioned itself by querying the
+            rendered recharts gridlines (.recharts-cartesian-grid-horizontal),
+            and with the chart rebuilt as a CSS grid there are no gridlines to
+            measure -- it anchored to nothing and stranded its tag under the
+            bars. The line's value is printed on the rule itself by
+            GameByGameChart; drag-to-test-a-different-number is the Prop Feed's
+            device, and the Player Detail mock does not draw one here. */}
       </div>
 
       {/* MLB's defence table is per market (getMLBDefRank takes one), so
           this cell names the market rather than falling back to a
           league-wide figure the way the basketball pages must. */}
-      <MatchupContextRow
-        {...(matchupContextProps({
-          allGames,
-          oppAbbr: nextGame?.opp,
-          def: nextGame?.opp ? getMLBDefRank(market, nextGame.opp) : null,
-          teams: MLB_TEAMS.length,
-          statValue: (g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)),
-          marketLabel,
-          allowsLabel: marketLabel ? `${marketLabel} allowed` : null,
-        }) || {})}
-        game={slateCells.game}
-        // Real weather, hydrated on the schedule request -- MLB is the only
-        // league whose provider reports it, and a dome shows as its own
-        // condition rather than being inferred. The slate's venue is the last
-        // fallback, so a schedule request that hasn't landed yet still leaves
-        // the cell saying something true.
-        conditions={nextGame?.weather?.condition
-          ? {
-              value: nextGame.weather.temp ? `${nextGame.weather.temp}° ${nextGame.weather.condition}` : nextGame.weather.condition,
-              sub: [nextGame.venue, nextGame.weather.wind && `wind ${nextGame.weather.wind}`].filter(Boolean).join(" · ") || null,
-            }
-          : nextGame?.venue
-          ? { value: nextGame.venue, sub: null }
-          : slateCells.conditions}
-      />
-
-      <PlayerPropContextBlocks
-        playerName={player.name}
-        sport="mlb"
-        colorMap={MLB_TEAM_COLORS}
-        status={mlbStatusOf(player)}
-        hits={hits}
-        total={values.length}
-        line={effectiveLine}
-        absences={mlbAbsences}
-        availabilityNote={isPitcher
-          ? "Who is out around a starting pitcher doesn't move their own line the way it moves a batter's, so this page doesn't split a pitcher's log on it."
-          : mlbAbsences.length
-          ? `Teammates on the injured list or day to day. Each split is counted over the ${mlbSplitGames.length} finished games of this batter's that have a published boxscore, and shows a rate only where at least ${ABSENCE_MIN_GAMES} of them were played without that teammate. ${ABSENCE_WINDOW_CAVEAT}`
-          : undefined}
-      />
-
-      <HitRateSplits
-        sport="mlb"
-        // The chart draws `filtered`; the splits percentages are computed off the
-        // full log, so the readout names the gap rather than leaving it implicit.
-        gamesInGraph={filtered.length}
-        allGames={allGames}
-        statValue={statValueFn}
-        effectiveLine={effectiveLine}
-        lastN={lastN}
-        onSetLastN={setLastN}
-        h2h={h2h}
-        onSetH2h={setH2h}
-        opponentAbbr={nextGame?.opp}
-        isNarrow={isNarrow}
-        max={allGames.length}
-        venueFilter={side === "home" || side === "away" ? side : "all"}
-        onSetVenueFilter={setSide}
-      />
 
       <div style={{ padding: compact ? "12px" : "16px 20px 12px" }}>
         <button
@@ -14771,8 +14642,50 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         confirmed={(nextGame?.ourLineupIds?.length || 0) > 0}
       />
     <div className="roster-layout-center">
-      {!compact && tabsBar}
-      {!compact && matchupSelectorBlock}
+      {/* The Matchup/Lineup toggle and the "Toronto Blue Jays @ New York
+          Yankees" dropdown that stood here are gone -- neither is in the v2
+          Player Detail mock. The fixture they let you change is now stated
+          once, in the band card below, which is where the design puts it.
+
+          Blocks 1 and 2 of the mock's centre column: the matchup band, then
+          the four-cell context row. The context row used to render at the
+          bottom of the card, under the chart. */}
+      {!compact && (
+        <MatchupBand
+          sport="mlb"
+          away={slateCells.band ? { abbr: slateCells.band.awayAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.awayAbbr] || {}).label, record: slateCells.band.awayRecord } : null}
+          home={slateCells.band ? { abbr: slateCells.band.homeAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.homeAbbr] || {}).label, record: slateCells.band.homeRecord } : null}
+          dateLabel={nextGame?.date ? new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }).toUpperCase() : null}
+          timeLabel={slateCells.band?.start || (nextGame?.date ? matchupTimeLabel(nextGame.date) : null)}
+          venue={nextGame?.venue || null}
+        />
+      )}
+
+      <MatchupContextRow
+        {...(matchupContextProps({
+          allGames,
+          oppAbbr: nextGame?.opp,
+          def: nextGame?.opp ? getMLBDefRank(market, nextGame.opp) : null,
+          teams: MLB_TEAMS.length,
+          statValue: (g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)),
+          marketLabel,
+          allowsLabel: marketLabel ? `${marketLabel} allowed` : null,
+        }) || {})}
+        // Real weather, hydrated on the schedule request -- MLB is the only
+        // league whose provider reports it, and a dome shows as its own
+        // condition rather than being inferred. The slate's venue is the last
+        // fallback, so a schedule request that hasn't landed yet still leaves
+        // the cell saying something true.
+        conditions={nextGame?.weather?.condition
+          ? {
+              value: nextGame.weather.temp ? `${nextGame.weather.temp}° ${nextGame.weather.condition}` : nextGame.weather.condition,
+              sub: [nextGame.venue, nextGame.weather.wind && `wind ${nextGame.weather.wind}`].filter(Boolean).join(" · ") || null,
+            }
+          : nextGame?.venue
+          ? { value: nextGame.venue, sub: null }
+          : slateCells.conditions}
+        conditionsLabel="Park"
+      />
 
       {/* Guarded by !compact -- the compact (<1100px) equivalent of this
            graph/ledger stack already renders above in the {compact && (...)}

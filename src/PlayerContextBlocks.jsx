@@ -4,11 +4,11 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 // The matchup context row: what this opponent gives up, how that ranks, and
 // what happened the last time these two met.
 //
-// Every cell is optional and a cell with nothing behind it is *omitted*, not
-// filled with a dash or a placeholder. A row of three real facts is worth more
-// than five cells two of which are furniture.
+// Four cells, always. A cell with nothing behind it keeps its column and shows
+// an em dash in --dim -- the same glyph a thin sample's missing rate uses, so
+// it reads as "no value" rather than as a gap in the layout.
 //
-// `game` and `conditions` both come off the day's slate (see usePlayerSlateGame),
+// `conditions` comes off the day's slate (see usePlayerSlateGame),
 // joined on *both* teams -- looking one team up finds a game it plays, which is
 // not the same as finding this game. Out of season, or when the log's opponent
 // isn't who the slate has this team facing, there is no join and these two
@@ -22,91 +22,81 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 // labels this cell "6.8 rec/g", a per-market figure this app does not have
 // for every sport; printing that shape would be claiming a measurement.
 export function MatchupContextRow({
-  oppAbbr, allows, allowsLabel, rank, teams, tier, lastMeeting, marketLabel, conditions, game,
+  oppAbbr, allows, allowsLabel, rank, teams, tier, lastMeeting, marketLabel, conditions, conditionsLabel,
 }) {
+  // Four cells, always, in the mock's order. A cell with nothing behind it
+  // keeps its column and shows no value -- it does not vanish and take the
+  // row's rhythm with it. That is the handoff's own rule: an absent value
+  // shows nothing rather than a placeholder, which is not the same as an
+  // absent cell. (This row used to drop empty cells, so a market with no
+  // defence rank rendered a two-column row where the design draws four.)
   const cells = [];
 
-  if (allows != null && oppAbbr) {
-    cells.push({
-      key: "allows",
-      label: `${oppAbbr} allows`,
-      value: String(allows),
-      sub: allowsLabel || null,
-    });
-  }
+  cells.push({
+    key: "allows",
+    label: oppAbbr ? `${oppAbbr} allows` : "Allows",
+    value: allows != null ? String(allows) : "",
+    sub: allows != null ? (allowsLabel || null) : null,
+  });
 
-  if (rank != null && teams) {
-    cells.push({
-      key: "matchup",
-      label: "Matchup",
-      // The denominator travels with the rank: "#27" means nothing until you
-      // know whether the league has 32 teams or 15.
-      value: `#${rank} of ${teams}`,
-      // tier is computed by defTier, which reads the rank against this
-      // league's own thirds and against the side being looked at.
-      sub: tier ? (tier === "soft" ? "easy" : tier) : null,
-    });
-  }
+  cells.push({
+    key: "matchup",
+    label: "Matchup",
+    // The denominator travels with the rank: "#27" means nothing until you
+    // know whether the league has 32 teams or 15.
+    value: rank != null && teams ? `#${rank} of ${teams}` : "",
+    // tier is computed by defTier, which reads the rank against this
+    // league's own thirds and against the side being looked at.
+    sub: rank != null && tier ? (tier === "soft" ? "easy" : tier) : null,
+  });
 
-  if (lastMeeting) {
-    cells.push({
-      key: "last",
-      label: "Last meeting",
-      value: lastMeeting.value != null ? String(lastMeeting.value) : "—",
-      sub: [lastMeeting.date, marketLabel].filter(Boolean).join(" · ") || null,
-    });
-  }
+  cells.push({
+    key: "last",
+    label: "Last meeting",
+    value: lastMeeting && lastMeeting.value != null ? String(lastMeeting.value) : "",
+    sub: lastMeeting ? ([lastMeeting.date, marketLabel].filter(Boolean).join(" · ") || null) : null,
+  });
 
-  // When this game starts, and how the two teams have done getting to it.
-  // Both come off the slate rather than the prop builders: the builders
-  // describe a player's log, and a log has never carried a kickoff time or a
-  // record. That is why the Board's "first kickoff" sort had nothing to sort
-  // on until the same join was threaded to it.
-  if (game && (game.value || game.sub)) {
-    cells.push({
-      key: "game",
-      // "Kickoff" / "First pitch" / "Tip-off" -- the leagues do not share a
-      // word for it, and the generic one belongs to none of them.
-      label: game.label || "Start",
-      value: game.value || "—",
-      sub: game.sub || null,
-    });
-  }
+  // The fourth cell. `PARK` on MLB, `WEATHER` on NFL -- the mock labels it per
+  // league because what it is worth saying differs: a ballpark is a permanent
+  // fact about the game, a forecast is not.
+  //
+  // There is deliberately no kickoff/records cell here. I added one; it was
+  // wrong. The mock puts first pitch and both records in the matchup band card
+  // directly above this row (see MatchupBand), which is also why this row has
+  // four cells and not five.
+  cells.push({
+    key: "conditions",
+    // "PARK" on MLB, "WEATHER" on NFL in the mock; the caller names it,
+    // because what is worth saying about a venue differs by league.
+    label: conditionsLabel || "Conditions",
+    value: (conditions && conditions.value) || "",
+    sub: (conditions && conditions.sub) || null,
+  });
 
-  // Conditions, where a provider actually reports them. MLB hydrates weather
-  // on its schedule and the other leagues do not, so outside MLB this cell
-  // carries the venue alone rather than claiming a forecast nobody supplied.
-  if (conditions && conditions.value) {
-    cells.push({
-      key: "conditions",
-      label: "Conditions",
-      value: conditions.value,
-      sub: conditions.sub || null,
-    });
-  }
-
-  if (!cells.length) return null;
+  // Only when there is nothing at all -- an out-of-season page with no
+  // opponent, no rank, no meeting and no venue -- does the row itself go.
+  if (!cells.some((c) => c.value)) return null;
 
   return (
-    // Flex-wrap with the gap doing the dividing, not a fixed column count with
-    // a border on each cell. Five cells at 1/5 of a phone's width is ~50px of
-    // content under a 20px pad -- every value ellipsed to nothing. Wrapping
-    // costs a row and keeps the numbers readable, and because the gap is the
-    // container's own colour showing through, the rules land between cells in
-    // both directions without a cell having to know where a row broke.
+    // Four equal cells on one row, divided by a left border -- what the mock
+    // draws. The flex-wrap version I put here was solving a five-cell problem
+    // that only existed because I had added a fifth cell.
     <div
       style={{
-        display: "flex", flexWrap: "wrap", gap: 1,
-        background: "var(--line)",
-        borderBottom: "1px solid var(--line)",
+        display: "grid",
+        gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+        border: "1px solid var(--line)",
+        borderRadius: 6,
+        background: "var(--panel)",
       }}
     >
-      {cells.map((c) => (
+      {cells.map((c, i) => (
         <div
           key={c.key}
           style={{
-            flex: "1 1 150px", padding: "16px 20px", minWidth: 0,
-            background: "var(--panel)",
+            padding: "16px 20px", minWidth: 0,
+            borderLeft: i === 0 ? "none" : "1px solid var(--line)",
           }}
         >
           <div
@@ -115,8 +105,8 @@ export function MatchupContextRow({
           >
             {c.label}
           </div>
-          <div className="pp-mono" style={{ fontSize: 19, marginTop: 6, color: "var(--text)", whiteSpace: "nowrap" }}>
-            {c.value}
+          <div className="pp-mono" style={{ fontSize: 19, marginTop: 6, color: c.value ? "var(--text)" : "var(--dim)", whiteSpace: "nowrap" }}>
+            {c.value || "—"}
           </div>
           {c.sub && (
             <div
