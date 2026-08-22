@@ -1448,7 +1448,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const [viewMode, setViewMode] = useState("feed");
   const [rebSplit, setRebSplit] = useState("total");
   const [side, setSide] = useState("all");
-  const [lastN, setLastN] = useState(10);
+  // L20 by default, per the handoff's per-league table -- long enough to
+  // mean something in a 82-game season.
+  const [lastN, setLastN] = useState(20);
   const [opponent, setOpponent] = useState("all");
   const [oppView, setOppView] = useState("season");
   const [minMinutes, setMinMinutes] = useState(0);
@@ -1711,6 +1713,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   }, [opponent, oppView, side, lastN, minMinutes, maxMinutes, logScope]);
 
   const splitCells = buildHitRateSplits({
+    sport: "nba",
     allGames,
     statValue: (g) => statValue(g, market, rebSplit),
     effectiveLine,
@@ -2559,6 +2562,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         />
 
         <HitRateSplits
+          sport="nba"
           // The chart draws `filtered`; the splits percentages are computed off the
           // full log, so the readout names the gap rather than leaving it implicit.
           gamesInGraph={filtered.length}
@@ -5158,7 +5162,9 @@ function SampleSizeGrid({ cells }) {
               color: s.active ? "var(--accent-on)" : hitRateColor(s.rate),
             }}
           >
-            {s.rate === null ? "—" : `${Math.round(s.rate * 100)}%`}
+            {s.rate === null ? "—" : splitIsThin(s)
+                ? <span style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase" }}>too few</span>
+                : `${Math.round(s.rate * 100)}%`}
           </div>
           {s.rate !== null && s.count != null && (
             <div
@@ -5465,7 +5471,48 @@ function CollapsibleSection({ title, storageKey, defaultOpen = false, children }
 // venueFilter: "all" | "home" | "away" — Screen #1 At Home / On Road cells.
 // When set, the active underline moves to the venue cell; callers should also
 // filter the chart sample the same way.
-function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels, includeH2h = true, venueFilter = "all", onSetVenueFilter }) {
+// The sample windows each league's season can actually fill.
+//
+// These were a single hardcoded [5, 10, 15, 20, 25] for all four sports,
+// which is wrong in both directions at once. An NFL season is 17 games, so
+// L20 and L25 there are windows no player can ever fill -- at best the whole
+// season wearing a label implying more of it, which is exactly the kind of
+// number-without-its-sample this product exists not to print. And MLB plays
+// 162, so cutting off at L25 meant a baseball log could never be windowed
+// past a sixth of its season.
+//
+// Season lengths are real (the handoff is explicit that they are the one set
+// of figures in the mocks that is not invented): NFL 17, WNBA 44, NBA 82,
+// MLB 162. "Season" is not in these lists -- it is its own cell below and
+// always available, which is what an L-window longer than the season would
+// have been pretending to be.
+const SPORT_WINDOW_STOPS = {
+  nfl: [5, 10],
+  wnba: [5, 10, 20],
+  nba: [5, 10, 20, 40],
+  mlb: [5, 10, 20, 40, 80],
+};
+// Falls back to the shortest honest set rather than the longest: a sport this
+// table does not know about gets windows any season can fill.
+const DEFAULT_WINDOW_STOPS = [5, 10];
+
+// Whether a split cell has enough games to quote a rate at all.
+//
+// Ten games, the same floor the feed's cells and the landing page use -- with
+// one exception: a window that *asks* for fewer than ten is not thin when it
+// gets what it asked for. L5's five games are the whole sample it claims, so
+// it quotes; an H2H cell with four games has no such claim and does not.
+//
+// A thin cell keeps its place and its count and prints a verdict instead of a
+// percentage. The minimum sample is a display threshold, never a filter --
+// dropping the cell would answer "what has he done against this team" with
+// silence when the honest answer is "four games, which is not enough to say".
+function splitIsThin(s) {
+  const floor = Math.min(s.asked || 10, 10);
+  return s.count == null || s.count < floor;
+}
+
+function buildHitRateSplits({ sport, allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels, includeH2h = true, venueFilter = "all", onSetVenueFilter }) {
   const rate = (games) => {
     if (!games.length) return null;
     const vals = games.map(statValue);
@@ -5479,7 +5526,7 @@ function buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLa
   const clearVenue = () => onSetVenueFilter && onSetVenueFilter("all");
   const venueActive = venueFilter === "home" || venueFilter === "away";
   return [
-    ...[5, 10, 15, 20, 25].map((n) => ({
+    ...(SPORT_WINDOW_STOPS[sport] || DEFAULT_WINDOW_STOPS).map((n) => ({
       key: `l${n}`, label: `L${n}`, active: !h2h && !venueActive && lastN === n,
       rate: rate(allGames.slice(-n)),
       count: allGames.slice(-n).length, asked: n,
@@ -5563,8 +5610,8 @@ function hitRateColor(r) {
 // `includeH2h` is passed straight through to buildHitRateSplits: pages with no
 // head-to-head filter of their own opt out so the cell isn't rendered
 // permanently disabled. Defaults to true, so existing callers are unaffected.
-function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, isNarrow, max, includeH2h = true, venueFilter = "all", onSetVenueFilter, gamesInGraph = null }) {
-  const splits = buildHitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels: isNarrow, includeH2h, venueFilter, onSetVenueFilter });
+function HitRateSplits({ sport, allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, isNarrow, max, includeH2h = true, venueFilter = "all", onSetVenueFilter, gamesInGraph = null }) {
+  const splits = buildHitRateSplits({ sport, allGames, statValue, effectiveLine, lastN, onSetLastN, h2h, onSetH2h, opponentAbbr, shortLabels: isNarrow, includeH2h, venueFilter, onSetVenueFilter });
   const rateColor = hitRateColor;
   const cappedMax = Math.max(max, 1);
   const sliderValue = lastN === "all" ? cappedMax : Math.min(lastN, cappedMax);
@@ -5598,7 +5645,9 @@ function HitRateSplits({ allGames, statValue, effectiveLine, lastN, onSetLastN, 
               {s.label}
             </div>
             <div className="mono stat-value" style={{ fontSize: isNarrow ? 13 : 14.5, color: rateColor(s.rate) }}>
-              {s.rate === null ? "—" : `${Math.round(s.rate * 100)}%`}
+              {s.rate === null ? "—" : splitIsThin(s)
+                ? <span style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase" }}>too few</span>
+                : `${Math.round(s.rate * 100)}%`}
             </div>
             {s.rate !== null && s.count != null && (
               <div
@@ -6421,7 +6470,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
-  const [lastN, setLastN] = useState(10);
+  // Season by default: an NFL season is 17 games, so the whole of it is a
+  // smaller sample than L20 would have implied on any other sport.
+  const [lastN, setLastN] = useState("all");
   const [opponent, setOpponent] = useState("all");
   // 1 (not 0) is this control's neutral value -- the slider bottoms out at 1
   // and the preset row below labels 1 as "Any snaps". Defaulting to 50 meant
@@ -6608,6 +6659,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   }, [side, opponent, lastN, snapFilterActive, logScope]);
 
   const splitCells = buildHitRateSplits({
+    sport: "nfl",
     allGames,
     statValue: (g) => statValueNFL(g, market),
     effectiveLine,
@@ -7400,6 +7452,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         />
 
         <HitRateSplits
+          sport="nfl"
           // The chart draws `filtered`; the splits percentages are computed off the
           // full log, so the readout names the gap rather than leaving it implicit.
           gamesInGraph={filtered.length}
@@ -8568,7 +8621,9 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
-  const [lastN, setLastN] = useState(10);
+  // L20 by default, per the handoff's per-league table -- long enough to
+  // mean something in a 44-game season.
+  const [lastN, setLastN] = useState(20);
   const [opponent, setOpponent] = useState("all");
   const [minMinutes, setMinMinutes] = useState(0);
   const [maxMinutes, setMaxMinutes] = useState(40);
@@ -8827,6 +8882,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   }, [side, opponent, lastN, minMinutes, maxMinutes, logScope]);
 
   const splitCells = buildHitRateSplits({
+    sport: "wnba",
     allGames,
     statValue: (g) => statValue(g, market, rebSplit),
     effectiveLine,
@@ -9673,6 +9729,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         />
 
         <HitRateSplits
+          sport="wnba"
           // The chart draws `filtered`; the splits percentages are computed off the
           // full log, so the readout names the gap rather than leaving it implicit.
           gamesInGraph={filtered.length}
@@ -12536,7 +12593,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
-  const [lastN, setLastN] = useState(10);
+  // L20 by default, per the handoff's per-league table -- long enough to
+  // mean something in a 162-game season.
+  const [lastN, setLastN] = useState(20);
   // Replaces the old "Any opponent" dropdown -- restricts the sample to
   // games against the selected team's actual next scheduled opponent
   // (nextGame.opp) instead of letting the user pick any team from history.
@@ -13708,6 +13767,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       />
 
       <HitRateSplits
+        sport="mlb"
         // The chart draws `filtered`; the splits percentages are computed off the
         // full log, so the readout names the gap rather than leaving it implicit.
         gamesInGraph={filtered.length}
@@ -13927,6 +13987,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   }, [side, h2h, lastN, minPA, maxPA, teammateChips.length, isPitcher, logScope]);
 
   const splitCells = buildHitRateSplits({
+    sport: "mlb",
     allGames,
     statValue: statValueFn,
     effectiveLine,
