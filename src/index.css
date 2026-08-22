@@ -265,11 +265,12 @@ a:focus-visible, div[role="button"]:focus-visible, button:focus-visible,
    (table cells, axis ticks, stat rails) -- default proportional
    figures elsewhere, per the type scale above. */
 .tnum { font-variant-numeric: tabular-nums; }
-/* Sharp, premium-reading stat numbers -- Space Grotesk (already used
-   via .oswald) at tight tracking with tabular figures, so a card's
-   headline value and its neighboring stat rail always line up. */
+/* Stat numbers: Space Mono with tabular figures, like every other number in
+   the product. This was Space Grotesk, a proportional face -- a number in a
+   proportional face is a bug, and it meant a card's headline value and the
+   stat rail beside it never lined up. */
 .stat-value {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Space Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   font-weight: 700;
@@ -454,8 +455,12 @@ img { max-width: 100%; }
     min-height: 44px;
   }
 }
-.oswald { font-family: 'Space Grotesk', sans-serif; }
-.mono { font-family: 'JetBrains Mono', monospace; }
+/* Legacy aliases, remapped to the v2 system rather than hunted down at every
+   call site. .oswald was Space Grotesk and .mono was JetBrains Mono; both
+   faces are gone. Display is Bricolage 600, numbers are Space Mono with
+   tabular figures -- any number in a proportional face is a bug. */
+.oswald { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; }
+.mono { font-family: 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 
 /* ---------- shared surfaces ----------
    .panel is the background/border/radius trio that was inlined at ~40
@@ -499,7 +504,7 @@ div[role="button"]:active { transform: scale(0.97); }
   box-shadow: 0 0 0 1px var(--amber) inset;
 }
 .tab {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
   letter-spacing: 0.01em;
   padding: 12px 8px;
   border-bottom: 2px solid transparent;
@@ -882,7 +887,7 @@ input.pp-search:focus, input.pp-search:focus-visible {
   margin-bottom: var(--fp-header-gap);
 }
 .fp-section-title {
-  font-family: 'Oswald', sans-serif;
+  font-family: 'Space Mono', ui-monospace, monospace;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.10em;
@@ -963,7 +968,7 @@ select.select-sm {
   padding: 6px 10px;
   border-radius: 8px;
   font-size: 12px;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Archivo', system-ui, sans-serif;
   cursor: pointer;
 }
 select.select-sm:hover { border-color: var(--amber); }
@@ -1175,7 +1180,7 @@ select.select-sm:focus, select.select-sm:focus-visible {
 /* ---------- redesign type + token aliases (design handoff, phase 1) ----------
    The redesign components reach for two classes rather than naming faces
    inline, so swapping a face later is a one-line change here. Archivo
-   replaces Inter as the body face; Space Grotesk / JetBrains Mono stay
+   replaces Inter as the body face; the old display/number faces are gone
    defined because .oswald, .mono and .stat-value are still used across the
    existing screens. */
 .pp-display { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; }

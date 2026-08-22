@@ -17,9 +17,12 @@ import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/ca
 import SettingsModal from "./SettingsModal.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
-import PlayerAvatar from "./PlayerAvatar.jsx";
+import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 import PalaceMark from "./PalaceMark.jsx";
 import NavBar, { NAV_TABS } from "./NavBar.jsx";
+import PlayerDetailV2 from "./PlayerDetailV2.jsx";
+import { usagePills, roleSentence } from "./lib/usagePills.js";
+import { fetchStatcast } from "./lib/statcast.js";
 import { MatchupBand, PlayerHeaderCard, GameByGameChart, ReadingTheGraph } from "./PlayerDetail.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
@@ -48,7 +51,7 @@ import {
 } from "./lib/mlbStatus.js";
 import {
   NBA_TEAM_COLORS, NFL_TEAM_COLORS, WNBA_TEAM_COLORS, MLB_TEAM_COLORS,
-  teamAvatarBackground,
+  teamAvatarBackground, STATUS,
 } from "./lib/teamColors.js";
 
 // Loaded on demand rather than up front. The app opens on the Prop Feed, and
@@ -11942,6 +11945,47 @@ function GameConditionsBar({ nextGame, teamAbbr, isPitcher, variant, opponentLab
 // other market shows a "not tracked" note instead of a dead button.
 const MLB_ODDS_MARKET_KEY = { h: "batter_hits", hr: "batter_home_runs" };
 
+// The mock writes the position as a word -- "right field", not "RF". Every
+// sport file does the same ("wide receiver", "forward"), so each page needs
+// its own map rather than printing the abbreviation the roster stores.
+const MLB_POSITION_WORD = {
+  C: "catcher", "1B": "first base", "2B": "second base", "3B": "third base",
+  SS: "shortstop", LF: "left field", CF: "center field", RF: "right field",
+  DH: "designated hitter", SP: "starting pitcher", RP: "relief pitcher", P: "pitcher",
+};
+
+// Jersey numbers. statsapi carries `primaryNumber` on /people/{id} -- the mock
+// draws "99" beside Aaron Judge and that is exactly where it comes from. One
+// request per player, cached for the session: a number does not change
+// mid-season, and a miss renders nothing rather than a placeholder.
+const mlbJerseyCache = new Map();
+function useMlbJersey(mlbId) {
+  const [, bump] = useState(0);
+  React.useEffect(() => {
+    if (mlbId == null || mlbJerseyCache.has(String(mlbId))) return;
+    let cancelled = false;
+    fetch(`https://statsapi.mlb.com/api/v1/people/${mlbId}`)
+      .then((r) => r.json())
+      .then((j) => {
+        const n = j?.people?.[0]?.primaryNumber;
+        mlbJerseyCache.set(String(mlbId), n ? String(n) : null);
+        if (!cancelled) bump((v) => v + 1);
+      })
+      .catch(() => { mlbJerseyCache.set(String(mlbId), null); });
+    return () => { cancelled = true; };
+  }, [mlbId]);
+  return mlbId == null ? null : (mlbJerseyCache.get(String(mlbId)) ?? null);
+}
+
+// "Aug 19" under a bar, not "2026-08-19": the column is ~26px wide and the
+// year is the same on every one of them.
+function axisDateShort(d) {
+  if (!d) return "";
+  const t = Date.parse(typeof d === "string" && d.length === 10 ? `${d}T12:00:00` : d);
+  if (Number.isNaN(t)) return String(d).slice(5);
+  return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 // api/odds.js caches each game's lines for up to 12h, and its `stale` flag is
 // only set when the upstream call FAILED -- an ordinary cache hit comes back
 // stale:false. Labelling that "live" meant an 11-hour-old line could read as
@@ -14662,6 +14706,143 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     );
   }
 
+
+  // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
+  // Built from `Player Detail MLB v2.dc.html`. Every slot that file fills with
+  // an invented number is bound to the feed that really answers it; a slot with
+  // no feed behind it is passed null and the component drops it.
+  // Statcast backs the Hard-hit and Barrel pills. One request per side covers
+  // the league and is cached for six hours, so this is a no-op on every page
+  // after the first.
+  const [, bumpStatcast] = useState(0);
+  React.useEffect(() => { fetchStatcast(isPitcher ? "pitcher" : "batter").then(() => bumpStatcast((v) => v + 1)); }, [isPitcher]);
+  const jerseyNumber = useMlbJersey(player.mlbId);
+  const postedIds = (nextGame && nextGame.ourLineupIds) || [];
+
+  const railPlayer = (p, side) => ({
+    id: p.id,
+    name: p.name,
+    meta: railMeta ? railMeta(p) : p.pos,
+    active: p.id === playerId,
+    dotFill: (STATUS[mlbStatusOf(p)] || {}).dot || null,
+    dotRing: "var(--surface-1)",
+    avatar: (
+      <PlayerAvatar
+        name={p.name} team={p.team} sport="mlb" colorMap={MLB_TEAM_COLORS}
+        headshotSrc={mlbHeadshot(p.mlbId)} fallbackSrc={mlbEspnHeadshot(p.id)}
+        lineup={postedIds.length ? (postedIds.includes(p.id) ? "posted" : undefined) : "projected"}
+        size={32} surface="var(--bg)"
+      />
+    ),
+    onSelect: () => {
+      setPlayerId(p.id); setLine(null); setH2h(false);
+      setMatchupPick({ side, id: p.id, nonce: Date.now() });
+    },
+  });
+
+  const v2Def = nextGame && nextGame.opp ? getMLBDefRank(market, nextGame.opp) : null;
+  const v2Tier = v2Def ? defTier(v2Def.rank, MLB_TEAMS.length) : null;
+  const v2Meetings = allGames.filter((g) => g.opp === (nextGame && nextGame.opp));
+  const v2Last = v2Meetings.length ? v2Meetings[v2Meetings.length - 1] : null;
+
+  const v2Page = (
+    <PlayerDetailV2
+      sport="mlb"
+      crumbFixture={`${(slateCells.band && slateCells.band.awayAbbr) || teamAbbr} @ ${(slateCells.band && slateCells.band.homeAbbr) || (nextGame && nextGame.opp) || ""}`}
+      marketLabel={marketLabel}
+      onBack={onBack || (() => {})}
+      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPagePickAdded}
+      ownRail={{ label: (liveTeamRoster || {}).label, players: ((liveTeamRoster || {}).players || []).map((p) => railPlayer(p, "team")) }}
+      oppRail={{ label: (liveOppRoster || {}).label || "Loading…", players: ((liveOppRoster || {}).players || []).map((p) => railPlayer(p, "opp")) }}
+      band={slateCells.band ? {
+        away: { abbr: slateCells.band.awayAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.awayAbbr] || {}).label, record: slateCells.band.awayRecord },
+        home: { abbr: slateCells.band.homeAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.homeAbbr] || {}).label, record: slateCells.band.homeRecord },
+        dateLabel: nextGame && nextGame.date ? new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : null,
+        timeLabel: slateCells.band.start || (nextGame && nextGame.date ? matchupTimeLabel(nextGame.date) : null),
+        venue: (nextGame && nextGame.venue) || null,
+      } : null}
+      context={{
+        allowsLabel: `${(nextGame && nextGame.opp) || "OPP"} allows`,
+        allows: v2Def && v2Def.rating != null ? String(v2Def.rating) : null,
+        rank: v2Def ? `#${v2Def.rank} of ${MLB_TEAMS.length}` : null,
+        rankWord: v2Tier || null,
+        rankColor: v2Tier === "soft" ? "var(--pos)" : v2Tier === "tough" ? "var(--neg)" : "var(--dim)",
+        lastMeeting: v2Last ? `${statValueFn(v2Last)} · ${axisDateShort(v2Last.date)}` : null,
+        // MLB's fourth cell is PARK. The NFL file says WEATHER and the two
+        // basketball files say REST -- each page names its own.
+        parkLabel: "Park",
+        park: (nextGame && nextGame.venue)
+          ? `${nextGame.venue}${nextGame.weather && nextGame.weather.wind ? ` · wind ${nextGame.weather.wind}` : ""}`
+          : ((nextGame && nextGame.weather && nextGame.weather.condition) || null),
+      }}
+      player={{
+        name: player.name,
+        jersey: jerseyNumber,
+        team: player.team,
+        teamLabel: (liveTeamRoster || {}).label,
+        identity: [(liveTeamRoster || {}).label, MLB_POSITION_WORD[player.pos] || player.pos,
+          nextGame && nextGame.date ? new Date(nextGame.date).getFullYear() : null].filter(Boolean).join(" · "),
+        statusPill: <StatusPill status={mlbStatusOf(player)} />,
+        pills: usagePills({
+          sport: "mlb", games: filtered, isPitcher, battingOrder, mlbId: player.mlbId,
+          teammateIds: ((liveTeamRoster || {}).players || []).map((p) => p.mlbId),
+        }),
+        role: roleSentence({ sport: "mlb", games: filtered, isPitcher, battingOrder }),
+        seasonStats: (isPitcher
+          ? [{ label: "K/G", value: seasonAvg.k }, { label: "ER/G", value: seasonAvg.er }, { label: "BB/G", value: seasonAvg.bb }]
+          : [{ label: "H/G", value: seasonAvg.h }, { label: "HR/G", value: seasonAvg.hr }, { label: "RBI/G", value: seasonAvg.rbi }]
+        ).map((s) => ({ label: s.label, value: s.value.toFixed(2) })),
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="mlb" team={player.team}
+            colorMap={MLB_TEAM_COLORS} headshotSrc={mlbHeadshot(player.mlbId)}
+            fallbackSrc={mlbEspnHeadshot(player.id)} status={mlbStatusOf(player)}
+            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            imgBorder="1px solid var(--line)" fadeIn
+          />
+        ),
+      }}
+      markets={(isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS).map((m) => ({
+        id: m.id, label: m.label, active: m.id === market,
+        onPick: () => { setMarket(m.id); setLine(null); },
+      }))}
+      filtersCount={activeFilterCount}
+      filtersOpen={filtersOpen}
+      onToggleFilters={() => { setFiltersOpen((v) => !v); setTeammateDataWanted(true); }}
+      filtersPanel={filtersBody}
+      verdict={{
+        rate: values.length ? `${Math.round(hitRate * 100)}%` : "—",
+        // Coloured by outcome, which is what the file does -- not the accent.
+        rateColor: hitRate >= 0.65 ? "var(--pos)" : hitRate < 0.45 ? "var(--neg)" : "var(--text)",
+        sentence: values.length
+          ? `cleared ${Number(liveLine).toFixed(1)} in ${hits} of ${values.length} recent games`
+          : "no finished games in this window",
+        average: avg.toFixed(1),
+        line: Number(liveLine).toFixed(1),
+        marketLine: Number(effectiveLine).toFixed(1),
+        adjusted: lineIsAdjusted,
+        onResetLine: () => setDragLine(null),
+        margin: `${edge >= 0 ? "+" : ""}${edge.toFixed(1)}`,
+        marginColor: edge >= 0 ? "var(--pos)" : "var(--neg)",
+        odds: null,
+        sampleVerdict: `${values.length} games`,
+      }}
+      chart={{
+        games: chartData.map((d) => ({ v: d.value, opp: d.opp, date: axisDateShort(d.date), po: d.playoff })),
+        line: liveLine, marketLine: effectiveLine, isBinary, direction: "over",
+        adjusted: lineIsAdjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
+        straightRun: 0,
+      }}
+      footerNote={`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
+      pickAdded={isPagePickAdded}
+    />
+  );
+
+  // Desktop renders the transcription. The narrow path keeps the existing
+  // mobile layout until PropPalace Mobile v2 is built from its own file.
+  if (!compact) return v2Page;
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
