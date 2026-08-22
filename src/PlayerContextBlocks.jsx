@@ -17,7 +17,7 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 // labels this cell "6.8 rec/g", a per-market figure this app does not have
 // for every sport; printing that shape would be claiming a measurement.
 export function MatchupContextRow({
-  oppAbbr, allows, allowsLabel, rank, teams, tier, lastMeeting, marketLabel,
+  oppAbbr, allows, allowsLabel, rank, teams, tier, lastMeeting, marketLabel, conditions,
 }) {
   const cells = [];
 
@@ -49,6 +49,18 @@ export function MatchupContextRow({
       label: "Last meeting",
       value: lastMeeting.value != null ? String(lastMeeting.value) : "—",
       sub: [lastMeeting.date, marketLabel].filter(Boolean).join(" · ") || null,
+    });
+  }
+
+  // Conditions, where a provider actually reports them. MLB hydrates weather
+  // and venue on its schedule; the other leagues do not, so this cell is
+  // simply absent there rather than present and empty.
+  if (conditions && conditions.value) {
+    cells.push({
+      key: "conditions",
+      label: "Conditions",
+      value: conditions.value,
+      sub: conditions.sub || null,
     });
   }
 

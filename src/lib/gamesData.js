@@ -518,6 +518,12 @@ export async function fetchMlbSlate(key, { force = false } = {}) {
           record: rec("home"),
           score: homeScore,
         },
+        // Same shape espnSlate returns, so a consumer reads game.venue
+        // without knowing which provider the sport came from. MLB's schedule
+        // gives the venue name; the roof state is not in this response, so
+        // `indoor` is left null rather than guessed -- null means unknown
+        // here, which is different from false.
+        venue: g.venue?.name ? { name: g.venue.name, city: null, indoor: null } : null,
         probables: { away: pitcher("away"), home: pitcher("home") },
         status,
         // For finished games the center already says FINAL; period detail is noise.
@@ -591,6 +597,18 @@ function espnSlate(sport, events) {
         record: home?.records?.[0]?.summary || "",
         score: homeScore,
       },
+      // Venue was being discarded even though every scoreboard response
+      // carries it. `indoor` is the useful half: it is what lets a conditions
+      // line say "Indoors · roof closed" without a weather feed, and without
+      // it an outdoor game and a domed one look identical. ESPN sends no
+      // weather block on most games, so nothing here claims any.
+      venue: comp?.venue?.fullName
+        ? {
+            name: comp.venue.fullName,
+            city: comp.venue.address?.city || null,
+            indoor: comp.venue.indoor === true,
+          }
+        : null,
       probables: null,
       status,
       periodLabel: isLive ? espnPeriodLabel(comp, sport) : null,

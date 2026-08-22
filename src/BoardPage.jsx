@@ -146,7 +146,7 @@ function rateFor(row, activeSplits) {
   return { games, n: games.length, over, rate: over / games.length };
 }
 
-export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, dataUnavailable = false }) {
+export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, dataUnavailable = false, slateByTeam = null, timeLabel = null }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
   const [minGames, setMinGames] = useState(10);
   const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
@@ -188,15 +188,32 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         const s = rateFor(r, activeSplits);
         if (s && s.rate != null && s.n >= minGames) strongest = Math.max(strongest, s.rate);
       });
-      return { ...g, rows, strongest, kickoff: kickoffKey(g.time), lineup: lineupStateFor(rows) };
+      // The slate row for this game -- and only if it is genuinely the same
+      // fixture. Looking a team up finds *a* game it plays, which is not the
+      // same thing: the NFL board's rows describe 2025 matchups (that season
+      // is final, so the builders use the last opponent played) while the
+      // slate holds 2026 week 1. Joining on one team alone hung TB's record
+      // and Cincinnati's stadium on a card headed CIN vs CLE. Both sides must
+      // match, or there is no join and the card says nothing about records,
+      // kickoff or venue rather than saying something untrue.
+      const teamA = rows[0]?.team;
+      const teamB = rows[0]?.opp;
+      const candidate = slateByTeam ? (slateByTeam.get(teamA) || slateByTeam.get(teamB) || null) : null;
+      const sides = candidate ? [candidate.away?.abbr, candidate.home?.abbr] : [];
+      const slate = candidate && teamA && teamB && sides.includes(teamA) && sides.includes(teamB) ? candidate : null;
+      const kickoffMs = slate?.startsAt ? Date.parse(slate.startsAt) : NaN;
+      return {
+        ...g, rows, strongest, lineup: lineupStateFor(rows), slate,
+        kickoff: Number.isFinite(kickoffMs) ? kickoffMs : kickoffKey(g.time),
+      };
     });
-  }, [filtered, activeSplits, minGames]);
+  }, [filtered, activeSplits, minGames, slateByTeam]);
 
   // How many games we actually have a kickoff time for. Drives whether the
   // kickoff sort is offered at all, and guards against it silently degrading
   // to insertion order.
   const kickoffKnown = useMemo(
-    () => grouped.filter((g) => Number.isFinite(g.kickoff)).length,
+    () => grouped.filter((g) => Number.isFinite(g.kickoff) && g.kickoff !== Number.POSITIVE_INFINITY).length,
     [grouped]
   );
 
@@ -504,6 +521,25 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                   padding: "12px 20px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)",
                 }}>
                   <span className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.1em", textTransform: "uppercase" }}>{g.label}</span>
+                  {/* Records, kickoff and venue come from the slate row this
+                      card joined to. Each is rendered only where the provider
+                      actually supplied it -- a game with no venue simply has
+                      no venue, rather than an empty slot. */}
+                  {g.slate?.away?.record && g.slate?.home?.record && (
+                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                      {g.slate.away.abbr} {g.slate.away.record} · {g.slate.home.abbr} {g.slate.home.record}
+                    </span>
+                  )}
+                  {g.slate?.startsAt && timeLabel && (
+                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))", whiteSpace: "nowrap" }}>
+                      {timeLabel(g.slate.startsAt)}
+                    </span>
+                  )}
+                  {g.slate?.venue?.name && (
+                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>
+                      {g.slate.venue.name}{g.slate.venue.indoor ? " · indoors" : ""}
+                    </span>
+                  )}
                   {g.time && <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))" }}>{g.time}</span>}
                   {/* The count is what the card knows about this game; the
                       action is a move to the feed. Deliberately not phrased

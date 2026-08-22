@@ -8,6 +8,10 @@ import { useSettings, useDisplaySettings, useBettingSettings, useOddsFormat, use
 import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
 import AltLineLadder, { SlipLeg } from "./AltLineLadder.jsx";
+import {
+  fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflWeekOneSlate,
+  dayKey as slateDayKey,
+} from "./lib/gamesData.js";
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsModal from "./SettingsModal.jsx";
@@ -13817,6 +13821,17 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           marketLabel,
           allowsLabel: marketLabel ? `${marketLabel} allowed` : null,
         }) || {})}
+        // Real weather, hydrated on the schedule request -- MLB is the only
+        // league whose provider reports it, and a dome shows as its own
+        // condition rather than being inferred.
+        conditions={nextGame?.weather?.condition
+          ? {
+              value: nextGame.weather.temp ? `${nextGame.weather.temp}° ${nextGame.weather.condition}` : nextGame.weather.condition,
+              sub: [nextGame.venue, nextGame.weather.wind && `wind ${nextGame.weather.wind}`].filter(Boolean).join(" · ") || null,
+            }
+          : nextGame?.venue
+          ? { value: nextGame.venue, sub: null }
+          : null}
       />
 
       <PlayerPropContextBlocks
@@ -21597,6 +21612,39 @@ export default function PropLedger() {
     return [];
   }, [page, boardSport, nflDataVersion, wnbaDataVersion, nbaDataVersion]);
 
+  // The day's slate for whichever league the board is showing, keyed by team
+  // abbreviation.
+  //
+  // Records, kickoff times and venues have always arrived on the slate object
+  // -- the Games page has shown records since it was built. The board and the
+  // player pages never saw them because their rows come from the prop
+  // builders instead, a different pipeline that joins to nothing. That is why
+  // the board's "first kickoff" sort had no times to sort on: not missing
+  // data, an unjoined table.
+  const [boardSlate, setBoardSlate] = useState(null);
+  React.useEffect(() => {
+    if (page !== "board") return undefined;
+    let cancelled = false;
+    setBoardSlate(null);
+    const load = boardSport === "nfl"
+      ? fetchNflWeekOneSlate()
+      : (boardSport === "mlb" ? fetchMlbSlate : boardSport === "wnba" ? fetchWnbaSlate : fetchNbaSlate)(slateDayKey(new Date()));
+    Promise.resolve(load)
+      .then((res) => {
+        if (cancelled) return;
+        const byTeam = new Map();
+        (res?.games || []).forEach((g) => {
+          // Both sides point at the same game, so a prop row joins on
+          // whichever team its player belongs to.
+          if (g.away?.abbr) byTeam.set(g.away.abbr, g);
+          if (g.home?.abbr) byTeam.set(g.home.abbr, g);
+        });
+        setBoardSlate(byTeam.size ? byTeam : null);
+      })
+      .catch(() => { if (!cancelled) setBoardSlate(null); });
+    return () => { cancelled = true; };
+  }, [page, boardSport]);
+
   const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
     setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now(), meta });
     setPage(targetSport);
@@ -21873,6 +21921,8 @@ export default function PropLedger() {
             onOpenProp={goToProp}
             onOpenGameProps={(g) => goToGameProps({ ...g, sport: boardSport })}
             dataUnavailable={boardSport === "mlb"}
+            slateByTeam={boardSlate}
+            timeLabel={slateTimeLabel}
           />
         </LazyPane>
       )}
