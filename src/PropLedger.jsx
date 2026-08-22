@@ -2478,6 +2478,198 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   }
 
 
+
+  // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
+  //
+  // Built from `Player Detail NBA v2.dc.html` -- that file, not MLB's. The
+  // four are structurally identical (same 29 labels in the same order, verified
+  // by diff) and differ in exactly two places, both of which are the point:
+  // this sport's fourth context cell, and this sport's usage pills.
+  //
+  // The drag handle moves the line without moving the market's: `v2LiveLine`
+  // is what every rate below is measured against, `effectiveLine` stays the
+  // number actually posted, and the verdict row offers the way back.
+  const v2LiveLine = isBinary || dragLine === null ? effectiveLine : dragLine;
+  const v2Adjusted = v2LiveLine !== effectiveLine;
+  const v2Hits = values.filter((v) => v > v2LiveLine).length;
+  const v2Rate = values.length ? v2Hits / values.length : 0;
+  const v2Edge = avg - v2LiveLine;
+
+  const v2OwnRoster = playerOnTeamA ? matchup.teamA : matchup.teamB;
+  const v2Cells = slateMatchupCells(slateGame, "nba");
+
+  const v2Rail = (roster) => ((roster || {}).players || []).map((pl) => ({
+    id: pl.id,
+    name: pl.name,
+    meta: railMeta ? railMeta(pl) : pl.pos,
+    active: pl.id === playerId,
+    // No NBA availability feed here, so no dot -- see the NFL block.
+    dotFill: null,
+    dotRing: "var(--surface-1)",
+    // The WNBA page has real starter flags off the box score and splits its
+    // rail on them; this one has no equivalent, so the rail stays in the
+    // matchup's own order rather than guessing a five.
+    order: null,
+    avatar: (
+      <PlayerAvatar
+        name={pl.name} team={pl.team} sport="nba" colorMap={NBA_TEAM_COLORS}
+        headshotSrc={espnHeadshot(pl.espnId)} size={32} inset={2} surface="var(--bg)"
+      />
+    ),
+    onSelect: () => { setPlayerId(pl.id); setLine(null); setOpponent("all"); },
+  }));
+
+  const v2Meetings = allGames.filter((g) => g.opp === gameOppAbbr);
+  const v2Last = v2Meetings.length ? v2Meetings[v2Meetings.length - 1] : null;
+
+  // Away is always teamA and home always teamB (see NFL_MATCHUPS -- the label
+  // reads "Cowboys @ Giants" with the Cowboys in teamA). Deriving the fixture
+  // from whichever side the *player* is on printed it backwards half the time.
+  const v2AwayAbbr = ((matchup.teamA.players[0] || {}).team) || null;
+  const v2HomeAbbr = ((matchup.teamB.players[0] || {}).team) || null;
+
+  const v2Fixture = [
+    `${v2AwayAbbr || ""} @ ${v2HomeAbbr || ""}`,
+    matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short" }) : null,
+    (v2Cells.band && v2Cells.band.start) || (matchup.date ? matchupTimeLabel(matchup.date) : null),
+  ].filter(Boolean).join(" \u00b7 ");
+
+  // REST, the fourth context cell in both basketball files. Days between this
+  // team's last logged game and this one, derived from the log because that is
+  // the only place this app can answer it from. The mock's cell also says
+  // "no travel"; no feed here carries travel, so the cell says days and stops
+  // rather than padding the line.
+  const v2RestLabel = (() => {
+    const last = allGames.length ? allGames[allGames.length - 1] : null;
+    if (!last || !last.date || !matchup.date) return null;
+    const prev = new Date(last.date).getTime();
+    const next = new Date(matchup.date).getTime();
+    if (!Number.isFinite(prev) || !Number.isFinite(next)) return null;
+    const days = Math.round((next - prev) / 86400000) - 1;
+    if (!Number.isFinite(days) || days < 0) return null;
+    // Past about a week this is a layoff or an off-season, not rest, and the
+    // cell would be printing a true number that answers a different question.
+    // Nothing is the honest answer -- the block still renders, empty.
+    if (days > 7) return null;
+    return days === 0 ? "Back-to-back" : `${days} day${days === 1 ? "" : "s"}`;
+  })();
+
+  const v2Page = (
+    <PlayerDetailV2
+      sport="nba"
+      crumbFixture={v2Fixture}
+      crumbSelect={
+        <GameSelect
+          variant="crumb"
+          triggerLabel={v2Fixture}
+          groups={matchupsByDate}
+          value={matchupId}
+          logoFn={nbaTeamLogo}
+          onChange={(next) => {
+            setMatchupId(next.id);
+            setPlayerId(next.teamA.players[0].id);
+            setLine(null);
+            setOpponent("all");
+          }}
+        />
+      }
+      marketLabel={marketLabel}
+      onBack={onBack || (() => {})}
+      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPagePickAdded}
+      ownRail={{
+        label: v2OwnRoster.label,
+        players: v2Rail(v2OwnRoster),
+        legend: "No availability feed for this league, so no dots — never assumed. No starter flags either, so no starters/bench split.",
+      }}
+      oppRail={{ label: gameOppRoster.label, players: v2Rail(gameOppRoster) }}
+      // The band is built from the matchup, which is always there. The slate
+      // row only adds the two records and a real start time -- when it has no
+      // fixture for this game (out of season, or the log's opponent is not who
+      // the slate has this team facing) the card renders with those cells
+      // empty rather than the whole card disappearing.
+      band={(v2AwayAbbr && v2HomeAbbr) ? {
+        away: { abbr: v2AwayAbbr, name: matchup.teamA.label, record: (v2Cells.band || {}).awayRecord || null },
+        home: { abbr: v2HomeAbbr, name: matchup.teamB.label, record: (v2Cells.band || {}).homeRecord || null },
+        dateLabel: matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : null,
+        timeLabel: (v2Cells.band || {}).start || (matchup.date ? matchupTimeLabel(matchup.date) : null),
+        venue: matchup.venue || null,
+      } : null}
+      context={{
+        allowsLabel: `${gameOppAbbr || "OPP"} allows`,
+        allows: gameOppDef && gameOppDef.rating != null ? String(gameOppDef.rating) : null,
+        rank: gameOppDef ? `#${gameOppDef.rank} of ${TEAMS.length}` : null,
+        rankWord: gameOppTier || null,
+        rankColor: gameOppTier === "soft" ? "var(--pos)" : gameOppTier === "tough" ? "var(--neg)" : "var(--dim)",
+        lastMeeting: v2Last ? `${statValue(v2Last, market, rebSplit)} \u00b7 ${axisDateShort(v2Last.date)}` : null,
+        // The NBA file's fourth cell is REST. Days between games is derivable
+        // from the log; travel is not, so the cell says only what it knows.
+        parkLabel: "Rest",
+        park: v2RestLabel,
+      }}
+      player={{
+        name: player.name,
+        jersey: null,
+        team: player.team,
+        teamLabel: v2OwnRoster.label,
+        identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
+          matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
+        statusPill: null,
+        pills: usagePills({ sport: "nba", games: filtered, market }),
+        role: roleSentence({ sport: "nba", games: filtered }),
+        seasonStats: [
+          { label: "PTS", value: seasonAvg.pts.toFixed(1) },
+          { label: "REB", value: seasonAvg.reb.toFixed(1) },
+          { label: "AST", value: seasonAvg.ast.toFixed(1) },
+          { label: "MIN", value: seasonAvg.min.toFixed(1) },
+        ],
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="nba" team={player.team}
+            colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(player.espnId)}
+            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            imgBorder="1px solid var(--line)" fadeIn
+          />
+        ),
+      }}
+      markets={MARKETS.map((m) => ({
+        id: m.id, label: m.label, active: m.id === market,
+        onPick: () => { setMarket(m.id); setLine(null); },
+      }))}
+      filtersCount={activeFilterCount}
+      filtersOpen={filtersOpen}
+      onToggleFilters={() => setFiltersOpen((v) => !v)}
+      filtersPanel={filtersBody}
+      verdict={{
+        rate: values.length ? `${Math.round(v2Rate * 100)}%` : "\u2014",
+        rateColor: v2Rate >= 0.65 ? "var(--pos)" : v2Rate < 0.45 ? "var(--neg)" : "var(--text)",
+        sentence: values.length
+          ? `cleared ${Number(v2LiveLine).toFixed(1)} in ${v2Hits} of ${values.length} recent games`
+          : "no finished games in this window",
+        average: avg.toFixed(1),
+        line: Number(v2LiveLine).toFixed(1),
+        marketLine: Number(effectiveLine).toFixed(1),
+        adjusted: v2Adjusted,
+        onResetLine: () => setDragLine(null),
+        margin: `${v2Edge >= 0 ? "+" : ""}${v2Edge.toFixed(1)}`,
+        marginColor: v2Edge >= 0 ? "var(--pos)" : "var(--neg)",
+        odds: null,
+        sampleVerdict: `${values.length} games`,
+      }}
+      chart={{
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
+        adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
+        straightRun: 0,
+      }}
+      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
+      pickAdded={isPagePickAdded}
+    />
+  );
+
+  if (!compact) return v2Page;
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <PlayerDetailBreadcrumb
@@ -7606,6 +7798,185 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   }
 
 
+
+  // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
+  //
+  // Built from `Player Detail NFL v2.dc.html` -- that file, not MLB's. The
+  // four are structurally identical (same 29 labels in the same order, verified
+  // by diff) and differ in exactly two places, both of which are the point:
+  // this sport's fourth context cell, and this sport's usage pills.
+  //
+  // The drag handle moves the line without moving the market's: `v2LiveLine`
+  // is what every rate below is measured against, `effectiveLine` stays the
+  // number actually posted, and the verdict row offers the way back.
+  const v2LiveLine = isBinary || dragLine === null ? effectiveLine : dragLine;
+  const v2Adjusted = v2LiveLine !== effectiveLine;
+  const v2Hits = values.filter((v) => v > v2LiveLine).length;
+  const v2Rate = values.length ? v2Hits / values.length : 0;
+  const v2Edge = avg - v2LiveLine;
+
+  const v2OwnRoster = playerOnTeamA ? teamRoster : oppRoster;
+  const v2Cells = slateMatchupCells(slateGame, "nfl");
+
+  // The rail avatar is the app's standard avatar at 32px -- `inset` reveals the
+  // team gradient as the ring, the same way the board and the feed draw it.
+  // No availability dot: the NFL feeds this app reads carry no player-level
+  // status, and a green dot on every row would be decoration standing in for
+  // data (CLAUDE.md rule 2 -- unknown is no dot, never a colour).
+  const v2Rail = (roster) => ((roster || {}).players || []).map((pl) => ({
+    id: pl.id,
+    name: pl.name,
+    meta: railMeta ? railMeta(pl) : pl.pos,
+    active: pl.id === playerId,
+    dotFill: null,
+    dotRing: "var(--surface-1)",
+    // No batting order here, and no starter/depth-chart feed either, so the
+    // rail stays in roster order rather than inventing a hierarchy.
+    order: null,
+    avatar: (
+      <PlayerAvatar
+        name={pl.name} team={pl.team} sport="nfl" colorMap={NFL_TEAM_COLORS}
+        headshotSrc={nflHeadshot(pl)} size={32} inset={2} surface="var(--bg)"
+      />
+    ),
+    onSelect: () => { setPlayerId(pl.id); setLine(null); setOpponent("all"); },
+  }));
+
+  const v2Meetings = allGames.filter((g) => g.opp === gameOppAbbr);
+  const v2Last = v2Meetings.length ? v2Meetings[v2Meetings.length - 1] : null;
+
+  // Away is always teamA and home always teamB (see NFL_MATCHUPS -- the label
+  // reads "Cowboys @ Giants" with the Cowboys in teamA). Deriving the fixture
+  // from whichever side the *player* is on printed it backwards half the time.
+  const v2AwayAbbr = ((matchup.teamA.players[0] || {}).team) || null;
+  const v2HomeAbbr = ((matchup.teamB.players[0] || {}).team) || null;
+
+  const v2Fixture = [
+    `${v2AwayAbbr || ""} @ ${v2HomeAbbr || ""}`,
+    matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short" }) : null,
+    (v2Cells.band && v2Cells.band.start) || (matchup.date ? matchupTimeLabel(matchup.date) : null),
+  ].filter(Boolean).join(" \u00b7 ");
+
+  const v2Page = (
+    <PlayerDetailV2
+      sport="nfl"
+      crumbFixture={v2Fixture}
+      crumbSelect={
+        <GameSelect
+          variant="crumb"
+          triggerLabel={v2Fixture}
+          groups={NFL_MATCHUPS_BY_DATE}
+          value={matchupId}
+          logoFn={nflTeamLogo}
+          onChange={(next) => {
+            setMatchupId(next.id);
+            setPlayerId(next.teamA.players[0].id);
+            setLine(null);
+            setOpponent("all");
+          }}
+        />
+      }
+      marketLabel={marketLabel}
+      onBack={onBack || (() => {})}
+      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPagePickAdded}
+      ownRail={{
+        label: v2OwnRoster.label,
+        players: v2Rail(v2OwnRoster),
+        legend: "No availability feed for this league, so no dots — never assumed. Rail order is the roster's, not a depth chart.",
+      }}
+      oppRail={{ label: gameOppRoster.label, players: v2Rail(gameOppRoster) }}
+      // The band is built from the matchup, which is always there. The slate
+      // row only adds the two records and a real start time -- when it has no
+      // fixture for this game (out of season, or the log's opponent is not who
+      // the slate has this team facing) the card renders with those cells
+      // empty rather than the whole card disappearing.
+      band={(v2AwayAbbr && v2HomeAbbr) ? {
+        away: { abbr: v2AwayAbbr, name: matchup.teamA.label, record: (v2Cells.band || {}).awayRecord || null },
+        home: { abbr: v2HomeAbbr, name: matchup.teamB.label, record: (v2Cells.band || {}).homeRecord || null },
+        dateLabel: matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : null,
+        timeLabel: (v2Cells.band || {}).start || (matchup.date ? matchupTimeLabel(matchup.date) : null),
+        venue: matchup.venue || null,
+      } : null}
+      context={{
+        allowsLabel: `${gameOppAbbr || "OPP"} allows`,
+        allows: gameOppDef && gameOppDef.rating != null ? String(gameOppDef.rating) : null,
+        rank: gameOppDef ? `#${gameOppDef.rank} of ${NFL_TEAMS.length}` : null,
+        rankWord: gameOppTier || null,
+        rankColor: gameOppTier === "soft" ? "var(--pos)" : gameOppTier === "tough" ? "var(--neg)" : "var(--dim)",
+        lastMeeting: v2Last ? `${statValueNFL(v2Last, market)} \u00b7 ${axisDateShort(v2Last.date)}` : null,
+        // The NFL file's fourth cell is WEATHER, where MLB says PARK and the
+        // two basketball files say REST. Each page names its own.
+        parkLabel: "Weather",
+        // The mock's cell reads "Indoors · roof closed". Indoors is the only
+        // part of that this app can answer -- no forecast feed is wired -- and
+        // the venue name is already in the band card above, so an outdoor game
+        // leaves the cell empty rather than repeating the stadium under a
+        // heading that would then be describing the wrong thing.
+        park: (v2Cells.conditions && v2Cells.conditions.sub === "Indoors") ? "Indoors" : null,
+      }}
+      player={{
+        name: player.name,
+        // No provider this page reads carries an NFL jersey number, so the
+        // slot collapses rather than printing one.
+        jersey: null,
+        team: player.team,
+        teamLabel: v2OwnRoster.label,
+        identity: [v2OwnRoster.label, NFL_POSITION_WORD[player.pos] || player.pos,
+          matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
+        statusPill: null,
+        pills: usagePills({ sport: "nfl", games: filtered, position: player.pos }),
+        role: roleSentence({ sport: "nfl", games: filtered, position: player.pos }),
+        seasonStats: seasonAvg.map((s) => ({ label: s.label, value: s.value.toFixed(s.decimals) })),
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="nfl" team={player.team}
+            colorMap={NFL_TEAM_COLORS} headshotSrc={nflHeadshot(player)}
+            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            imgBorder="1px solid var(--line)" fadeIn
+          />
+        ),
+      }}
+      markets={playerMarkets.map((m) => ({
+        id: m.id, label: m.label, active: m.id === market,
+        onPick: () => { setMarket(m.id); setLine(null); },
+      }))}
+      filtersCount={activeFilterCount}
+      filtersOpen={filtersOpen}
+      onToggleFilters={() => setFiltersOpen((v) => !v)}
+      filtersPanel={filtersBody}
+      verdict={{
+        rate: values.length ? `${Math.round(v2Rate * 100)}%` : "\u2014",
+        rateColor: v2Rate >= 0.65 ? "var(--pos)" : v2Rate < 0.45 ? "var(--neg)" : "var(--text)",
+        sentence: values.length
+          ? `cleared ${Number(v2LiveLine).toFixed(1)} in ${v2Hits} of ${values.length} recent games`
+          : "no finished games in this window",
+        average: avg.toFixed(1),
+        line: Number(v2LiveLine).toFixed(1),
+        marketLine: Number(effectiveLine).toFixed(1),
+        adjusted: v2Adjusted,
+        onResetLine: () => setDragLine(null),
+        margin: `${v2Edge >= 0 ? "+" : ""}${v2Edge.toFixed(1)}`,
+        marginColor: v2Edge >= 0 ? "var(--pos)" : "var(--neg)",
+        // No real NFL prices anywhere in this app. The cell keeps its slot and
+        // renders an em dash rather than a hit rate re-expressed as a price.
+        odds: null,
+        sampleVerdict: `${values.length} games`,
+      }}
+      chart={{
+        games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
+        adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
+        straightRun: 0,
+      }}
+      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
+      pickAdded={isPagePickAdded}
+    />
+  );
+
+  if (!compact) return v2Page;
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <PlayerDetailBreadcrumb
@@ -9888,6 +10259,218 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   }
 
 
+
+  // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
+  //
+  // Built from `Player Detail WNBA v2.dc.html` -- that file, not MLB's. The
+  // four are structurally identical (same 29 labels in the same order, verified
+  // by diff) and differ in exactly two places, both of which are the point:
+  // this sport's fourth context cell, and this sport's usage pills.
+  //
+  // The drag handle moves the line without moving the market's: `v2LiveLine`
+  // is what every rate below is measured against, `effectiveLine` stays the
+  // number actually posted, and the verdict row offers the way back.
+  const v2LiveLine = isBinary || dragLine === null ? effectiveLine : dragLine;
+  const v2Adjusted = v2LiveLine !== effectiveLine;
+  const v2Hits = values.filter((v) => v > v2LiveLine).length;
+  const v2Rate = values.length ? v2Hits / values.length : 0;
+  const v2Edge = avg - v2LiveLine;
+
+  const v2OwnRoster = playerOnTeamA ? matchup.teamA : matchup.teamB;
+  const v2Cells = slateMatchupCells(slateGame, "wnba");
+
+  const v2RailRow = (pl) => ({
+    id: pl.id,
+    name: pl.name,
+    meta: railMeta ? railMeta(pl) : pl.pos,
+    active: pl.id === playerId,
+    dotFill: (STATUS[statusOf(pl)] || {}).dot || null,
+    dotRing: "var(--surface-1)",
+    order: null,
+    avatar: (
+      <PlayerAvatar
+        name={pl.name} team={pl.team} sport="wnba" colorMap={WNBA_TEAM_COLORS}
+        headshotSrc={wnbaHeadshot(pl.espnId)} size={32} inset={2} surface="var(--bg)"
+      />
+    ),
+    onSelect: () => { setPlayerId(pl.id); setLine(null); setOpponent("all"); },
+  });
+
+  // This league's answer to MLB's pitchers-then-batting-order rail. The
+  // starter flags are real -- `starter: true` on exactly five athletes in the
+  // box score (see fetchWNBAStarters) -- so the five lead and the bench
+  // follows after a break. When there are no flags, sectionsFor returns one
+  // unlabelled section and the rail is a flat list rather than a guessed five.
+  const v2Rail = (roster) => {
+    const sections = sectionsFor((roster || {}).players || [], (roster || {}).abbr);
+    const out = [];
+    sections.forEach((sec, si) => {
+      (sec.players || []).forEach((pl, i) => {
+        out.push({ ...v2RailRow(pl), separated: si > 0 && i === 0 });
+      });
+    });
+    return out;
+  };
+
+  const v2Meetings = allGames.filter((g) => g.opp === gameOppAbbr);
+  const v2Last = v2Meetings.length ? v2Meetings[v2Meetings.length - 1] : null;
+
+  // REST, the fourth context cell in both basketball files. Days between this
+  // team's last logged game and this one, derived from the log because that is
+  // the only place this app can answer it from. The mock's cell also says
+  // "no travel"; no feed here carries travel, so the cell says days and stops
+  // rather than padding the line.
+  const v2RestLabel = (() => {
+    const last = allGames.length ? allGames[allGames.length - 1] : null;
+    if (!last || !last.date || !matchup.date) return null;
+    const prev = new Date(last.date).getTime();
+    const next = new Date(matchup.date).getTime();
+    if (!Number.isFinite(prev) || !Number.isFinite(next)) return null;
+    const days = Math.round((next - prev) / 86400000) - 1;
+    if (!Number.isFinite(days) || days < 0) return null;
+    // Past about a week this is a layoff or an off-season, not rest, and the
+    // cell would be printing a true number that answers a different question.
+    // Nothing is the honest answer -- the block still renders, empty.
+    if (days > 7) return null;
+    return days === 0 ? "Back-to-back" : `${days} day${days === 1 ? "" : "s"}`;
+  })();
+
+  // Away is always teamA and home always teamB (see NFL_MATCHUPS -- the label
+  // reads "Cowboys @ Giants" with the Cowboys in teamA). Deriving the fixture
+  // from whichever side the *player* is on printed it backwards half the time.
+  const v2AwayAbbr = ((matchup.teamA.players[0] || {}).team) || null;
+  const v2HomeAbbr = ((matchup.teamB.players[0] || {}).team) || null;
+
+  const v2Fixture = [
+    `${v2AwayAbbr || ""} @ ${v2HomeAbbr || ""}`,
+    matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short" }) : null,
+    (v2Cells.band && v2Cells.band.start) || (matchup.date ? matchupTimeLabel(matchup.date) : null),
+  ].filter(Boolean).join(" \u00b7 ");
+
+  // The starters split is a real fact about a real game, but usually the
+  // *last* one -- an upcoming game has no box score. The legend says which,
+  // rather than letting a prior game's five read as tonight's.
+  const v2StartersNote = starters && starters.byTeam && starters.byTeam[(v2OwnRoster || {}).abbr]
+    ? `Top five started ${starters.fromThisGame ? "this game" : "the last game"}; the rest are bench. `
+    : "";
+
+  const v2Page = (
+    <PlayerDetailV2
+      sport="wnba"
+      crumbFixture={v2Fixture}
+      crumbSelect={
+        <GameSelect
+          variant="crumb"
+          triggerLabel={v2Fixture}
+          groups={matchupsByDate}
+          value={matchupId}
+          logoFn={wnbaTeamLogo}
+          onChange={(next) => {
+            setMatchupId(next.id);
+            jumpRequest.current = null;
+            setPlayerId(next.teamA.players[0].id);
+            setLine(null);
+            setOpponent("all");
+          }}
+        />
+      }
+      marketLabel={marketLabel}
+      onBack={onBack || (() => {})}
+      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPagePickAdded}
+      ownRail={{
+        label: v2OwnRoster.label,
+        players: v2Rail(v2OwnRoster),
+        legend: `Dot: green available, amber questionable, red out; none when unknown — never assumed. ${v2StartersNote}`.trim(),
+      }}
+      oppRail={{ label: gameOppRoster.label, players: v2Rail(gameOppRoster) }}
+      // The band is built from the matchup, which is always there. The slate
+      // row only adds the two records and a real start time -- when it has no
+      // fixture for this game (out of season, or the log's opponent is not who
+      // the slate has this team facing) the card renders with those cells
+      // empty rather than the whole card disappearing.
+      band={(v2AwayAbbr && v2HomeAbbr) ? {
+        away: { abbr: v2AwayAbbr, name: matchup.teamA.label, record: (v2Cells.band || {}).awayRecord || null },
+        home: { abbr: v2HomeAbbr, name: matchup.teamB.label, record: (v2Cells.band || {}).homeRecord || null },
+        dateLabel: matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : null,
+        timeLabel: (v2Cells.band || {}).start || (matchup.date ? matchupTimeLabel(matchup.date) : null),
+        venue: matchup.venue || null,
+      } : null}
+      context={{
+        allowsLabel: `${gameOppAbbr || "OPP"} allows`,
+        allows: gameOppDef && gameOppDef.rating != null ? String(gameOppDef.rating) : null,
+        rank: gameOppDef ? `#${gameOppDef.rank} of ${WNBA_TEAMS.length}` : null,
+        rankWord: gameOppTier || null,
+        rankColor: gameOppTier === "soft" ? "var(--pos)" : gameOppTier === "tough" ? "var(--neg)" : "var(--dim)",
+        lastMeeting: v2Last ? `${statValue(v2Last, market, rebSplit)} \u00b7 ${axisDateShort(v2Last.date)}` : null,
+        // The WNBA file's fourth cell is REST, same as the NBA file's.
+        parkLabel: "Rest",
+        park: v2RestLabel,
+      }}
+      player={{
+        name: player.name,
+        jersey: null,
+        team: player.team,
+        teamLabel: v2OwnRoster.label,
+        identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
+          matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
+        statusPill: statusOf(player) ? <StatusPill status={statusOf(player)} /> : null,
+        pills: usagePills({ sport: "wnba", games: filtered, market }),
+        role: roleSentence({ sport: "wnba", games: filtered }),
+        seasonStats: [
+          { label: "PTS", value: seasonAvg.pts.toFixed(1) },
+          { label: "REB", value: seasonAvg.reb.toFixed(1) },
+          { label: "AST", value: seasonAvg.ast.toFixed(1) },
+          { label: "MIN", value: seasonAvg.min.toFixed(1) },
+        ],
+        avatar: (
+          <PlayerAvatar
+            key={player.id} name={player.name} alt={player.name} sport="wnba" team={player.team}
+            colorMap={WNBA_TEAM_COLORS} headshotSrc={wnbaHeadshot(player.espnId)}
+            status={statusOf(player)}
+            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            imgBorder="1px solid var(--line)" fadeIn
+          />
+        ),
+      }}
+      markets={playerMarkets.map((m) => ({
+        id: m.id, label: m.label, active: m.id === market,
+        onPick: () => { setMarket(m.id); setLine(null); },
+      }))}
+      filtersCount={activeFilterCount}
+      filtersOpen={filtersOpen}
+      onToggleFilters={() => setFiltersOpen((v) => !v)}
+      filtersPanel={filtersBody}
+      verdict={{
+        rate: values.length ? `${Math.round(v2Rate * 100)}%` : "\u2014",
+        rateColor: v2Rate >= 0.65 ? "var(--pos)" : v2Rate < 0.45 ? "var(--neg)" : "var(--text)",
+        sentence: values.length
+          ? `cleared ${Number(v2LiveLine).toFixed(1)} in ${v2Hits} of ${values.length} recent games`
+          : "no finished games in this window",
+        average: avg.toFixed(1),
+        line: Number(v2LiveLine).toFixed(1),
+        marketLine: Number(effectiveLine).toFixed(1),
+        adjusted: v2Adjusted,
+        onResetLine: () => setDragLine(null),
+        margin: `${v2Edge >= 0 ? "+" : ""}${v2Edge.toFixed(1)}`,
+        marginColor: v2Edge >= 0 ? "var(--pos)" : "var(--neg)",
+        odds: null,
+        sampleVerdict: `${values.length} games`,
+      }}
+      chart={{
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
+        adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
+        straightRun: 0,
+      }}
+      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
+      pickAdded={isPagePickAdded}
+    />
+  );
+
+  if (!compact) return v2Page;
+
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
     <PlayerDetailBreadcrumb
@@ -11952,6 +12535,17 @@ const MLB_POSITION_WORD = {
   C: "catcher", "1B": "first base", "2B": "second base", "3B": "third base",
   SS: "shortstop", LF: "left field", CF: "center field", RF: "right field",
   DH: "designated hitter", SP: "starting pitcher", RP: "relief pitcher", P: "pitcher",
+};
+const NFL_POSITION_WORD = {
+  QB: "quarterback", RB: "running back", FB: "fullback", WR: "wide receiver",
+  TE: "tight end", K: "kicker", DEF: "defense",
+};
+// Both basketball files write the same words, so one map serves them. The
+// mocks say plain "forward" and "guard" rather than the roster's SF/PF/SG/PG.
+const HOOPS_POSITION_WORD = {
+  PG: "guard", SG: "guard", G: "guard", "G-F": "guard",
+  SF: "forward", PF: "forward", F: "forward", "F-C": "forward",
+  C: "center",
 };
 
 // Jersey numbers. statsapi carries `primaryNumber` on /people/{id} -- the mock
@@ -14826,7 +15420,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       onBack={onBack || (() => {})}
       onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
       watching={isPagePickAdded}
-      ownRail={{ label: (liveTeamRoster || {}).label, players: railPlayers(liveTeamRoster, "team") }}
+      ownRail={{
+        label: (liveTeamRoster || {}).label,
+        players: railPlayers(liveTeamRoster, "team"),
+        legend: "Dot: green available, amber questionable, red out. Number: batting order once the lineup posts. Neither shown when unknown — never assumed.",
+      }}
       oppRail={{ label: (liveOppRoster || {}).label || "Loading…", players: railPlayers(liveOppRoster, "opp") }}
       band={slateCells.band ? {
         away: { abbr: slateCells.band.awayAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.awayAbbr] || {}).label, record: slateCells.band.awayRecord },

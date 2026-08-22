@@ -153,6 +153,14 @@ export default function PlayerAvatar({
               opacity: fadeIn && !loaded ? 0 : 1,
               transition: fadeIn ? "opacity 0.15s ease" : undefined,
             }}
+            // `ref` as well as onLoad: an image already in the browser cache
+            // can finish decoding before React attaches the handler, so onLoad
+            // never fires and a `fadeIn` avatar stays at opacity 0 forever --
+            // a black hole where the photo is, because `backing` paints under
+            // it. Seen on the NFL page, whose headshots were already cached by
+            // the v1 render. Checking `complete` at attach covers that race;
+            // onLoad still covers the normal cold fetch.
+            ref={(el) => { if (el && el.complete && el.naturalWidth) setLoaded(true); }}
             onLoad={() => setLoaded(true)}
             onError={() => setFailed((n) => n + 1)}
           />

@@ -205,15 +205,18 @@ export default function PlayerDetailV2({
               <RosterRow key={p.id} p={p} sport={sport} onSelect={p.onSelect} />
             ))}
           </div>
-          <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
-            {/* The mock's legend describes one corner dot carrying lineup
-                state. Here the corner is availability -- the fact all four
-                leagues report, and the corner CLAUDE.md rule 3 reserves --
-                while lineup state is the batting-order number, which is the
-                same fact said more usefully. The mock's closing clause is
-                kept because it still governs both: nothing is assumed. */}
-            Dot: green available, amber questionable, red out. Number: batting order once the lineup posts. Neither shown when unknown — never assumed.
-          </div>
+          {/* The mock's legend describes one corner dot carrying lineup state.
+              What the corner actually carries here is availability -- the fact
+              all four leagues report, and the corner CLAUDE.md rule 3 reserves
+              -- so each page passes the legend that is true of its own league
+              rather than repeating a sentence about a mark that isn't there.
+              The mock's closing clause survives in all of them: never
+              assumed. */}
+          {ownRail.legend && (
+            <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+              {ownRail.legend}
+            </div>
+          )}
         </div>
 
         <div>

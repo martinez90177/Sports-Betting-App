@@ -56,50 +56,104 @@ function mlbPitcherPills({ games, mlbId }) {
 }
 
 // ---------------------------------------------------------------------------
-// NBA / WNBA -- the mock's own four: Minutes, Usage, Shots/g, FT rate.
+// NBA / WNBA -- the two basketball mocks name Minutes, Usage, Shots/g, FT rate.
 //
-// Usage rate needs team totals (USG% is a share of team possessions while on
-// the floor) and the app has no team-level box score, so that pill is returned
-// only if a caller supplies it and is otherwise absent. The other three come
-// straight from the scoped log.
+// Two of those cannot be computed from what this app has, and the codebase had
+// already reached that conclusion once: see hoopsRateAgg, which refuses FG%,
+// TS% and usage for the same reason. The logs carry three-point and free-throw
+// makes and attempts but no total field goals, so "Shots/g" has no input and
+// "FT rate" -- conventionally FTA/FGA -- has only half of one. Usage rate
+// additionally needs team possessions while the player is on the floor, which
+// no feed here reports; it renders only when a caller can supply a real one.
+//
+// So rather than approximate a stat bettors read precisely, this shows the
+// attempt volumes that *are* measured, ordered by what the market is about:
+// a threes prop reads on three-point attempts, everything else on minutes.
 // ---------------------------------------------------------------------------
-function hoopsPills({ games, usageRate }) {
-  const fga = avg(games, (g) => g.fga);
-  const fta = avg(games, (g) => g.fta);
-  return [
-    pill('Minutes', one(avg(games, (g) => g.minutes))),
-    pill('Usage', pct(usageRate)),
-    pill('Shots/g', one(fga)),
-    // FT rate is the conventional FTA/FGA, not free throws per game.
-    pill('FT rate', fga ? (fta / fga).toFixed(2) : null),
-  ].filter(Boolean);
+const HOOPS_THREES = new Set(["3pm", "fg3a", "3pa"]);
+
+function hoopsPills({ games, market, usageRate }) {
+  const minutes = pill("Minutes", one(avg(games, (g) => g.minutes)));
+  const threes = pill("3PA/g", one(avg(games, (g) => g.fg3a)));
+  const fts = pill("FTA/g", one(avg(games, (g) => g.fta)));
+  const usage = pill("Usage", pct(usageRate));
+  const lead = HOOPS_THREES.has(market) ? [threes, minutes] : [minutes, threes];
+  return [...lead, fts, usage].filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------
-// NFL -- the mock's own four: Snaps, Routes, Target share, aDOT.
+// NFL -- the mock names Snaps, Routes, Target share, aDOT.
 //
-// Only snap share is in the logs this app reads. Routes run, target share and
-// average depth of target are charting data (PFF/NextGen) behind no feed here,
-// so those three pills do not render rather than being approximated -- a
-// target share guessed from receptions would be a number nobody measured.
+// None of the four is measured here. Routes run, target share and average
+// depth of target are charting data (PFF/NextGen) behind no feed this app
+// reads. Snap share looks available -- normalizeNFLGame sets `snapPct` -- but
+// estimateSnapPct derives it from a hand-written role profile and that game's
+// touches, so a pill labelled "Snaps" would present a guess as a measurement,
+// which is the one thing this app does not do.
+//
+// What the box score does carry is volume, and volume is what the mock's four
+// were reaching for: whether the role supports the prop. Which volume matters
+// depends on the position, so the row is built per position rather than one
+// list with different numbers.
 // ---------------------------------------------------------------------------
-function nflPills({ games, routePct, targetShare, adot }) {
+function nflPills({ games, position, routePct, targetShare, adot }) {
+  const per = (pick) => avg(games, pick);
+  const supplied = [
+    pill("Routes", pct(routePct, 0)),
+    pill("Target share", pct(targetShare, 0)),
+    pill("aDOT", one(adot)),
+  ].filter(Boolean);
+
+  if (position === "QB") {
+    const att = per((g) => g.att);
+    const comp = per((g) => g.comp);
+    const yds = per((g) => g.passYds);
+    return [
+      pill("Att/g", one(att)),
+      pill("Comp%", att ? `${((comp / att) * 100).toFixed(1)}%` : null),
+      pill("Yds/att", att ? (yds / att).toFixed(1) : null),
+      ...supplied,
+    ].filter(Boolean);
+  }
+
+  if (position === "RB") {
+    const carries = per((g) => g.rushAtt);
+    const rushYds = per((g) => g.rushYds);
+    return [
+      pill("Carries/g", one(carries)),
+      pill("Targets/g", one(per((g) => g.tgt))),
+      pill("Yds/carry", carries ? (rushYds / carries).toFixed(1) : null),
+      ...supplied,
+    ].filter(Boolean);
+  }
+
+  if (position === "K") {
+    return [
+      pill("FGA/g", one(per((g) => g.fga))),
+      pill("XPA/g", one(per((g) => g.xpa))),
+      ...supplied,
+    ].filter(Boolean);
+  }
+
+  // WR and TE.
+  const rec = per((g) => g.rec);
+  const recYds = per((g) => g.recYds);
   return [
-    pill('Snaps', pct(avg(games, (g) => g.snapPct), 0)),
-    pill('Routes', pct(routePct, 0)),
-    pill('Target share', pct(targetShare, 0)),
-    pill('aDOT', one(adot)),
+    pill("Targets/g", one(per((g) => g.tgt))),
+    pill("Rec/g", one(rec)),
+    pill("Yds/rec", rec ? (recYds / rec).toFixed(1) : null),
+    ...supplied,
   ].filter(Boolean);
 }
 
-export function usagePills({ sport, market, games, isPitcher, battingOrder, mlbId, teammateIds, usageRate, routePct, targetShare, adot }) {
+export function usagePills({ sport, market, games, position, isPitcher, battingOrder, mlbId, teammateIds, usageRate, routePct, targetShare, adot }) {
   if (sport === "mlb") {
     return isPitcher
       ? mlbPitcherPills({ games, mlbId })
       : mlbBatterPills({ games, battingOrder, mlbId, teammateIds });
   }
-  if (sport === "nfl") return nflPills({ games, routePct, targetShare, adot });
-  return hoopsPills({ games, usageRate });
+  if (sport === "nfl") return nflPills({ games, position, routePct, targetShare, adot });
+  return hoopsPills({ games, market, usageRate });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,12 +204,20 @@ export function roleSentence({ sport, market, games, isPitcher, battingOrder, op
   }
 
   if (sport === "nfl") {
-    const snaps = (games || []).map((g) => g.snapPct).filter(Number.isFinite);
-    if (snaps.length >= 3) {
-      const low = Math.round(Math.min(...snaps));
-      clauses.push(low >= 60
-        ? `Snap share has not fallen below ${low}% in this sample, so the log is measuring a full-time role.`
-        : `Snap share falls as low as ${low}% here, so some of these games came from a part-time role.`);
+    // Deliberately not snap share: `snapPct` on an NFL game is estimated from
+    // a role profile (see estimateSnapPct), and a sentence about the floor is
+    // only worth writing if the floor is measured. Touches are.
+    const touch = position === "QB" ? (g) => g.att
+      : position === "RB" ? (g) => (g.rushAtt || 0) + (g.tgt || 0)
+      : (g) => g.tgt;
+    const word = position === "QB" ? "pass attempts" : position === "RB" ? "touches" : "targets";
+    const touches = (games || []).map(touch).filter(Number.isFinite);
+    if (touches.length >= 3) {
+      const low = Math.min(...touches);
+      const floor = position === "QB" ? 20 : position === "RB" ? 10 : 4;
+      clauses.push(low >= floor
+        ? `No game in this sample came in under ${low} ${word}, so the log isn't measuring a smaller role than this week's.`
+        : `${word[0].toUpperCase()}${word.slice(1)} drop as low as ${low} here, so at least one of these games came from a smaller role.`);
     }
   }
 
