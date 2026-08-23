@@ -20181,6 +20181,16 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     </div>
   );
 
+  // The mock gives this strip four cells: Showing, Markets, Window, Thin
+  // samples. Two of them are gone, and only because of the control bar below
+  // it -- the strip was stating "Markets: Pass Yds" directly above a live
+  // Markets row with Pass Yds lit, and "Window: L10" above the L10 pill. A
+  // summary of a control that is on screen a centimetre away is not a summary,
+  // it is the same thing said twice.
+  //
+  // What is left is what the bar cannot say: how many of the rows survived the
+  // filters, and what happens to a sample under the minimum. State, not
+  // controls -- which is the division the two boxes now draw.
   const v2SummaryStrip = (
     <div style={{
       display: "flex", alignItems: "center", gap: 0, marginTop: 12,
@@ -20191,24 +20201,94 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         <div style={FEED_CELL_LABEL}>Showing</div>
         <div style={FEED_CELL_VALUE}>{filteredRows.length} of {rows.length}</div>
       </div>
-      <div style={{ flex: 1.2, minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
-        <div style={FEED_CELL_LABEL}>Markets</div>
-        <div style={{ ...FEED_CELL_VALUE, overflow: "hidden", textOverflow: "ellipsis" }}>
-          {activeMarketLabel || "All markets"}
-        </div>
-      </div>
-      <div style={{ flex: 1, minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
-        <div style={FEED_CELL_LABEL}>Window</div>
-        <div style={FEED_CELL_VALUE}>
-          {(FEED_WINDOWS.find((w) => w[1] === sampleWindow) || ["L10"])[0]}
-        </div>
-      </div>
       <div style={{ flex: 1.7, minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
         <div style={FEED_CELL_LABEL}>Thin samples</div>
         {/* States the rule rather than a count: a rate under the minimum is
             not hidden, it prints "too few". */}
         <div style={{ ...FEED_CELL_VALUE, fontSize: 14 }}>
           {minGames === MIN_SAMPLE_ALL ? "Shown at any size" : `Under ${minGames} games read "too few"`}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Markets, Side, Games counted and Lines, always on screen above the table.
+  //
+  // The v2 file draws these inside the Filters panel, and this page followed
+  // it. Alex's call (2026-08-23) is that it was the wrong read of the screen:
+  // these four are not filters you set once and forget, they are how you move
+  // around the feed -- switch market, flip to unders, widen the window -- and
+  // putting a click in front of each of them taxed the most frequent thing
+  // anyone does here. What stays behind the Filters button is the rest, which
+  // genuinely is set-and-forget: minimum sample, defence tier, role, sort,
+  // price.
+  //
+  // Desktop only. The phone already has all four at the top of its Refine
+  // sheet, where the same argument does not apply -- there is no room for a
+  // permanent 17-pill bar on a 390px screen, and the sheet is one tap away.
+  const v2ControlBar = (
+    <div style={{
+      marginTop: 12, padding: "14px 18px 16px",
+      background: "var(--surface-sunken)", border: "1px solid var(--line)", borderRadius: 6,
+    }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+        <span className="pp-mono" style={FEED_CELL_LABEL}>Markets</span>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={() => setSelectedMarkets([])}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedMarkets([]); } }}
+          className="pp-mono"
+          style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
+        >
+          All markets
+        </span>
+      </div>
+      {/* Every market for this sport, as pills. There is no "All" pill: an
+          empty selection already means all props -- that is what the feed
+          reads it as -- so "nothing selected" is the all state, showing as
+          every pill sitting unselected rather than as an extra control that
+          has to be kept in sync with the others. "All markets" clears back
+          to it. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9, alignItems: "center" }}>
+        {propGroups.flatMap((g) => g.markets).map((m) => {
+          const on = selectedMarkets.includes(m.id);
+          return (
+            <span
+              key={m.id}
+              role="button"
+              aria-pressed={on}
+              tabIndex={0}
+              onClick={() => setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id])}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id]); } }}
+              className="pp-mono"
+              style={{
+                fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
+                background: on ? "var(--amber)" : "transparent",
+                color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
+                border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+              }}
+            >
+              {m.label}
+            </span>
+          );
+        })}
+      </div>
+      <div style={{
+        display: "flex", alignItems: "flex-end", gap: 24, flexWrap: "wrap",
+        marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)",
+      }}>
+        <div>
+          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Side</div>
+          <DirectionSwitcher value={direction} onChange={setDirection} />
+        </div>
+        <div>
+          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Games counted</div>
+          <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
+        </div>
+        <div>
+          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Lines</div>
+          <LinesModeSwitcher value={linesMode} onChange={setLinesMode} />
         </div>
       </div>
     </div>
@@ -20409,8 +20489,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           );
         })}
         {/* Filters lives on this row, at its right end, which is where the
-            mock puts it -- and it is now the only way into the panel, since
-            the controls it opens are no longer always on screen. */}
+            mock puts it. What it opens is the set-and-forget half -- minimum
+            sample, defence, role, sort, price -- since the four controls
+            everyone touches constantly sit under the summary strip below. */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, paddingBottom: 8, alignSelf: "flex-end" }}>
           {filtersButton}
           {screensButton}
@@ -20418,6 +20499,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       </div>
 
       {v2SummaryStrip}
+      {!isNarrow && v2ControlBar}
 
       {/* The active-filter chips.
 
@@ -20463,94 +20545,22 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       </>
       )}
 
-      {/* Markets / Side / Games counted / Lines. The mock keeps these inside
-          the Filters panel rather than always-on above the table -- the screen
-          should open on props, not on a block of controls. The panel is inline
-          and accent-bordered, which is how the file draws it. */}
+      {/* The panel's header. Markets / Side / Games counted / Lines used to
+          open here, as the mock draws them; they are the always-on control bar
+          above the table now (see v2ControlBar for why). What is left below
+          the header is the half that is genuinely set once. The panel stays
+          inline and accent-bordered, which is how the file draws it. */}
       {feedFiltersOpen && !isNarrow && (
-      <div style={{ marginTop: 12, padding: "16px 18px", background: "var(--surface-sunken)", border: "1px solid var(--amber)", borderBottom: "none", borderRadius: "6px 6px 0 0" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)", marginBottom: 4 }}>
+      <div style={{ marginTop: 12, padding: "16px 18px 0", background: "var(--surface-sunken)", border: "1px solid var(--amber)", borderBottom: "none", borderRadius: "6px 6px 0 0" }}>
+        {/* marginBottom matches the 14px the panel below rules its own
+             sections apart by, so the header divider and the first control
+             under it keep the same rhythm as every divider further down. */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
           <span className="pp-display" style={{ fontWeight: 600, fontSize: 16 }}>Filters</span>
           <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)" }}>rates always read the full log</span>
           <span role="button" tabIndex={0} onClick={resetFeedFilters} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); resetFeedFilters(); } }} className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))", cursor: "pointer" }}>Reset</span>
           <span role="button" tabIndex={0} onClick={() => setFeedFiltersOpen(false)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(false); } }} className="pp-mono" style={{ fontSize: 14, color: "var(--text-2)", cursor: "pointer" }}>×</span>
         </div>
-      {/* The existing control clusters, unchanged and now inside the panel.
-          They lose the card they used to sit in -- the panel is the card. */}
-      <div>
-
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 24, padding: 16, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 100%" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-              <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>
-                Markets
-              </span>
-              <span
-                role="button"
-                onClick={() => setSelectedMarkets([])}
-                className="pp-mono"
-                style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
-              >
-                All markets
-              </span>
-            </div>
-            {/* Every market for this sport, as pills. This used to be four
-                pinned quick-picks with the rest behind a dropdown, which hid
-                most of the list behind a click and made the four look like
-                the whole set.
-
-                There is no "All" pill. An empty selection already means all
-                props -- that is what the feed reads it as -- so "nothing
-                selected" is the all state, and it shows as every pill sitting
-                unselected rather than as a fifth control that has to be kept
-                in sync with the other four. "All markets" above clears back
-                to it.
-
-                The phone's Refine sheet keeps the dropdown (see the second
-                PropTypePicker below): sixteen wrapping pills on a 390px sheet
-                is a wall, and there the list genuinely does need collapsing. */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9, alignItems: "center" }}>
-              {propGroups.flatMap((g) => g.markets).map((m) => {
-                const on = selectedMarkets.includes(m.id);
-                return (
-                  <span
-                    key={m.id}
-                    role="button"
-                    aria-pressed={on}
-                    onClick={() => setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id])}
-                    className="pp-mono"
-                    style={{
-                      fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
-                      background: on ? "var(--amber)" : "transparent",
-                      color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
-                      border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
-                    }}
-                  >
-                    {m.label}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>Side</div>
-            <DirectionSwitcher value={direction} onChange={setDirection} />
-          </div>
-          <div>
-            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>Games counted</div>
-            <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
-          </div>
-          <div>
-            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>Lines</div>
-            <LinesModeSwitcher value={linesMode} onChange={setLinesMode} />
-          </div>
-        </div>
-      </div>
-
-      {/* Result bar: how much the filters are costing, the active-filter
-          pill, and the form-graph legend that teaches the three marks used
-          in every row's chart. */}
       </div>
       )}
       {feedFiltersOpen && isNarrow && (
