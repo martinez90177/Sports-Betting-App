@@ -15,6 +15,7 @@ import {
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsModal from "./SettingsModal.jsx";
+import SettingsPage from "./SettingsPage.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
@@ -407,11 +408,13 @@ const MARKETS_ROW_3 = [
   { id: "pr", label: "PR" },
   { id: "pa", label: "PA" },
 ];
+// 3PA, FTM and FTA are gone at Alex's call (2026-08-23). Attempt markets are
+// not props anyone lists, and with every market now showing as a pill rather
+// than hiding behind a dropdown, three unlistable ones were three pills of
+// noise. Their ids stay handled in statValue and the category/defence maps --
+// WNBA shares that switch, and an id that no longer appears costs nothing.
 const MARKETS_ROW_4 = [
   { id: "3pm", label: "3PM" },
-  { id: "3pa", label: "3PA" },
-  { id: "ftm", label: "FTM" },
-  { id: "fta", label: "FTA" },
 ];
 const MARKETS_ROW_5 = [
   { id: "td", label: "Triple-Double", binary: true },
@@ -22523,6 +22526,18 @@ export default function PropLedger() {
   });
   const [picksOpen, setPicksOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Where "All settings" was opened from. The Settings page is reached from
+  // the cog, which is on every screen, so "back" is not a fixed destination --
+  // the mock hard-codes "Back to Prop Feed" because a static file has only one
+  // place to go. Null means it was never opened this session.
+  const [settingsReturn, setSettingsReturn] = useState(null);
+  // The quick panel's way through to the full page. Records the screen the cog
+  // was clicked on so Done and the rail's back link return to it.
+  const openFullSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsReturn(page === "settings" ? null : page);
+    setPage("settings");
+  }, [page]);
   // Drives the Settings dialog's centered-vs-bottom-sheet placement. 560 is
   // the same breakpoint the header tagline drops at (.hide-narrow).
   const isNarrowShell = useIsNarrow(560);
@@ -23013,6 +23028,22 @@ export default function PropLedger() {
     goToProp(player.sport, player.playerId, market);
   };
 
+  if (page === "settings") {
+    const back = PAGES.find((x) => x.id === (settingsReturn || "feed"));
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
+        <SettingsPage
+          returnLabel={(back && back.label) || "Prop Feed"}
+          onLeave={() => setPage(settingsReturn || "feed")}
+          onNavigate={(id) => { setSettingsReturn(null); setPage(id); }}
+          onHome={() => { setSettingsReturn(null); goHome(); }}
+          sportsbooks={SPORTSBOOKS}
+          isNarrow={isNarrowShell}
+        />
+      </div>
+    );
+  }
+
   return (
     // The v2 container. Every mock wraps the nav *and* the content in one
     // max-width:1600px element, which is why the logo lines up with the left
@@ -23161,7 +23192,7 @@ export default function PropLedger() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         isNarrow={isNarrowShell}
-        sportsbooks={SPORTSBOOKS}
+        onOpenFullSettings={openFullSettings}
       />
     </div>
   );

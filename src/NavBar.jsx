@@ -36,7 +36,9 @@ const TAB_TYPE = {
   whiteSpace: "nowrap",
 };
 
-export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge = null }) {
+// `extraRight` leads the right-hand group. Only the Settings page passes one:
+// its mock puts a "Done ×" control there, ahead of the cog.
+export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge = null, extraRight = null }) {
   return (
     <nav
       style={{
@@ -87,6 +89,7 @@ export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge
       </span>
 
       <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+        {extraRight}
         <button
           type="button"
           onClick={onOpenSettings}
