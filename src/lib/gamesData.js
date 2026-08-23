@@ -719,6 +719,8 @@ const mlbHeadshot = (id) => `https://midfield.mlbstatic.com/v1/people/${id}/spot
 
 function mlbGamecast(feed) {
   const live = feed?.liveData;
+  const abbrOf = (which) => MLB_ID_ABBR[feed?.gameData?.teams?.[which]?.id]
+    || feed?.gameData?.teams?.[which]?.abbreviation;
   const ls = live?.linescore;
   const innings = ls?.innings || [];
   if (!innings.length) return null;
@@ -732,7 +734,7 @@ function mlbGamecast(feed) {
   columns.push({ key: "E", label: "E", total: true });
 
   const side = (which) => {
-    const abbr = feed?.gameData?.teams?.[which]?.abbreviation;
+    const abbr = abbrOf(which);
     const cells = innings.map((inn) => {
       const r = inn?.[which]?.runs;
       // A half-inning that hasn't been played yet has no `runs` key at all --
@@ -758,7 +760,7 @@ function mlbGamecast(feed) {
   const boxPlayers = (which) => {
     const team = live?.boxscore?.teams?.[which];
     if (!team) return null;
-    const abbr = feed?.gameData?.teams?.[which]?.abbreviation;
+    const abbr = abbrOf(which);
     if (!abbr) return null;
     const player = (id) => team.players?.[`ID${id}`];
     const mk = (ids, kind, pick) => {
@@ -788,7 +790,7 @@ function mlbGamecast(feed) {
   const boxSide = (which) => {
     const team = live?.boxscore?.teams?.[which];
     if (!team) return null;
-    const abbr = feed?.gameData?.teams?.[which]?.abbreviation;
+    const abbr = abbrOf(which);
     const player = (id) => team.players?.[`ID${id}`];
     const items = [];
 
@@ -825,12 +827,31 @@ function mlbGamecast(feed) {
     .map(([role, p]) => (p?.fullName ? { role, name: p.fullName } : null))
     .filter(Boolean);
 
+  // The live situation: who is on, the count, and who is at the plate.
+  //
+  // Gated on the abstract state rather than on the field being present.
+  // `offense` stays populated after a game ends, holding whoever was on when
+  // the last out was recorded, and a diamond drawn from that would assert a
+  // base state nobody is reporting. Each field resolves to null on its own
+  // rather than as a group: MLB drops balls/strikes between half-innings
+  // while the runners are still there.
+  const off = ls?.offense;
+  const inProgress = (feed?.gameData?.status?.abstractGameState || "") === "Live";
+  const situation = inProgress && off ? {
+    first: !!off.first, second: !!off.second, third: !!off.third,
+    balls: typeof ls?.balls === "number" ? ls.balls : null,
+    strikes: typeof ls?.strikes === "number" ? ls.strikes : null,
+    outs: typeof ls?.outs === "number" ? ls.outs : null,
+    atBat: live?.plays?.currentPlay?.matchup?.batter?.fullName || off.batter?.fullName || null,
+  } : null;
+
   return {
     columns,
     rows: [side("away"), side("home")],
     leaders: [boxSide("away"), boxSide("home")].filter(Boolean),
     boxscore: [boxPlayers("away"), boxPlayers("home")].filter(Boolean),
     decisions: decisions.length ? decisions : null,
+    situation,
   };
 }
 
@@ -981,6 +1002,10 @@ function espnGamecast(summary) {
     // than one leader per category.
     boxscore: sides,
     decisions: null,
+    // Bases, count and at-bat are a baseball shape. ESPN's summary carries no
+    // equivalent for the other three sports, so this is null rather than an
+    // empty object -- the caller then draws nothing at all.
+    situation: null,
   };
 }
 

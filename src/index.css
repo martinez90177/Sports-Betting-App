@@ -1140,7 +1140,10 @@ select.select-sm:focus, select.select-sm:focus-visible {
 /* Desktop: only the date row pins (the hero, title, sport tabs and search
    all scroll away -- see dfull/D00121). Mobile pins the whole header, so
    the component raises this element's top offset instead. */
-.gm-sticky { position: sticky; top: 0; z-index: 20; }
+/* The pinned slate header. Opaque, or the cards scrolling underneath show
+   through it -- this used to be covered by the hero's gradient wash, which the
+   v2 Games screen does not draw. */
+.gm-sticky { position: sticky; top: 0; z-index: 20; background: var(--bg); }
 
 .gm-back { transition: color 0.12s ease; cursor: pointer; }
 .gm-back:hover { color: var(--text) !important; }

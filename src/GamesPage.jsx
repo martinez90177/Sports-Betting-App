@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import MatchupPage from "./MatchupPage.jsx";
 import GamecastPage from "./GamecastPage.jsx";
+import GameCard, { StateSwatch } from "./GameCard.jsx";
 import {
-  SPORTS, teamLogo, dayKey, dayLabel, timeLabel, buildDateTabs,
+  SPORTS, dayKey, dayLabel, timeLabel, buildDateTabs,
   fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate, fetchNbaSlate, fetchNbaOpenerDay,
   MONTH_SHORT,
   GAME_STATUS, statusSortKey, isActiveStatus, opensGamecast,
@@ -75,32 +76,6 @@ function useIsNarrow(px) {
     return () => mq.removeEventListener("change", on);
   }, [px]);
   return narrow;
-}
-
-// The hero banner. The reference's is a fixed olive-green sweep; this one is
-// mixed live from --amber (the accent the user picks in Settings), so the
-// page re-tints with the rest of PropPalace instead of hardcoding one
-// brand's green. Everything else about the banner -- the height, the bloom
-// sitting off-centre, the fade into the panel -- follows the recordings.
-const accent = (pct) => `color-mix(in srgb, var(--amber) ${pct}%, transparent)`;
-
-function heroBackground(isMobile) {
-  if (isMobile) {
-    // Phone gets the more saturated treatment the iOS reference uses, with
-    // the bloom anchored in both top corners.
-    return [
-      `radial-gradient(95% 120% at 12% 0%, ${accent(52)} 0%, transparent 60%)`,
-      `radial-gradient(95% 120% at 90% 0%, ${accent(34)} 0%, transparent 62%)`,
-      "linear-gradient(180deg, transparent 45%, var(--bg) 100%)",
-      "linear-gradient(140deg, #0b0d12 0%, #11151d 55%, #0b0d12 100%)",
-    ].join(", ");
-  }
-  return [
-    `radial-gradient(72% 150% at 76% -20%, ${accent(38)} 0%, transparent 68%)`,
-    `radial-gradient(58% 130% at 24% -30%, ${accent(16)} 0%, transparent 72%)`,
-    "linear-gradient(180deg, transparent 42%, var(--surface-sunken) 100%)",
-    "linear-gradient(120deg, #0b0d12 0%, #10131a 55%, #0b0d12 100%)",
-  ].join(", ");
 }
 
 function SportTabs({ sport, onChange, isMobile, options = SPORTS }) {
@@ -222,11 +197,16 @@ function GamesSearchBar({ value, onChange, isMobile }) {
       border: `1px solid ${isMobile ? "transparent" : "var(--line)"}`,
     }}>
       <span style={{ color: "var(--dim)", fontSize: isMobile ? 15 : 13, lineHeight: 1 }}>⌕</span>
+      {/* Not "Search players or teams" as the file writes it. The file's nav
+          carries no search of its own; this app's does, and it searches
+          players app-wide -- two boxes one above the other both promising
+          players would be the same control twice. This one filters the slate
+          on screen, and says so. */}
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Search..."
-        aria-label="Search games"
+        placeholder="Filter teams"
+        aria-label="Filter the slate by team"
         style={{
           flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none",
           color: "var(--text)", fontSize: isMobile ? 15.5 : 13, fontFamily: "inherit",
@@ -236,240 +216,35 @@ function GamesSearchBar({ value, onChange, isMobile }) {
   );
 }
 
-// The second line of the Matchup cell.
-//
-// The card layout this table replaced carried records and live scores in its
-// two team columns; the row has one cell for both teams, so they move here
-// rather than being dropped with the cards. A record the provider omitted comes
-// back as "" (see gamesData's `rec`/`records[0].summary`), which rendered as an
-// invisible gap -- an em dash says "not published" instead.
-function MatchupSubline({ game, showScore }) {
-  const dash = (v) => (v === "" || v == null ? "—" : v);
-  const text = showScore
-    ? `${dash(game.away.score)} : ${dash(game.home.score)}`
-    : `${dash(game.away.record)} · ${dash(game.home.record)}`;
-  return (
-    <div className="pp-mono tnum" style={{
-      fontSize: 12.5, color: "var(--dim-strong)", marginTop: 5, whiteSpace: "nowrap",
-    }}>
-      {text}
-    </div>
-  );
-}
-
-// Where a game is in its life, as a swatch.
-//
-// A **square**, deliberately. The only other filled marks in this app are the
-// form graph's bars, and those are green for cleared and red for fell short,
-// so shape is what stops "live" reading as "this prop hit". The live marker
-// here used to be a green circle on --pos -- the outcome colour, carrying a
-// state meaning -- which is the collision the four colour families exist to
-// prevent.
-//
-// One hue per *pair*, split by fill: the active half of a pair is filled, the
-// paused or not-yet half is hollow. Four hues cover all nine GAME_STATUS
-// values, so a reader learns four colours and one rule instead of a legend.
-// See the --state-* block in index.css for why pre-game is white and final is
-// dim rather than the other way round.
-const STATE_STYLE = {
-  [GAME_STATUS.LIVE]:          { token: "--state-live",    fill: true },
-  [GAME_STATUS.HALFTIME]:      { token: "--state-live",    fill: false },
-  [GAME_STATUS.INTERMISSION]:  { token: "--state-live",    fill: false },
-  [GAME_STATUS.STARTING_SOON]: { token: "--state-pre",     fill: true },
-  [GAME_STATUS.UPCOMING]:      { token: "--state-pre",     fill: false },
-  [GAME_STATUS.DELAYED]:       { token: "--state-delayed", fill: true },
-  [GAME_STATUS.SUSPENDED]:     { token: "--state-delayed", fill: false },
-  [GAME_STATUS.FINAL]:         { token: "--state-final",   fill: true },
-  [GAME_STATUS.POSTPONED]:     { token: "--state-final",   fill: false },
-};
-
-function StateSwatch({ status, size = 8 }) {
-  // A *missing* status is treated as UPCOMING, the same default
-  // statusCenterContent and the slate sort already apply -- the slate
-  // fetchers leave it unset on plain scheduled games. A status that is
-  // present but unrecognised is different and gets no swatch: a state this
-  // app does not know is not "scheduled", and colouring it as though it were
-  // would invent the one fact the swatch exists to report.
-  const st = STATE_STYLE[status || GAME_STATUS.UPCOMING];
-  if (!st) return null;
-  const c = `var(${st.token})`;
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: size, height: size, flexShrink: 0, boxSizing: "border-box",
-        background: st.fill ? c : "transparent",
-        border: `1.5px solid ${c}`,
-        // Only a genuinely live game pulses. A halftime or delayed game is
-        // stopped, and a pulsing marker would say otherwise.
-        animation: status === GAME_STATUS.LIVE ? "gm-live-pulse 1.6s ease-out infinite" : undefined,
-      }}
-    />
-  );
-}
-
-function statusCenterContent(game, isMobile) {
-  const status = game.status || GAME_STATUS.UPCOMING;
-
-  if (status === GAME_STATUS.FINAL) {
-    return {
-      primary: "FINAL",
-      secondary: null,
-      live: false,
-      final: true,
-    };
-  }
-  if (status === GAME_STATUS.LIVE || status === GAME_STATUS.HALFTIME || status === GAME_STATUS.INTERMISSION) {
-    return {
-      primary: status === GAME_STATUS.HALFTIME ? "HALFTIME"
-        : status === GAME_STATUS.INTERMISSION ? "INTERMISSION"
-        : "LIVE",
-      secondary: game.periodLabel || null,
-      live: true,
-      final: false,
-    };
-  }
-  if (status === GAME_STATUS.STARTING_SOON) {
-    return {
-      primary: timeLabel(game.startsAt),
-      secondary: "STARTING SOON",
-      live: false,
-      final: false,
-    };
-  }
-  if (status === GAME_STATUS.DELAYED) {
-    return { primary: "DELAYED", secondary: null, live: false, final: false };
-  }
-  if (status === GAME_STATUS.POSTPONED) {
-    return { primary: "POSTPONED", secondary: null, live: false, final: false };
-  }
-  if (status === GAME_STATUS.SUSPENDED) {
-    return { primary: "SUSPENDED", secondary: null, live: false, final: false };
-  }
-  // UPCOMING
-  return {
-    primary: timeLabel(game.startsAt),
-    secondary: dayLabel(game.startsAt),
-    live: false,
-    final: false,
-  };
-}
-
-// Column template, shared by the header and every row so they cannot drift.
-// The handoff's own template for this table. Fixed at its design widths with
-// the props column taking the slack, rather than four fr weights -- the
-// matchup and research columns hold fixed content and were stretching with
-// the window while the sentence in the middle stayed cramped.
 // Strip and rail type, off `PropPalace Games v2.dc.html` -- the same pair the
 // Board and Prop Feed strips use.
 const GM_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
 const GM_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 const GM_RAIL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+const LEGEND_ROW = { display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" };
 
-const SLATE_COLS = "minmax(240px, 300px) 168px minmax(0, 1fr) 128px";
+// How many cards the slate opens with, the rest behind one button.
+const VISIBLE_GAMES = 5;
 
-// What the reader gets by opening this row. The destination is already decided
-// by opensGamecast, so the label can name it without any new data.
-function researchLabel(game) {
-  if (game.isFinal) return "RECAP →";
-  if (opensGamecast(game.status)) return "GAMECAST →";
-  return "OPEN →";
-}
+// The left rail's Show filter. The third entry is the status whose swatch
+// stands for the whole group -- one square per filter, not one per status.
+const STATE_FILTERS = [
+  ["all", "All games", null],
+  ["live", "Live", GAME_STATUS.LIVE],
+  ["pre", "Scheduled", GAME_STATUS.UPCOMING],
+  ["final", "Final", GAME_STATUS.FINAL],
+];
 
-function GameRow({ game, isMobile, onSelect, isLast, expanded, getPropsCount }) {
-  const open = () => onSelect(game);
-  const showScore = (game.isLive || game.isFinal) && (game.away.score != null || game.home.score != null);
-  const center = statusCenterContent(game, isMobile);
-  const muted = game.isFinal;
-  // Sync, no fetch -- see getPropsCountForGame's own note on why this is a
-  // count of props the game could offer, not a count of feed rows.
-  const propsCount = getPropsCount ? getPropsCount(game.sport, game.away.abbr, game.home.abbr) : null;
+// The right rail's legend: four hues over nine states, told apart by fill.
+const STATE_LEGEND = [
+  ["Live · halftime", GAME_STATUS.LIVE],
+  ["Starting soon", GAME_STATUS.STARTING_SOON],
+  ["Scheduled", GAME_STATUS.UPCOMING],
+  ["Delayed · suspended", GAME_STATUS.DELAYED],
+  ["Final", GAME_STATUS.FINAL],
+];
 
-  return (
-    <div
-      className="gm-card"
-      role="button"
-      tabIndex={0}
-      aria-label={`${game.away.full} at ${game.home.full}, ${center.primary}${center.secondary ? ` ${center.secondary}` : ""}`}
-      onClick={open}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
-      style={{
-        position: "relative", overflow: "hidden",
-        display: "grid",
-        gridTemplateColumns: isMobile ? "1fr auto" : SLATE_COLS,
-        alignItems: "center", gap: isMobile ? 10 : 14,
-        padding: isMobile ? "14px 16px" : "17px 26px",
-        borderBottom: isLast ? "none" : "1px solid var(--line)",
-        // Finals recede rather than disappear -- the reference dims the whole
-        // row instead of restyling it.
-        opacity: muted ? 0.6 : 1,
-        // The open row takes --surface-2, so the panel below it reads as
-        // belonging to this game rather than floating under the list.
-        background: expanded ? 'var(--surface-2)' : undefined,
-        boxSizing: "border-box",
-        transition: "opacity 0.2s ease, background 0.2s ease",
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
-          <span className="pp-display" style={{
-            fontSize: isMobile ? 17 : 20, color: "var(--text)",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}>
-            {game.away.name}
-          </span>
-          <span className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", flexShrink: 0 }}>at</span>
-          <span className="pp-display" style={{
-            fontSize: isMobile ? 17 : 20, color: "var(--text)",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-          }}>
-            {game.home.name}
-          </span>
-        </div>
-        <MatchupSubline game={game} showScore={showScore} />
-      </div>
-
-      <div className="pp-mono tnum" style={{
-        display: "flex", alignItems: "center", gap: 7,
-        fontSize: isMobile ? 12 : 13,
-        // The state's own colour, not the accent. Game state is its own
-        // family: the accent means "selected" and re-tints to whatever hue
-        // the user picked, which could be one that reads as dead.
-        color: STATE_STYLE[game.status || GAME_STATUS.UPCOMING]
-          ? `var(${STATE_STYLE[game.status || GAME_STATUS.UPCOMING].token})`
-          : "var(--dim-strong)",
-        whiteSpace: "nowrap",
-      }}>
-        <StateSwatch status={game.status} size={isMobile ? 7 : 8} />
-        {center.primary}
-        {center.secondary && center.live && ` · ${center.secondary}`}
-      </div>
-
-      {!isMobile && (
-        <div style={{ fontSize: 13, color: "var(--dim-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {/* Absent rather than "0 props" when the count function isn't
-               wired for this sport (see getPropsCountForGame -- only
-               mlb/wnba/nfl are supported, matching gamesData.js's own
-               SPORTS list). */}
-          {Number.isFinite(propsCount) && propsCount > 0
-            ? <span className="pp-mono">{propsCount} PROPS →</span>
-            : null}
-        </div>
-      )}
-
-      {!isMobile && (
-        <div className="pp-mono" style={{
-          textAlign: "right", fontSize: 11.5, letterSpacing: "0.1em",
-          color: muted ? "var(--dim)" : "var(--accent-text)", whiteSpace: "nowrap",
-        }}>
-          {researchLabel(game)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onOpenProp }) {
+export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onOpenProp, onOpenBoard }) {
   const isMobile = useIsNarrow(720);
   const [sport, setSport] = useState("mlb");
   const [query, setQuery] = useState("");
@@ -776,29 +551,6 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     });
   }, [slateGames, query]);
 
-  // The All view's groups: one per league that is actually playing today, in
-  // the tab order, each already live-first because `games` is sorted that way
-  // before it is split.
-  //
-  // A league with no games that day has no group. That is the whole empty
-  // state -- an absent divider says "nothing today" without a sentence, and a
-  // row of four headings three of which read "no games" would be worse than
-  // silence. Nothing is dropped: every game in `games` lands in exactly one
-  // group, and the counts add up to the total under the title.
-  const sportGroups = useMemo(() => {
-    if (sport !== ALL_SPORT.id) return null;
-    return SPORTS
-      .map((sp) => ({ id: sp.id, label: sp.label, games: games.filter((g) => g.sport === sp.id) }))
-      .filter((grp) => grp.games.length);
-  }, [sport, games]);
-
-  // Slate summary shown under the title. Reads off the same list the cards
-  // render, so it tracks the search filter too.
-  // Declared above the early return below: a hook placed after it would go
-  // unrun the moment a game is selected, which React treats as a changed
-  // hook count and throws on.
-  const gameCount = games.length;
-
   // Re-resolved from the slate on every render, so the open page tracks the
   // poller's fresh status/score/periodLabel with no extra fetch of its own.
   // Searched against `slateGames`, which the search box does not filter:
@@ -830,142 +582,129 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   }, [sport, activeKey]);
 
 
-  const hero = (
-    <div style={{
-      borderRadius: isMobile ? 0 : "var(--r-xl) var(--r-xl) 0 0",
-      padding: isMobile ? "14px 0 12px" : "22px 22px 14px",
-    }}>
-      {/* The accent dot ties the page back to the ● PropPalace wordmark, and
-          the slate summary underneath is a line the reference doesn't carry
-          at all -- it answers "how big is today?" before you scroll. */}
-      <div style={{ padding: isMobile ? "0 16px" : 0, marginBottom: isMobile ? 15 : 17 }}>
-        <h1
-          className="oswald"
-          style={{
-            margin: 0, display: "flex", alignItems: "baseline", gap: 10,
-            fontSize: isMobile ? 29 : 33, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text)",
-          }}
-        >
-          <span style={{ color: "var(--amber)", fontSize: isMobile ? 15 : 17 }}>●</span>
-          Games
-        </h1>
-        <div style={{
-          marginTop: 6, fontSize: isMobile ? 12 : 12, color: "var(--dim)",
-          textTransform: "uppercase", letterSpacing: "0.09em", fontWeight: 600,
-        }}>
-          <span className="tnum" style={{ color: "var(--amber)" }}>{gameCount}</span>
-          {` ${gameCount === 1 ? "game" : "games"} · ${subtitle}`}
-        </div>
-      </div>
-      {isMobile && (
-        <SportTabs
-          sport={sport}
-          onChange={(s) => { setSport(s); setPickedKey(null); }}
-          isMobile={isMobile}
-          options={ALL_SPORTS_TABS}
-        />
-      )}
-    </div>
-  );
-
-  const dates = (
-    <DateTabs
-      tabs={tabs}
-      activeKey={activeKey}
-      onChange={setPickedKey}
-      isMobile={isMobile}
-      caption={sport === "nfl" ? "Week 1" : null}
-      counts={tabCounts}
-    />
-  );
-
-
   // ---- The v2 shell (PropPalace Games v2.dc.html) --------------------------
   //
   // 196px | 1fr | 196px, the same three columns the Board and the Prop Feed
-  // use. The screen was a single 992px column with the league switcher and the
-  // date tabs stacked inside a raised panel.
-  const v2Strip = (() => {
-    const live = games.filter((g) => isActiveStatus(g.status)).length;
-    const done = games.filter((g) => g.status === GAME_STATUS.FINAL).length;
-    const next = games
-      .filter((g) => !isActiveStatus(g.status) && g.status !== GAME_STATUS.FINAL && g.startsAt)
-      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
-    return (
-      <div style={{
-        display: "flex", alignItems: "center", gap: 0, marginTop: 14,
-        background: "var(--surface-sunken)", border: "1px solid var(--line)",
-        borderRadius: 6, overflow: "hidden",
-      }}>
-        <div style={{ flex: 1, minWidth: 0, padding: "11px 16px" }}>
-          <div style={GM_CELL_LABEL}>Showing</div>
-          <div style={GM_CELL_VALUE}>{games.length} {games.length === 1 ? "game" : "games"}</div>
-        </div>
-        <div style={{ flex: 1, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
-          <div style={GM_CELL_LABEL}>In progress</div>
-          <div style={GM_CELL_VALUE}>{live}</div>
-        </div>
-        <div style={{ flex: 1, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
-          <div style={GM_CELL_LABEL}>Final</div>
-          <div style={GM_CELL_VALUE}>{done}</div>
-        </div>
-        <div style={{ flex: 1.4, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
-          <div style={GM_CELL_LABEL}>Next start</div>
-          {/* The next one that has not started, by its own clock. Nothing left
-              to start is an em dash, not a blank. */}
-          <div style={GM_CELL_VALUE}>{next && next.startsAt ? timeLabel(next.startsAt) : "\u2014"}</div>
+  // use. The centre is a stack of game cards grouped by sport, not the
+  // four-column table this screen used to be, and a card opens its own compact
+  // gamecast in place rather than unfolding the full page underneath.
+
+  // The left rail's second control, which the table had no equivalent of:
+  // where a game is in its life. Independent of the league picker, because
+  // "every live game today" is a real question and used to be unaskable.
+  const [stateFilter, setStateFilter] = useState("all");
+  // The file lists five and puts the rest behind a button.
+  const [showAll, setShowAll] = useState(false);
+  // One card open at a time, tracked by id rather than by the object captured
+  // at click time -- the poller replaces the slate objects every 20s.
+  const [openId, setOpenId] = useState(null);
+
+  const filtered = useMemo(() => games.filter((g) => {
+    const st = g.status || GAME_STATUS.UPCOMING;
+    if (stateFilter === "live") return isActiveStatus(st);
+    if (stateFilter === "pre") return st === GAME_STATUS.UPCOMING || st === GAME_STATUS.STARTING_SOON;
+    if (stateFilter === "final") return st === GAME_STATUS.FINAL;
+    return true;
+  }), [games, stateFilter]);
+
+  const shown = showAll ? filtered : filtered.slice(0, VISIBLE_GAMES);
+
+  // Grouped by sport with a labelled divider, on every league not just All --
+  // an MLB card and an NFL card in one undifferentiated stack is a real
+  // misread, since their linescores, markets and state vocabulary all differ.
+  // On a single-league slate that is one heading over the whole list, which is
+  // what the file draws there too.
+  const groups = useMemo(() => SPORTS
+    .map((sp) => ({ ...sp, games: shown.filter((g) => g.sport === sp.id) }))
+    .filter((grp) => grp.games.length), [shown]);
+
+  const liveCount = filtered.filter((g) => isActiveStatus(g.status)).length;
+  const finalCount = filtered.filter((g) => g.status === GAME_STATUS.FINAL).length;
+  const nextStart = filtered
+    .filter((g) => g.startsAt && !isActiveStatus(g.status) && g.status !== GAME_STATUS.FINAL)
+    .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
+
+  const v2Strip = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 0, marginTop: 14,
+      background: "var(--surface-sunken)", border: "1px solid var(--line)",
+      borderRadius: 6, overflow: "hidden",
+    }}>
+      <div style={{ flex: 1, minWidth: 0, padding: "11px 16px" }}>
+        <div style={GM_CELL_LABEL}>Showing</div>
+        <div style={GM_CELL_VALUE}>
+          {filtered.length === games.length
+            ? `${games.length} ${games.length === 1 ? "game" : "games"}`
+            : `${filtered.length} of ${games.length}`}
         </div>
       </div>
-    );
-  })();
-
-  const v2RightRail = (
-    <div>
-      <div style={GM_RAIL_LABEL}>Game state</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 12 }}>
-        {[
-          ["Live", "var(--pos-solid, var(--pos))", "the clock is running"],
-          ["Final", "var(--dim)", "settled, box score only"],
-          ["Scheduled", "var(--text-2)", "not started"],
-        ].map(([label, colour, note]) => (
-          <span key={label} className="pp-mono" style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", color: "var(--text-2)" }}>
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: colour, flex: "none", transform: "translateY(-2px)" }} />
-            <span style={{ textTransform: "uppercase" }}>{label}</span>
-            <span style={{ color: "var(--dim)", textTransform: "none", letterSpacing: 0 }}>{note}</span>
-          </span>
-        ))}
+      <div style={{ flex: 1, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+        <div style={GM_CELL_LABEL}>In progress</div>
+        <div style={{ ...GM_CELL_VALUE, color: liveCount ? "var(--state-live)" : "var(--text-2)" }}>{liveCount}</div>
       </div>
-
-      <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Props in play</div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 12, lineHeight: 1.6 }}>
-        A game's prop count is what this app can build for it from the rosters
-        it holds, not a book's board.
+      <div style={{ flex: 1, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+        <div style={GM_CELL_LABEL}>Final</div>
+        <div style={GM_CELL_VALUE}>{finalCount}</div>
       </div>
-
-      <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Linescores</div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 12, lineHeight: 1.6 }}>
-        MLB &mdash; innings, then R H E. Open a gamecast for the full line.
+      <div style={{ flex: 1.3, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+        <div style={GM_CELL_LABEL}>Next start</div>
+        {/* The next one that has not started, by its own clock. Nothing left
+            to start is an em dash, not a blank. */}
+        <div style={GM_CELL_VALUE}>{nextStart ? timeLabel(nextStart.startsAt) : "—"}</div>
       </div>
     </div>
   );
 
+  const stateChips = (
+    <div style={{ display: "flex", flexDirection: isMobile ? "row" : "column", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+      {STATE_FILTERS.map(([id, label, st]) => {
+        const on = stateFilter === id;
+        return (
+          <span
+            key={id}
+            role="button"
+            tabIndex={0}
+            onClick={() => { setStateFilter(id); setShowAll(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStateFilter(id); setShowAll(false); } }}
+            className="pp-mono"
+            style={{
+              display: "flex", alignItems: "center", gap: 9, fontSize: 11, letterSpacing: "0.08em",
+              textTransform: "uppercase", padding: "8px 11px", borderRadius: 6, cursor: "pointer",
+              background: on ? "var(--amber-dim)" : "transparent",
+              color: on ? "var(--amber-ink)" : "var(--text-2)",
+              border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+            }}
+          >
+            {/* "All games" carries no state swatch -- it is the absence of a
+                filter, not a state, and giving it one made the four read
+                alike. */}
+            {st && <StateSwatch status={st} />}
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
 
-  // League leads the left rail, as the file draws it. It was a row of tabs
-  // inside the page header.
   const v2LeftRail = (
     <div>
       <div style={GM_RAIL_LABEL}>League</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
         {ALL_SPORTS_TABS.map((o) => {
           const on = sport === o.id;
-          const n = o.id === "all" ? games.length : games.filter((g) => g.sport === o.id).length;
+          // A count only where there is one to give. Switching league refetches
+          // an entirely different slate, so while MLB is loaded this page knows
+          // nothing about tonight's NFL card -- and a "0" there would state
+          // that there are none, which is exactly what it cannot know.
+          const known = sport === ALL_SPORT.id || o.id === sport || o.id === ALL_SPORT.id;
+          const n = o.id === ALL_SPORT.id ? games.length : games.filter((g) => g.sport === o.id).length;
           return (
             <div
               key={o.id}
               role="button"
               tabIndex={0}
-              onClick={() => { setSport(o.id); setPickedKey(null); }}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSport(o.id); setPickedKey(null); } }}
+              onClick={() => { setSport(o.id); setPickedKey(null); setShowAll(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSport(o.id); setPickedKey(null); setShowAll(false); } }}
               style={{
                 display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
                 padding: "9px 11px", borderRadius: 6, cursor: "pointer",
@@ -973,15 +712,152 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
                 border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
               }}
             >
-              <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.1em", color: on ? "var(--amber-ink, var(--amber))" : "var(--text-2)" }}>{o.label}</span>
-              <span className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{n}</span>
+              <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.1em", color: on ? "var(--amber-ink)" : "var(--text-2)" }}>{o.label}</span>
+              <span className="pp-mono tnum" style={{ fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>
+                {known ? (n === 0 ? "none" : `${n} ${n === 1 ? "game" : "games"}`) : ""}
+              </span>
             </div>
           );
         })}
       </div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 20, lineHeight: 1.6 }}>
-        Scores and state come from the league feed. Props are this app's own.
+
+      <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Show</div>
+      {stateChips}
+
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)", lineHeight: 1.6 }}>
+        Live state comes from the provider, never from the clock. Hit rates count
+        finished games only.
       </div>
+    </div>
+  );
+
+  const v2RightRail = (
+    <div>
+      <div style={GM_RAIL_LABEL}>Game state</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+        {STATE_LEGEND.map(([label, st]) => (
+          <span key={label} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" }}>
+            <StateSwatch status={st} />
+            {label}
+          </span>
+        ))}
+      </div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+        A game is only live when the provider says so &mdash; never inferred from the clock.
+      </div>
+
+      <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Props in play</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 12 }}>
+        <span className="pp-mono" style={LEGEND_ROW}>
+          <span style={{ width: 16, height: 9, borderRadius: 2, background: "var(--pos-solid)", flex: "none" }} />
+          past the line
+        </span>
+        <span className="pp-mono" style={LEGEND_ROW}>
+          <span style={{ width: 16, height: 9, borderRadius: 2, background: "var(--dim)", flex: "none" }} />
+          still short
+        </span>
+        <span className="pp-mono" style={LEGEND_ROW}>
+          <span style={{ width: 16, borderTop: "1.5px dashed var(--text)", flex: "none" }} />
+          tonight&rsquo;s line
+        </span>
+      </div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+        A live bar is what has happened so far tonight, not a rate. It counts toward a
+        hit rate only once the game is final.
+      </div>
+
+      <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Linescores</div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 12, lineHeight: 1.7 }}>
+        <div>MLB &mdash; innings, then R H E.</div>
+        <div style={{ marginTop: 7 }}>NFL &middot; NBA &middot; WNBA &mdash; quarters, then T. Overtime adds OT1.</div>
+        <div style={{ marginTop: 7 }}>A period not yet played stays blank, never a zero.</div>
+      </div>
+    </div>
+  );
+
+  // The full page is still reachable, from the foot of an open card: probable
+  // starters, recent form and head to head before a game, the wide gamecast
+  // after. Declared below every hook above, so opening one cannot change the
+  // hook order.
+  if (selectedId && selected) {
+    return React.createElement(opensGamecast(selected.status) ? GamecastPage : MatchupPage, {
+      game: selected,
+      isMobile,
+      onBack: () => { selectedSnap.current = null; setSelectedId(null); },
+      onViewProps,
+      getTopProps,
+      onOpenProp,
+    });
+  }
+
+  const header = (
+    <div style={{
+      display: "flex", alignItems: "flex-end", gap: 20, flexWrap: isMobile ? "wrap" : "nowrap",
+      padding: isMobile ? "14px 16px 0" : 0,
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <h1 className="pp-display" style={{
+          margin: 0, fontWeight: 600, fontSize: isMobile ? 27 : 34, letterSpacing: "-0.02em", color: "var(--text)",
+        }}>
+          Games
+        </h1>
+        <div className="pp-mono" style={{
+          fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 7,
+        }}>
+          <span className="tnum">{filtered.length}</span>
+          {` shown · ${subtitle}`}
+          {onOpenBoard && (
+            <>
+              {" · "}
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={onOpenBoard}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenBoard(); } }}
+                style={{ color: "var(--accent-text)", cursor: "pointer" }}
+              >
+                The Board
+              </span>
+              {" has the research view"}
+            </>
+          )}
+        </div>
+      </div>
+      <div style={{ marginLeft: isMobile ? 0 : "auto", flex: "none", width: isMobile ? "100%" : 240 }}>
+        <GamesSearchBar value={query} onChange={setQuery} isMobile={isMobile} />
+      </div>
+    </div>
+  );
+
+  // Five distinct states, because they mean five different things: still
+  // fetching, the fetch failed, fetched and genuinely empty, filtered to
+  // nothing by the search box, and filtered to nothing by Show.
+  const emptyState = (
+    <div style={{ padding: 28, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
+      {slateFailed ? (
+        <>
+          <div style={{ color: "var(--text)", marginBottom: 12 }}>
+            Couldn&rsquo;t load {sport === "nfl" ? "the Week 1 slate" : "today’s slate"}.
+          </div>
+          <div
+            className="gm-tab pp-mono"
+            role="button"
+            tabIndex={0}
+            onClick={retry}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); retry(); } }}
+            style={{
+              display: "inline-block", padding: "9px 18px", cursor: "pointer",
+              border: "1px solid var(--line-strong)", color: "var(--text)",
+              fontSize: 11.5, letterSpacing: "0.1em",
+            }}
+          >
+            RETRY
+          </div>
+        </>
+      ) : query ? "No games match that search."
+        : slateLoading ? "Loading today’s slate…"
+        : games.length ? `No ${stateFilter === "live" ? "live" : stateFilter === "pre" ? "scheduled" : "finished"} games on this slate.`
+        : "No games scheduled for this date."}
     </div>
   );
 
@@ -991,187 +867,144 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       gap: 20, padding: "20px 0 40px", alignItems: "start", boxSizing: "border-box",
     }}>
       {!isMobile && <div>{v2LeftRail}</div>}
+
       <div style={{ minWidth: 0 }}>
-      {/* The reference's whole content column is a raised panel a shade above
-          the page black, with the cards a further shade above that -- keeping
-          that three-step ramp is most of why the list reads as grouped. */}
-      <div style={{ overflow: "visible" }}>
-      {/* Desktop pins only the date row (the hero and search scroll away, per
-          dfull/D00121); the iOS reference pins the entire header, so on mobile
-          the whole block gets the sticky treatment instead. */}
-      {isMobile ? (
-        <div className="gm-sticky">{hero}{dates}</div>
-      ) : (
-        <>
-          {hero}
-          {v2Strip}
-          <div className="gm-sticky">{dates}</div>
-        </>
-      )}
-
-      <div style={{ padding: isMobile ? "12px 8px 0" : "14px 12px 0" }}>
-        <GamesSearchBar value={query} onChange={setQuery} isMobile={isMobile} />
-      </div>
-
-      <div style={{ padding: isMobile ? "12px 0 0" : "12px 0 0" }}>
-        {games.length > 0 && !isMobile && (
-          <div className="pp-mono" style={{
-            display: "grid", gridTemplateColumns: SLATE_COLS, alignItems: "center",
-            padding: "11px 26px", borderBottom: "1px solid var(--line)",
-            fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
-          }}>
-            <span>Matchup</span>
-            <span>Kickoff</span>
-            <span>Props worth a look</span>
-            <span style={{ textAlign: "right" }}>Research</span>
-          </div>
-        )}
-
-        {/* On All, the list is walked group by group with a divider before
-            each -- an MLB card and an NFL card in one undifferentiated stack
-            is a real misread. On a single league it is the same flat list it
-            has always been, with no dividers to state something the sport tab
-            already says. */}
-        {(sportGroups
-          ? sportGroups.flatMap((grp) => [{ __divider: grp }, ...grp.games])
-          : games
-        ).map((g, i, arr) => (g.__divider ? (
-          <div
-            key={`div-${g.__divider.id}`}
-            style={{
-              display: "flex", alignItems: "center", gap: 10,
-              padding: isMobile ? "12px 16px 8px" : "14px 16px 9px",
-              borderBottom: "1px solid var(--line)",
-              background: "var(--surface-sunken)",
-            }}
-          >
-            {LEAGUE_MARK[g.__divider.id] && (
-              <img src={LEAGUE_MARK[g.__divider.id]} alt="" width={16} height={16} style={{ objectFit: "contain", opacity: 0.7 }} />
-            )}
-            <span
-              className="pp-mono"
-              style={{
-                fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase",
-                // The sport identity family: low-chroma neutrals that cannot
-                // be mistaken for a game state or an outcome.
-                color: SPORT_TONE[g.__divider.id] || "var(--text-2, var(--dim))",
-              }}
-            >
-              {g.__divider.label}
-            </span>
-            <span className="pp-mono" style={{ fontSize: 11, color: "var(--dim)" }}>
-              {g.__divider.games.length} {g.__divider.games.length === 1 ? "game" : "games"}
-            </span>
+        {isMobile ? (
+          <div className="gm-sticky">
+            {header}
+            <div style={{ padding: "12px 0 2px" }}>
+              <SportTabs
+                sport={sport}
+                onChange={(s) => { setSport(s); setPickedKey(null); setShowAll(false); }}
+                isMobile={isMobile}
+                options={ALL_SPORTS_TABS}
+              />
+            </div>
+            <DateTabs
+              tabs={tabs}
+              activeKey={activeKey}
+              onChange={setPickedKey}
+              isMobile={isMobile}
+              caption={sport === "nfl" ? "Week 1" : null}
+              counts={tabCounts}
+            />
           </div>
         ) : (
-          <React.Fragment key={g.id}>
-            <GameRow
-              game={g}
-              isMobile={isMobile}
-              isLast={i === arr.length - 1 && g.id !== selectedId}
-              expanded={g.id === selectedId}
-              onSelect={(picked) => {
-                // Toggle, not navigate. The gamecast folds in under the row it
-                // belongs to (design screen 4) instead of replacing the page,
-                // so the slate stays on screen and closing is one click on the
-                // same row rather than a back button and a re-scroll.
-                if (picked.id === selectedId) { selectedSnap.current = null; setSelectedId(null); return; }
-                selectedSnap.current = picked;
-                setSelectedId(picked.id);
-              }}
-              getPropsCount={getPropsCount}
-            />
-            {g.id === selectedId && (
-              <div style={{ background: 'var(--surface-sunken)', borderBottom: '1px solid var(--line)' }}>
-                {/* A game that goes live while its Matchup Overview is open
-                    swaps to the Gamecast on the next poll, which is the intent
-                    -- the pre-game view has nothing left to say once the first
-                    pitch is thrown. */}
-                {React.createElement(opensGamecast(g.status) ? GamecastPage : MatchupPage, {
-                  game: selected || g,
-                  isMobile,
-                  embedded: true,
-                  onBack: () => { selectedSnap.current = null; setSelectedId(null); },
-                  onViewProps,
-                  getTopProps,
-                  onOpenProp,
-                })}
-              </div>
-            )}
-          </React.Fragment>
-        )))}
-
-        {/* Four distinct states, because they mean four different things:
-             still fetching, the fetch failed, fetched and genuinely empty, and
-             filtered to nothing by the search box. The failure used to be
-             coerced into the third, so a dropped connection claimed there were
-             no games today. */}
-        {games.length === 0 && (
-          <div style={{ padding: 28, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-            {slateFailed ? (
-              <>
-                <div style={{ color: "var(--text)", marginBottom: 12 }}>
-                  Couldn&rsquo;t load {sport === "nfl" ? "the Week 1 slate" : "today’s slate"}.
-                </div>
-                <div
-                  className="gm-tab pp-mono"
-                  role="button"
-                  tabIndex={0}
-                  onClick={retry}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); retry(); } }}
-                  style={{
-                    display: "inline-block", padding: "9px 18px", cursor: "pointer",
-                    border: "1px solid var(--line-strong)", color: "var(--text)",
-                    fontSize: 11.5, letterSpacing: "0.1em",
-                  }}
-                >
-                  RETRY
-                </div>
-              </>
-            ) : query ? (
-              "No games match that search."
-            ) : slateLoading ? (
-              "Loading today’s slate…"
-            ) : (
-              "No games scheduled for this date."
-            )}
-          </div>
+          <>
+            {header}
+            <div className="gm-sticky">
+              <DateTabs
+                tabs={tabs}
+                activeKey={activeKey}
+                onChange={setPickedKey}
+                isMobile={isMobile}
+                caption={sport === "nfl" ? "Week 1" : null}
+                counts={tabCounts}
+              />
+            </div>
+            {v2Strip}
+          </>
         )}
-      </div>
 
-      {/* One disclaimer for the screen, at the foot of the table.
-           The unreadable count lives here too rather than in a banner over the
-           rows: what it qualifies is the list directly above it, the same place
-           a table footnote would go, and a banner would push the games down and
-           read as an alert about the whole page. */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-        flexWrap: "wrap",
-        padding: isMobile ? "16px" : "18px 28px",
-        borderTop: "1px solid var(--line)",
-        background: isMobile ? "transparent" : "var(--surface-sunken)",
-      }}>
-        <span style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.55, maxWidth: 620 }}>
-          {unreadable > 0 && (
-            <span style={{ color: "var(--text)" }}>
-              {unreadable} {unreadable === 1 ? "game" : "games"} couldn&rsquo;t be read and {unreadable === 1 ? "is" : "are"} not listed.{" "}
+        {/* The rails are desktop only, so the phone keeps the Show filter as a
+            chip row under the date tabs rather than losing the control. */}
+        {isMobile && <div style={{ padding: "0 16px" }}>{stateChips}</div>}
+
+        {shown.length === 0 ? emptyState : groups.map((grp) => {
+          const live = grp.games.filter((g) => isActiveStatus(g.status)).length;
+          return (
+            <div key={grp.id} style={{ marginTop: 22, padding: isMobile ? "0 16px" : 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, color: SPORT_TONE[grp.id] || "var(--text-2)" }}>
+                  {/* The file draws a ball glyph here -- a circle for the
+                      round-ball sports, an ellipse for the prolate one. The
+                      real league mark says the same thing and the app already
+                      holds it: the same substitution TeamLogo makes for the
+                      file's lettered badges. */}
+                  {LEAGUE_MARK[grp.id] && (
+                    <img src={LEAGUE_MARK[grp.id]} alt="" width={15} height={15} style={{ objectFit: "contain", opacity: 0.75 }} />
+                  )}
+                  <span className="pp-mono" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                    {grp.label}
+                  </span>
+                </span>
+                <span className="pp-mono tnum" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                  {grp.games.length} {grp.games.length === 1 ? "game" : "games"}
+                </span>
+                <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+                  {live ? `${live} in progress` : "none in progress"}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+                {grp.games.map((g) => (
+                  <GameCard
+                    key={g.id}
+                    game={g}
+                    sport={g.sport}
+                    sportLabel={grp.label}
+                    sportTone={SPORT_TONE[grp.id] || "var(--text-2)"}
+                    isMobile={isMobile}
+                    open={openId === g.id}
+                    onToggle={() => setOpenId((cur) => (cur === g.id ? null : g.id))}
+                    propsCount={getPropsCount ? getPropsCount(g.sport, g.away.abbr, g.home.abbr) : null}
+                    getTopProps={getTopProps}
+                    onViewProps={onViewProps}
+                    onOpenProp={onOpenProp}
+                    onOpenFull={(picked) => { selectedSnap.current = picked; setSelectedId(picked.id); }}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        <div style={{
+          display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+          marginTop: 20, padding: isMobile ? "0 16px 24px" : 0,
+        }}>
+          {filtered.length > VISIBLE_GAMES && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={() => setShowAll((v) => !v)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowAll((v) => !v); } }}
+              className="pp-mono"
+              style={{
+                flex: "none", cursor: "pointer", fontSize: 11.5, letterSpacing: "0.12em",
+                textTransform: "uppercase", color: "var(--accent-text)",
+                border: "1px solid var(--amber)", borderRadius: 4, padding: "11px 16px",
+              }}
+            >
+              {showAll
+                ? "Show fewer games"
+                : `Show ${filtered.length - VISIBLE_GAMES} more ${filtered.length - VISIBLE_GAMES === 1 ? "game" : "games"}`}
             </span>
           )}
-          Hit rates count finished games only, and every rate shows how many games it came
-          from. A research tool — no picks, no wagers.
-        </span>
-        <a
-          href="https://www.ncpgambling.org/help-treatment/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="pp-mono"
-          style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--accent-text)", textDecoration: "none", whiteSpace: "nowrap" }}
-        >
-          RESPONSIBLE GAMBLING →
-        </a>
+          {/* The unreadable count lives with the disclaimer rather than in a
+              banner over the cards: what it qualifies is the list above it. */}
+          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)", lineHeight: 1.6, maxWidth: 560 }}>
+            {unreadable > 0 && (
+              <span style={{ color: "var(--text)" }}>
+                {unreadable} {unreadable === 1 ? "game" : "games"} couldn&rsquo;t be read and {unreadable === 1 ? "is" : "are"} not listed.{" "}
+              </span>
+            )}
+            Nothing here is synthesized &mdash; if a provider has nothing yet, the section
+            says so. Research tool, no picks, no wagers.
+          </span>
+          <a
+            href="https://www.ncpgambling.org/help-treatment/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="pp-mono"
+            style={{ marginLeft: "auto", fontSize: 11, letterSpacing: "0.1em", color: "var(--accent-text)", textDecoration: "none", whiteSpace: "nowrap" }}
+          >
+            RESPONSIBLE GAMBLING &rarr;
+          </a>
+        </div>
       </div>
-      </div>
-      </div>
+
       {!isMobile && v2RightRail}
     </div>
   );

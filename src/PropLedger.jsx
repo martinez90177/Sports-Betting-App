@@ -22479,6 +22479,11 @@ function playerPropRead({ sport, player, market, marketLabel, games, statValue }
   const hits = values.filter((v) => v > line).length;
   return {
     sport, playerId: player.id, name: player.name, team: player.team, pos: player.pos,
+    // The provider ids, carried through so a caller can render the player's
+    // real face rather than their initials. MLB is keyed by its own person id
+    // (midfield's CDN); the other three by ESPN's. Whichever is absent stays
+    // undefined and PlayerAvatar falls back on its own.
+    mlbId: player.mlbId, espnId: player.espnId,
     market, marketLabel, line,
     hitRate: hits / values.length,
     gamesOver: hits,
@@ -23306,7 +23311,7 @@ export default function PropLedger() {
           />
         </LazyPane>
       )}
-      {page === "games" && <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} /></LazyPane>}
+      {page === "games" && <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} /></LazyPane>}
 
       {page === "news" && (
         <LazyPane minHeight={400}>
