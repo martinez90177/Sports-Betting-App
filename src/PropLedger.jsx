@@ -1566,6 +1566,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // L20 by default, per the handoff's per-league table -- long enough to
   // mean something in a 82-game season.
   const [lastN, setLastN] = useState(20);
+  const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
   const [oppView, setOppView] = useState("season");
   const [minMinutes, setMinMinutes] = useState(0);
@@ -1784,8 +1785,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       return true;
     });
     if (lastN !== "all") g = g.slice(-lastN);
+    g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp]);
+  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp, applyRange]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -2718,7 +2720,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        onZoomRange: (from, to) => setRange({ from, to }),
+        zoomed: !!range,
+        onClearZoom: () => setRange(null),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
@@ -6145,6 +6150,29 @@ function buildHitRateSplits({ sport, allGames, statValue, effectiveLine, lastN, 
   ];
 }
 
+// A stretch of the season, chosen by dragging across the game-by-game chart.
+//
+// Stored as the first and last game's date, not as indices: every page rebuilds
+// its own filtered list whenever the market, the venue filter or the snap range
+// changes, and an index into the old list points at a different game in the new
+// one. A date keeps meaning the same game.
+//
+// It narrows the sample the whole page reads, deliberately -- the rate, the
+// splits, the usage pills and the log all come off `filtered`, so a zoom that
+// only moved the bars would leave the number beside them counting games that
+// are no longer on screen. That is the one thing this product must not do.
+function useGameRange(resetKey) {
+  const [range, setRange] = useState(null);
+  // A range belongs to the player it was drawn on. Walking to a teammate keeps
+  // the dates valid-looking -- they are real dates -- while meaning nothing.
+  React.useEffect(() => { setRange(null); }, [resetKey]);
+  const applyRange = React.useCallback(
+    (games) => (range ? games.filter((g) => g.date >= range.from && g.date <= range.to) : games),
+    [range]
+  );
+  return { range, setRange, applyRange };
+}
+
 // Roster-rail season stat, in the market currently selected.
 //
 // The design's rail rows read "WR · 6.1 REC" -- position plus that player's
@@ -7118,6 +7146,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // Season by default: an NFL season is 17 games, so the whole of it is a
   // smaller sample than L20 would have implied on any other sport.
   const [lastN, setLastN] = useState("all");
+  const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
   // 1 (not 0) is this control's neutral value -- the slider bottoms out at 1
   // and the preset row below labels 1 as "Any snaps". Defaulting to 50 meant
@@ -7280,8 +7309,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       return true;
     });
     if (lastN !== "all") g = g.slice(-lastN);
+    g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, minSnapPct, maxSnapPct, snapFilterActive, lastN]);
+  }, [allGames, side, opponent, minSnapPct, maxSnapPct, snapFilterActive, lastN, applyRange]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -8172,7 +8202,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, home: g.home, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        onZoomRange: (from, to) => setRange({ from, to }),
+        zoomed: !!range,
+        onClearZoom: () => setRange(null),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
@@ -9561,6 +9594,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // L20 by default, per the handoff's per-league table -- long enough to
   // mean something in a 44-game season.
   const [lastN, setLastN] = useState(20);
+  const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
   const [minMinutes, setMinMinutes] = useState(0);
   const [maxMinutes, setMaxMinutes] = useState(40);
@@ -9772,8 +9806,9 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       return true;
     });
     if (lastN !== "all") g = g.slice(-lastN);
+    g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, minMinutes, maxMinutes, lastN]);
+  }, [allGames, side, opponent, minMinutes, maxMinutes, lastN, applyRange]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -10724,7 +10759,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        onZoomRange: (from, to) => setRange({ from, to }),
+        zoomed: !!range,
+        onClearZoom: () => setRange(null),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
@@ -13888,6 +13926,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // L20 by default, per the handoff's per-league table -- long enough to
   // mean something in a 162-game season.
   const [lastN, setLastN] = useState(20);
+  const { range, setRange, applyRange } = useGameRange(playerId);
   // Replaces the old "Any opponent" dropdown -- restricts the sample to
   // games against the selected team's actual next scheduled opponent
   // (nextGame.opp) instead of letting the user pick any team from history.
@@ -14243,8 +14282,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       return true;
     });
     if (lastN !== "all") g = g.slice(-lastN);
+    g = applyRange(g);
     return g;
-  }, [inScopeGames, lastN, isPitcher, teammateChips, boxscoreLineups, teammateDataReady]);
+  }, [inScopeGames, lastN, isPitcher, teammateChips, boxscoreLineups, teammateDataReady, applyRange]);
 
   // Batter rate-stat card (PA/Hits/AVG/OBP/BABIP/K%) -- the top value is the
   // rate over whatever the filters above have narrowed "filtered" down to,
@@ -15826,7 +15866,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: chartData.map((d) => ({ v: d.value, opp: d.opp, home: d.home, date: axisDateShort(d.date), po: d.playoff })),
+        games: chartData.map((d) => ({ v: d.value, opp: d.opp, home: d.home, iso: d.date, date: axisDateShort(d.date), po: d.playoff })),
+        onZoomRange: (from, to) => setRange({ from, to }),
+        zoomed: !!range,
+        onClearZoom: () => setRange(null),
         line: liveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: lineIsAdjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}

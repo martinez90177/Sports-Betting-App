@@ -532,7 +532,10 @@ export default function PlayerDetailV2({
 function usePlotWidth() {
   const [w, setW] = React.useState(0);
   const roRef = React.useRef(null);
+  // The node itself, for turning a pointer's clientX into a column index.
+  const node = React.useRef(null);
   const ref = React.useCallback((el) => {
+    node.current = el;
     if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
     if (!el) return;
     setW(el.clientWidth);
@@ -544,7 +547,7 @@ function usePlotWidth() {
     ro.observe(el);
     roRef.current = ro;
   }, []);
-  return [ref, w];
+  return [ref, w, node];
 }
 
 // The mock's own plot: 224px tall, gap 6, flex:1 columns, the value inside the
@@ -553,10 +556,19 @@ function usePlotWidth() {
 function GameByGame({
   sport, games = [], line, isBinary, direction = "over",
   marketLine, onDragLine, adjusted, draggable,
+  // Drag across the bars to narrow the sample to that stretch of the season.
+  // `onZoomRange` is handed the first and last game's raw date rather than
+  // indices: the page re-derives its own list on every market and filter
+  // change, and an index into yesterday's list points at a different game
+  // today. A date still means the same game whatever else moved.
+  onZoomRange, zoomed, onClearZoom,
 }) {
   // Non-null only while a drag is in progress -- see startDrag.
   const [rawLine, setRawLine] = React.useState(null);
-  const [plotRef, plotW] = usePlotWidth();
+  // The live selection while a zoom drag is in progress, as two column
+  // indices. Null the rest of the time.
+  const [sel, setSel] = React.useState(null);
+  const [plotRef, plotW, plotNode] = usePlotWidth();
   if (!games.length || line == null) return null;
   const H = 224, GUT = 52;
 
@@ -598,6 +610,43 @@ function GameByGame({
   // goes, because a clipped number is worse than no number.
   const valueSize = colW >= 34 ? 14 : colW >= 24 ? 11 : 0;
 
+  // ---- Drag to zoom ------------------------------------------------------
+  //
+  // The plot is a row of equal columns, so a pointer's x maps to a game by
+  // division -- no hit-testing, and it stays correct at 4px bars where the
+  // bars themselves are far too small to click.
+  //
+  // Two bars minimum. A one-bar "range" is a click, and a click that silently
+  // narrowed the sample to a single game would be the easiest way in the app
+  // to end up reading 100% off n=1.
+  const pitch = colW + gap;
+  const canZoom = typeof onZoomRange === "function" && n > 2 && plotW > 0;
+  const idxAt = (clientX) => {
+    const el = plotNode.current;
+    if (!el || pitch <= 0) return 0;
+    const x = clientX - el.getBoundingClientRect().left;
+    return Math.max(0, Math.min(n - 1, Math.floor(x / pitch)));
+  };
+  const startSelect = (e) => {
+    if (!canZoom || e.button !== 0) return;
+    e.preventDefault();
+    const a = idxAt(e.clientX);
+    setSel({ a, b: a });
+    const move = (ev) => setSel({ a, b: idxAt(ev.clientX) });
+    const up = (ev) => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      const b = idxAt(ev.clientX);
+      setSel(null);
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      if (hi - lo >= 1 && games[lo] && games[hi]) onZoomRange(games[lo].iso, games[hi].iso);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
+  const selLo = sel ? Math.min(sel.a, sel.b) : 0;
+  const selHi = sel ? Math.max(sel.a, sel.b) : 0;
+
   // When no column can carry its own date, the axis carries a few instead --
   // first, last, and as many evenly spaced between as fit. This is what both
   // benchmarks fall back to on a full season, and it keeps the one thing a
@@ -629,6 +678,9 @@ function GameByGame({
   const straightRun = straightRunOf(games, line, direction);
 
   const startDrag = (e) => {
+    // The tag sits inside the plot, so without this a grab of the line handle
+    // would also begin a zoom selection underneath it.
+    e.stopPropagation();
     if (!canDrag) return;
     e.preventDefault(); e.stopPropagation();
     const { unit, step, dragMax } = feedFormScale(recent, marketLine, isBinary, { height: H, pedestal: 0 });
@@ -659,7 +711,7 @@ function GameByGame({
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 14, marginBottom: 4, borderBottom: "1px solid var(--line)" }}>
         <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 18 }}>Game by game</span>
         <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
-          oldest to newest · bar height is the number
+          oldest to newest · bar height is the number{canZoom && !zoomed ? " · drag to zoom" : ""}
         </span>
         {/* Derived here rather than passed in. Every page was handing this a
             hard 0, so the mock's own caption had never once rendered -- and it
@@ -670,11 +722,37 @@ function GameByGame({
             {straightRun} straight {direction === "under" ? "under" : "over"}
           </span>
         )}
+        {/* The way back. A zoom narrows the sample every figure on the page
+             reads, so it cannot be a state you can only leave by guessing --
+             it names itself and offers the exit in the same breath. */}
+        {zoomed && (
+          <span
+            role="button" tabIndex={0} onClick={onClearZoom}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClearZoom(); } }}
+            style={{
+              marginLeft: straightRun > 1 ? 12 : "auto", flex: "none", cursor: "pointer",
+              fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
+              color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 4, padding: "4px 9px",
+            }}
+          >
+            Zoomed · {n} games · reset ×
+          </span>
+        )}
       </div>
 
       <div>
         <div style={{ position: "relative", paddingRight: GUT }}>
-          <div ref={plotRef} style={{ position: "relative", display: "flex", alignItems: "stretch", gap, height: H }}>
+          <div
+            ref={plotRef}
+            onMouseDown={startSelect}
+            style={{
+              position: "relative", display: "flex", alignItems: "stretch", gap, height: H,
+              cursor: canZoom ? "crosshair" : "default",
+              // A drag across a chart otherwise turns into a text selection of
+              // every number in it.
+              userSelect: sel ? "none" : undefined,
+            }}
+          >
             {games.map((g, i) => {
               const cleared = hit(g.v);
               const h = Math.max(3, Math.round(scale.y(g.v)));
@@ -706,6 +784,19 @@ function GameByGame({
                 </div>
               );
             })}
+            {/* The live selection. Drawn over the bars rather than under them
+                 -- at 4px a bar sitting on top of a tint is a bar you cannot
+                 see the tint of -- and inert, so it never eats the mouseup. */}
+            {sel && (
+              <span style={{
+                position: "absolute", top: 0, bottom: 0,
+                left: selLo * pitch,
+                width: (selHi - selLo + 1) * colW + (selHi - selLo) * gap,
+                background: "var(--amber-dim)",
+                border: "1px solid var(--amber-ring)",
+                borderRadius: 3, pointerEvents: "none",
+              }} />
+            )}
             {/* The rule stops at the plot's right edge instead of running the
                 full gutter. It used to extend under the tag, which was hidden
                 only because the tag is a solid fill -- the moment the tag went
