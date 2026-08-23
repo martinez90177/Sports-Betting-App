@@ -184,16 +184,18 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
   const grouped = useMemo(() => {
     const byGame = new Map();
     filtered.forEach((r) => {
-      // gameId before the team-opp fallback, because that fallback is
-      // *directional*: the same fixture reaches this loop once as TB-BAL and
-      // once as BAL-TB, and the board drew both -- two cards for one game, a
-      // slate of 15 counted as 30, each card holding half the props and each
-      // claiming to be the whole matchup. Only the builders that know which
-      // side is home can settle that, so a row that carries a canonical game
-      // id gets grouped by it. The fallback stays for the builders that have
-      // no fixture behind them at all (see the NFL/NBA rows, whose "games"
-      // are last-opponent pairings rather than a real slate).
-      const key = r.gameKey || r.gameId || `${r.team}-${r.opp}`;
+      // gameId first, for the builders that know which side is home.
+      //
+      // The fallback stays for the builders that have no fixture behind them
+      // at all (the NFL/NBA rows, whose "games" are last-opponent pairings),
+      // but it is sorted, not directional. It used to be `${team}-${opp}`,
+      // which reaches this loop twice for one pairing -- DAL-NYG from the
+      // Cowboys' rows and NYG-DAL from the Giants' -- and the board drew both:
+      // two cards under the same Cowboys @ Giants band, one holding 66 props
+      // and the other 58, each claiming to be the whole matchup. Sorting the
+      // pair makes the two orders one key, which is right: for a last-opponent
+      // pairing there is no home side for the direction to mean anything by.
+      const key = r.gameKey || r.gameId || [r.team, r.opp].filter(Boolean).sort().join("-");
       if (!byGame.has(key)) byGame.set(key, { key, label: r.gameLabelFull || `${r.team} vs ${r.opp}`, time: r.gameTime || "", rows: [] });
       byGame.get(key).rows.push(r);
     });

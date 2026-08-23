@@ -3,7 +3,7 @@ import MatchupPage from "./MatchupPage.jsx";
 import GamecastPage from "./GamecastPage.jsx";
 import GameCard, { StateSwatch } from "./GameCard.jsx";
 import {
-  SPORTS, dayKey, dayLabel, timeLabel, buildDateTabs,
+  SPORTS, dayKey, timeLabel, buildDateTabs,
   fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate, fetchNbaSlate, fetchNbaOpenerDay,
   MONTH_SHORT,
   GAME_STATUS, statusSortKey, isActiveStatus, opensGamecast,
@@ -315,7 +315,12 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         out.push({
           key,
           label: i === 0 ? "Today" : `${MONTH_SHORT[d.getMonth()]} ${String(d.getDate()).padStart(2, "0")}`,
-          sub: dayLabel(d.toISOString()),
+          // The weekday under every tab, the way the single-league tabs
+          // already read. This was dayLabel, which answers relative to today
+          // -- so the row ran "AUG 21 · TODAY · TOMORROW · MONDAY · TUESDAY",
+          // repeating the label above it on two of the five and switching
+          // vocabulary halfway along.
+          sub: d.toLocaleDateString([], { weekday: "long" }),
         });
       }
       return out;
