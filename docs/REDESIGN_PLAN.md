@@ -392,7 +392,7 @@ each from its own file; do not generalise one into four.
 | Games | Done, `cae7c3e` |
 | Landing | Done, `fc8899e` |
 | News | Done, `20f3d56` — the file was drawn *from* the app, so only the chassis was missing |
-| Mobile | Done, `MOBILE_SHA` — audit. **Do not build a bottom tab bar**: the mobile file's `navItems` array is defined and never rendered by its own template. Its real nav fold is four equal-width tabs at the *top* |
+| Mobile | Done, `5a6e5bb` — audit. **Do not build a bottom tab bar**: the mobile file's `navItems` array is defined and never rendered by its own template. Its real nav fold is four equal-width tabs at the *top* |
 
 ## The board's verdict, decided 2026-08-23
 
