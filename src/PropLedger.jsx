@@ -4,6 +4,7 @@ import {
 } from "recharts";
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
+import { roleValue, roleTiers, clearsRole, roleUnit } from "./lib/role.js";
 import { useSettings, useDisplaySettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits, isFirstRun, markTourDismissed, DEFAULTS } from "./settings.jsx";
 import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
@@ -15978,6 +15979,9 @@ function buildWNBAFeedRows() {
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
         values, line, isBinary, variance,
+        // How much of the game this player is actually on the floor for --
+        // see lib/role.js. Role, not popularity: there is no wagering feed.
+        role: roleValue({ sport: "wnba", games }),
         direction: "over", matchupScore: rank,
         recent: feedRecentGames(games, values),
         // How a saved pick off this row gets settled later -- see gradePick.
@@ -18320,6 +18324,9 @@ function buildNBAFeedRows() {
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
         values, line, isBinary, variance,
+        // How much of the game this player is actually on the floor for --
+        // see lib/role.js. Role, not popularity: there is no wagering feed.
+        role: roleValue({ sport: "nba", games }),
         direction: "over", matchupScore: rank,
         recent: feedRecentGames(games, values),
         // Gradable now that the log is a real ESPN box score. Stamped only
@@ -18387,6 +18394,9 @@ function buildNFLFeedRows() {
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
         values, line, isBinary, variance,
+        // How much of the game this player is actually on the floor for --
+        // see lib/role.js. Role, not popularity: there is no wagering feed.
+        role: roleValue({ sport: "nfl", games, position: player.pos }),
         direction: "over", matchupScore: def ? def.rank : null,
         recent: feedRecentGames(games, values),
         // See gradePick. Null for anyone with no ESPN id mapped -- those
@@ -18468,6 +18478,9 @@ function buildMLBFeedRows(teamsData) {
           n20: hitRateCount(values, 20),
           nAll: hitRateCount(values, "all"),
           values, line, isBinary: false, variance,
+          // Plate appearances per game: a leadoff bat sees ~4.5, a No. 9 ~3.9,
+          // so this reads the order without needing the order to be posted.
+          role: roleValue({ sport: "mlb", games }),
           direction: "over", matchupScore: rank,
           recent: feedRecentGames(games, values),
           // Whether MLB has actually posted this team's batting order yet, so
@@ -18575,6 +18588,7 @@ function buildMLBPitcherFeedRows(teamsData) {
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
         values, line, isBinary: false, variance,
+        role: roleValue({ sport: "mlb", games: pitcherGames, isPitcher: true }),
         direction: "over", matchupScore: rank,
         recent: feedRecentGames(pitcherGames, values),
         // Intentionally no `lineupConfirmed`: these rows are built off MLB's
@@ -18634,6 +18648,15 @@ function feedTeamCount(sport) {
 // full replacements for the hit-rate ordering. defaultDir is applied
 // whenever the user switches modes, then the direction chip can flip it.
 const FEED_SORT_MODES = [
+  {
+    // The one mode that overrides the hit-rate primary rather than breaking
+    // its ties -- see sortedRows. As a tiebreak it would do nothing at all:
+    // reserves reach 100% more easily than starters, so they hold the top of
+    // the list before any tiebreak is consulted.
+    id: "role", label: "Biggest role", metric: (r) => (r.role ?? -1), defaultDir: "desc",
+    primary: true,
+    description: "Ranks by how much of the game the player actually plays -- minutes in basketball, plate appearances in baseball, touches in football. This is the one sort that outranks hit rate, because a bench player beats his own line more consistently than a star does and would otherwise lead every list. It is a measure of role, not of betting popularity: no wagering data exists here.",
+  },
   {
     // matchupScore, not rank: it's negated on Under rows (see
     // flipFeedRowToUnder) so "easiest" keeps meaning "best for the side
@@ -18997,7 +19020,11 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // not stay on screen labelled L5.
   const [expandedKey, setExpandedKey] = useState(null);
   React.useEffect(() => { setExpandedKey(null); }, [sport, selectedMarkets, sampleWindow, direction, linesMode]);
-  const [sortMode, setSortMode] = useState("matchup");
+  const [sortMode, setSortMode] = useState("role");
+  // The Role floor. "all" always, until asked: a filter that hides rows by
+  // default would make the feed answer "there is nothing here" when what it
+  // means is "I hid it".
+  const [roleTier, setRoleTier] = useState("all");
   const [sortDir, setSortDir] = useState("desc");
   const oddsFormat = useOddsFormat();
   // Secondary filters (Sort By, Odds Range, Defense Rank Range) collapse
@@ -19321,6 +19348,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     { const first = PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null; setSelectedMarkets(first ? [first] : []); }
     setRankLo(1);
     setRankHi(feedTeamCount(sport));
+    setRoleTier("all");
     setTeamFilter("all");
     setSelectedGameIds(new Set());
     setColumnSort(null);
@@ -19349,8 +19377,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setMinGames(10);
     setRankLo(1);
     setRankHi(maxRank);
-    setSortMode("matchup");
+    setSortMode("role");
     setSortDir("desc");
+    setRoleTier("all");
     setOddsMinX(4);
     setOddsMaxX(96);
     setPostedLineupsOnly(false);
@@ -19526,6 +19555,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const filteredRows = useMemo(() => marketRows.filter((r) => {
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
+    // The Role floor. A row whose role could not be measured passes rather
+    // than being cut: "we did not measure it" and "he barely plays" are
+    // different claims, and only the second is ours to make. See lib/role.js.
+    if (!clearsRole(r, roleTier, sport)) return false;
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
     // A row with no opponent rank is only excluded once the user has actually
     // narrowed the Defense Rank filter -- an untouched filter must still show
@@ -19557,7 +19590,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // there and must let it through rather than wipe pitcher markets whole.
     if (postedLineupsOnly && sport === "mlb" && r.lineupConfirmed === false) return false;
     return true;
-  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
+  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
 
   // Badge shown on the Filters trigger -- counts only the controls tucked
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
@@ -19665,6 +19698,25 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         if (av == null) return 1;
         if (bv == null) return -1;
         return dir === "desc" ? bv - av : av - bv;
+      });
+      return copy;
+    }
+    // A mode marked `primary` leads the sort instead of breaking hit rate's
+    // ties. Only "Biggest role" is: every other mode is a research axis you
+    // want *within* a hit rate, while role is the one thing that has to
+    // outrank it or it has no effect at all.
+    if (activeSortMode.primary) {
+      copy.sort((a, b) => {
+        const av = activeSortMode.metric(a, sampleWindow);
+        const bv = activeSortMode.metric(b, sampleWindow);
+        if (bv !== av) return sortDir === "desc" ? bv - av : av - bv;
+        // Hit rate still decides among equal roles, so the list reads the way
+        // it always did once role is level.
+        const aHit = a[sampleWindow], bHit = b[sampleWindow];
+        if (aHit == null && bHit != null) return 1;
+        if (bHit == null && aHit != null) return -1;
+        if (aHit == null || bHit == null) return 0;
+        return bHit - aHit;
       });
       return copy;
     }
@@ -20163,9 +20215,22 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 
       {v2SummaryStrip}
 
+      {/* The active-filter chips.
+
+          `marginTop`, because this used to sit flush against the summary
+          strip's bottom border and read as a pill balanced on the edge of the
+          box above it rather than as its own row.
+
+          `minHeight`, because the row collapses to nothing when the last chip
+          is removed and everything below it jumps up by 41px -- and the click
+          that removes a chip is a click on this row, so the thing under the
+          cursor moves out from under it. Same call as the form graph's run
+          track: a fixed cost paid on every render beats a layout that shifts
+          while it is being used. */}
       <div style={{
         display: "flex", alignItems: "center", flexWrap: "wrap",
-        gap: 12, fontSize: 11.5, color: "var(--dim)", marginBottom: 16,
+        gap: 12, fontSize: 11.5, color: "var(--dim)",
+        marginTop: 12, marginBottom: 16, minHeight: 26,
       }}>
         {activeFilterChips.map((c) => (
           <span
@@ -20422,7 +20487,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             stranded. */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: isNarrow ? "1fr" : (sport === "mlb" ? "1fr 1fr" : "1fr"),
+        gridTemplateColumns: isNarrow ? "1fr" : (sport === "mlb" ? "1fr 1fr 1fr" : "1fr 1fr"),
         gap: "16px 24px", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)",
       }}>
         <div>
@@ -20457,6 +20522,41 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
             Ranked on this market alone, not the opponent&rsquo;s record. #1 is the toughest,
             and the tiers flip with the side you are reading.
+          </div>
+        </div>
+
+        <div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <span className="pp-mono" style={FEED_SECTION_LABEL}>Role</span>
+            <span className="pp-mono" style={{ fontSize: 10, color: "var(--dim)" }}>
+              {roleUnit(sport)} per game
+            </span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+            {roleTiers(sport).map((t) => {
+              const on = roleTier === t.id;
+              return (
+                <span
+                  key={t.id}
+                  role="button"
+                  aria-pressed={on}
+                  tabIndex={0}
+                  onClick={() => setRoleTier(t.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRoleTier(t.id); } }}
+                  className="pp-mono"
+                  style={FEED_PILL(on)}
+                >
+                  {t.label}{t.min != null ? ` ${t.min}+` : ""}
+                </span>
+              );
+            })}
+          </div>
+          {/* Says what it is and what it is not, because the difference is the
+              whole reason the control is called Role. */}
+          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+            How much of the game a player actually plays, measured. Not betting popularity
+            &mdash; there is no wagering feed here, and a starter on a bad team logs the same
+            minutes as a star.
           </div>
         </div>
 
