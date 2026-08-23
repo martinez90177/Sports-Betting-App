@@ -17,7 +17,7 @@ rebuild is complete; data track sections A and C complete.**
 | **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | **A and C done.** B done for NBA; MLB/WNBA logs were already real. See below |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
 | **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
-| **v2 rebuild** | Every screen rebuilt against `design_handoff_proppalace_v2/` | **Complete.** `98f8579`…`c34df94`. See its own section below |
+| **v2 rebuild** | Every screen rebuilt against `design_handoff_proppalace_v2/` | **First pass complete**, `98f8579`…`c34df94`. A second, element-for-element pass is **9 of 12 screens** in — see "The transcription pass" below |
 
 The tracks are independent. Redesign items follow Alex's order and are not to be
 resequenced; the data and monetisation tracks can run whenever.
@@ -363,6 +363,54 @@ live data, which is what forces most of these:
 - **Feed game-id reconciliation** (would let "Open in feed" filter to one
   game). Declined twice on cost-vs-value; the current phrasing is honest.
 - Everything in the monetisation track, untouched.
+
+## The transcription pass — started 2026-08-22
+
+The first pass built each screen *inspired by* its mock. Alex's correction,
+after a week of it: **transcribe the file element-for-element.** Open the mock,
+write out the mock's block tree, write out the app's, make them identical.
+`sc-for` → `.map()`, `sc-if` → `&&`, `{{ token }}` → real data, inline styles
+kept verbatim. The only permitted substitution is a hex → the token that
+already resolves to that hex.
+
+Two substitutions are established across every screen and do not count as
+deviations: the mocks' lettered team badges become the real crest (`TeamLogo`
+— the design files could not carry images, see the handoff README), and their
+initials circles become `PlayerAvatar`, which carries availability with it.
+
+**One mock file per sport.** The v2 bundle has a separate player-detail file
+for MLB, NBA, NFL and WNBA, and their pills and cells genuinely differ. Build
+each from its own file; do not generalise one into four.
+
+| Screen | State |
+|---|---|
+| Player detail — MLB, NBA, NFL, WNBA | Done, one per file |
+| Matchup Card (a **modal**, not a page) | Done |
+| Settings — popup + full page | Done |
+| Prop Feed | Done |
+| The Board | Done |
+| Games | Done, `cae7c3e` |
+| Landing | **Open** |
+| News | **Open** — was the closest of all of them in the first pass |
+| Mobile | **Open** — audit only. **Do not build a bottom tab bar**: the `navItems` array in the mobile file is dead code the template never renders. The `.mobile-player-strip` is the real furniture |
+
+### Games, and what "resemble the mock" turned out to mean
+
+Worth recording, because the same trap is waiting on Landing and News. Games
+had already been through the first pass and the three-column shell, and still
+read as v1 — because the *centre column* was untouched. It was a four-column
+table whose rows unfolded the full `GamecastPage` underneath. The file draws
+neither: a stack of bordered cards, each opening a compact gamecast **inside
+the card**.
+
+The lesson: a screen can have the mock's chassis, rails, strip and type and
+still be the old screen. Check what the file does with its *content*, not just
+its frame.
+
+Still reachable, deliberately: the full `MatchupPage` / `GamecastPage`, from
+the foot of an open card. Those two are still first-pass pages and still carry
+the accent gradient wash the v2 screens dropped — if they are ever meant to
+match, that is unbuilt work, not an oversight.
 
 ## Still open — before the v2 rebuild
 
