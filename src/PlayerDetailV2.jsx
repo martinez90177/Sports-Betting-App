@@ -406,16 +406,17 @@ export default function PlayerDetailV2({
                 <div style={{ ...metricValue, color: verdict.marginColor }}>{verdict.margin}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div style={{ ...metricLabel, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                  Odds
-                  {!verdict.odds && (
-                    <span style={{ fontSize: 8.5, letterSpacing: "0.1em", color: "var(--dim)", border: "1px solid var(--line)", borderRadius: 3, padding: "1px 4px" }}>SOON</span>
-                  )}
-                </div>
-                {/* TODO: a real feed fills this with { price, book, point,
-                    fetchedAt } per player+market. Until then the cell is empty
-                    -- never a price derived from the hit rate. */}
-                <div style={{ ...metricValue, color: "var(--dim)" }}>{verdict.odds || "—"}</div>
+                <div style={metricLabel}>Odds</div>
+                {/* The cell keeps its slot so wiring a real feed later is a
+                    value swap with no layout change. It says "coming soon"
+                    rather than showing a dash, because a dash reads as "we
+                    looked and there is none" -- and never a price derived from
+                    the hit rate, which is circular.
+                    TODO: a real feed fills this with { price, book, point,
+                    fetchedAt } per player+market. */}
+                {verdict.odds
+                  ? <div style={{ ...metricValue, color: "var(--dim)" }}>{verdict.odds}</div>
+                  : <div style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.06em", marginTop: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>Coming soon</div>}
               </div>
             </div>
             <span style={{
@@ -601,7 +602,11 @@ function GameByGame({
                 through the number. */}
             <span style={{
               position: "absolute", left: 0, right: 0, bottom: lineY,
-              borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink)" : "var(--text)"}`,
+              // Always white, at any line. A rule that changes colour when the
+              // reader drags it reads as if the line itself now means
+              // something different; the handle and the Line column already
+              // say it has been moved.
+              borderTop: "1.5px dashed var(--text)",
               pointerEvents: "none",
               transition: rawLine == null ? "bottom 120ms ease-out" : "none",
             }} />

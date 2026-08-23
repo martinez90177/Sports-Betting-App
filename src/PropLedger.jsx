@@ -6825,16 +6825,8 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
             sport really is covered (MLB hits and home runs, via api/odds.js),
             and that cell fetches on demand instead of showing the dash. */}
         <div style={{ textAlign: "left" }}>
-          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em", display: "flex", alignItems: "center", gap: 6 }}>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>
             ODDS
-            {!odds && (
-              <span style={{
-                fontSize: 8.5, letterSpacing: "0.1em", color: "var(--dim)",
-                border: "1px solid var(--line)", borderRadius: 3, padding: "1px 4px",
-              }}>
-                SOON
-              </span>
-            )}
           </div>
           <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--dim)" }}>
             {/* TODO: when a real feed covers more than MLB hits/home runs, the
@@ -6842,7 +6834,7 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
                   { price: number, book: string, point: number, fetchedAt: number }
                 per player+market, joined the way api/odds.js already returns
                 bookmakers -> markets -> outcomes. Until then: no value. */}
-            {odds || "—"}
+            {odds || <span style={{ fontSize: compact ? 11 : 12, letterSpacing: "0.06em" }}>Coming soon</span>}
           </div>
         </div>
         {total > 0 && (
@@ -17145,7 +17137,14 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   const tierFg = "var(--text)";
   const tierBorder = "1px solid var(--line)";
   const hrColor = feedRateColor;
-  const odds = r[sampleWindow] == null ? null : probToAmericanOdds(r[sampleWindow]);
+  // No odds. There is no price feed behind this column, and a price derived
+  // from the row's own hit rate is circular -- it is what printed -900 on
+  // every row, because probToAmericanOdds clamps at +/-1000 and every rate at
+  // 90% or better landed on the clamp. The cell says so in words instead.
+  // TODO: a real feed fills this per player+market with
+  //   { price: number, book: string, point: number, fetchedAt: number }
+  // joined the way api/odds.js already returns bookmakers -> markets ->
+  // outcomes. Until then this column has no value to show.
   // Overs keep the original `${sport}-${key}` id so picks saved to
   // localStorage before the Over/Under switcher existed still match; Unders
   // get their own suffix so both sides of the same prop can sit on the slip
@@ -17535,7 +17534,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
                 accent-coloured body text: the proposition is the card's
                 subject, and colouring it accent made every card look active. */}
             <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
-              {r.subtitle}{odds != null && <span style={{ color: "var(--dim)" }}> {formatOdds(odds, oddsFormat)}</span>}
+              {r.subtitle}
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -17676,7 +17675,9 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           </div>
         )}
       </div>
-      <div className="pp-mono" style={{ fontSize: 14, color: "var(--text-2, var(--dim))" }}>{odds == null ? "—" : formatOdds(odds, oddsFormat)}</div>
+      {/* The column keeps its grid track, header and width so wiring a real
+          feed later is a value swap with no layout change. */}
+      <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--dim)", whiteSpace: "nowrap" }}>Coming soon</div>
       {/* L5/L10 restate against a dragged line from the same log the bars
           draw; L20/Season cover a wider window than that log holds, so they
           stay as built rather than being recomputed off a shorter sample

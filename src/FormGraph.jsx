@@ -187,10 +187,6 @@ export default function FeedFormStrip({
   // bars are drawn on, so "clears the line" is literally "taller than the
   // dashes" at every market size.
   const lineY = barY(lineVal);
-  // The rule stops at the last real game -- it is not drawn across games that
-  // do not exist. It only runs out to meet the tag when the sample fills the
-  // row, which is the one case where there is nothing between them.
-  const extendToTag = showTag && shortfall === 0;
   const grid = { display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: G };
 
   return (
@@ -259,11 +255,18 @@ export default function FeedFormStrip({
               aria-hidden
             >
               <span style={{
-                position: "absolute", left: 0, right: extendToTag ? -GUT : 0, bottom: lineY,
-                // White, not accent: at accent lightness the rule disappeared
-                // against the green fills. It goes accent-ink only once the
-                // reader has dragged it off the posted line.
-                borderTop: `1.5px dashed ${adjusted ? "var(--amber-ink, var(--amber))" : "var(--text)"}`,
+                // Stops at the plot's right edge, never in the gutter. It used
+                // to run the full gutter width, which put the dashes straight
+                // through the drag handle's digits -- and the handle is
+                // transparent once the line is off-market, so there was
+                // nothing masking them.
+                position: "absolute", left: 0, right: 0, bottom: lineY,
+                // Always white. Not accent, at any line: at accent lightness
+                // the rule disappears against the green fills, and a rule that
+                // changes colour when the reader drags it reads as if the
+                // *line* means something different, which it does not -- the
+                // handle and the Line column already say it has been moved.
+                borderTop: "1.5px dashed var(--text)",
               }} />
             </div>
           )}
@@ -320,12 +323,21 @@ export default function FeedFormStrip({
 
         {/* The run rule sits under the trailing bars only, so the words
              below tie to the games above. Laid out on the same grid as the
-             bars so it lines up exactly at any column width. */}
-        {showRun && (
-          <div style={{ ...grid, marginTop: 5 }}>
-            <span style={{ gridColumn: `${n - shownRun + 1} / ${n + 1}`, height: 2, borderRadius: 1, background: runFill }} />
-          </div>
-        )}
+             bars so it lines up exactly at any column width.
+
+             The track is always present, empty when there is no run. It used
+             to be mounted only when there was one, which cost 7px of height --
+             and the run appears and disappears *while the line is being
+             dragged*, so the row grew and shrank under the cursor. A fixed
+             2px track that is sometimes blank costs the same 7px on every row
+             and never moves. */}
+        <div style={{ ...grid, marginTop: 5 }} aria-hidden={!showRun}>
+          <span style={{
+            gridColumn: showRun ? `${n - shownRun + 1} / ${n + 1}` : "1 / 2",
+            height: 2, borderRadius: 1,
+            background: showRun ? runFill : "transparent",
+          }} />
+        </div>
       </div>
 
       {/* Counts first: "N of M" is the sample the bars above actually draw,

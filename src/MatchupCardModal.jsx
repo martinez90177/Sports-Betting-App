@@ -251,7 +251,8 @@ export default function MatchupCardModal({
                   <>
                     <span style={{
                       position: "absolute", left: 0, right: 0, bottom: lineY,
-                      borderTop: `1.5px dashed ${chart.adjusted ? "var(--amber-ink)" : "var(--text)"}`,
+                      // Always white -- see the note on the page chart it mirrors.
+                      borderTop: "1.5px dashed var(--text)",
                       pointerEvents: "none",
                     }} />
                     <span style={{
