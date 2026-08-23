@@ -41,6 +41,7 @@ const TAB_TYPE = {
 export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge = null, extraRight = null }) {
   return (
     <nav
+      className="pp-nav"
       style={{
         display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap",
         padding: "16px 32px", borderBottom: "1px solid var(--line)",
@@ -63,7 +64,11 @@ export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge
       {/* Landing draws a FIRST VISIT pill here; no other screen passes one. */}
       {badge}
 
-      <span style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
+      {/* On a phone these become four equal-width tabs on their own row --
+          see .pp-nav-tabs. Deliberately at the top, not a bottom bar: the
+          mobile file defines a `navItems` array for one and its template never
+          renders it, so the bottom bar is a draft that was cut. */}
+      <span className="pp-nav-tabs" style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
         {NAV_TABS.map((t) => {
           const active = t.id === page;
           return (
@@ -88,7 +93,7 @@ export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge
         })}
       </span>
 
-      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+      <span className="pp-nav-right" style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
         {extraRight}
         <button
           type="button"
@@ -104,7 +109,11 @@ export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge
         >
           ⚙
         </button>
-        <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>
+        {/* Hidden on a phone (see .pp-nav-signin): the top row cannot hold
+            the wordmark, the cog, this and the 21+ mark at 390px, and of the
+            four this is the only one that is neither identity nor compliance
+            -- and it does nothing yet. */}
+        <span className="pp-mono pp-nav-signin" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>
           SIGN IN
         </span>
         <span

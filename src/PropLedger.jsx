@@ -23208,7 +23208,7 @@ export default function PropLedger() {
           it is handed down as `searchSlot` and rendered there. Games moves the
           same way when screen 4 is rebuilt. */}
       {page === "games" && (
-        <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 32px 0" }}>
+        <div className="pp-games-search" style={{ display: "flex", justifyContent: "flex-end", padding: "12px 32px 0" }}>
           <SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />
         </div>
       )}

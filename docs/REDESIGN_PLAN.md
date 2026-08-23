@@ -17,7 +17,7 @@ rebuild is complete; data track sections A and C complete.**
 | **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | **A and C done.** B done for NBA; MLB/WNBA logs were already real. See below |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
 | **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
-| **v2 rebuild** | Every screen rebuilt against `design_handoff_proppalace_v2/` | **First pass complete**, `98f8579`…`c34df94`. A second, element-for-element pass is **10 of 12 screens** in — see "The transcription pass" below |
+| **v2 rebuild** | Every screen rebuilt against `design_handoff_proppalace_v2/` | **First pass complete**, `98f8579`…`c34df94`. A second, element-for-element pass is **complete, 12 of 12 screens** — see "The transcription pass" below |
 
 The tracks are independent. Redesign items follow Alex's order and are not to be
 resequenced; the data and monetisation tracks can run whenever.
@@ -391,8 +391,8 @@ each from its own file; do not generalise one into four.
 | The Board | Done |
 | Games | Done, `cae7c3e` |
 | Landing | Done, `fc8899e` |
-| News | **Open** — was the closest of all of them in the first pass |
-| Mobile | **Open** — audit only. **Do not build a bottom tab bar**: the `navItems` array in the mobile file is dead code the template never renders. The `.mobile-player-strip` is the real furniture |
+| News | Done, `20f3d56` — the file was drawn *from* the app, so only the chassis was missing |
+| Mobile | Done, `MOBILE_SHA` — audit. **Do not build a bottom tab bar**: the mobile file's `navItems` array is defined and never rendered by its own template. Its real nav fold is four equal-width tabs at the *top* |
 
 ## The board's verdict, decided 2026-08-23
 

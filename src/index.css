@@ -1145,6 +1145,52 @@ select.select-sm:focus, select.select-sm:focus-visible {
    v2 Games screen does not draw. */
 .gm-sticky { position: sticky; top: 0; z-index: 20; background: var(--bg); }
 
+/* The app-level search above Games. Right-aligned at `min(260px, 46vw)` it
+   becomes a 179px field floating in the middle-right of a 390px screen with
+   nothing to align to. Full width on a phone.
+
+   It is only still a separate row because Games predates its own header field;
+   the Prop Feed already takes the same component as `searchSlot` and draws it
+   beside its h1. Games should do the same now that screen 4 is rebuilt -- that
+   is a Games-structure change, not a mobile one. */
+@media (max-width: 720px) {
+  .pp-games-search { padding: 12px 16px 0 !important; }
+  .pp-games-search > div { width: 100%; }
+  .pp-games-search input { width: 100% !important; }
+}
+
+/* ---------- the nav on a phone ----------
+   `PropPalace Mobile v2.dc.html` folds the top bar in two: the wordmark and
+   the right-hand controls on one row, then the four sections as equal-width
+   tabs with the active underline on a second. Left to the desktop rule, a
+   gap of 32 with flex-wrap put all three groups on separate rows and cost
+   about 170px of header before any content.
+
+   Its script also defines a `navItems` array for a bottom tab bar -- ⌂ Games,
+   ▦ Board, ≡ Feed, ✦ Picks -- which the template never renders anywhere. That
+   is a cut draft, not a spec. Do not build it. */
+@media (max-width: 720px) {
+  .pp-nav { gap: 10px; padding: 10px 16px 0; }
+  .pp-nav-right { order: 2; margin-left: auto; }
+  .pp-nav-tabs {
+    order: 3; flex-basis: 100%; gap: 0 !important;
+    flex-wrap: nowrap !important; margin-top: 4px;
+  }
+  .pp-nav-tabs > button {
+    /* flex-basis 0 with min-width 0, or "PROP FEED" and "THE BOARD" hold a
+       min-content floor wider than a quarter of the row and the four stop
+       being equal -- which is what made the middle two touch. */
+    flex: 1 1 0; min-width: 0; text-align: center;
+    padding: 14px 0 12px !important;
+    margin-bottom: -1px;
+    /* The file's own mobile tab type, a step down from the desktop 12/0.12. */
+    font-size: 10.5px !important;
+    letter-spacing: 0.1em !important;
+  }
+  .pp-nav-signin { display: none; }
+  .pp-nav > span:first-child .pp-mono { font-size: 12px; }
+}
+
 /* The landing hero: two columns at desktop, one below it.
    `PropPalace Landing v2.dc.html` is a fixed 1280-minimum canvas and states no
    phone layout at all, but its right column is `minmax(440px, 520px)` -- left

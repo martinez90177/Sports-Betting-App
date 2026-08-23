@@ -1003,7 +1003,11 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
             target="_blank"
             rel="noopener noreferrer"
             className="pp-mono"
-            style={{ marginLeft: "auto", fontSize: 11, letterSpacing: "0.1em", color: "var(--accent-text)", textDecoration: "none", whiteSpace: "nowrap" }}
+            style={{
+              display: "inline-flex", alignItems: "center", minHeight: 44,
+              marginLeft: "auto", fontSize: 11, letterSpacing: "0.1em",
+              color: "var(--accent-text)", textDecoration: "none", whiteSpace: "nowrap",
+            }}
           >
             RESPONSIBLE GAMBLING &rarr;
           </a>
