@@ -687,12 +687,18 @@ input.pp-search:focus, input.pp-search:focus-visible {
      padding = 930 inside the card. The wrapper's clip/auto breakpoint below
      has to stay above that (page-shell padding included) or the last column
      is clipped with no scrollbar to reach it. */
+  /* LINE and ODDS are wider than the handoff's 92/84. Both cells carry a
+     second line the mock's own numbers never had to fit: LINE says
+     "market 12.5 · reset" while the line is dragged off the posted one
+     (122px at 11px, 117px at 10px), and ODDS says "Coming soon" until a real
+     feed exists (75px). At 88/80 the two overflowed their tracks and collided
+     in the 14px gap between them. */
   grid-template-columns:
     34px
     minmax(218px, 262px)
     minmax(180px, 250px)
+    minmax(96px, 124px)
     minmax(72px, 88px)
-    minmax(64px, 80px)
     minmax(260px, 1fr);
   column-gap: 14px;
   padding-left: 16px;

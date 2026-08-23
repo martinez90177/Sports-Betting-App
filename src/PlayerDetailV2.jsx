@@ -187,7 +187,7 @@ export default function PlayerDetailV2({
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack(); } }}
           style={{ ...crumb, color: "var(--text-2)", cursor: "pointer" }}
         >
-          ← Prop feed
+          ← Prop Feed
         </span>
         {/* The Matchup Card file adds exactly this button to the breadcrumb,
             20px after the back link, and it is the only thing that opens the

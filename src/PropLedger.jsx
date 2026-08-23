@@ -12185,7 +12185,12 @@ const statValueMLB = (g, market) => {
 // batter market ids above (both have "h"/"bb", but they mean hits allowed
 // vs. hits recorded).
 const MLB_PITCHER_MARKETS = [
-  { id: "p_k", label: "Strikeouts" },
+  // "Thrown", not just "Strikeouts": the batter list has its own `so`
+  // Strikeouts, and the two now sit side by side in the feed's market pills
+  // rather than under separate Batting/Pitching headings in a dropdown. The
+  // rest of this list already disambiguates itself the same way -- Allowed,
+  // Recorded.
+  { id: "p_k", label: "Strikeouts Thrown" },
   { id: "p_outs", label: "Outs Recorded" },
   { id: "p_er", label: "Earned Runs" },
   { id: "p_h", label: "Hits Allowed" },
@@ -17661,8 +17666,12 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             onClick={resetLine}
             title={`The posted line is ${Number(r.line).toFixed(1)} — click to put it back`}
             className="pp-mono"
-            style={{ fontSize: 11, marginTop: 4, color: "var(--amber-ink, var(--amber))", cursor: "pointer", whiteSpace: "nowrap" }}
+            style={{ fontSize: 10, marginTop: 4, color: "var(--amber-ink, var(--amber))", cursor: "pointer", whiteSpace: "nowrap" }}
           >
+            {/* 10px, which is the size the handoff sets on this note -- and
+                the size that keeps the longest form of it ("market 12.5 ·
+                reset", 117px) inside the LINE track rather than spilling into
+                the ODDS cell beside it. */}
             market {Number(r.line).toFixed(1)} · reset
           </div>
         ) : cushion !== null && (
@@ -19907,7 +19916,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           same thing, so this uses the existing one rather than adding a
           second. */}
       <div style={{ marginBottom: 18 }}>
-        <h1 className="pp-display" style={{ fontSize: 34, margin: 0, letterSpacing: "-0.01em", fontWeight: 600 }}>Prop feed</h1>
+        <h1 className="pp-display" style={{ fontSize: 34, margin: 0, letterSpacing: "-0.01em", fontWeight: 600 }}>Prop Feed</h1>
         <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2, var(--dim))", marginTop: 8 }}>
           Hit rates with the games behind them · every row states its sample
         </div>
@@ -20003,20 +20012,30 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 All markets
               </span>
             </div>
-            {/* Quick-pick chips for the common markets, multi-select. The
-                full grouped list stays behind the picker beside them --
-                every sport has more markets than fit as chips. */}
+            {/* Every market for this sport, as pills. This used to be four
+                pinned quick-picks with the rest behind a dropdown, which hid
+                most of the list behind a click and made the four look like
+                the whole set.
+
+                There is no "All" pill. An empty selection already means all
+                props -- that is what the feed reads it as -- so "nothing
+                selected" is the all state, and it shows as every pill sitting
+                unselected rather than as a fifth control that has to be kept
+                in sync with the other four. "All markets" above clears back
+                to it.
+
+                The phone's Refine sheet keeps the dropdown (see the second
+                PropTypePicker below): sixteen wrapping pills on a 390px sheet
+                is a wall, and there the list genuinely does need collapsing. */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9, alignItems: "center" }}>
-              {(PROP_QUICK_PICKS[sport] || []).map((id) => {
-                const m = propGroups.flatMap((g) => g.markets).find((x) => x.id === id);
-                if (!m) return null;
-                const on = selectedMarkets.includes(id);
+              {propGroups.flatMap((g) => g.markets).map((m) => {
+                const on = selectedMarkets.includes(m.id);
                 return (
                   <span
-                    key={id}
+                    key={m.id}
                     role="button"
                     aria-pressed={on}
-                    onClick={() => setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== id) : [...selectedMarkets, id])}
+                    onClick={() => setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id])}
                     className="pp-mono"
                     style={{
                       fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
@@ -20029,7 +20048,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                   </span>
                 );
               })}
-              <PropTypePicker groups={propGroups} values={selectedMarkets} onChange={setSelectedMarkets} />
             </div>
           </div>
 
