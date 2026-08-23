@@ -518,6 +518,35 @@ export default function PlayerDetailV2({
   );
 }
 
+// The plot's own width, measured. Everything the chart draws under a bar --
+// disc, abbreviation, date, the value inside the bar foot -- is decided from
+// how much room one column actually has, which is not knowable without this.
+//
+// A callback ref, not useRef + useLayoutEffect([]), and the difference is not
+// stylistic. GameByGame returns null while the log is still being fetched, so
+// on first mount there is no node: the effect runs, finds `ref.current` null,
+// and never runs again because its dependency list is empty. The games then
+// arrive, the plot renders at its real width, and the hook still says 0 --
+// which renders every label hidden at every size. A callback ref fires on
+// each attach and detach, so it measures the node that actually exists.
+function usePlotWidth() {
+  const [w, setW] = React.useState(0);
+  const roRef = React.useRef(null);
+  const ref = React.useCallback((el) => {
+    if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
+    if (!el) return;
+    setW(el.clientWidth);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const cw = entries[0] && entries[0].contentRect && entries[0].contentRect.width;
+      if (cw != null) setW(cw);
+    });
+    ro.observe(el);
+    roRef.current = ro;
+  }, []);
+  return [ref, w];
+}
+
 // The mock's own plot: 224px tall, gap 6, flex:1 columns, the value inside the
 // bar foot, a 26px opponent disc under the axis, and the line tag hanging in a
 // 52px right gutter. No column band -- removed from all five mocks.
@@ -527,19 +556,59 @@ function GameByGame({
 }) {
   // Non-null only while a drag is in progress -- see startDrag.
   const [rawLine, setRawLine] = React.useState(null);
+  const [plotRef, plotW] = usePlotWidth();
   if (!games.length || line == null) return null;
-  // MIN_COL is what stops the axis labels running into each other, and it is
-  // measured rather than picked: the date renders 37px wide at 10px mono and
-  // the opponent 30px at 11px, centred in columns 6px apart, so two
-  // neighbouring dates touch the moment a column drops under 31px. At 26 they
-  // did -- a seventeen-game NFL log at 768px read "Sep 14Sep 23Sep 28" with no
-  // space at all, and the same collision was already there on a 1150px desktop
-  // where the three-column chassis leaves the centre 605px wide.
+  const H = 224, GUT = 52;
+
+  // ---- The plot is a fixed box. The bars fit themselves into it. ----------
   //
-  // 32 gives the date a hair of clearance and the strip scrolls (overflowX
-  // above) once the log is too long for the width, which is the honest
-  // failure: fewer bars visible, none of them lying.
-  const H = 224, GUT = 52, MIN_COL = 32;
+  // It used to be the other way round: every column had a 32px minimum and the
+  // strip scrolled sideways once they stopped fitting. That is what an
+  // eighty-game MLB season did to it -- a 3,000px plot inside a 700px card.
+  //
+  // Alex's call (2026-08-23), and it is what both benchmarks do. Measured on
+  // PropsMadness: at Games 10 the bars are ~32px, at 20 ~28px, at Max (124)
+  // ~5px, and the chart is 820px wide at all three. Outlier's season view is
+  // the same -- hairlines in a fixed box, no scroller anywhere. Scrolling a
+  // chart is work the reader did not ask for, and it hides the shape of the
+  // season, which is the one thing a season-long view is for.
+  //
+  // The design mock for the folded page answered this differently -- ten fixed
+  // slots, the rest in the log table. Overruled deliberately: it makes the
+  // window control decide what the graph can show, when the graph can simply
+  // show it.
+  const n = games.length;
+  // The gap goes before the bar does. At 80 games a 6px gap is 480px of the
+  // plot spent on nothing.
+  const gap = n <= 20 ? 6 : n <= 40 ? 4 : 2;
+  const colW = plotW > 0 ? Math.max(1, (plotW - gap * (n - 1)) / n) : 0;
+
+  // What a column has room to say. Thresholds are measured, not picked: the
+  // date renders 37px wide at 10px mono, the opponent 30px at 11px, and a
+  // centred label overflows into its neighbour the moment the column plus the
+  // gap is narrower than the text.
+  //
+  // 44 for the date is the design mock's own threshold, and it agrees with the
+  // arithmetic (37 + a hair).
+  const showDate = colW >= 44;
+  const showAbbr = colW >= 30;
+  const discSize = colW >= 30 ? 26 : colW >= 20 ? 18 : colW >= 11 ? 12 : 0;
+  // The number inside the bar foot. Three digits at 14px is ~25px, so it needs
+  // more room than the abbreviation does; below that it shrinks once and then
+  // goes, because a clipped number is worse than no number.
+  const valueSize = colW >= 34 ? 14 : colW >= 24 ? 11 : 0;
+
+  // When no column can carry its own date, the axis carries a few instead --
+  // first, last, and as many evenly spaced between as fit. This is what both
+  // benchmarks fall back to on a full season, and it keeps the one thing a
+  // dense chart still needs: where in the year you are.
+  const dateTicks = new Set();
+  if (!showDate && plotW > 0 && n > 1) {
+    const maxTicks = Math.max(2, Math.floor(plotW / 64));
+    const step = Math.max(1, Math.ceil((n - 1) / (maxTicks - 1)));
+    for (let i = 0; i < n; i += step) dateTicks.add(i);
+    dateTicks.add(n - 1);
+  }
   const recent = games.map((g) => ({ v: g.v }));
   const scale = feedFormScale(recent, line, isBinary, { height: H, pedestal: 0 });
   const hit = (v) => (direction === "under" ? v < line : v > line);
@@ -603,23 +672,36 @@ function GameByGame({
         )}
       </div>
 
-      <div style={{ overflowX: "auto" }}>
-        <div style={{ position: "relative", paddingRight: GUT, minWidth: games.length * (MIN_COL + 6) + GUT }}>
-          <div style={{ position: "relative", display: "flex", alignItems: "stretch", gap: 6, height: H }}>
+      <div>
+        <div style={{ position: "relative", paddingRight: GUT }}>
+          <div ref={plotRef} style={{ position: "relative", display: "flex", alignItems: "stretch", gap, height: H }}>
             {games.map((g, i) => {
               const cleared = hit(g.v);
               const h = Math.max(3, Math.round(scale.y(g.v)));
               return (
-                <div key={i} style={{ flex: 1, minWidth: MIN_COL, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+                <div key={i} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
                   <div style={{
                     display: "flex", alignItems: "flex-end", justifyContent: "center", height: h,
-                    borderRadius: "3px 3px 0 0", boxSizing: "border-box", paddingBottom: 8,
+                    // 3px of radius on a 2px bar is a blob. It scales down with
+                    // everything else.
+                    borderRadius: colW >= 8 ? "3px 3px 0 0" : "1px 1px 0 0",
+                    boxSizing: "border-box", paddingBottom: valueSize ? 8 : 0,
                     background: cleared ? "var(--pos-solid)" : "transparent",
-                    border: cleared ? "none" : "1.5px solid var(--neg)",
+                    // An outlined bar needs interior to be an outline. At
+                    // 1.5px a side there is none left below about 10px, so a
+                    // fell-short bar switches to a solid fill in the same red
+                    // -- which is what both benchmarks draw at season density,
+                    // and it keeps the two states as far apart at 4px as the
+                    // outline keeps them at 40px. --neg, not --neg-dim: dim is
+                    // 14% and disappears against the panel at this width.
+                    border: cleared || colW < 10 ? "none" : "1.5px solid var(--neg)",
+                    backgroundColor: cleared ? "var(--pos-solid)" : (colW < 10 ? "var(--neg)" : "transparent"),
                   }}>
-                    <span style={{ fontFamily: MONO, fontSize: 14, fontVariantNumeric: "tabular-nums", color: cleared ? "var(--bg)" : "var(--neg)" }}>
-                      {g.v}
-                    </span>
+                    {valueSize > 0 && (
+                      <span style={{ fontFamily: MONO, fontSize: valueSize, fontVariantNumeric: "tabular-nums", color: cleared ? "var(--bg)" : "var(--neg)" }}>
+                        {g.v}
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -663,34 +745,57 @@ function GameByGame({
           </div>
 
           <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+            {/* Each column says as much as it has room for, and the tiers are
+                 measured (see showDate / showAbbr / discSize above). The full
+                 line is always on the column's title, so nothing a dense chart
+                 drops is actually gone. */}
             {games.map((g, i) => {
               const ink = g.opp ? mutedTeamColor(sport, g.opp) : "var(--dim)";
               const tint = g.opp ? mutedTeamColor(sport, g.opp, 0.15) : "transparent";
               return (
-                <div key={i} title={`${venueAbbr(g.home, g.opp || "")} · ${g.date} · ${g.v}`} style={{ flex: 1, minWidth: MIN_COL, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                  <span style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 26, height: 26, borderRadius: 999, background: tint,
-                    border: `1.5px solid ${ink}`, boxSizing: "border-box",
-                  }}>
-                    <TeamLogo sport={sport} abbr={g.opp} size={16} />
-                  </span>
+                <div key={i} title={`${venueAbbr(g.home, g.opp || "")} · ${g.date} · ${g.v}`} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: discSize ? 5 : 0 }}>
+                  {discSize > 0 && (
+                    <span style={{
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      width: discSize, height: discSize, borderRadius: 999, background: tint,
+                      border: `${discSize >= 20 ? 1.5 : 1}px solid ${ink}`, boxSizing: "border-box",
+                    }}>
+                      {/* The crest needs room to be a crest. Under that the
+                           disc is the mark -- it is already the opponent's
+                           colour, which is the half that still reads at 12px. */}
+                      {discSize >= 18 && <TeamLogo sport={sport} abbr={g.opp} size={Math.round(discSize * 0.62)} />}
+                    </span>
+                  )}
                   {/* "@GB" for a road game, a bare "GB" at home -- see
                        lib/venue.js for why only one side is marked, and why a
                        log that never recorded a venue gets no marker at all. */}
-                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>{venueAbbr(g.home, g.opp)}</span>
-                  {/* Hidden once the chassis folds, which is what the mobile
-                       handoff draws: its game-by-game axis carries the
-                       opponent and nothing else. The date is the widest thing
-                       in the column by some way, and dropping it is what lets
-                       seventeen games stay on one screen instead of scrolling.
-                       It is still on the column title above, and in the game
-                       log table. */}
-                  <span className="pp-pd-axis-date" style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{g.date}</span>
+                  {showAbbr && (
+                    <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>{venueAbbr(g.home, g.opp)}</span>
+                  )}
+                  {showDate && (
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{g.date}</span>
+                  )}
                 </div>
               );
             })}
           </div>
+
+          {/* The thinned date axis, for the densities where no column can carry
+               its own. Same flex geometry as the row above it, so a tick sits
+               over the game it belongs to for free -- and the blank columns
+               either side are what a centred label overflows into. Both
+               benchmarks do exactly this on a full season. */}
+          {dateTicks.size > 0 && (
+            <div style={{ display: "flex", gap, marginTop: 7 }}>
+              {games.map((g, i) => (
+                <div key={i} style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center", overflow: "visible" }}>
+                  {dateTicks.has(i) && (
+                    <span style={{ fontFamily: MONO, fontSize: 9.5, color: "var(--dim)", whiteSpace: "nowrap" }}>{g.date}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

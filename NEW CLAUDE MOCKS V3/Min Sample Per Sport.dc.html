@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#f0eee9;font-family:Archivo,system-ui,sans-serif}
+  a{color:#2a78d6;text-decoration:none}
+  a:hover{color:#12161c}
+  .dv-turn{padding:40px 44px 32px}
+  .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 16px}
+  .dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+  .dv-tname{font:600 13px/1.2 Archivo,sans-serif;color:#1a1a1a}
+  .dv-opts{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+  .dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+  .dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+  .dv-olabel{display:flex;align-items:baseline;gap:8px;max-width:420px;font:400 11px/1.45 Archivo,sans-serif;color:rgba(0,0,0,.55)}
+  .dv-card{background:#0a0b0d;border:1px solid rgba(0,0,0,.2);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.14);overflow:hidden;color:#e8ecf2}
+  .dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+  .dv-next{margin:22px 0 0;font:12px/1.5 Archivo,sans-serif;color:rgba(0,0,0,.5)}
+  .dv-note{max-width:900px;background:#fff;border:1px solid rgba(0,0,0,.09);border-radius:8px;padding:20px 22px;margin:0 0 26px;font:13px/1.65 Archivo,sans-serif;color:#2b2f36}
+  .dv-note h4{margin:0 0 8px;font:600 11px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(0,0,0,.45)}
+</style></helmet>
+
+<section class="dv-turn" id="t8">
+<div class="dv-thd"><a class="dv-tid" href="#t8">8</a><span class="dv-tname">Item 5 · Minimum sample, per sport</span></div>
+
+<div class="dv-note">
+<h4>The tick scale is the problem, not the per-sport maximum</h4>
+<p style="margin:0 0 12px">Eighteen bars for eighty games means each bar is 4.4 games and no bar is a step you can land on. The label under the cursor is doing all the work, which is why it feels like a lie — the scale asserts a granularity the control does not have.</p>
+<p style="margin:0 0 12px">Two honest ways out. <a class="dv-oid" href="#8a">8a</a> <b>drops the per-game tick entirely</b> and draws the scale as the thing it actually is: a continuous track with named stops, the notched slider the player pages already use for season length. <a class="dv-oid" href="#8b">8b</a> <b>keeps ticks and makes them true</b> — one tick per selectable value, which is the preset list plus All, so a five-tick NFL scale and a five-tick MLB scale both mean exactly what they show.</p>
+<h4>A value saved above the new sport's max</h4>
+<p style="margin:0 0 12px">It is never discarded, and it is never silently rewritten. Each sport <b>remembers its own last value</b>, so leaving MLB at 50+ and returning finds 50+ waiting. Only a <b>first visit</b> to a sport inherits anything, and when the inherited number cannot stand there it is clamped to the nearest stop and the control says <i>why</i> — which is two different sentences, because there are two different reasons. 50+ on a 17-game season is out of reach; 17+ on a 44-game season is merely not one of its stops, and the notice names them. Try both: MLB 50+ → NFL, and NFL Full → WNBA.</p>
+<h4>On the chip row changing per sport</h4>
+<p style="margin:0">It should, and it should be visible that it did. Both options label the row with the season length it is scaled to — <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">of 162 games</span> — so a chip set that changes under you is explained by the thing next to it rather than surprising. Nothing else in the panel is per-sport because nothing else in the panel is measured in games.</p>
+</div>
+
+<div style="display:flex; gap:8px; margin:0 0 20px;">
+  <sc-for list="{{ sportTabs }}" as="t" hint-placeholder-count="4">
+    <span onClick="{{ t.pick }}" style="display:flex; align-items:center; min-height:34px; box-sizing:border-box; font:600 11px/1 ui-monospace,Menlo,monospace; letter-spacing:.1em; text-transform:uppercase; border-radius:5px; padding:0 13px; cursor:pointer; background:{{ t.bg }}; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}</span>
+  </sc-for>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="8a">
+<div class="dv-olabel"><a class="dv-oid" href="#8a">8a</a>No ticks. A continuous track with named stops — the same notched slider the player pages use for season length.</div>
+<div class="dv-card" style="width:420px; padding:18px 20px 20px;">
+  <div style="display:flex; align-items:baseline; gap:10px;">
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Minimum sample</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.06em; color:#8b98ab; font-variant-numeric:tabular-nums;">of {{ season }} games</span>
+    <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:13px; color:#8fa6ff; font-variant-numeric:tabular-nums;">{{ valueLabel }}</span>
+  </div>
+
+  <div style="position:relative; height:24px; display:flex; align-items:center; margin-top:14px;">
+    <span style="position:absolute; left:0; right:0; height:4px; border-radius:999px; background:#2b2f36;"></span>
+    <span style="position:absolute; left:0; height:4px; border-radius:999px; width:{{ fill }}; background:#3b5bdb;"></span>
+    <sc-for list="{{ notches }}" as="n" hint-placeholder-count="5">
+      <span style="position:absolute; left:{{ n.left }}; width:1px; height:12px; background:{{ n.bg }}; transform:translateX(-50%);"></span>
+    </sc-for>
+    <span style="position:absolute; left:{{ fill }}; width:16px; height:16px; border-radius:999px; background:#e8ecf2; border:3px solid #3b5bdb; box-sizing:border-box; transform:translateX(-50%);"></span>
+  </div>
+  <div style="display:flex; justify-content:space-between; margin-top:6px;">
+    <sc-for list="{{ notches }}" as="n" hint-placeholder-count="5">
+      <span onClick="{{ n.pick }}" style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; font-variant-numeric:tabular-nums; color:{{ n.fg }};">{{ n.label }}</span>
+    </sc-for>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; color:#8b98ab; margin-top:13px; line-height:1.6;">{{ note }}</div>
+
+  <sc-if value="{{ carried }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex; align-items:flex-start; gap:11px; margin-top:12px; padding:11px 13px; background:#0d0f12; border:1px solid #3b5bdb; border-radius:6px;">
+      <span style="flex:none; font-family:'Space Mono',monospace; font-size:11px; color:#8fa6ff;">↳</span>
+      <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.02em; color:#aab2c0; line-height:1.6; min-width:0;">{{ carriedNote }}</span>
+      <span onClick="{{ undoCarry }}" style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">Back</span>
+    </div>
+  </sc-if>
+
+  <div style="display:flex; align-items:center; gap:9px; margin-top:15px; padding-top:13px; border-top:1px solid #2b2f36;">
+    <span style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Saved</span>
+    <div style="display:flex; gap:5px; min-width:0;">
+      <sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+        <span onClick="{{ p.pick }}" style="display:flex; align-items:center; gap:7px; min-height:30px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.04em; border-radius:4px; padding:0 9px; cursor:pointer; white-space:nowrap; font-variant-numeric:tabular-nums; background:{{ p.bg }}; color:{{ p.fg }}; border:1px solid {{ p.border }};">{{ p.label }}<span onClick="{{ p.remove }}" style="color:#8b98ab;">×</span></span>
+      </sc-for>
+    </div>
+    <span onClick="{{ savePreset }}" style="margin-left:auto; flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">{{ saveLabel }}</span>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:12px; padding-top:11px; border-top:1px solid #2b2f36; line-height:1.6;">Saved presets are per sport — 50+ is a real MLB setting and a meaningless NFL one, so they do not share a shelf.</div>
+</div>
+</div>
+
+<div class="dv-opt" id="8b">
+<div class="dv-olabel"><a class="dv-oid" href="#8b">8b</a>Keep ticks, make them true. One tick per selectable value — the scale can no longer claim a step it does not have.</div>
+<div class="dv-card" style="width:420px; padding:18px 20px 20px;">
+  <div style="display:flex; align-items:baseline; gap:10px;">
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Minimum sample</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.06em; color:#8b98ab; font-variant-numeric:tabular-nums;">of {{ season }} games</span>
+    <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:13px; color:#8fa6ff; font-variant-numeric:tabular-nums;">{{ valueLabel }}</span>
+  </div>
+
+  <div style="display:flex; align-items:flex-end; gap:5px; height:44px; margin-top:14px;">
+    <sc-for list="{{ trueTicks }}" as="t" hint-placeholder-count="5">
+      <div onClick="{{ t.pick }}" style="flex:1; display:flex; flex-direction:column; justify-content:flex-end; cursor:pointer;">
+        <div style="height:{{ t.h }}px; border-radius:2px 2px 0 0; background:{{ t.bg }};"></div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display:flex; gap:5px; margin-top:7px;">
+    <sc-for list="{{ trueTicks }}" as="t" hint-placeholder-count="5">
+      <span onClick="{{ t.pick }}" style="flex:1; text-align:center; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; cursor:pointer; font-variant-numeric:tabular-nums; color:{{ t.fg }};">{{ t.label }}</span>
+    </sc-for>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; color:#8b98ab; margin-top:13px; line-height:1.6;">{{ note }}</div>
+
+  <div style="display:flex; align-items:center; gap:9px; margin-top:15px; padding-top:13px; border-top:1px solid #2b2f36;">
+    <span style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Saved</span>
+    <div style="display:flex; gap:5px; min-width:0;">
+      <sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+        <span onClick="{{ p.pick }}" style="display:flex; align-items:center; gap:7px; min-height:30px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.04em; border-radius:4px; padding:0 9px; cursor:pointer; white-space:nowrap; font-variant-numeric:tabular-nums; background:{{ p.bg }}; color:{{ p.fg }}; border:1px solid {{ p.border }};">{{ p.label }}<span onClick="{{ p.remove }}" style="color:#8b98ab;">×</span></span>
+      </sc-for>
+    </div>
+    <span onClick="{{ savePreset }}" style="margin-left:auto; flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">{{ saveLabel }}</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="8c">
+<div class="dv-olabel"><a class="dv-oid" href="#8c">8c</a>What the setting does to the rows — the display threshold, never a filter.</div>
+<div class="dv-card" style="width:460px; padding:18px 20px 20px;">
+  <div style="display:flex; align-items:baseline; gap:10px; padding-bottom:12px; border-bottom:1px solid #2b2f36;">
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">At {{ valueLabel }}</span>
+    <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#aab2c0; font-variant-numeric:tabular-nums;">{{ thinCount }}</span>
+  </div>
+  <sc-for list="{{ sampleRows }}" as="r" hint-placeholder-count="5">
+    <div style="display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid #191c21;">
+      <div style="min-width:0; flex:1;">
+        <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:13.5px; white-space:nowrap;">{{ r.name }}</div>
+        <div style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; color:#8b98ab; margin-top:3px;">{{ r.prop }}</div>
+      </div>
+      <div style="flex:none; text-align:right; width:112px;">
+        <div style="font-family:'Space Mono',monospace; font-size:14px; font-variant-numeric:tabular-nums; color:{{ r.color }};">{{ r.rate }}</div>
+        <div style="font-family:'Space Mono',monospace; font-size:9px; color:#8b98ab; margin-top:3px; font-variant-numeric:tabular-nums;">{{ r.sample }}</div>
+      </div>
+    </div>
+  </sc-for>
+  <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:12px; line-height:1.6;">Nothing is dropped. A row under the threshold keeps its place and states its count instead of a percentage — the rule the whole control exists to serve.</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: &quot;<a class="dv-oid" href="#8a">8a</a> in the full Filters panel&quot; · &quot;let the clamp notice sit in the Filters panel header instead&quot; · &quot;should a first visit inherit the last sport's value at all, or start at that sport's default?&quot;</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:700}}">
+// Per-sport scale. The presets are the selectable values, so a "true tick"
+// scale is exactly presets + All — never a fixed 18.
+const SPORTS = {
+  NFL:  { season:17, presets:[5, 9, 12] },
+  WNBA: { season:44, presets:[10, 20, 30] },
+  NBA:  { season:82, presets:[10, 20, 40] },
+  MLB:  { season:162, presets:[15, 30, 50] },
+};
+
+// Logs of varying length, so the threshold visibly bites on the short ones.
+const ROWS = [
+  { name:'Aaron Judge', prop:'Total bases over 1.5', n:126, hits:73 },
+  { name:'Jasson Domínguez', prop:'Hits over 0.5', n:41, hits:26 },
+  { name:'Ben Rice', prop:'Total bases over 1.5', n:22, hits:12 },
+  { name:'Spencer Jones', prop:'Hits over 0.5', n:9, hits:6 },
+  { name:'George Lombard Jr.', prop:'Total bases over 1.5', n:3, hits:3 },
+];
+
+class Component extends DCLogic {
+  state = { sport:'MLB', value:30, saved:{ NFL:[5, 9, 12], WNBA:[10, 20, 30], NBA:[10, 20, 40], MLB:[15, 30, 50] },
+            // Each sport remembers its own last value, so switching away never
+            // destroys one. `carried` records a clamp that actually happened.
+            bySport:{}, carried:null };
+
+  set(k, v) {
+    return () => this.setState(s => {
+      const next = { [k]: v };
+      if (k === 'value') {
+        next.bySport = Object.assign({}, s.bySport, { [s.sport]: v });
+        next.carried = null;
+      }
+      return next;
+    });
+  }
+
+  pickSport(k) {
+    return () => this.setState(s => {
+      const remembered = s.bySport[k];
+      const stops = [1].concat(SPORTS[k].presets, [SPORTS[k].season]);
+      // Been here before: restore what was left, untouched.
+      if (remembered !== undefined) {
+        return { sport:k, carried:null,
+          bySport: Object.assign({}, s.bySport, { [s.sport]: s.value }), value: remembered };
+      }
+      // First visit: carry the current value across, clamped to the nearest
+      // stop this season can express. Never discarded — the 17-cap validator's bug.
+      let best = stops[0];
+      for (let i = 0; i < stops.length; i++) {
+        if (Math.abs(stops[i] - s.value) < Math.abs(best - s.value)) best = stops[i];
+      }
+      const clamped = best !== s.value;
+      return {
+        sport:k, value:best,
+        bySport: Object.assign({}, s.bySport, { [s.sport]: s.value }),
+        carried: clamped ? { from:s.value, fromSport:s.sport, to:best } : null,
+      };
+    });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const S = SPORTS[s.sport];
+    const stops = [1].concat(S.presets, [S.season]);
+    const chip = on => ({ bg: on ? '#3b5bdb' : 'transparent', fg: on ? '#ffffff' : '#aab2c0', border: on ? '#3b5bdb' : '#2b2f36' });
+
+    const idx = Math.max(0, stops.indexOf(s.value));
+    const frac = idx / (stops.length - 1);
+    const labelOf = n => (n === 1 ? 'All' : n === S.season ? 'Full (' + n + ')' : n + '+');
+
+    const saved = s.saved[s.sport] || [];
+    const isSaved = saved.indexOf(s.value) !== -1;
+
+    const thin = ROWS.filter(r => r.n < s.value).length;
+
+    return {
+      sportTabs: Object.keys(SPORTS).map(k => Object.assign({
+        label: k, pick: this.pickSport(k),
+      }, chip(s.sport === k))),
+      season: S.season,
+      valueLabel: s.value === 1 ? 'no minimum' : s.value + '+ games',
+      fill: (frac * 100) + '%',
+      notches: stops.map((n, i) => ({
+        label: labelOf(n),
+        left: ((i / (stops.length - 1)) * 100) + '%',
+        bg: i <= idx ? '#8fa6ff' : '#3a4048',
+        fg: n === s.value ? '#8fa6ff' : '#8b98ab',
+        pick: this.set('value', n),
+      })),
+      trueTicks: stops.map((n, i) => ({
+        label: labelOf(n),
+        h: 12 + i * 8,
+        bg: i <= idx ? '#3b5bdb' : '#22262c',
+        fg: n === s.value ? '#8fa6ff' : '#8b98ab',
+        pick: this.set('value', n),
+      })),
+      carried: !!s.carried,
+      // Two different reasons a carried value cannot stand: it exceeds the
+      // season, or it simply is not one of this season's stops. Saying the
+      // first when the second is true would be a false explanation.
+      carriedNote: s.carried
+        ? (s.carried.from > S.season
+            ? s.carried.from + '+ carried over from ' + s.carried.fromSport + ', but a ' + S.season +
+              '-game season cannot reach it — held at ' + labelOf(s.carried.to) + '.'
+            : s.carried.from + '+ carried over from ' + s.carried.fromSport + '. This season\u2019s stops are ' +
+              stops.slice(1).map(labelOf).join(' / ') + ' — held at the nearest, ' + labelOf(s.carried.to) + '.')
+          + ' Your ' + s.carried.fromSport + ' setting is untouched.'
+        : '',
+      undoCarry: () => this.setState(st => ({
+        sport: st.carried.fromSport, value: st.carried.from, carried: null,
+      })),
+      note: s.value === 1
+        ? 'Every row states a rate, however few games are behind it.'
+        : 'A row with fewer than ' + s.value + ' games reads “too few” and keeps its place. ' +
+          stops.length + ' selectable values on a ' + S.season + '-game season.',
+      presets: saved.map(n => Object.assign({
+        label: labelOf(n),
+        pick: this.set('value', n),
+        remove: e => { if (e && e.stopPropagation) e.stopPropagation();
+          this.setState(st => Object.assign({}, st,
+            { saved: Object.assign({}, st.saved, { [st.sport]: st.saved[st.sport].filter(x => x !== n) }) })); },
+      }, chip(n === s.value))),
+      saveLabel: isSaved ? 'saved' : '+ save ' + labelOf(s.value),
+      savePreset: () => this.setState(st => {
+        if ((st.saved[st.sport] || []).indexOf(st.value) !== -1) return {};
+        return { saved: Object.assign({}, st.saved,
+          { [st.sport]: (st.saved[st.sport] || []).concat(st.value).sort((a, b) => a - b) }) };
+      }),
+
+      thinCount: thin === 0 ? 'all rows quote a rate' : thin + ' of 5 read too few',
+      sampleRows: ROWS.map(r => {
+        const isThin = r.n < s.value;
+        const pct = Math.round((r.hits / r.n) * 100);
+        return {
+          name: r.name, prop: r.prop,
+          rate: isThin ? 'Too few' : pct + '%',
+          sample: isThin ? r.n + (r.n === 1 ? ' game' : ' games') : r.hits + ' of ' + r.n,
+          color: isThin ? '#aab2c0' : pct >= 65 ? '#2faa72' : pct < 45 ? '#ef5b5b' : '#e8ecf2',
+        };
+      }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#f0eee9;font-family:Archivo,system-ui,sans-serif}
+  a{color:#2a78d6;text-decoration:none}
+  a:hover{color:#12161c}
+  .dv-turn{padding:40px 44px 32px}
+  .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 16px}
+  .dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+  .dv-tname{font:600 13px/1.2 Archivo,sans-serif;color:#1a1a1a}
+  .dv-opts{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+  .dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+  .dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+  .dv-olabel{display:flex;align-items:baseline;gap:8px;max-width:400px;font:400 11px/1.45 Archivo,sans-serif;color:rgba(0,0,0,.55)}
+  .dv-card{background:#0a0b0d;border:1px solid rgba(0,0,0,.2);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.14);overflow:hidden;color:#e8ecf2}
+  .dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+  .dv-next{margin:22px 0 0;font:12px/1.5 Archivo,sans-serif;color:rgba(0,0,0,.5)}
+  .dv-note{max-width:900px;background:#fff;border:1px solid rgba(0,0,0,.09);border-radius:8px;padding:20px 22px;margin:0 0 26px;font:13px/1.65 Archivo,sans-serif;color:#2b2f36}
+  .dv-note h4{margin:0 0 8px;font:600 11px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(0,0,0,.45)}
+</style></helmet>
+
+<section class="dv-turn" id="t6">
+<div class="dv-thd"><a class="dv-tid" href="#t6">6</a><span class="dv-tname">Item 3 · The Role control</span></div>
+
+<div class="dv-note">
+<h4>Two problems, one cause</h4>
+<p style="margin:0 0 12px">The unit changes per sport and the thresholds live inside the pill text. Both come from the same decision — the pills are trying to say three things at once (the tier, the number, the unit), so the section title has nothing left to do and the prose line has to apologise for all of it.</p>
+<h4>The fix in both options</h4>
+<p style="margin:0 0 12px">Move the unit out of the pills and into the section header, where it belongs — it is a property of the sport, not of the tier. The pills then carry a tier name and a bare number, matching every other pill row in the app. The prose line shrinks to one clause because the header is doing its share.</p>
+<p style="margin:0"><a class="dv-oid" href="#6a">6a</a> keeps the Defence section's shape exactly — micro-label, pill row, one line. <a class="dv-oid" href="#6b">6b</a> spends one extra row on a distribution strip, which is the honest way to say &quot;12+ touches&quot; means something different in the NBA than the NFL. Switch sport on either to see the unit change.</p>
+<h4>What neither does</h4>
+<p style="margin:0">Neither implies popularity. The word is <b>role</b> throughout, the sub-line says what it measures, and there is no mention of betting volume anywhere in the control — because there is no wagering feed and there never will be.</p>
+</div>
+
+<div style="display:flex; gap:8px; margin:0 0 20px;">
+  <sc-for list="{{ sportTabs }}" as="t" hint-placeholder-count="4">
+    <span onClick="{{ t.pick }}" style="display:flex; align-items:center; min-height:34px; box-sizing:border-box; font:600 11px/1 ui-monospace,Menlo,monospace; letter-spacing:.1em; text-transform:uppercase; border-radius:5px; padding:0 13px; cursor:pointer; background:{{ t.bg }}; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}</span>
+  </sc-for>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="6a">
+<div class="dv-olabel"><a class="dv-oid" href="#6a">6a</a>Matches the Defence section beside it. Unit in the header, thresholds as bare numbers.</div>
+<div class="dv-card" style="width:380px; padding:18px 20px 20px;">
+  <div style="display:flex; align-items:baseline; gap:10px;">
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Role</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.06em; color:#8fa6ff;">{{ unit }}</span>
+    <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.06em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ keptLabel }}</span>
+  </div>
+  <div style="display:flex; gap:6px; margin-top:11px;">
+    <sc-for list="{{ tiers }}" as="t" hint-placeholder-count="3">
+      <span onClick="{{ t.pick }}" style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; min-height:34px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; border-radius:4px; padding:0 8px; cursor:pointer; white-space:nowrap; background:{{ t.bg }}; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}<span style="font-variant-numeric:tabular-nums; color:{{ t.numFg }};">{{ t.num }}</span></span>
+    </sc-for>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; color:#8b98ab; margin-top:10px; line-height:1.6;">{{ proseShort }}</div>
+
+  <div style="margin-top:18px; padding-top:15px; border-top:1px solid #2b2f36;">
+    <div style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Sort by</div>
+    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:11px;">
+      <sc-for list="{{ sorts }}" as="c" hint-placeholder-count="4">
+        <span onClick="{{ c.pick }}" style="display:flex; align-items:center; min-height:32px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.04em; border-radius:4px; padding:0 10px; cursor:pointer; white-space:nowrap; background:{{ c.bg }}; color:{{ c.fg }}; border:1px solid {{ c.border }};">{{ c.label }}</span>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="margin-top:18px; padding-top:15px; border-top:1px solid #2b2f36;">
+    <div style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Defence tier</div>
+    <div style="display:flex; gap:6px; margin-top:11px;">
+      <sc-for list="{{ defTiers }}" as="d" hint-placeholder-count="4">
+        <span style="flex:1; display:flex; align-items:center; justify-content:center; min-height:34px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; border-radius:4px; cursor:pointer; background:{{ d.bg }}; color:{{ d.fg }}; border:1px solid {{ d.border }};">{{ d.label }}</span>
+      </sc-for>
+    </div>
+    <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; color:#8b98ab; margin-top:10px; line-height:1.6;">Rank is per market, out of {{ teams }}.</div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="6b">
+<div class="dv-olabel"><a class="dv-oid" href="#6b">6b</a>One extra row: where the thresholds cut the actual slate. Makes a per-sport number legible without prose.</div>
+<div class="dv-card" style="width:380px; padding:18px 20px 20px;">
+  <div style="display:flex; align-items:baseline; gap:10px;">
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Role</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.06em; color:#8fa6ff;">{{ unit }}</span>
+  </div>
+  <div style="display:flex; gap:6px; margin-top:11px;">
+    <sc-for list="{{ tiers }}" as="t" hint-placeholder-count="3">
+      <span onClick="{{ t.pick }}" style="flex:1; display:flex; align-items:center; justify-content:center; gap:6px; min-height:34px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; border-radius:4px; padding:0 8px; cursor:pointer; white-space:nowrap; background:{{ t.bg }}; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}<span style="font-variant-numeric:tabular-nums; color:{{ t.numFg }};">{{ t.num }}</span></span>
+    </sc-for>
+  </div>
+
+  <div style="margin-top:13px;">
+    <div style="display:flex; align-items:flex-end; gap:2px; height:38px;">
+      <sc-for list="{{ dist }}" as="d" hint-placeholder-count="16">
+        <div style="flex:1; height:{{ d.h }}px; border-radius:1px; background:{{ d.bg }};"></div>
+      </sc-for>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:7px;">
+      <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">0</span>
+      <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:#8fa6ff; font-variant-numeric:tabular-nums;">{{ cutLabel }}</span>
+      <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ distMax }}</span>
+    </div>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; color:#8b98ab; margin-top:11px; line-height:1.6;">{{ proseShort }}</div>
+
+  <div style="display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:13px; border-top:1px solid #2b2f36;">
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#aab2c0; font-variant-numeric:tabular-nums;">{{ keptLabel }}</span>
+    <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ cutCount }}</span>
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: &quot;put <a class="dv-oid" href="#6a">6a</a> in the full Filters panel so I can see it beside price and sort&quot; · &quot;try the unit as a dropdown instead of a fixed per-sport label&quot; · &quot;draw the WNBA case where 15 teams makes the tiers thinner&quot;</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:760}}">
+// Role is measured in whatever unit means "how much of the game do you play"
+// for that sport. Tier thresholds are per sport because the units are not
+// comparable — 12 touches and 12 minutes are different claims.
+const SPORTS = {
+  NFL:  { unit:'touches per game', short:'touches', teams:32, tiers:[['All',null],['Contributors','6+'],['Featured','12+']],
+          dist:[42,58,71,64,52,46,38,33,27,22,18,14,11,8,5,3], max:24, cut:12, pool:1284 },
+  MLB:  { unit:'plate appearances per game', short:'PA', teams:30, tiers:[['All',null],['Contributors','2.5+'],['Featured','4+']],
+          dist:[18,26,34,48,62,74,81,76,64,52,41,30,21,14,8,4], max:5.5, cut:4, pool:1876 },
+  NBA:  { unit:'minutes per game', short:'min', teams:30, tiers:[['All',null],['Contributors','14+'],['Featured','28+']],
+          dist:[52,61,58,49,44,41,38,40,44,48,52,49,42,33,22,12], max:40, cut:28, pool:742 },
+  WNBA: { unit:'minutes per game', short:'min', teams:15, tiers:[['All',null],['Contributors','12+'],['Featured','26+']],
+          dist:[38,44,41,36,32,30,29,31,36,42,46,44,36,26,16,8], max:36, cut:26, pool:312 },
+};
+
+class Component extends DCLogic {
+  state = { sport:'NFL', tier:'All', sort:'Strongest sample' };
+
+  set(k, v) { return () => this.setState({ [k]: v }); }
+
+  renderVals() {
+    const s = this.state;
+    const S = SPORTS[s.sport];
+    const chip = on => ({ bg: on ? '#3b5bdb' : 'transparent', fg: on ? '#ffffff' : '#aab2c0', border: on ? '#3b5bdb' : '#2b2f36' });
+
+    const tierIdx = Math.max(0, S.tiers.findIndex(t => t[0] === s.tier));
+    // Where the active tier cuts the distribution, so the strip can shade it.
+    const cutFrac = tierIdx === 0 ? 0 : tierIdx === 1 ? 0.34 : 0.66;
+    const cutBar = Math.round(cutFrac * S.dist.length);
+    const kept = tierIdx === 0 ? S.pool : Math.round(S.pool * (tierIdx === 1 ? 0.52 : 0.21));
+
+    return {
+      sportTabs: Object.keys(SPORTS).map(k => Object.assign({
+        label: k, pick: () => this.setState({ sport:k, tier:'All' }),
+      }, chip(s.sport === k))),
+      unit: S.unit,
+      teams: S.teams,
+      tiers: S.tiers.map(([label, num]) => {
+        const on = s.tier === label;
+        return Object.assign({
+          label, num: num || '', pick: this.set('tier', label),
+          numFg: on ? '#ffffff' : '#8fa6ff',
+        }, chip(on));
+      }),
+      proseShort: 'Ranks by how much of the game someone plays — not by how much they are bet.',
+      keptLabel: kept.toLocaleString() + ' players kept',
+      cutCount: tierIdx === 0 ? 'nothing filtered' : (S.pool - kept).toLocaleString() + ' below the line',
+      dist: S.dist.map((h, i) => ({
+        h: Math.max(3, Math.round(h * 0.46)),
+        bg: i < cutBar ? '#22262c' : '#3b5bdb',
+      })),
+      distMax: S.max + ' ' + S.short,
+      cutLabel: tierIdx === 0 ? 'no cut' : S.tiers[tierIdx][1] + ' ' + S.short,
+
+      sorts: ['Strongest sample', 'Hit rate', 'Biggest role', 'Kickoff'].map(l =>
+        Object.assign({ label:l, pick: this.set('sort', l) }, chip(s.sort === l))),
+      defTiers: ['All', 'Easy', 'Mid', 'Tough'].map(l =>
+        Object.assign({ label:l }, chip(l === 'All'))),
+    };
+  }
+}
+</script>
+</body>
+</html>

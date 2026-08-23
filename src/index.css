@@ -1072,7 +1072,11 @@ select.select-sm:focus, select.select-sm:focus-visible {
   /* 84px of it is room for the fixed strip, the same reservation
      page-shell--mobile-nav makes below. */
   .pp-pd-rail { display: none; }
-  .pp-pd-axis-date { display: none; }
+  /* The chart axis is NOT handled here. It thins itself from the measured
+     column width in PlayerDetailV2 (showDate / showAbbr / discSize), because
+     "how much fits" is a function of the sample size as much as the viewport
+     -- twenty games at 1400px is tighter than ten at 700px, and a media query
+     cannot see the difference. */
   .pp-pd-verdict { flex-wrap: wrap; row-gap: 14px; }
 }
 

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#f0eee9;font-family:Archivo,system-ui,sans-serif}
+  a{color:#2a78d6;text-decoration:none}
+  a:hover{color:#12161c}
+  .dv-turn{padding:40px 44px 32px}
+  .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 16px}
+  .dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+  .dv-tname{font:600 13px/1.2 Archivo,sans-serif;color:#1a1a1a}
+  .dv-opts{display:flex;flex-direction:column;gap:26px;align-items:flex-start}
+  .dv-opt{display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+  .dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+  .dv-olabel{display:flex;align-items:baseline;gap:8px;max-width:820px;font:400 11px/1.45 Archivo,sans-serif;color:rgba(0,0,0,.55)}
+  .dv-card{background:#0a0b0d;border:1px solid rgba(0,0,0,.2);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.14);overflow:hidden;color:#e8ecf2}
+  .dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+  .dv-next{margin:22px 0 0;font:12px/1.5 Archivo,sans-serif;color:rgba(0,0,0,.5)}
+  .dv-note{max-width:900px;background:#fff;border:1px solid rgba(0,0,0,.09);border-radius:8px;padding:20px 22px;margin:0 0 26px;font:13px/1.65 Archivo,sans-serif;color:#2b2f36}
+  .dv-note h4{margin:0 0 8px;font:600 11px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(0,0,0,.45)}
+  [data-xscroll]{overflow-x:auto;scrollbar-width:none}
+  [data-xscroll]::-webkit-scrollbar{height:0}
+</style></helmet>
+
+<section class="dv-turn" id="t5">
+<div class="dv-thd"><a class="dv-tid" href="#t5">5</a><span class="dv-tname">Item 2 · The Prop Feed's control bar</span></div>
+
+<div class="dv-note">
+<h4>The problem, stated plainly</h4>
+<p style="margin:0 0 12px">Seventeen equal pills is 17 equal claims on the eye, permanently, above a table whose whole job is to be scanned. The reversal is right — these are navigation — but navigation earns hierarchy, and right now Pass Yds and XP Made are the same size, weight and colour.</p>
+<h4>Three answers to the same question</h4>
+<p style="margin:0 0 12px"><a class="dv-oid" href="#5a">5a</a> <b>collapses to one line.</b> The row is a <b>shelf of at most six</b> markets, and you choose what fills it — star your own six, let usage order it, or take it alphabetically. Six is the cap because six 10.5px pills plus the label and the +more count fit one 32px line at 1040px and still fit at 768; a seventh wraps, and a row that can wrap is the thing we are fixing. Smallest permanent footprint; costs a click to reach XP Made.<br>
+<a class="dv-oid" href="#5b">5b</a> <b>groups by section.</b> Passing / Rushing / Receiving already exist in the data, so the row becomes three labelled runs on one line, scrolling. Hierarchy comes free from the grouping; nothing is a click away.<br>
+<a class="dv-oid" href="#5c">5c</a> <b>promotes a section, demotes the rest.</b> One section is open at a time as a segmented control; its markets sit beneath in full. The strongest hierarchy and the biggest behaviour change.</p>
+<h4>The division to preserve</h4>
+<p style="margin:0">State above, controls below — the summary strip says what you are looking at, the bar changes it. All three keep that, and none of them restates a control the bar already shows. Filters keeps the set-and-forget half.</p>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="5a">
+<div class="dv-olabel"><a class="dv-oid" href="#5a">5a</a>Collapse to one line. A shelf of up to six markets you choose — star your own, or let usage or A–Z fill it. The count opens the full set as a sheet in place.</div>
+<div class="dv-card" style="width:1040px; padding:20px 22px 22px;">
+  <div style="display:flex; align-items:center; margin-bottom:12px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+    <sc-for list="{{ summaryCells }}" as="c" hint-placeholder-count="2">
+      <div style="flex:1; padding:11px 16px; border-left:{{ c.divider }};">
+        <div style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">{{ c.label }}</div>
+        <div style="font-family:'Space Mono',monospace; font-size:14px; margin-top:6px; font-variant-numeric:tabular-nums;">{{ c.value }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+    <div style="display:flex; align-items:center; gap:10px; padding:11px 14px;">
+      <span style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Markets</span>
+      <div data-xscroll style="display:flex; gap:6px; min-width:0; flex:1;">
+        <sc-for list="{{ shortMarkets }}" as="m" hint-placeholder-count="6">
+          <span onClick="{{ m.toggle }}" style="flex:none; display:flex; align-items:center; gap:6px; min-height:32px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.04em; border-radius:4px; padding:0 10px; cursor:pointer; white-space:nowrap; background:{{ m.bg }}; color:{{ m.fg }}; border:1px solid {{ m.border }}; border-style:{{ m.strayStyle }};">{{ m.label }}<sc-if value="{{ m.pinnedMark }}" hint-placeholder-val="{{ false }}"><span style="font-size:8px; color:{{ m.markFg }};">★</span></sc-if></span>
+        </sc-for>
+      </div>
+      <span onClick="{{ toggleMore }}" style="flex:none; display:flex; align-items:center; min-height:32px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; border-radius:4px; padding:0 11px; cursor:pointer; white-space:nowrap; color:#8fa6ff; border:1px solid #3b5bdb;">{{ moreLabel }}</span>
+      <span onClick="{{ clearMarkets }}" style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab; cursor:pointer;">All markets</span>
+    </div>
+    <sc-if value="{{ moreOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:0 14px 12px; border-top:1px solid #2b2f36;">
+        <div style="display:flex; align-items:center; gap:10px; padding:12px 0 0;">
+          <span style="flex:none; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Row shows</span>
+          <div style="display:flex; gap:4px;">
+            <sc-for list="{{ rowSources }}" as="r" hint-placeholder-count="3">
+              <span onClick="{{ r.pick }}" style="display:flex; align-items:center; min-height:28px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; border-radius:4px; padding:0 10px; cursor:pointer; white-space:nowrap; background:{{ r.bg }}; color:{{ r.fg }}; border:1px solid {{ r.border }};">{{ r.label }}</span>
+            </sc-for>
+          </div>
+          <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#aab2c0; font-variant-numeric:tabular-nums;">{{ shelfCount }}</span>
+        </div>
+        <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:8px; line-height:1.6;">{{ shelfNote }}</div>
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+          <div style="display:flex; align-items:baseline; gap:12px; padding:12px 0 0;">
+            <span style="flex:none; width:96px; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">{{ g.label }}</span>
+            <div style="display:flex; flex-wrap:wrap; gap:6px; min-width:0;">
+              <sc-for list="{{ g.pinChips }}" as="m" hint-placeholder-count="4">
+                <span onClick="{{ m.toggle }}" style="display:flex; align-items:center; gap:8px; min-height:30px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.04em; border-radius:4px; padding:0 4px 0 9px; cursor:pointer; white-space:nowrap; background:{{ m.bg }}; color:{{ m.fg }}; border:1px solid {{ m.border }};">{{ m.label }}<span onClick="{{ m.pin }}" title="Pin to the row" style="display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:3px; font-size:10px; color:{{ m.pinFg }};">{{ m.pinGlyph }}</span></span>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+    <div style="display:flex; align-items:center; gap:24px; padding:11px 14px; border-top:1px solid #2b2f36; background:#0d0f12;">
+      <sc-for list="{{ pillGroups }}" as="p" hint-placeholder-count="3">
+        <div style="display:flex; align-items:center; gap:9px;">
+          <span style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">{{ p.label }}</span>
+          <div style="display:flex; gap:4px;">
+            <sc-for list="{{ p.chips }}" as="c" hint-placeholder-count="3">
+              <span onClick="{{ c.pick }}" style="display:flex; align-items:center; min-height:30px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; border-radius:4px; padding:0 10px; cursor:pointer; white-space:nowrap; background:{{ c.bg }}; color:{{ c.fg }}; border:1px solid {{ c.border }};">{{ c.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <span style="margin-left:auto; display:flex; align-items:center; min-height:32px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:{{ filtersFg }}; border:1px solid {{ filtersBorder }}; border-radius:4px; padding:0 12px; white-space:nowrap;">Filters{{ filtersCount }}</span>
+    </div>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:12px; line-height:1.6;">Permanent height: 96px, fixed — the shelf holds at most six, so the row cannot grow to two lines. Open <b style="color:#aab2c0;">+ more</b> to choose the source or star your six.<sc-if value="{{ hasStrays }}" hint-placeholder-val="{{ false }}"><span style="display:block; margin-top:6px; color:#8fa6ff;">{{ strayNote }}</span></sc-if></div>
+</div>
+</div>
+
+<div class="dv-opt" id="5b">
+<div class="dv-olabel"><a class="dv-oid" href="#5b">5b</a>Group by section on one scrolling line. Section labels carry the hierarchy; every market stays one click deep.</div>
+<div class="dv-card" style="width:1040px; padding:20px 22px 22px;">
+  <div style="display:flex; align-items:center; margin-bottom:12px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+    <sc-for list="{{ summaryCells }}" as="c" hint-placeholder-count="2">
+      <div style="flex:1; padding:11px 16px; border-left:{{ c.divider }};">
+        <div style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">{{ c.label }}</div>
+        <div style="font-family:'Space Mono',monospace; font-size:14px; margin-top:6px; font-variant-numeric:tabular-nums;">{{ c.value }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+    <div style="position:relative; padding:10px 14px;">
+      <div data-xscroll style="display:flex; align-items:stretch; gap:0;">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+          <div style="flex:none; display:flex; flex-direction:column; gap:7px; padding:0 14px; border-left:{{ g.divider }};">
+            <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; white-space:nowrap;">{{ g.label }}</span>
+            <div style="display:flex; gap:5px;">
+              <sc-for list="{{ g.chips }}" as="m" hint-placeholder-count="4">
+                <span onClick="{{ m.toggle }}" style="display:flex; align-items:center; min-height:30px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.04em; border-radius:4px; padding:0 9px; cursor:pointer; white-space:nowrap; background:{{ m.bg }}; color:{{ m.fg }}; border:1px solid {{ m.border }};">{{ m.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <span style="flex:none; width:44px;"></span>
+      </div>
+      <span style="position:absolute; right:0; top:0; bottom:0; width:56px; pointer-events:none; background:linear-gradient(to right, rgba(19,21,25,0), #131519);"></span>
+    </div>
+    <div style="display:flex; align-items:center; gap:24px; padding:11px 14px; border-top:1px solid #2b2f36; background:#0d0f12;">
+      <sc-for list="{{ pillGroups }}" as="p" hint-placeholder-count="3">
+        <div style="display:flex; align-items:center; gap:9px;">
+          <span style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">{{ p.label }}</span>
+          <div style="display:flex; gap:4px;">
+            <sc-for list="{{ p.chips }}" as="c" hint-placeholder-count="3">
+              <span onClick="{{ c.pick }}" style="display:flex; align-items:center; min-height:30px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; border-radius:4px; padding:0 10px; cursor:pointer; white-space:nowrap; background:{{ c.bg }}; color:{{ c.fg }}; border:1px solid {{ c.border }};">{{ c.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <span onClick="{{ clearMarkets }}" style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab; cursor:pointer; white-space:nowrap;">All markets</span>
+      <span style="display:flex; align-items:center; min-height:32px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:{{ filtersFg }}; border:1px solid {{ filtersBorder }}; border-radius:4px; padding:0 12px; white-space:nowrap;">Filters{{ filtersCount }}</span>
+    </div>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:12px; line-height:1.6;">Permanent height: 104px. The scroll is horizontal and sectioned, so its position is meaningful — you scroll toward a kind of market, not through an undifferentiated run.</div>
+</div>
+</div>
+
+<div class="dv-opt" id="5c">
+<div class="dv-olabel"><a class="dv-oid" href="#5c">5c</a>One section open at a time. Sections are the primary control; markets are its contents.</div>
+<div class="dv-card" style="width:1040px; padding:20px 22px 22px;">
+  <div style="display:flex; align-items:center; margin-bottom:12px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+    <sc-for list="{{ summaryCells }}" as="c" hint-placeholder-count="2">
+      <div style="flex:1; padding:11px 16px; border-left:{{ c.divider }};">
+        <div style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">{{ c.label }}</div>
+        <div style="font-family:'Space Mono',monospace; font-size:14px; margin-top:6px; font-variant-numeric:tabular-nums;">{{ c.value }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="background:#131519; border:1px solid #2b2f36; border-radius:6px; overflow:hidden;">
+    <div style="display:flex; align-items:stretch; border-bottom:1px solid #2b2f36;">
+      <sc-for list="{{ sectionTabs }}" as="t" hint-placeholder-count="5">
+        <span onClick="{{ t.pick }}" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; min-height:52px; box-sizing:border-box; padding:8px 6px; cursor:pointer; border-left:{{ t.divider }}; border-bottom:2px solid {{ t.rule }}; margin-bottom:-1px; background:{{ t.bg }};">
+          <span style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; white-space:nowrap; color:{{ t.fg }};">{{ t.label }}</span>
+          <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ t.count }}</span>
+        </span>
+      </sc-for>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; padding:12px 14px;">
+      <div style="display:flex; flex-wrap:wrap; gap:6px; min-width:0; flex:1;">
+        <sc-for list="{{ openChips }}" as="m" hint-placeholder-count="5">
+          <span onClick="{{ m.toggle }}" style="display:flex; align-items:center; min-height:32px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.04em; border-radius:4px; padding:0 11px; cursor:pointer; white-space:nowrap; background:{{ m.bg }}; color:{{ m.fg }}; border:1px solid {{ m.border }};">{{ m.label }}</span>
+        </sc-for>
+      </div>
+      <span onClick="{{ clearMarkets }}" style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab; cursor:pointer;">All markets</span>
+    </div>
+    <sc-if value="{{ crossSection }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; align-items:center; gap:9px; padding:0 14px 12px;">
+        <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Also selected</span>
+        <div style="display:flex; flex-wrap:wrap; gap:5px;">
+          <sc-for list="{{ elsewhereChips }}" as="m" hint-placeholder-count="2">
+            <span onClick="{{ m.toggle }}" style="display:flex; align-items:center; gap:7px; min-height:28px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; border-radius:4px; padding:0 9px; cursor:pointer; white-space:nowrap; background:#191c21; color:#8fa6ff; border:1px solid #3b5bdb;">{{ m.label }}<span style="color:#8b98ab;">×</span></span>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+    <div style="display:flex; align-items:center; gap:24px; padding:11px 14px; border-top:1px solid #2b2f36; background:#0d0f12;">
+      <sc-for list="{{ pillGroups }}" as="p" hint-placeholder-count="3">
+        <div style="display:flex; align-items:center; gap:9px;">
+          <span style="flex:none; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">{{ p.label }}</span>
+          <div style="display:flex; gap:4px;">
+            <sc-for list="{{ p.chips }}" as="c" hint-placeholder-count="3">
+              <span onClick="{{ c.pick }}" style="display:flex; align-items:center; min-height:30px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; border-radius:4px; padding:0 10px; cursor:pointer; white-space:nowrap; background:{{ c.bg }}; color:{{ c.fg }}; border:1px solid {{ c.border }};">{{ c.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <span style="margin-left:auto; display:flex; align-items:center; min-height:32px; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:{{ filtersFg }}; border:1px solid {{ filtersBorder }}; border-radius:4px; padding:0 12px; white-space:nowrap;">Filters{{ filtersCount }}</span>
+    </div>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:12px; line-height:1.6;">Permanent height: 148px — the tallest of the three, and the only one where a selection can be off-screen. The <b>Also selected</b> row is what stops that being a trap.</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: &quot;<a class="dv-oid" href="#5b">5b</a>, but at 768&quot; · &quot;show the table under <a class="dv-oid" href="#5a">5a</a> so I can judge the footprint against real rows&quot; · &quot;what does the bar look like on MLB, where there are only two sections?&quot;</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1140,&quot;height&quot;:1100}}">
+// NFL's full market set, in the sections the data already carries.
+const GROUPS = [
+  { label:'Passing', markets:['Pass Yds', 'Pass TDs', 'Comp', 'Att', 'INT'], top:'Pass Yds' },
+  { label:'Rushing', markets:['Rush Yds', 'Rush Att', 'Long Rush', 'Rush TDs'], top:'Rush Yds' },
+  { label:'Receiving', markets:['Rec', 'Rec Yds', 'Targets', 'Long Rec'], top:'Rec Yds' },
+  { label:'Combined', markets:['Rush+Rec', 'Any TD'], top:'Any TD' },
+  { label:'Kicking', markets:['Kick Pts', 'FG Made', 'XP Made'], top:null },
+];
+const ALL = GROUPS.reduce((a, g) => a.concat(g.markets), []);
+// The four promoted in 5a: most-used per sport, not alphabetical.
+const PROMOTED = ['Rec Yds', 'Rush Yds', 'Pass Yds', 'Any TD'];
+
+const PIN_MAX = 6;
+const ALPHA = ALL.slice().sort();
+
+class Component extends DCLogic {
+  state = { markets:['Rec Yds'], side:'Over', window:'L10', lines:'Market', moreOpen:false, section:'Receiving',
+            rowSource:'pins', pins:['Rec Yds', 'Rush Yds', 'Pass Yds', 'Any TD'] };
+
+  set(k, v) { return () => this.setState({ [k]: v }); }
+
+  toggleMarket(label) {
+    return () => this.setState(s => ({
+      markets: s.markets.indexOf(label) === -1 ? s.markets.concat(label) : s.markets.filter(x => x !== label),
+    }));
+  }
+
+  // Pinning is capped, so the row's height can never change. At the cap the
+  // remaining pins are inert rather than hidden — a full shelf, not a locked one.
+  togglePin(label) {
+    return e => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      this.setState(s => {
+        const on = s.pins.indexOf(label) !== -1;
+        if (!on && s.pins.length >= PIN_MAX) return {};
+        return { pins: on ? s.pins.filter(x => x !== label) : s.pins.concat(label), rowSource:'pins' };
+      });
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const chip = on => ({ bg: on ? '#3b5bdb' : 'transparent', fg: on ? '#ffffff' : '#aab2c0', border: on ? '#3b5bdb' : '#2b2f36' });
+    const mk = label => Object.assign({ label, toggle: this.toggleMarket(label) }, chip(s.markets.indexOf(label) !== -1));
+
+    // 5a: the row is a shelf of at most PIN_MAX markets, filled from whichever
+    // source is chosen. A selected market off the shelf joins it for as long as
+    // it is selected, so the row can never lie about what is active.
+    const shelfSource = s.rowSource === 'pins' ? s.pins
+      : s.rowSource === 'usage' ? PROMOTED.concat(ALL.filter(x => PROMOTED.indexOf(x) === -1))
+      : ALPHA;
+    const shelf = shelfSource.slice(0, PIN_MAX);
+    const strays = s.markets.filter(x => shelf.indexOf(x) === -1);
+    const shortList = strays.concat(shelf);
+    const hidden = ALL.length - shortList.length;
+    const atCap = s.pins.length >= PIN_MAX;
+    const openSection = GROUPS.find(g => g.label === s.section) || GROUPS[0];
+    const elsewhere = s.markets.filter(x => openSection.markets.indexOf(x) === -1);
+
+    // Props shown scales off the selection so the summary strip cannot restate
+    // a control — it states a consequence.
+    const shown = s.markets.length === 0 ? 3095 : s.markets.length * 182;
+
+    return {
+      summaryCells: [
+        { label:'Showing', value: shown.toLocaleString() + ' of 3,095 props', divider:'none' },
+        { label:'Thin samples', value:'Under 9 gm → too few', divider:'1px solid #2b2f36' },
+      ],
+      groups: GROUPS.map((g, i) => ({
+        label: g.label,
+        divider: i === 0 ? 'none' : '1px solid #2b2f36',
+        chips: g.markets.map(mk),
+        pinChips: g.markets.map(label => {
+          const pinned = s.pins.indexOf(label) !== -1;
+          const full = !pinned && atCap;
+          return Object.assign({
+            label,
+            toggle: this.toggleMarket(label),
+            pin: this.togglePin(label),
+            pinGlyph: pinned ? '★' : full ? '·' : '☆',
+            pinFg: pinned ? '#8fa6ff' : full ? '#3a4048' : '#8b98ab',
+          }, chip(s.markets.indexOf(label) !== -1));
+        }),
+      })),
+      shortMarkets: shortList.map(label => Object.assign(mk(label), {
+        strayStyle: s.markets.indexOf(label) !== -1 && shelf.indexOf(label) === -1 ? 'dashed' : 'solid',
+        pinnedMark: s.rowSource === 'pins' && s.pins.indexOf(label) !== -1,
+        markFg: s.markets.indexOf(label) !== -1 ? '#ffffff' : '#8fa6ff',
+      })),
+      rowSources: [['pins', 'My pins'], ['usage', 'Most used'], ['alpha', 'A–Z']].map(([id, label]) =>
+        Object.assign({ label, pick: this.set('rowSource', id) }, chip(s.rowSource === id))),
+      shelfCount: s.rowSource === 'pins'
+        ? s.pins.length + ' of ' + PIN_MAX + ' pinned'
+        : 'first ' + PIN_MAX + ' of ' + ALL.length,
+      shelfNote: s.rowSource === 'pins'
+        ? (atCap ? 'Shelf full — unpin one to add another. Star a market below to pin it.'
+                 : 'Star a market below to pin it to the row. Up to ' + PIN_MAX + '.')
+        : s.rowSource === 'usage'
+          ? 'Ordered by how often you open each market. Pinning one switches the row to My pins.'
+          : 'Alphabetical, ignoring section. Pinning one switches the row to My pins.',
+      strayNote: strays.length
+        ? strays.length === 1 ? '1 selected market is not on your shelf — shown first until you deselect it'
+          : strays.length + ' selected markets are not on your shelf — shown first until you deselect them'
+        : '',
+      hasStrays: strays.length > 0,
+      moreLabel: hidden > 0 ? '+' + hidden + ' more' : 'Fewer',
+      moreOpen: s.moreOpen,
+      toggleMore: () => this.setState(st => ({ moreOpen: !st.moreOpen })),
+      clearMarkets: this.set('markets', []),
+
+      sectionTabs: GROUPS.map((g, i) => ({
+        label: g.label,
+        count: g.markets.length + ' markets',
+        pick: this.set('section', g.label),
+        divider: i === 0 ? 'none' : '1px solid #2b2f36',
+        rule: g.label === s.section ? '#3b5bdb' : 'transparent',
+        bg: g.label === s.section ? '#191c21' : 'transparent',
+        fg: g.label === s.section ? '#e8ecf2' : '#aab2c0',
+      })),
+      openChips: openSection.markets.map(mk),
+      crossSection: elsewhere.length > 0,
+      elsewhereChips: elsewhere.map(mk),
+
+      pillGroups: [
+        { label:'Side', chips: ['Over', 'Under', 'Both'].map(l => Object.assign({ label:l, pick: this.set('side', l) }, chip(s.side === l))) },
+        { label:'Games counted', chips: ['L5', 'L10', 'Season'].map(l => Object.assign({ label:l, pick: this.set('window', l) }, chip(s.window === l))) },
+        { label:'Lines', chips: ['Market', 'Mine'].map(l => Object.assign({ label:l, pick: this.set('lines', l) }, chip(s.lines === l))) },
+      ],
+      filtersFg: '#aab2c0',
+      filtersBorder: '#2b2f36',
+      filtersCount: '',
+    };
+  }
+}
+</script>
+</body>
+</html>
