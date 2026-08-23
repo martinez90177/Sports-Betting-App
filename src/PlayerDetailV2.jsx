@@ -172,6 +172,11 @@ export default function PlayerDetailV2({
   verdict,
   chart,
   footerNote, onAddPick, pickAdded,
+  // Rendered under the grid, and only ever non-null below 1100px: it is
+  // MobilePlayerNav, which self-gates on that breakpoint and returns null
+  // above it. The rails are what switch player on a wide screen; this is what
+  // does it once they have folded away. See .pp-pd-grid in index.css.
+  bottomStrip,
 }) {
   const tones = band && band.away && band.home
     ? matchupTones(sport, band.away.abbr, band.home.abbr)
@@ -215,12 +220,9 @@ export default function PlayerDetailV2({
         </span>
       </div>
 
-      <div style={{
-        display: "grid", gridTemplateColumns: "196px minmax(0, 1fr) 196px",
-        gap: 20, padding: "20px 32px 40px", alignItems: "start",
-      }}>
+      <div className="pp-pd-grid">
 
-        <div>
+        <div className="pp-pd-rail">
           <div style={railLabel}>{ownRail.label}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
             {ownRail.players.map((p) => (
@@ -377,7 +379,14 @@ export default function PlayerDetailV2({
               reading it. The note is absolutely positioned into reserved
               padding instead, so it costs no height, and the row cannot wrap:
               the sentence shrinks first. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 24, padding: "20px 0 30px", position: "relative" }}>
+          {/* pp-pd-verdict: the no-wrap rule above holds on a wide screen and
+              lifts once the chassis folds. At 768px the metric cells left the
+              sentence 184px, so the ellipsis ate the sample and it read
+              "cleared 268...." -- the count after the number being the entire
+              point of the line. Wrapped, the sentence gets a full row and the
+              cells drop under it, and it still cannot jump mid-drag: at a full
+              row width the sentence is one line at every value it can take. */}
+          <div className="pp-pd-verdict" style={{ display: "flex", alignItems: "center", gap: 24, padding: "20px 0 30px", position: "relative" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 }}>
               <span style={{ fontFamily: MONO, fontSize: 40, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: verdict.rateColor, flex: "none" }}>{verdict.rate}</span>
               <span style={{ fontSize: 15, color: "var(--text-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{verdict.sentence}</span>
@@ -454,14 +463,20 @@ export default function PlayerDetailV2({
         </div>
 
         <div>
-          <div style={railLabel}>{oppRail.label}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-            {oppRail.players.map((p) => (
-              <RosterRow key={p.id} p={p} sport={sport} onSelect={p.onSelect} />
-            ))}
+          {/* Only the roster half of this column folds away below 1100 -- the
+              graph key underneath it is the one thing in either rail that is
+              not a roster, and a chart whose colours are unexplained is worse
+              on a small screen than on a large one. */}
+          <div className="pp-pd-rail">
+            <div style={railLabel}>{oppRail.label}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+              {oppRail.players.map((p) => (
+                <RosterRow key={p.id} p={p} sport={sport} onSelect={p.onSelect} />
+              ))}
+            </div>
           </div>
 
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+          <div className="pp-pd-key" style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
             <div style={railLabel}>Reading the graph</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 12 }}>
               <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2)" }}>
@@ -480,6 +495,8 @@ export default function PlayerDetailV2({
           </div>
         </div>
       </div>
+
+      {bottomStrip}
 
       {/* Last in the tree, exactly where the Matchup Card file puts it: after
           the grid closes, guarded by its own open state. */}
@@ -511,7 +528,18 @@ function GameByGame({
   // Non-null only while a drag is in progress -- see startDrag.
   const [rawLine, setRawLine] = React.useState(null);
   if (!games.length || line == null) return null;
-  const H = 224, GUT = 52, MIN_COL = 26;
+  // MIN_COL is what stops the axis labels running into each other, and it is
+  // measured rather than picked: the date renders 37px wide at 10px mono and
+  // the opponent 30px at 11px, centred in columns 6px apart, so two
+  // neighbouring dates touch the moment a column drops under 31px. At 26 they
+  // did -- a seventeen-game NFL log at 768px read "Sep 14Sep 23Sep 28" with no
+  // space at all, and the same collision was already there on a 1150px desktop
+  // where the three-column chassis leaves the centre 605px wide.
+  //
+  // 32 gives the date a hair of clearance and the strip scrolls (overflowX
+  // above) once the log is too long for the width, which is the honest
+  // failure: fewer bars visible, none of them lying.
+  const H = 224, GUT = 52, MIN_COL = 32;
   const recent = games.map((g) => ({ v: g.v }));
   const scale = feedFormScale(recent, line, isBinary, { height: H, pedestal: 0 });
   const hit = (v) => (direction === "under" ? v < line : v > line);
@@ -639,7 +667,7 @@ function GameByGame({
               const ink = g.opp ? mutedTeamColor(sport, g.opp) : "var(--dim)";
               const tint = g.opp ? mutedTeamColor(sport, g.opp, 0.15) : "transparent";
               return (
-                <div key={i} style={{ flex: 1, minWidth: MIN_COL, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+                <div key={i} title={`${venueAbbr(g.home, g.opp || "")} · ${g.date} · ${g.v}`} style={{ flex: 1, minWidth: MIN_COL, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
                   <span style={{
                     display: "flex", alignItems: "center", justifyContent: "center",
                     width: 26, height: 26, borderRadius: 999, background: tint,
@@ -651,7 +679,14 @@ function GameByGame({
                        lib/venue.js for why only one side is marked, and why a
                        log that never recorded a venue gets no marker at all. */}
                   <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>{venueAbbr(g.home, g.opp)}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{g.date}</span>
+                  {/* Hidden once the chassis folds, which is what the mobile
+                       handoff draws: its game-by-game axis carries the
+                       opponent and nothing else. The date is the widest thing
+                       in the column by some way, and dropping it is what lets
+                       seventeen games stay on one screen instead of scrolling.
+                       It is still on the column title above, and in the game
+                       log table. */}
+                  <span className="pp-pd-axis-date" style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{g.date}</span>
                 </div>
               );
             })}

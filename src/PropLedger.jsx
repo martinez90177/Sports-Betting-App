@@ -2509,6 +2509,24 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
 
 
+  // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
+  // carry it too. It self-gates on 1100px and returns null above that, so on a
+  // wide screen this is nothing and the rails do the switching; between 480
+  // and 1100 the rails have folded away (see .pp-pd-grid) and this is what
+  // replaces them.
+  const v2MobileNav = (
+    <MobilePlayerNav
+      teamA={matchup.teamA}
+      teamB={matchup.teamB}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => espnHeadshot(p.espnId)}
+      headshotFallback={(p) => nbaHeadshot(p.nbaId)}
+      metaLine={railMeta}
+      avatarBg={(p) => teamAvatarBackground(NBA_TEAM_COLORS, p.team)}
+    />
+  );
+
   // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
   //
   // Built from `Player Detail NBA v2.dc.html` -- that file, not MLB's. The
@@ -2587,6 +2605,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const v2Page = (
     <PlayerDetailV2
       sport="nba"
+      bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
         <GameSelect
@@ -2709,7 +2728,19 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     />
   );
 
-  if (!compact) return v2Page;
+  // The v2 page renders everywhere except the phone.
+  //
+  // This gate used to read `!compact` -- 1100px -- so the whole transcription
+  // only ever ran on a wide desktop. An iPad in landscape, a 13" laptop and
+  // every window narrower than about a third of a 4K screen got the pre-v2
+  // page instead: the same data, the old design, quietly. That was never a
+  // decision, it was the breakpoint the roster rails needed being read as the
+  // breakpoint the page needed.
+  //
+  // The chassis folds now (see .pp-pd-grid in index.css), so the only width
+  // this hands over at is the phone -- which has its own design in the mobile
+  // handoff, and keeps it.
+  if (!isNarrow) return v2Page;
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -2732,16 +2763,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         </button>
       }
     />
-    <MobilePlayerNav
-      teamA={matchup.teamA}
-      teamB={matchup.teamB}
-      activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-      headshotSrc={(p) => espnHeadshot(p.espnId)}
-      headshotFallback={(p) => nbaHeadshot(p.nbaId)}
-      metaLine={railMeta}
-      avatarBg={(p) => teamAvatarBackground(NBA_TEAM_COLORS, p.team)}
-    />
+    {v2MobileNav}
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={matchup.teamA.label}
@@ -7952,6 +7974,23 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
 
 
+  // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
+  // carry it too. It self-gates on 1100px and returns null above that, so on a
+  // wide screen this is nothing and the rails do the switching; between 480
+  // and 1100 the rails have folded away (see .pp-pd-grid) and this is what
+  // replaces them.
+  const v2MobileNav = (
+    <MobilePlayerNav
+      teamA={teamRoster}
+      teamB={oppRoster}
+      activeId={playerId}
+      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
+      headshotSrc={(p) => nflHeadshot(p)}
+      metaLine={railMeta}
+      avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
+    />
+  );
+
   // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
   //
   // Built from `Player Detail NFL v2.dc.html` -- that file, not MLB's. The
@@ -8016,6 +8055,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const v2Page = (
     <PlayerDetailV2
       sport="nfl"
+      bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
         <GameSelect
@@ -8142,7 +8182,19 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     />
   );
 
-  if (!compact) return v2Page;
+  // The v2 page renders everywhere except the phone.
+  //
+  // This gate used to read `!compact` -- 1100px -- so the whole transcription
+  // only ever ran on a wide desktop. An iPad in landscape, a 13" laptop and
+  // every window narrower than about a third of a 4K screen got the pre-v2
+  // page instead: the same data, the old design, quietly. That was never a
+  // decision, it was the breakpoint the roster rails needed being read as the
+  // breakpoint the page needed.
+  //
+  // The chassis folds now (see .pp-pd-grid in index.css), so the only width
+  // this hands over at is the phone -- which has its own design in the mobile
+  // handoff, and keeps it.
+  if (!isNarrow) return v2Page;
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -8165,15 +8217,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         </button>
       }
     />
-    <MobilePlayerNav
-      teamA={teamRoster}
-      teamB={oppRoster}
-      activeId={playerId}
-      onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
-      headshotSrc={(p) => nflHeadshot(p)}
-      metaLine={railMeta}
-      avatarBg={(p) => teamAvatarBackground(NFL_TEAM_COLORS, p.team)}
-    />
+    {v2MobileNav}
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={teamRoster.label}
@@ -10448,6 +10492,24 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
 
 
 
+  // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
+  // carry it too. It self-gates on 1100px and returns null above that, so on a
+  // wide screen this is nothing and the rails do the switching; between 480
+  // and 1100 the rails have folded away (see .pp-pd-grid) and this is what
+  // replaces them.
+  const v2MobileNav = (
+    <MobilePlayerNav
+      teamA={matchup.teamA}
+      teamB={matchup.teamB}
+      activeId={playerId}
+      onSelect={selectPlayer}
+      headshotSrc={(p) => wnbaHeadshot(p.espnId)}
+      statusFor={statusOf}
+      metaLine={railMeta}
+      avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
+    />
+  );
+
   // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
   //
   // Built from `Player Detail WNBA v2.dc.html` -- that file, not MLB's. The
@@ -10545,6 +10607,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const v2Page = (
     <PlayerDetailV2
       sport="wnba"
+      bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
         <GameSelect
@@ -10671,7 +10734,19 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     />
   );
 
-  if (!compact) return v2Page;
+  // The v2 page renders everywhere except the phone.
+  //
+  // This gate used to read `!compact` -- 1100px -- so the whole transcription
+  // only ever ran on a wide desktop. An iPad in landscape, a 13" laptop and
+  // every window narrower than about a third of a 4K screen got the pre-v2
+  // page instead: the same data, the old design, quietly. That was never a
+  // decision, it was the breakpoint the roster rails needed being read as the
+  // breakpoint the page needed.
+  //
+  // The chassis folds now (see .pp-pd-grid in index.css), so the only width
+  // this hands over at is the phone -- which has its own design in the mobile
+  // handoff, and keeps it.
+  if (!isNarrow) return v2Page;
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -10695,16 +10770,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       }
     />
     {slateBanner}
-    <MobilePlayerNav
-      teamA={matchup.teamA}
-      teamB={matchup.teamB}
-      activeId={playerId}
-      onSelect={selectPlayer}
-      headshotSrc={(p) => wnbaHeadshot(p.espnId)}
-      statusFor={statusOf}
-      metaLine={railMeta}
-      avatarBg={(p) => teamAvatarBackground(WNBA_TEAM_COLORS, p.team)}
-    />
+    {v2MobileNav}
     <div className="roster-layout">
     <TeamRosterPanel
       teamLabel={matchup.teamA.label}
@@ -15533,6 +15599,30 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   }
 
 
+  // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
+  // carry it too. It self-gates on 1100px and returns null above that, so on a
+  // wide screen this is nothing and the rails do the switching; between 480
+  // and 1100 the rails have folded away (see .pp-pd-grid) and this is what
+  // replaces them.
+  const v2MobileNav = (
+    <MobilePlayerNav
+      teamA={liveTeamRoster}
+      teamB={liveOppRoster || { label: "Loading…", players: [] }}
+      activeId={playerId}
+      onSelect={(id) => {
+        setPlayerId(id); setLine(null); setH2h(false);
+        const side = liveTeamRoster.players.some((p) => p.id === id) ? "team" : "opp";
+        setMatchupPick({ side, id, nonce: Date.now() });
+      }}
+      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
+      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
+      metaLine={railMeta}
+      avatarBg={(p) => teamAvatarBackground(MLB_TEAM_COLORS, p.team)}
+      chipRole={(p) => p.pos === "SP"}
+      chipRoleLabel={() => "P"}
+    />
+  );
+
   // ---- The transcribed page (see PlayerDetailV2.jsx) ------------------------
   // Built from `Player Detail MLB v2.dc.html`. Every slot that file fills with
   // an invented number is bound to the feed that really answers it; a slot with
@@ -15624,6 +15714,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const v2Page = (
     <PlayerDetailV2
       sport="mlb"
+      bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
         <GameSelect
@@ -15747,7 +15838,19 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
 
   // Desktop renders the transcription. The narrow path keeps the existing
   // mobile layout until PropPalace Mobile v2 is built from its own file.
-  if (!compact) return v2Page;
+  // The v2 page renders everywhere except the phone.
+  //
+  // This gate used to read `!compact` -- 1100px -- so the whole transcription
+  // only ever ran on a wide desktop. An iPad in landscape, a 13" laptop and
+  // every window narrower than about a third of a 4K screen got the pre-v2
+  // page instead: the same data, the old design, quietly. That was never a
+  // decision, it was the breakpoint the roster rails needed being read as the
+  // breakpoint the page needed.
+  //
+  // The chassis folds now (see .pp-pd-grid in index.css), so the only width
+  // this hands over at is the phone -- which has its own design in the mobile
+  // handoff, and keeps it.
+  if (!isNarrow) return v2Page;
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -15771,22 +15874,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       }
     />
 
-    <MobilePlayerNav
-      teamA={liveTeamRoster}
-      teamB={liveOppRoster || { label: "Loading…", players: [] }}
-      activeId={playerId}
-      onSelect={(id) => {
-        setPlayerId(id); setLine(null); setH2h(false);
-        const side = liveTeamRoster.players.some((p) => p.id === id) ? "team" : "opp";
-        setMatchupPick({ side, id, nonce: Date.now() });
-      }}
-      headshotSrc={(p) => mlbHeadshot(p.mlbId)}
-      headshotFallback={(p) => mlbEspnHeadshot(p.id)}
-      metaLine={railMeta}
-      avatarBg={(p) => teamAvatarBackground(MLB_TEAM_COLORS, p.team)}
-      chipRole={(p) => p.pos === "SP"}
-      chipRoleLabel={() => "P"}
-    />
+    {v2MobileNav}
     {/* Game Conditions: full-width, mobile only. Desktop (!compact) instead
          gets the compact variant inside the left roster gutter below -- a
          full-width bar above the 3-column layout used to leave a tall dead
