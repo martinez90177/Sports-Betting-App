@@ -2,18 +2,24 @@
   The palace mark (see src/PalaceMark.jsx), redrawn as SVG for the tab icon.
   Same five towers, same green/red split, same dashed line and pennant.
 
+  NOTE ON COMMENTS IN THIS FILE: no double hyphen anywhere inside one. XML
+  forbids it, and this file shipped with a prose "&#8212;" written as two hyphens on
+  the line below. That is a parse error, not a warning: the whole document is
+  rejected, the browser gets no icon at all, and the tab falls back to the
+  generated letter tile. Use an em dash or a comma instead.
+
   Two things differ from the DOM version on purpose:
 
   * The whole mark is scaled up and centred in a 32x32 box with a dark ground
     behind it, because a browser tab renders this at ~16px against whatever
     colour the user's chrome happens to be. The old "P" on a lapis ring is
     gone with the three-bar mark it belonged to.
-  * The colours are literal hexes, not tokens. An SVG loaded via <link
-    rel="icon"> gets no page CSS, so there are no custom properties to read
-    and no theme to follow -- these are the dark-theme values, which is what
-    the ground behind them is.
+  * The colours are literal hexes, not tokens. An SVG loaded via a link
+    rel="icon" gets no page CSS, so there are no custom properties to read and
+    no theme to follow; these are the dark-theme values, which is what the
+    ground behind them is.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <rect width="32" height="32" rx="6" fill="#0d0f12"/>
   <!-- Towers, on a shared baseline at y=27. Left wing and right wing are
        outlined red with no bottom edge; the three inner towers are solid

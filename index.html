@@ -4,7 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PropPalace</title>
+    <!-- The palace mark, three ways. The SVG is the one every current browser
+         actually uses; the 32px PNG is the fallback for anything that will not
+         take an SVG icon (Safari before 16), and the 180px one is what iOS
+         puts on a home screen. Both PNGs are rendered from the same SVG, so
+         there is one drawing to keep in step. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="description" content="Your own hit-rate research, before you place it. Player prop hit rates, matchup context and game logs for NFL, MLB, NBA and WNBA." />
 
     <meta property="og:type" content="website" />
