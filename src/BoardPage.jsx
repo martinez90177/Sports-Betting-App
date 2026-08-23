@@ -209,17 +209,20 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       return r.homeGame ? `${r.opp} @ ${r.team}` : `${r.team} @ ${r.opp}`;
     };
     filtered.forEach((r) => {
-      // gameId first, for the builders that know which side is home.
+      // gameId first, for the builders that carry one.
       //
-      // The fallback stays for the builders that have no fixture behind them
-      // at all (the NFL/NBA rows, whose "games" are last-opponent pairings),
-      // but it is sorted, not directional. It used to be `${team}-${opp}`,
-      // which reaches this loop twice for one pairing -- DAL-NYG from the
-      // Cowboys' rows and NYG-DAL from the Giants' -- and the board drew both:
-      // two cards under the same Cowboys @ Giants band, one holding 66 props
-      // and the other 58, each claiming to be the whole matchup. Sorting the
-      // pair makes the two orders one key, which is right: for a last-opponent
-      // pairing there is no home side for the direction to mean anything by.
+      // The fallback is the team pair, sorted rather than directional. It used
+      // to be `${team}-${opp}`, which reaches this loop twice for one pairing
+      // -- DAL-NYG from the Cowboys' rows and NYG-DAL from the Giants' -- and
+      // the board drew both: two cards under the same Cowboys @ Giants band,
+      // one holding 66 props and the other 58, each claiming to be the whole
+      // matchup. Sorting makes the two orders one key.
+      //
+      // Every builder does know its home side now (`homeGame`, added with the
+      // @ marker), so the key could be directional again. It stays sorted
+      // because it does not need to be: the direction is carried on the rows,
+      // gameTitleFor reads it there, and a key that encodes a fact it does not
+      // need is a key that can disagree with it.
       const key = r.gameKey || r.gameId || [r.team, r.opp].filter(Boolean).sort().join("-");
       if (!byGame.has(key)) byGame.set(key, { key, label: r.gameLabelFull || gameTitleFor(r), time: r.gameTime || "", rows: [] });
       byGame.get(key).rows.push(r);
@@ -252,12 +255,16 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       const strongest = scored.length ? scored[0].support : -1;
       // The slate row for this game -- and only if it is genuinely the same
       // fixture. Looking a team up finds *a* game it plays, which is not the
-      // same thing: the NFL board's rows describe 2025 matchups (that season
-      // is final, so the builders use the last opponent played) while the
-      // slate holds 2026 week 1. Joining on one team alone hung TB's record
-      // and Cincinnati's stadium on a card headed CIN vs CLE. Both sides must
+      // same thing, and joining on one team alone once hung TB's record and
+      // Cincinnati's stadium on a card headed CIN vs CLE. Both sides must
       // match, or there is no join and the card says nothing about records,
       // kickoff or venue rather than saying something untrue.
+      //
+      // The original reason for the mismatch is gone -- the NFL builder used
+      // to describe last season's opponent while the slate held this week's,
+      // and all sixteen NFL cards join cleanly now. The check stays: it costs
+      // one comparison, and it is the difference between an empty band and a
+      // wrong one.
       const teamA = rows[0]?.team;
       const teamB = rows[0]?.opp;
       const candidate = slateByTeam ? (slateByTeam.get(teamA) || slateByTeam.get(teamB) || null) : null;
