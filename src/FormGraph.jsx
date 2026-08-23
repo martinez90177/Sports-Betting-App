@@ -1,5 +1,6 @@
 import React from "react";
 import { feedIsHit } from "./lib/altLines.js";
+import { venueWord } from "./lib/venue.js";
 
 // --------------------------------------------------------------------------
 // The form graph
@@ -196,7 +197,7 @@ export default function FeedFormStrip({
           {recent.map((g, i) => (
             <div
               key={i}
-              title={`${g.opp ? `vs ${g.opp} · ` : ""}${g.v}${g.po ? " · playoff game" : ""}`}
+              title={`${g.opp ? `${venueWord(g.home)}${g.opp} · ` : ""}${g.v}${g.po ? " · playoff game" : ""}`}
               style={{
                 // Explicit column, not auto-placement. The dashed-rule
                 // overlay below is explicitly placed across columns 1..n, and

@@ -1,6 +1,7 @@
 import React from "react";
 import { feedFormScale } from "./FormGraph.jsx";
 import TeamLogo from "./TeamLogo.jsx";
+import { venueAbbr } from "./lib/venue.js";
 import { mutedTeamColor, matchupTones } from "./lib/teamColors.js";
 import MatchupCardModal, { straightRunOf } from "./MatchupCardModal.jsx";
 
@@ -646,7 +647,10 @@ function GameByGame({
                   }}>
                     <TeamLogo sport={sport} abbr={g.opp} size={16} />
                   </span>
-                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>{g.opp}</span>
+                  {/* "@GB" for a road game, a bare "GB" at home -- see
+                       lib/venue.js for why only one side is marked, and why a
+                       log that never recorded a venue gets no marker at all. */}
+                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>{venueAbbr(g.home, g.opp)}</span>
                   <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{g.date}</span>
                 </div>
               );

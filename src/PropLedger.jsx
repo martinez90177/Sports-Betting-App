@@ -24,6 +24,7 @@ import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 import PalaceMark from "./PalaceMark.jsx";
 import NavBar, { NAV_TABS } from "./NavBar.jsx";
 import PlayerDetailV2 from "./PlayerDetailV2.jsx";
+import { venueWord } from "./lib/venue.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { usagePills, roleSentence } from "./lib/usagePills.js";
 import { fetchStatcast } from "./lib/statcast.js";
@@ -2144,10 +2145,13 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
-            // A third `__` segment, read by TeamAxisTick. Recharts keys a
-            // category axis by this string, so the mark has to travel inside
-            // it: the tick component is handed the axis value, not the row.
-            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
+            home: g.home,
+            // The playoff and venue marks ride in the axis key's third and
+            // fourth `__` segments, read by TeamAxisTick. Recharts keys a
+            // category axis by this string, so anything a tick draws has to
+            // travel inside it: the tick component is handed the axis value,
+            // not the row.
+            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
             value: statValue(g, market, rebSplit),
             date: g.date,
             minutes: g.minutes,
@@ -2695,7 +2699,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
@@ -3810,6 +3814,23 @@ NFL_MATCHUPS.forEach((m) => {
   NFL_TEAM_ROSTERS[m.teamA.players[0].team] = m.teamA;
   NFL_TEAM_ROSTERS[m.teamB.players[0].team] = m.teamB;
 });
+// Each team's fixture on the modelled week, keyed by abbreviation -- the NFL
+// equivalent of nbaNextGameForTeam, and the only place that knows which side
+// of it a team is on. `teamA` is always the away team and `teamB` the home
+// one (the labels read "Cowboys @ Giants"), and neither carries an `abbr` of
+// its own, so the abbreviation comes off a roster player exactly as
+// NFL_TEAM_ROSTERS above reads it.
+const NFL_SLATE_BY_TEAM = {};
+NFL_MATCHUPS.forEach((m) => {
+  const away = m.teamA.players[0].team;
+  const home = m.teamB.players[0].team;
+  NFL_SLATE_BY_TEAM[away] = { opp: home, home: false, date: m.date };
+  NFL_SLATE_BY_TEAM[home] = { opp: away, home: true, date: m.date };
+});
+function nflNextGameForTeam(abbr) {
+  return (abbr && NFL_SLATE_BY_TEAM[abbr]) || null;
+}
+
 // ESPN's schedule endpoint takes each team's slug in the URL -- identical to
 // our own abbreviations lowercased, except Washington (we use "WAS", ESPN's
 // URL slug and response abbreviation are both "WSH").
@@ -6390,8 +6411,14 @@ function formatAxisDate(dateStr) {
 // packing both values into the one value recharts already hands back is
 // the only lookup that stays correct under any interval.
 function TeamAxisTick({ x, y, payload, logoFn, compact }) {
-  const [abbr, dateStr, mark] = payload.value.split("__");
+  const [abbr, dateStr, mark, venue] = payload.value.split("__");
   const playoff = mark === "po";
+  // "@ARI" for a road game. Absent rather than "vs" for a home one: the tick
+  // is three lines of 11px type under an 18px logo, and marking only the
+  // away games keeps the column of abbreviations aligned while still
+  // answering the question. Absent too when the log never recorded a venue --
+  // the hand-transcribed and synthetic ones do not.
+  const away = venue === "@";
   // Desktop logo shrunk from 28 -> 18px (PropsMadness reference uses a
   // small ~16px mark): smaller footprint per tick means more ticks fit
   // before axisTickInterval has to start skipping, and it relieves the
@@ -6403,7 +6430,7 @@ function TeamAxisTick({ x, y, payload, logoFn, compact }) {
     <g transform={`translate(${x},${y})`}>
       <image href={logoFn(abbr)} x={-size / 2} y={4} width={size} height={size} />
       <text x={0} y={compact ? 24 : 34} textAnchor="middle" fill="var(--chart-ink)" fontSize={compact ? 8 : 11} fontWeight={600}>
-        {abbr}
+        {away ? `@${abbr}` : abbr}
       </text>
       <text x={0} y={compact ? 35 : 47} textAnchor="middle" fill="var(--chart-ink-dim)" fontSize={compact ? 7 : 10} fontWeight={500}>
         {formatAxisDate(dateStr)}
@@ -6460,7 +6487,7 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {logoFn && <img src={logoFn(d.opp)} alt={d.opp} width={18} height={18} style={{ objectFit: "contain" }} />}
           <span className="oswald" style={{ fontSize: 13, letterSpacing: "0.03em", color: "var(--text)" }}>
-            {d.home ? "vs" : "@"} {d.opp}
+            {d.home == null ? "" : d.home ? "vs" : "@"} {d.opp}
           </span>
           {d.playoff && <PlayoffTag />}
         </span>
@@ -7556,10 +7583,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
-            // A third `__` segment, read by TeamAxisTick. Recharts keys a
-            // category axis by this string, so the mark has to travel inside
-            // it: the tick component is handed the axis value, not the row.
-            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
+            home: g.home,
+            // The playoff and venue marks ride in the axis key's third and
+            // fourth `__` segments, read by TeamAxisTick. Recharts keys a
+            // category axis by this string, so anything a tick draws has to
+            // travel inside it: the tick component is handed the axis value,
+            // not the row.
+            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
             value: statValueNFL(g, market),
             date: g.date,
             snapPct: g.snapPct,
@@ -8102,7 +8132,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, home: g.home, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
@@ -8514,6 +8544,16 @@ async function fetchWNBATeamRoster(abbr) {
 async function fetchWNBATeamAvailability(abbr) {
   const data = await fetchWNBATeamRoster(abbr);
   return data ? data.byId : null;
+}
+
+// Looks up which matchup a player belongs to (searching both rosters) and
+// returns its game date. The NFL feed used to reach for this too; it now
+// resolves its fixture by team (see nflNextGameForTeam), which is the only
+// lookup that works for a live-roster player, and this is left for the WNBA
+// offline fallback below.
+function matchupDateForPlayer(matchups, playerId) {
+  const m = matchups.find((mu) => mu.teamA.players.some((p) => p.id === playerId) || mu.teamB.players.some((p) => p.id === playerId));
+  return m ? m.date : null;
 }
 
 // A player's next game date, resolved from the live slate by team rather than
@@ -10036,10 +10076,13 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           data={filtered.map((g, i) => ({
             idx: i + 1,
             opp: g.opp,
-            // A third `__` segment, read by TeamAxisTick. Recharts keys a
-            // category axis by this string, so the mark has to travel inside
-            // it: the tick component is handed the axis value, not the row.
-            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
+            home: g.home,
+            // The playoff and venue marks ride in the axis key's third and
+            // fourth `__` segments, read by TeamAxisTick. Recharts keys a
+            // category axis by this string, so anything a tick draws has to
+            // travel inside it: the tick component is handed the axis value,
+            // not the row.
+            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
             value: statValue(g, market, rebSplit),
             date: g.date,
             minutes: g.minutes,
@@ -10618,7 +10661,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
@@ -14377,7 +14420,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const chartData = filtered.map((g, i) => ({
     idx: i + 1,
     opp: g.opp,
-    axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}`,
+    axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
     value: statValueFn(g),
     date: g.date,
     minutes: isPitcher ? formatOuts(g.outs) : g.pa,
@@ -14879,7 +14922,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             and date sit under the axis instead. */}
         <GameByGameChart
           sport="mlb"
-          games={chartData.map((d) => ({ v: d.value, opp: d.opp, date: d.date, po: d.playoff }))}
+          games={chartData.map((d) => ({ v: d.value, opp: d.opp, home: d.home, date: d.date, po: d.playoff }))}
           line={liveLine}
           marketLine={effectiveLine}
           adjusted={lineIsAdjusted}
@@ -15692,7 +15735,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         sampleVerdict: `${values.length} games`,
       }}
       chart={{
-        games: chartData.map((d) => ({ v: d.value, opp: d.opp, date: axisDateShort(d.date), po: d.playoff })),
+        games: chartData.map((d) => ({ v: d.value, opp: d.opp, home: d.home, date: axisDateShort(d.date), po: d.playoff })),
         line: liveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: lineIsAdjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
@@ -16106,6 +16149,7 @@ function buildWNBAFeedRows() {
         marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
+        homeGame: nextGame ? nextGame.home : null,
         rank, tier, rankLabel: wnbaDefCategoryLabel(m.id),
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
@@ -17595,7 +17639,12 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
       {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
            otherwise produce two visually identical rows per prop. */}
       <span style={{ whiteSpace: "nowrap" }}>
-        vs {r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}
+        {/* "@ NYJ" when the player is on the road, "vs NYJ" at home, and a
+             bare opponent when the fixture never said. Away-first with an @
+             is how the slate, the board and the player page's breadcrumb all
+             write a matchup; this line was the one surface that flattened
+             both halves of the season into "vs". */}
+        {venueWord(r.homeGame)}{r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}
         {/* The streak rides here on the phone only. On desktop it is already
              the second half of the form graph's caption; this card has no
              caption (see FeedFormStrip's `caption` prop), so without this the
@@ -18451,6 +18500,10 @@ function buildNBAFeedRows() {
         marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
+        // Which dugout, for the "@ OPP" / "vs OPP" marker. Null off the
+        // slate: unknown venue prints neither, the same rule the availability
+        // dot follows.
+        homeGame: nextGame ? nextGame.home : null,
         rank, tier, rankLabel: nbaDefCategoryLabel(m.id),
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
@@ -18482,22 +18535,21 @@ function buildNBAFeedRows() {
   return rows;
 }
 
-// Looks up which matchup a player belongs to (searching both rosters) and
-// returns its game date, so feed rows can be filtered by "which day is this
-// player's game on" -- independent of the synthetic historical opponent
-// used for the hit-rate math.
-function matchupDateForPlayer(matchups, playerId) {
-  const m = matchups.find((mu) => mu.teamA.players.some((p) => p.id === playerId) || mu.teamB.players.some((p) => p.id === playerId));
-  return m ? m.date : null;
-}
 
 function buildNFLFeedRows() {
   const rows = [];
   nflPlayerPool().forEach((player) => {
     const games = getNFLGames(player);
     if (!games.length) return;
-    const nextOpp = games[games.length - 1].opp;
-    const gameDate = matchupDateForPlayer(NFL_MATCHUPS, player.id);
+    // The scheduled opponent, not the last one played -- see
+    // nflNextGameForTeam. Looked up by team rather than by player id, which
+    // is what makes it work for a live-roster player: NFL_MATCHUPS holds
+    // hand-written rosters, but every one of the 32 teams appears in it.
+    // Null off the slate, and the row then carries no opponent rather than
+    // the wrong one, exactly as the NBA and WNBA builders do.
+    const nextGame = nflNextGameForTeam(player.team);
+    const nextOpp = nextGame ? nextGame.opp : null;
+    const gameDate = nextGame ? nextGame.date : null;
     const applicableMarkets = NFL_MARKETS.filter((m) => m.pos.includes(player.pos));
     applicableMarkets.forEach((m) => {
       const isBinary = false;
@@ -18505,7 +18557,7 @@ function buildNFLFeedRows() {
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = isBinary ? 0.5 : fairFeedLine(values);
       const hit = isBinary ? (v) => v === 1 : (v) => v > line;
-      const def = getNFLDefRank(m.id, player.pos, nextOpp);
+      const def = nextOpp ? getNFLDefRank(m.id, player.pos, nextOpp) : null;
       const tier = def ? nflDefTier(def.rank) : null;
       const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
       rows.push({
@@ -18521,6 +18573,7 @@ function buildNFLFeedRows() {
         marketLabel: m.label,
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
+        homeGame: nextGame ? nextGame.home : null,
         rank: def ? def.rank : null, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
@@ -18562,7 +18615,7 @@ function mlbGameLabelFull(teamAbbr, nextGame) {
   if (!teamAbbr || !nextGame?.opp) return null;
   const away = nextGame.home ? nextGame.opp : teamAbbr;
   const home = nextGame.home ? teamAbbr : nextGame.opp;
-  return `${away} vs ${home}`;
+  return `${away} @ ${home}`;
 }
 
 function buildMLBFeedRows(teamsData) {
@@ -18605,6 +18658,7 @@ function buildMLBFeedRows(teamsData) {
           marketLabel: m.label,
           subtitle: `Over ${line} ${m.label}`,
           opp: nextGame.opp,
+          homeGame: nextGame.home ?? null,
           rank, tier, rankLabel: def?.label ?? null,
           l5: hitRateWindow(values, 5, hit),
           l10: hitRateWindow(values, 10, hit),
@@ -18715,6 +18769,7 @@ function buildMLBPitcherFeedRows(teamsData) {
         marketLabel: m.label,
         subtitle: `Over ${line} ${m.label}`,
         opp: nextGame.opp,
+        homeGame: nextGame.home ?? null,
         rank, tier, rankLabel: def?.label ?? null,
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
@@ -23050,7 +23105,12 @@ export default function PropLedger() {
         .map((p) => ({
           id: p.id || `nfl_${p.espnId}`,
           name: p.name,
-          team: p.team,
+          // ESPN calls Washington WSH; every map in this file -- team colours,
+          // logos, defensive ranks, the week's fixtures -- is keyed WAS. Left
+          // raw, the whole Washington roster fell through all four: no crest,
+          // fallback colours, no opponent, and its own board card headed
+          // "WSH" sitting beside the real WAS @ PHI one.
+          team: nflOurAbbr(p.team),
           pos: p.pos,
           espnId: p.espnId,
           // Marks a player the hand-written pool never had. getNFLGames

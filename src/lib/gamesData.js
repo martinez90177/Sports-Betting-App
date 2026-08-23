@@ -35,7 +35,7 @@ const NFL_LOGO_SLUG = {
 };
 
 // The app's NBA abbreviations are ESPN's *long* ones (NYK, SAS, GSW, NOP, UTA,
-// WAS); ESPN's scoreboard reports six of them short. nbaAbbr below is what
+// WAS); ESPN's scoreboard reports six of them short. espnAbbr below is what
 // reconciles the two -- get it wrong and a team silently loses its logo and
 // its name at the same time.
 const NBA_LOGO_SLUG = {
@@ -547,7 +547,16 @@ const ESPN_PATH = { wnba: "basketball/wnba", nfl: "football/nfl", nba: "basketba
 // the Spurs, on a fifth of the league. Same map as PropLedger's NBA_ESPN_ABBR;
 // duplicated here for the same reason the three logo builders above are.
 const NBA_ESPN_ABBR = { GS: "GSW", NO: "NOP", NY: "NYK", SA: "SAS", UTAH: "UTA", WSH: "WAS" };
-const nbaAbbr = (a) => NBA_ESPN_ABBR[a] || a;
+// Football's Washington has the same problem, from the same provider: ESPN
+// writes it WSH, every map in this file and every abbreviation the prop
+// builders use is WAS. Left unreconciled it cost the same two things the note
+// above warns about, plus a third: the Board could not join a Washington prop
+// row to its own fixture, so WAS @ PHI drew as two cards -- one headed "WSH"
+// with 101 props and one headed "WAS @ PHI" with 97, each claiming to be the
+// matchup.
+const NFL_ESPN_ABBR = { WSH: "WAS" };
+const ESPN_ABBR_BY_SPORT = { nba: NBA_ESPN_ABBR, nfl: NFL_ESPN_ABBR };
+const espnAbbr = (sport, a) => (a ? (ESPN_ABBR_BY_SPORT[sport] || {})[a] || a : a);
 
 // Returns { games, unreadable } -- see the note on fetchMlbSlate.
 function espnSlate(sport, events) {
@@ -558,8 +567,8 @@ function espnSlate(sport, events) {
     const home = comp?.competitors?.find((c) => c.homeAway === "home");
     const rawAway = away?.team?.abbreviation;
     const rawHome = home?.team?.abbreviation;
-    const awayAbbr = sport === "nba" && rawAway ? nbaAbbr(rawAway) : rawAway;
-    const homeAbbr = sport === "nba" && rawHome ? nbaAbbr(rawHome) : rawHome;
+    const awayAbbr = espnAbbr(sport, rawAway);
+    const homeAbbr = espnAbbr(sport, rawHome);
     if (!awayAbbr || !homeAbbr) { unreadable += 1; return null; }
 
     const status = espnStatus(comp);
@@ -1104,11 +1113,12 @@ export async function fetchRecentForm(sport, abbr, n) {
         .filter((e) => e.competitions?.[0]?.status?.type?.completed)
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, n);
-      // ESPN answers this route with its *short* NBA abbreviations even when
-      // asked by the long one, so a raw `=== abbr` comparison finds nobody for
-      // the six teams that differ -- and `mine` being undefined renders every
-      // row as an 0-0 loss rather than as an error. Normalised on both sides.
-      const norm = (a) => (sport === "nba" && a ? nbaAbbr(a) : a);
+      // ESPN answers this route with its own abbreviations even when asked by
+      // ours, so a raw `=== abbr` comparison finds nobody for the six NBA
+      // teams that differ or for Washington's NFL side -- and `mine` being
+      // undefined renders every row as an 0-0 loss rather than as an error.
+      // Normalised on both sides.
+      const norm = (a) => espnAbbr(sport, a);
       rows = finals.map((e) => {
         const comp = e.competitions[0];
         const mine = comp.competitors.find((c) => norm(c.team?.abbreviation) === abbr);

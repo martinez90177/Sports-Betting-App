@@ -200,6 +200,14 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
   // exist as a separate surface from the flat feed.
   const grouped = useMemo(() => {
     const byGame = new Map();
+    // Away first with an @, which is how the slate and the player page write
+    // a fixture. Falls back to "vs" only when the row could not say which
+    // side it was on -- the rows carry `homeGame` from the feed builders.
+    const gameTitleFor = (r) => {
+      if (!r.team || !r.opp) return [r.team, r.opp].filter(Boolean).join(" ") || "Unknown fixture";
+      if (r.homeGame == null) return `${r.team} vs ${r.opp}`;
+      return r.homeGame ? `${r.opp} @ ${r.team}` : `${r.team} @ ${r.opp}`;
+    };
     filtered.forEach((r) => {
       // gameId first, for the builders that know which side is home.
       //
@@ -213,7 +221,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       // pair makes the two orders one key, which is right: for a last-opponent
       // pairing there is no home side for the direction to mean anything by.
       const key = r.gameKey || r.gameId || [r.team, r.opp].filter(Boolean).sort().join("-");
-      if (!byGame.has(key)) byGame.set(key, { key, label: r.gameLabelFull || `${r.team} vs ${r.opp}`, time: r.gameTime || "", rows: [] });
+      if (!byGame.has(key)) byGame.set(key, { key, label: r.gameLabelFull || gameTitleFor(r), time: r.gameTime || "", rows: [] });
       byGame.get(key).rows.push(r);
     });
     return [...byGame.values()].map((g) => {
