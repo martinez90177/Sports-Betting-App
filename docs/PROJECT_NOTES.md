@@ -253,6 +253,37 @@ matters more now the badge is market-specific. Related:
 
 ---
 
+## The dev server does not run `/api/*`
+
+`npm run dev` is Vite, not Vercel. It has no serverless runtime, so it serves
+the **source** of every file in `api/` as a static asset: `GET /api/news`
+returns 200 with `content-type: text/javascript` and the body is the function
+itself. Verified 2026-08-23 for all four — `news`, `odds`, `mlb-matchups`,
+`refresh-mlb-matchups`.
+
+The caller does `res.json()`, that throws on JavaScript source, and the screen
+falls back to its empty state. Which means the empty state is the *only* thing
+those three surfaces have ever shown locally:
+
+- the News page's headline feed,
+- the odds panel on every feed row ("Coming soon"),
+- MLB matchups served from Redis rather than fetched live.
+
+**Why:** "drive the app in the browser before calling it done" is the standing
+rule (see [[vite-builds-clean-on-undefined-identifiers]]), and this is the hole
+in it. A change to any of those three can be driven, look correct, and be
+completely unexercised — the fallback renders identically whether the code
+behind it is right or absent.
+
+**How to apply:** treat the three surfaces above as untested by local driving.
+Either stub the response in the browser (`window.fetch` override, or paste the
+provider's real JSON into the parse path) or verify on production after the
+push. Do not report them as verified off a dev-server run, and do not read
+"Coming soon" or an empty News feed as a bug — that is what an unrun serverless
+function looks like here.
+
+---
+
 ## Production url and cron
 
 PropPalace production: `https://sports-betting-app-ruddy.vercel.app/`

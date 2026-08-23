@@ -5,8 +5,11 @@ has been decided. Read this before starting any item. It is committed to the
 repo on purpose: this project is worked on from more than one machine, and
 Claude's own memory does not travel between them.
 
-**Status as of 2026-08-22 — `master` at `c34df94`. Items 1–18 shipped; the v2
-rebuild is complete; data track sections A and C complete.**
+**Status as of 2026-08-23 — `master` at `e84eac9`, 7 commits unpushed. Items
+1–18 shipped; the v2 rebuild and the transcription pass are complete; data track
+sections A and C complete.** What has happened since the transcription pass is
+Alex reading the built screens and calling changes on them — see "After the
+transcription pass" below.
 
 ## The five tracks
 
@@ -330,6 +333,15 @@ live data, which is what forces most of these:
   twice, deliberately.
 - **The board's "All 148 props →" is phrased as a count plus a move**, because
   the feed it moves to is not filtered.
+- **The feed's Markets / Side / Games counted / Lines are above the table, not
+  inside the Filters panel.** The mock puts all four in the panel and the build
+  followed it; Alex reversed that on 2026-08-23. They are not filters you set
+  once, they are how you move around the feed, and a click in front of each
+  taxed the most frequent action on the screen. The panel keeps the
+  set-and-forget half — minimum sample, defence tier, role, sort, price. The
+  summary strip lost its Markets and Window cells at the same time and for the
+  same reason: it was restating a control sitting a centimetre below it.
+  Desktop only; the phone's Refine sheet is unchanged.
 
 ### Things a future reader will not find in the code
 
@@ -363,6 +375,8 @@ live data, which is what forces most of these:
 - **Feed game-id reconciliation** (would let "Open in feed" filter to one
   game). Declined twice on cost-vs-value; the current phrasing is honest.
 - Everything in the monetisation track, untouched.
+- ~~Player detail was desktop-only below 1100px~~ — closed 2026-08-23,
+  `e84eac9`. See below.
 
 ## The transcription pass — started 2026-08-22
 
@@ -464,6 +478,95 @@ Still reachable, deliberately: the full `MatchupPage` / `GamecastPage`, from
 the foot of an open card. Those two are still first-pass pages and still carry
 the accent gradient wash the v2 screens dropped — if they are ever meant to
 match, that is unbuilt work, not an oversight.
+
+## After the transcription pass — 2026-08-23
+
+Twelve screens matching their files is not the same as twelve screens being
+right. Everything below came from Alex opening the finished build and reading
+it, and each one turned out to sit on top of something older than the redesign.
+Recorded because the pattern is the point: **the transcription pass could not
+have caught any of these, because none of them is a layout question.**
+
+| Commit | What Alex called | What was actually under it |
+|---|---|---|
+| `b69cdf7` | Mahomes has three different backgrounds | Nine call sites each deciding the avatar's disc colour; three said `#000` |
+| `f912dfc` | Trubisky is under the wrong game; the page dies on a hot reload | Two unrelated bugs, one of them a Fast-Refresh-only crash — see below |
+| `afea1c3` | MLB's minimum sample offers 5/9/12 | The control was built for a 17-game NFL season and *clamped saved values at 17* |
+| `b384af4` | A receiver's rail row reads 0.0 PASS YDS | The rail rendered every row in the selected market, position be damned |
+| `63590ad` | Away games should carry an @; home/away filtering looks broken | The filter worked. The feed's NFL opponent did not |
+| `3768ea0` | These four controls are used constantly and are behind a click | A faithful transcription of a mock decision that was wrong for this screen |
+| `e84eac9` | (mine) | The v2 page only ever rendered at 1100px and up |
+
+Four of these are worth more than a table row.
+
+### The minimum sample was an NFL control on every sport
+
+`MinSampleControl` had `MIN_SAMPLE_TICKS = 17` and presets `[5, 9, 12]`, and
+`loadSamplePresets` discarded any stored value `> 17`. On a 162-game MLB season
+that made the control meaningless twice over: a 17-step scale, and no way to
+express a minimum above 17, so every prop cleared the highest bar the control
+could state. `SAMPLE_SCALE` is per sport now — NFL 17/5·9·12, WNBA 40/10·20·30,
+NBA 60/10·20·40, MLB 80/15·30·50 — and the presets are stored under a per-sport
+key, because one shared key meant a useful MLB minimum overwrote the NFL chips.
+
+`max` is not the season length. It is the point past which raising the minimum
+stops telling you anything, which is well short of 162.
+
+### The NFL feed was scouting last season
+
+`buildNFLFeedRows` took its opponent from `games[games.length - 1].opp` — the
+last team the player faced. The NBA and WNBA builders had been moved off that
+exact line and given a slate lookup; the NFL one was left behind, and nobody
+noticed because the feed does not draw a fixture, only "vs XXX". It showed up
+the moment the `@` marker made the fixture legible: Detroit's two quarterbacks
+sat in the feed against different opponents, Minnesota fielded three, and the
+OPP RANK chip beside each was rating a 2025 defence.
+
+**Lesson worth keeping:** the bug had been visible on the main screen for weeks.
+What made it findable was rendering *one more fact* about the same row.
+
+### ESPN calls Washington WSH
+
+Every map in the app keys it WAS. The live NFL roster, the slate parser and
+`teamInfo` all took ESPN's spelling raw, so the whole Washington roster fell
+through team colours, crests, defensive ranks and the week's fixtures at once —
+and on the board it had its own card headed "WSH" with 101 props sitting beside
+the real WAS @ PHI card with 97. The NBA side of `gamesData.js` already had
+`NBA_ESPN_ABBR` for exactly this class of mismatch; football just never got one.
+`espnAbbr(sport, abbr)` is now the single reconciliation point.
+
+Baseball's Washington is *legitimately* WSH. The map is per sport for that
+reason.
+
+### The v2 player page was gated at 1100px
+
+`if (!compact) return v2Page` — and `compact` is `useIsNarrow(1100)`, the
+breakpoint the roster rails need. Read as the breakpoint the *page* needs, it
+meant an iPad in landscape, a 13" laptop and any window under about a third of a
+4K screen got the pre-v2 page: same data, old design, silently. Nothing decided
+that; it was one variable doing two jobs.
+
+The chassis folds now (`.pp-pd-grid` in `index.css`): under 1100 it is one
+column, the rails drop out, and `MobilePlayerNav` — which already gates on 1100
+— is handed to the v2 page so switching player stays one tap away. Only the
+roster half of the right rail folds; the graph key stays. **The phone keeps its
+own page**, because the mobile handoff draws one and blessed the strip this
+reuses.
+
+Folding exposed two things that were already broken above it: the axis labels
+collided (a date is 37px at 10px mono, columns were 26px minimum, so neighbours
+touched at any column under 31px — including on a 1150px desktop), and the
+verdict sentence truncated to "cleared 268...." with the count that is the whole
+point of the line inside the ellipsis.
+
+### The HMR crash, for the record
+
+The standing theory was `NFL_MATCHUPS[0].id`. It was wrong. The real cause:
+`NFL_LIVE_PLAYERS` is a module-level `let` and `playerId` is component state, so
+a Fast Refresh re-runs the module — emptying the live pool — while the selected
+id survives. `player` resolves to `undefined` and the page hits the error
+boundary. Guarding the leaves only moved the throw three times; the fix is a
+fallback player plus a resync effect. Dev-only, but it cost hours twice.
 
 ## Still open — before the v2 rebuild
 
