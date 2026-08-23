@@ -88,3 +88,29 @@ export function supportScore(hits, n) {
   if (!n) return -1;
   return Math.max(wilsonLower(hits, n), wilsonLower(n - hits, n));
 }
+
+// The player pages' "THE READ" block, from the same bands the board's verdict
+// pill reads. It keeps its own presentation -- a lean word and a three-dot
+// confidence rail -- but the arithmetic behind both is now this file's, so a
+// prop the board calls "Not established" can no longer read "Leans over" with
+// two dots on the player page two clicks away.
+//
+// Before this, the lean was `pct >= 55` and the tier was sample size alone
+// (25 games STRONG, 10 FAIR), which meant 7-of-10 was a FAIR lean over and
+// 26-of-40 was a STRONG one -- the first establishes nothing and the second is
+// barely past a coin flip.
+export function readFor(hits, n) {
+  if (!n) return { lean: "even", tier: "THIN" };
+  const loOver = wilsonLower(hits, n);
+  const loUnder = wilsonLower(n - hits, n);
+  const lower = Math.max(loOver, loUnder);
+  const band = supportBand(lower);
+  if (!band) return { lean: "even", tier: "THIN" };
+  return {
+    lean: loOver >= loUnder ? "over" : "under",
+    // Three dots for a sample that holds at 65%, two for one that holds at
+    // all. "Slight" gets two as well: it has picked a side, and the rail has
+    // no fourth step to give it.
+    tier: band.id === "strong" ? "STRONG" : "FAIR",
+  };
+}

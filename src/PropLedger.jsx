@@ -5,6 +5,7 @@ import {
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import { roleValue, roleTiers, clearsRole, roleUnit } from "./lib/role.js";
+import { readFor } from "./lib/support.js";
 import { useSettings, useDisplaySettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits, isFirstRun, markTourDismissed, DEFAULTS } from "./settings.jsx";
 import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
@@ -1967,7 +1968,6 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           surface="var(--panel)"
           size={compact ? 48 : 76}
           inset={compact ? 3 : 5}
-          backing={(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
           imgBorder="1px solid var(--line)"
           fadeIn
           shadow={`0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
@@ -2298,8 +2298,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const matchupPct = matchupWindow.length ? Math.round((matchupHits / matchupWindow.length) * 100) : 0;
   const matchupSentence = `Over in ${matchupHits} of the last ${matchupWindow.length} games.`;
 
-  const matchupLean = matchupPct >= 55 ? "over" : matchupPct <= 45 ? "under" : "even";
-  const matchupConfidence = matchupWindow.length >= 25 ? "STRONG" : matchupWindow.length >= 10 ? "FAIR" : "THIN";
+  // Both from lib/support.js, so this block and the board's verdict pill
+  // cannot disagree about the same prop -- see readFor.
+  const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
   const matchupHomeGames = matchupWindow.filter((g) => g.home);
   const matchupAwayGames = matchupWindow.filter((g) => !g.home);
   const rateOf = (games) => {
@@ -2644,7 +2645,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nba" team={player.team}
             colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(player.espnId)}
-            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            surface="var(--surface-1)" size={104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
@@ -7314,7 +7315,6 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           surface="var(--panel)"
           size={compact ? 48 : 76}
           inset={compact ? 3 : 5}
-          backing={(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}
           imgBorder="1px solid var(--line)"
           fadeIn
           shadow={`0 4px 14px ${(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
@@ -7640,8 +7640,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // the same thing wherever it appears in the app -- a 12-game window will
   // typically read FAIR or THIN here, which is the honest answer for that
   // sample size, not necessarily whatever number a mockup happened to show.
-  const matchupLean = matchupPct >= 55 ? "over" : matchupPct <= 45 ? "under" : "even";
-  const matchupConfidence = matchupWindow.length >= 25 ? "STRONG" : matchupWindow.length >= 10 ? "FAIR" : "THIN";
+  // Both from lib/support.js, so this block and the board's verdict pill
+  // cannot disagree about the same prop -- see readFor.
+  const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
   const matchupHomeGames = matchupWindow.filter((g) => g.home);
   const matchupAwayGames = matchupWindow.filter((g) => !g.home);
   const rateOf = (games) => {
@@ -7952,7 +7953,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nfl" team={player.team}
             colorMap={NFL_TEAM_COLORS} headshotSrc={nflHeadshot(player)}
-            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            surface="var(--surface-1)" size={104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
@@ -9795,7 +9796,6 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           surface="var(--panel)"
           size={compact ? 48 : 76}
           inset={compact ? 3 : 5}
-          backing={(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}
           imgBorder="1px solid var(--line)"
           fadeIn
           shadow={`0 4px 14px ${(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
@@ -10101,8 +10101,9 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const matchupPct = matchupWindow.length ? Math.round((matchupHits / matchupWindow.length) * 100) : 0;
   const matchupSentence = `Over in ${matchupHits} of the last ${matchupWindow.length} games.`;
 
-  const matchupLean = matchupPct >= 55 ? "over" : matchupPct <= 45 ? "under" : "even";
-  const matchupConfidence = matchupWindow.length >= 25 ? "STRONG" : matchupWindow.length >= 10 ? "FAIR" : "THIN";
+  // Both from lib/support.js, so this block and the board's verdict pill
+  // cannot disagree about the same prop -- see readFor.
+  const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
   const matchupHomeGames = matchupWindow.filter((g) => g.home);
   const matchupAwayGames = matchupWindow.filter((g) => !g.home);
   const rateOf = (games) => {
@@ -10462,7 +10463,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             key={player.id} name={player.name} alt={player.name} sport="wnba" team={player.team}
             colorMap={WNBA_TEAM_COLORS} headshotSrc={wnbaHeadshot(player.espnId)}
             status={statusOf(player)}
-            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            surface="var(--surface-1)" size={104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
@@ -13227,7 +13228,6 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
                 fallbackSrc={mlbEspnHeadshot(p.id)}
                 size={56}
                 inset={2}
-                backing={(MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}
                 shadow={`0 0 0 1px ${(MLB_TEAM_COLORS[p.team] || {}).primary || "#000"}`}
                 style={{ display: "block", margin: "0 auto 6px" }}
               />
@@ -14970,7 +14970,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           surface="var(--panel)"
           size={compact ? 48 : 76}
           inset={compact ? 3 : 5}
-          backing={"#000"}
           imgBorder="1px solid var(--line)"
           fadeIn
         />
@@ -15193,8 +15192,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   const matchupPct = matchupWindow.length ? Math.round((matchupHits / matchupWindow.length) * 100) : 0;
   const matchupSentence = `Over in ${matchupHits} of the last ${matchupWindow.length} games.`;
 
-  const matchupLean = matchupPct >= 55 ? "over" : matchupPct <= 45 ? "under" : "even";
-  const matchupConfidence = matchupWindow.length >= 25 ? "STRONG" : matchupWindow.length >= 10 ? "FAIR" : "THIN";
+  // Both from lib/support.js, so this block and the board's verdict pill
+  // cannot disagree about the same prop -- see readFor.
+  const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
   const matchupHomeGames = matchupWindow.filter((g) => g.home);
   const matchupAwayGames = matchupWindow.filter((g) => !g.home);
   const rateOf = (games) => {
@@ -15522,7 +15522,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             key={player.id} name={player.name} alt={player.name} sport="mlb" team={player.team}
             colorMap={MLB_TEAM_COLORS} headshotSrc={mlbHeadshot(player.mlbId)}
             fallbackSrc={mlbEspnHeadshot(player.id)} status={mlbStatusOf(player)}
-            surface="var(--surface-1)" size={104} inset={5} backing="#000"
+            surface="var(--surface-1)" size={104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
@@ -17221,14 +17221,15 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
 
   const avatarEl = (
     <div style={{ position: "relative", width: avatarSize, height: avatarSize, flexShrink: 0 }}>
-      {/* `backing` is a flat team-color disc behind the photo, inset to the
-           same depth as the photo -- it keeps the gradient confined to the
-           thin outer ring instead of showing through wherever a headshot has
-           transparent padding (common on NFL/NBA/WNBA cutout photos), which
-           otherwise reads as a big flat blob instead of a crisp ring. Same
-           two-layer treatment as the player-card header avatar. A player with
-           no usable photo keeps the ring alone, which still identifies the
-           team. */}
+      {/* The flat team-colour disc behind the photo comes from PlayerAvatar
+           itself now (see avatarBackingFor) rather than being named here --
+           it keeps the gradient confined to the thin outer ring instead of
+           showing through wherever a headshot has transparent padding (common
+           on NFL/NBA/WNBA cutout photos), which otherwise reads as a big flat
+           blob instead of a crisp ring. Every avatar in the app gets the same
+           disc from the same lookup, which is the point: this row used to
+           paint a team colour while the 104px header avatar two clicks away
+           painted black. */}
       <PlayerAvatar
         name={r.name}
         alt={r.name}
@@ -17239,7 +17240,6 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         fallbackSrc={r.avatarFallback}
         size={avatarSize}
         inset={2}
-        backing={(FEED_TEAM_COLORS[sport] && (FEED_TEAM_COLORS[sport][r.team] || {}).primary) || "#000"}
         shadow="0 2px 8px rgba(0,0,0,0.35)"
         status={status}
         surface="var(--panel)"
@@ -18649,6 +18649,9 @@ function feedTeamCount(sport) {
 // whenever the user switches modes, then the direction chip can flip it.
 const FEED_SORT_MODES = [
   {
+    // Offered, not defaulted: it reorders the feed away from hit rate, which
+    // is the ordering the screen is built to argue for. Alex, 2026-08-23.
+    //
     // The one mode that overrides the hit-rate primary rather than breaking
     // its ties -- see sortedRows. As a tiebreak it would do nothing at all:
     // reserves reach 100% more easily than starters, so they hold the top of
@@ -19020,7 +19023,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // not stay on screen labelled L5.
   const [expandedKey, setExpandedKey] = useState(null);
   React.useEffect(() => { setExpandedKey(null); }, [sport, selectedMarkets, sampleWindow, direction, linesMode]);
-  const [sortMode, setSortMode] = useState("role");
+  const [sortMode, setSortMode] = useState("matchup");
   // The Role floor. "all" always, until asked: a filter that hides rows by
   // default would make the feed answer "there is nothing here" when what it
   // means is "I hid it".
@@ -19377,7 +19380,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setMinGames(10);
     setRankLo(1);
     setRankHi(maxRank);
-    setSortMode("role");
+    setSortMode("matchup");
     setSortDir("desc");
     setRoleTier("all");
     setOddsMinX(4);
@@ -23303,15 +23306,13 @@ export default function PropLedger() {
 
           It sits here rather than in those title blocks only until screens 3
           and 4 rebuild them; then it moves inside and this block goes. */}
-      {/* Games still gets the app-level search. The Prop Feed does not: its
-          mock draws the field inside the centre title block beside the h1, so
-          it is handed down as `searchSlot` and rendered there. Games moves the
-          same way when screen 4 is rebuilt. */}
-      {page === "games" && (
-        <div className="pp-games-search" style={{ display: "flex", justifyContent: "flex-end", padding: "12px 32px 0" }}>
-          <SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />
-        </div>
-      )}
+      {/* No app-level search on Games. Screen 4's rebuild gave it a "Filter
+          teams" field in its own header, and that is the search this page
+          wants -- it narrows the slate you are looking at. A second box
+          promising players sat above it doing something else entirely, which
+          is one control too many on a screen whose job is "what is on now".
+          The player search stays on the Prop Feed, which is where opening a
+          player is the point. Alex, 2026-08-23. */}
       {page === "nba" && (
         <NBAPropsPage
           dataVersion={nbaDataVersion}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { avatarBackgroundFor, STATUS } from "./lib/teamColors.js";
+import { avatarBackgroundFor, avatarBackingFor, STATUS } from "./lib/teamColors.js";
 
 // Circular player avatar: team-colour gradient background, headshot on top,
 // optional availability dot bottom-right. Initials render only when there is
@@ -40,6 +40,7 @@ export default function PlayerAvatar({
   inset = 0,                 // see note below
   shadow,
   backing,                   // solid disc under the photo -- see note below
+  flatBacking = false,       // opt out: no disc at all, gradient straight through
   fadeIn = false,
   imgBorder,
   alt = "",
@@ -67,11 +68,21 @@ export default function PlayerAvatar({
 
   const src = chain[failed] || null;
 
-  // `backing` paints a solid disc between the gradient and the photo, so an
-  // image the browser never fetches -- ad-block and privacy extensions block
-  // sports-CDN requests fairly often -- still leaves an on-brand circle rather
-  // than a flat black hole. Only worth it on the large header avatars. The
-  // fade resets per source so walking to a fallback fades in too.
+  // The solid disc between the gradient and the photo, so an image the browser
+  // never fetches -- ad-block and privacy extensions block sports-CDN requests
+  // fairly often -- still leaves an on-brand circle rather than a flat black
+  // hole.
+  //
+  // Defaulted here rather than passed in. Nine call sites used to each decide
+  // for themselves and they did not agree: the feed and the roster rails
+  // painted the team's primary while every 104px header avatar painted "#000",
+  // so one player had a different background depending on the screen. Callers
+  // can still override with an explicit `backing`, or pass `flatBacking` to
+  // suppress the disc entirely.
+  //
+  // The fade resets per source so walking to a fallback fades in too.
+  const disc = flatBacking ? null
+    : (backing || avatarBackingFor({ colorMap, sport, team }));
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { setLoaded(false); }, [src]);
 
@@ -129,13 +140,13 @@ export default function PlayerAvatar({
           opacity: dimmed ? 0.75 : 1,
         }}
       >
-        {backing && (
+        {disc && (
           <span style={{
             position: "absolute", left: inset, top: inset, width: inner, height: inner,
-            borderRadius: "50%", background: backing, border: imgBorder,
+            borderRadius: "50%", background: disc, border: imgBorder,
           }} />
         )}
-        {!src && !backing && initials}
+        {!src && !disc && initials}
         {src && (
           <img
             key={src}

@@ -206,6 +206,21 @@ export function avatarBackgroundFor({ colorMap, sport, team }) {
   return teamAvatarBackground(colorMap || TEAM_COLORS_BY_SPORT[sport] || {}, team);
 }
 
+// The flat disc that sits under a headshot, in the team's own primary. Same
+// resolution order as avatarBackgroundFor, so the disc and the gradient behind
+// it can never come from two different lookups.
+//
+// This exists because the answer used to be written at nine call sites and
+// three of them said "#000": the feed and the roster rails painted a team disc
+// while the 104px header avatar painted black, so one player had two different
+// backgrounds depending on which screen you were on -- visible for as long as
+// the photo took to arrive, and permanently whenever a privacy extension
+// blocked the sports CDN.
+export function avatarBackingFor({ colorMap, sport, team }) {
+  const map = colorMap || TEAM_COLORS_BY_SPORT[sport] || {};
+  return (map[team] || AVATAR_FALLBACK_COLORS).primary;
+}
+
 // Availability styling for the status dot. Only rendered when a caller passes
 // a real status -- see the note in PlayerAvatar.jsx about which sports have
 // player-level availability data.
