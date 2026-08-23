@@ -3954,6 +3954,34 @@ const NFL_MARKETS = [
   { id: "xpm", label: "XP Made", pos: ["K"] },
   { id: "kickPts", label: "Kicking Points", pos: ["K"] },
 ];
+// What a roster-rail row reads when the market on screen is not one this
+// player's position can be bet in.
+//
+// The rail used to render every row in the selected market, full stop, which
+// on a passing market meant a receiver read "WR - 0.0 PASS YDS" and a back
+// "RB - 0.0 PASS YDS". Those zeros were arithmetically true and completely
+// useless: nobody wants a receiver's passing yards, and a column of 0.0s
+// reads as a broken page rather than as an inapplicable stat.
+//
+// Receiving yards rather than receptions for the pass-catchers, because the
+// rail is a size-of-role glance and yardage separates a deep threat from a
+// checkdown target where catch counts do not.
+const NFL_RAIL_MARKET_BY_POS = {
+  QB: "passYds", RB: "rushYds", WR: "recYds", TE: "recYds", K: "fgm",
+};
+
+// The selected market wins whenever the position can actually be bet in it,
+// so switching to Rec Yds still re-reads the whole receiving corps -- it is
+// only the rows the market does not apply to that fall back. Returns null for
+// a position with no headline market at all (rails carry no defenders today,
+// but nothing stops one arriving), and railMetaLine then prints the bare
+// position rather than inventing a number for it.
+const nflRailMarket = (pos, market) => {
+  const m = NFL_MARKETS.find((x) => x.id === market);
+  if (m && m.pos.includes(pos)) return market;
+  return NFL_RAIL_MARKET_BY_POS[pos] || null;
+};
+
 // Groups NFL_MARKETS into the same "section header + tab row" layout the NBA
 // page uses (Core/Combos/etc.) instead of one flat "Markets" list -- each
 // group's `ids` gets filtered down to whatever's applicable to the selected
@@ -6095,8 +6123,15 @@ const RAIL_UNIT = {
   pts: "PTS", reb: "REB", ast: "AST", fg3m: "3PM", stl: "STL", blk: "BLK", tov: "TOV",
   pra: "PRA", pr: "PR", pa: "PA", ra: "RA",
   rec: "REC", recYds: "REC YDS", rushYds: "RUSH YDS", passYds: "PASS YDS", targets: "TGT",
+  passTd: "PASS TD", passAtt: "ATT", comp: "COMP", int: "INT", rushAtt: "CAR",
+  anytimeTd: "TD", scrim: "SCRIM YDS", passRushYds: "PASS+RUSH", longRec: "LONG REC",
+  fgm: "FGM", fga: "FGA", xpm: "XPM", kickPts: "KICK PTS",
   h: "H", hr: "HR", rbi: "RBI", r: "R", tb: "TB", bb: "BB", so: "K", sb: "SB",
+  hrrbi: "H+R+RBI",
   k: "K", er: "ER", ip: "IP", outs: "OUTS",
+  // The pitcher list's ids are distinct from the batting ones on purpose, and
+  // so are their units: a pitcher's "H" is hits he gave up.
+  p_k: "K", p_outs: "OUTS", p_er: "ER", p_h: "H ALLOWED", p_bb: "BB ALLOWED",
 };
 
 function railMetaLine(pos, avg, marketId, marketLabel, digits = 1) {
@@ -7118,20 +7153,24 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   );
   const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
 
-  // Season average per rail player in the selected market (see railSeasonAvg).
+  // Season average per rail player, in that player's own market -- the
+  // selected one where his position can be bet in it, his position's headline
+  // stat where it cannot. See nflRailMarket.
+  //
   // NFL_REAL_GAME_LOGS is filled by an effect on mount, hence the dataVersion
   // dependency -- same reasoning as allGames above.
   const railStats = useMemo(() => {
     const m = new Map();
     [...(matchup?.teamA?.players || []), ...(matchup?.teamB?.players || [])].forEach((p) => {
-      m.set(p.id, railSeasonAvg(getNFLGames(p), (g) => statValueNFL(g, market)));
+      const mk = nflRailMarket(p.pos, market);
+      m.set(p.id, mk ? railSeasonAvg(getNFLGames(p), (g) => statValueNFL(g, mk)) : null);
     });
     return m;
   }, [matchup, market, dataVersion]);
-  const railMeta = React.useCallback(
-    (p) => railMetaLine(p.pos, railStats.get(p.id), market, NFL_MARKETS.find((m) => m.id === market)?.label),
-    [railStats, market]
-  );
+  const railMeta = React.useCallback((p) => {
+    const mk = nflRailMarket(p.pos, market);
+    return railMetaLine(p.pos, railStats.get(p.id), mk, NFL_MARKETS.find((m) => m.id === mk)?.label);
+  }, [railStats, market]);
   const playerMarkets = useMemo(() => NFL_MARKETS.filter((m) => m.pos.includes(player.pos)), [player]);
   const seasonAvg = useMemo(() => {
     const stats = NFL_SNAPSHOT_STATS[player.pos] || [];
@@ -12289,6 +12328,23 @@ const MLB_PITCHER_MARKETS = [
   { id: "p_bb", label: "Walks Allowed" },
 ];
 
+// The MLB version of nflRailMarket. The split here is not position by
+// position but pitcher against batter: the two groups have entirely separate
+// market lists, so on Strikeouts Thrown every batter in the rail had nothing
+// to show and on Hits every pitcher did.
+//
+// This used to resolve to null for the group the market did not belong to,
+// which was at least honest -- both statValue functions default to a real
+// stat for an unknown id, so without the check a batter's rail row would have
+// shown a hit count labelled as strikeouts thrown. Falling back to the
+// group's own headline stat keeps that honesty and fills the row in.
+const MLB_RAIL_FALLBACK = { pitcher: "p_k", batter: "h" };
+const mlbRailMarket = (isPitcher, market) => {
+  const list = isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS;
+  if (list.some((m) => m.id === market)) return market;
+  return MLB_RAIL_FALLBACK[isPitcher ? "pitcher" : "batter"];
+};
+
 const statValueMLBPitcher = (g, market) => {
   switch (market) {
     case "p_k": return g.k;
@@ -13874,19 +13930,15 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         .catch(() => [p.id, null, isP]);
     })).then((entries) => {
       if (cancelled) return;
-      // Both statValueMLB and statValueMLBPitcher silently default to a real
-      // stat (hits / strikeouts) for a market id they don't recognise --
-      // correct for the chart, which always calls the function matching the
-      // player on screen, but this loop mixes both position groups under one
-      // shared `market` id. Gating on which market list actually contains the
-      // selected id is what stops a pitcher's rail row from showing a
-      // strikeout count silently mislabeled as a batting stat's unit.
-      const marketAppliesToPitcher = MLB_PITCHER_MARKETS.some((mkt) => mkt.id === market);
-      const marketAppliesToBatter = MLB_MARKETS.some((mkt) => mkt.id === market);
+      // Each row is averaged in the market mlbRailMarket resolves for that
+      // player's group, never in the raw selected id -- both statValue
+      // functions silently default to a real stat for an id they don't
+      // recognise, so reading them directly here would print a batter's hit
+      // count under a strikeouts-thrown label.
       const m = new Map();
       entries.forEach(([id, games, isP]) => {
-        const applies = isP ? marketAppliesToPitcher : marketAppliesToBatter;
-        m.set(id, applies ? railSeasonAvg(games, (g) => (isP ? statValueMLBPitcher(g, market) : statValueMLB(g, market))) : null);
+        const mk = mlbRailMarket(isP, market);
+        m.set(id, railSeasonAvg(games, (g) => (isP ? statValueMLBPitcher(g, mk) : statValueMLB(g, mk))));
       });
       setRailStats(m);
     });
@@ -13894,8 +13946,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   }, [liveTeamRoster, liveOppRoster, market]);
   const railMeta = React.useCallback((p) => {
     const isP = p.pos === "SP";
-    const label = (isP ? MLB_PITCHER_MARKETS : MLB_MARKETS).find((m) => m.id === market)?.label;
-    return railMetaLine(p.pos, railStats.get(p.id), market, label);
+    const mk = mlbRailMarket(isP, market);
+    const label = (isP ? MLB_PITCHER_MARKETS : MLB_MARKETS).find((m) => m.id === mk)?.label;
+    return railMetaLine(p.pos, railStats.get(p.id), mk, label);
   }, [railStats, market]);
 
   const player =
