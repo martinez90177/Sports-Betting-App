@@ -390,7 +390,7 @@ each from its own file; do not generalise one into four.
 | Prop Feed | Done |
 | The Board | Done |
 | Games | Done, `cae7c3e` |
-| Landing | Done, `LANDING_SHA` |
+| Landing | Done, `fc8899e` |
 | News | **Open** — was the closest of all of them in the first pass |
 | Mobile | **Open** — audit only. **Do not build a bottom tab bar**: the `navItems` array in the mobile file is dead code the template never renders. The `.mobile-player-strip` is the real furniture |
 
