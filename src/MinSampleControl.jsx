@@ -31,37 +31,82 @@ import React, { useState } from "react";
 // accent; the rest stay --line.
 
 const STORAGE_KEY = "propPalaceSamplePresets";
-export const MIN_SAMPLE_TICKS = 17;
+
+// ---------------------------------------------------------------------------
+// The scale is per sport, because a season is.
+// ---------------------------------------------------------------------------
+// This control was built against a 17-game NFL season and hardcoded to it: a
+// 17-bar tick scale, presets of 5/9/12, and a validator that threw away any
+// saved value above 17. On MLB that made the whole thing meaningless -- a
+// batter plays ~150 games, so every prop cleared the highest minimum the
+// control could even express, and the ticks were a 17-step scale on a
+// 162-game season.
+//
+//   max      the top of the scale, and the ceiling a saved preset may reach.
+//            Not the season length: it is the point past which raising the
+//            minimum stops telling you anything new, which is well short of
+//            162 for baseball.
+//   presets  the chips, in that sport's own units.
+//   floor    the default minimum, which has to be one of the presets or the
+//            control opens with nothing selected.
+//
+// NFL keeps exactly what it had. It was the one sport the old numbers fitted.
+export const SAMPLE_SCALE = {
+  nfl:  { max: 17, presets: [5, 9, 12],   floor: 9 },
+  wnba: { max: 40, presets: [10, 20, 30], floor: 10 },
+  nba:  { max: 60, presets: [10, 20, 40], floor: 10 },
+  mlb:  { max: 80, presets: [15, 30, 50], floor: 15 },
+};
+export const sampleScale = (sport) => SAMPLE_SCALE[sport] || SAMPLE_SCALE.nfl;
+
+// How many bars the tick scale draws. Eighteen regardless of sport: 80 bars
+// would be a hairline each, and the bar is a click target. Each one therefore
+// stands for `max / TICK_COUNT` games rather than exactly one, which is why
+// the label under the cursor reads the value and not the index.
+export const TICK_COUNT = 18;
+export const tickValues = (sport) => {
+  const { max } = sampleScale(sport);
+  if (max <= TICK_COUNT) return Array.from({ length: max }, (_, i) => i + 1);
+  const step = max / TICK_COUNT;
+  return Array.from({ length: TICK_COUNT }, (_, i) => Math.max(1, Math.round((i + 1) * step)));
+};
+
 // Off by default. `1` rather than `0` because "at least one finished game" is
 // the weakest true statement, not "zero games is fine".
 export const MIN_SAMPLE_ALL = 1;
-const DEFAULT_PRESETS = [5, 9, 12];
 
-export function loadSamplePresets() {
+// Presets are stored per sport. One shared list meant setting a useful MLB
+// minimum overwrote the NFL chips with numbers that cover most of its season.
+const keyFor = (sport) => `${STORAGE_KEY}:${sport || "nfl"}`;
+
+export function loadSamplePresets(sport) {
+  const { max, presets } = sampleScale(sport);
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (!Array.isArray(raw)) return DEFAULT_PRESETS;
+    const raw = JSON.parse(localStorage.getItem(keyFor(sport)) || "null");
+    if (!Array.isArray(raw)) return presets;
     // Validated the same way share-link filters are: this is user-writable
     // storage, and a junk value here would render as a junk chip forever.
     const clean = raw
       .map((n) => Number(n))
-      .filter((n) => Number.isFinite(n) && n >= 1 && n <= MIN_SAMPLE_TICKS)
+      .filter((n) => Number.isFinite(n) && n >= 1 && n <= max)
       .map((n) => Math.round(n));
-    return [...new Set(clean)].sort((a, b) => a - b);
+    return clean.length ? [...new Set(clean)].sort((a, b) => a - b) : presets;
   } catch {
-    return DEFAULT_PRESETS;
+    return presets;
   }
 }
 
-export function saveSamplePresets(presets) {
+export function saveSamplePresets(sport, presets) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+    localStorage.setItem(keyFor(sport), JSON.stringify(presets));
   } catch {
     // Quota or private mode. The in-memory list still works this session.
   }
 }
 
-export default function MinSampleControl({ value, onChange, presets, onSetPresets, compact = false }) {
+export default function MinSampleControl({ value, onChange, presets, onSetPresets, sport = "nfl", compact = false }) {
+  const ticks = tickValues(sport);
+  const scaleMax = sampleScale(sport).max;
   const [hover, setHover] = useState(null);
   const all = value <= MIN_SAMPLE_ALL;
   const shown = hover == null ? value : hover;
@@ -153,7 +198,7 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
         style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 44, marginTop: 12 }}
         onMouseLeave={() => setHover(null)}
       >
-        {Array.from({ length: MIN_SAMPLE_TICKS }, (_, i) => i + 1).map((n) => {
+        {ticks.map((n) => {
           const on = !all && n <= value;
           return (
             <span
@@ -171,7 +216,7 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
             >
               <span style={{
                 width: "100%",
-                height: 10 + n,
+                height: 10 + Math.round((n / scaleMax) * 30),
                 borderRadius: 1,
                 background: on ? "var(--amber)" : "var(--line)",
               }} />

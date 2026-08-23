@@ -28,7 +28,7 @@ import TeamLogo from "./TeamLogo.jsx";
 import { usagePills, roleSentence } from "./lib/usagePills.js";
 import { fetchStatcast } from "./lib/statcast.js";
 import { MatchupBand, PlayerHeaderCard, GameByGameChart, ReadingTheGraph } from "./PlayerDetail.jsx";
-import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
+import MinSampleControl, { loadSamplePresets, saveSamplePresets, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
@@ -19098,11 +19098,18 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // its row and shows no rate (see MinSampleControl for why). 10 is where the
   // app already drew the line before this control existed, so the default
   // changes nothing until someone moves it.
-  const [minGames, setMinGames] = useState(10);
-  const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
+  // Both seeded from the sport's own scale -- a 10-game minimum is over half
+  // an NFL season and a rounding error on a baseball one. Re-seeded on every
+  // sport switch by the effect below.
+  const [minGames, setMinGames] = useState(() => sampleScale(sport).floor);
+  const [samplePresets, setSamplePresets] = useState(() => loadSamplePresets(sport));
+  React.useEffect(() => {
+    setMinGames(sampleScale(sport).floor);
+    setSamplePresets(loadSamplePresets(sport));
+  }, [sport]);
   const updateSamplePresets = React.useCallback((next) => {
     setSamplePresets(next);
-    saveSamplePresets(next);
+    saveSamplePresets(sport, next);
   }, []);
   // Exactly one ladder open at a time, keyed by row. Cleared whenever the
   // ladder's own inputs change underneath it -- a ladder counted over L10 must
@@ -20499,6 +20506,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             <LinesModeSwitcher value={linesMode} onChange={setLinesMode} fill />
             <div style={{ marginTop: 8 }}>
               <MinSampleControl
+                sport={sport}
                 value={minGames}
                 onChange={setMinGames}
                 presets={samplePresets}
@@ -20543,6 +20551,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         {!isNarrow && (
           <div style={{ padding: "0 2px 14px", borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
             <MinSampleControl
+              sport={sport}
               value={minGames}
               onChange={setMinGames}
               presets={samplePresets}

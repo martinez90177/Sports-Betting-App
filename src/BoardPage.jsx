@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import FeedFormStrip from "./FormGraph.jsx";
-import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
+import MinSampleControl, { loadSamplePresets, saveSamplePresets, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import { wilsonLower, supportBand, SUPPORT_BANDS } from "./lib/support.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { teamInfo } from "./lib/gamesData.js";
@@ -173,8 +173,13 @@ function rateFor(row, activeSplits) {
 // like an empty slate.
 export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, loading = false, slateByTeam = null, timeLabel = null }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
-  const [minGames, setMinGames] = useState(10);
-  const [samplePresets, setSamplePresets] = useState(loadSamplePresets);
+  // See the note in PropLedger: the scale is the sport's, not a fixed 10.
+  const [minGames, setMinGames] = useState(() => sampleScale(sport).floor);
+  const [samplePresets, setSamplePresets] = useState(() => loadSamplePresets(sport));
+  React.useEffect(() => {
+    setMinGames(sampleScale(sport).floor);
+    setSamplePresets(loadSamplePresets(sport));
+  }, [sport]);
   const [activeSplits, setActiveSplits] = useState(["season"]);
   const [visibleGames, setVisibleGames] = useState(10);
   // Slate work, which is what the rail is for: which games, in what order.
@@ -183,7 +188,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
 
   const updateSamplePresets = React.useCallback((next) => {
     setSamplePresets(next);
-    saveSamplePresets(next);
+    saveSamplePresets(sport, next);
   }, []);
 
   const filtered = useMemo(
@@ -563,6 +568,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
 
           <div style={{ borderTop: "1px solid var(--line)", marginTop: 12, paddingTop: 16 }}>
             <MinSampleControl
+              sport={sport}
               value={minGames}
               onChange={setMinGames}
               presets={samplePresets}
