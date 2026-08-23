@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import FeedFormStrip from "./FormGraph.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
+import { wilsonLower, supportBand, SUPPORT_BANDS } from "./lib/support.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { teamInfo } from "./lib/gamesData.js";
 import { matchupTones as boardTones } from "./lib/teamColors.js";
@@ -65,27 +66,38 @@ const SPLITS = [
 // lists forty rows has gone back to being the feed with headings on it.
 const CARD_ROWS = 3;
 
-// The verdict pill's thresholds, from the handoff: 65%+ leans to a side,
-// below 45% leans to the other, 45-65% is a coin flip, and under the minimum
-// sample there is no rate to lean on at all.
-const LEAN_HI = 0.65;
-const LEAN_LO = 0.45;
-
-// The pill states which side the games actually favour, which is not the same
-// as the row's own direction. `rateFor` counts hits *for the side the row is
-// priced on*, so a row priced under with a 0.70 rate means 70% of games went
-// under -- "leans under", not "leans over". Reading the rate without the
+// The verdict pill states which side the games actually favour, which is not
+// the same as the row's own direction. `rateFor` counts hits *for the side the
+// row is priced on*, so a row priced under with a 0.70 rate means 70% of games
+// went under -- "leans under", not "leans over". Reading the rate without the
 // direction inverts the verdict on every under row, and it would do it
 // quietly: the number would look right and the words would be backwards.
+//
+// The strength of the words comes from lib/support.js, not from the rate: how
+// far the sample can be shown to hold, rather than how big the percentage is.
+// The handoff's flat 65/45 thresholds gave 13-of-20 and 9-of-10 the same
+// sentence, and the first of those establishes nothing at all.
+//
 // Exported for verification: today's slate happens to price every board row
 // as an over, so the under branch cannot be exercised from the rendered page.
 export function verdictFor(rate, n, minGames, direction) {
   if (rate == null || n < minGames) return { label: "Too few", thin: true };
   const priced = direction === "under" ? "under" : "over";
   const other = priced === "under" ? "over" : "under";
-  if (rate >= LEAN_HI) return { label: `Leans ${priced}` };
-  if (rate < LEAN_LO) return { label: `Leans ${other}` };
-  return { label: "Coin flip" };
+  const hits = Math.round(rate * n);
+
+  // Both sides are tested, not just the priced one. A row priced over that
+  // went under 80% of the time is a real read -- about the other side.
+  const loPriced = wilsonLower(hits, n);
+  const loOther = wilsonLower(n - hits, n);
+  const side = loPriced >= loOther ? priced : other;
+  const lower = Math.max(loPriced, loOther);
+
+  const band = supportBand(lower);
+  // Not "coin flip": 7 of 10 is not a coin flip, it is a sample too small to
+  // tell one from an edge. The words say which of those is true.
+  if (!band) return { label: "Not established", flat: true, lower, n };
+  return { label: `${band.word} ${side}`, side, band: band.id, lower, n };
 }
 
 // Lineup state for a game card, derived from the rows it holds rather than
@@ -200,18 +212,31 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       byGame.get(key).rows.push(r);
     });
     return [...byGame.values()].map((g) => {
-      // Strongest first inside a game: the board is for finding the few
-      // worth opening, so the order has to be the answer to that question.
-      const rows = g.rows.slice().sort((a, b) => (b.l10 ?? -1) - (a.l10 ?? -1));
-      // The card's own headline number, computed through the same rateFor
-      // the rows render from -- so the sort agrees with what the card shows
-      // rather than ranking on a second, quietly different figure. Only
-      // samples that clear the minimum count toward it.
-      let strongest = -1;
-      rows.forEach((r) => {
+      // Strongest first inside a game: the board is for finding the few worth
+      // opening, so the order has to be the answer to that question.
+      //
+      // Ranked on how well the sample supports the rate, not on the rate. The
+      // old key was the raw `l10`, which put 7-of-10 -- a figure that
+      // establishes nothing -- above 35-of-50, so a card's "three strongest
+      // samples" were regularly its three flimsiest. Scored through the same
+      // rateFor the rows render from, and once per row, so the order and the
+      // pill beside it cannot come from two different numbers.
+      const scored = g.rows.map((r) => {
         const s = rateFor(r, activeSplits);
-        if (s && s.rate != null && s.n >= minGames) strongest = Math.max(strongest, s.rate);
-      });
+        // The *priced* side only, deliberately, where the pill weighs both.
+        // Ranking on the better of the two put every 0-of-10 at the top of
+        // its card: a backup tight end who has never scored is a perfectly
+        // well-supported claim and the least interesting row on the slate.
+        // The rows are all built priced-over, so "does the over hold up" is
+        // the question the order should answer; the pill still says "Strong
+        // under" when the games say so, it just does not get promoted for it.
+        const support = s && s.rate != null && s.n >= minGames
+          ? wilsonLower(Math.round(s.rate * s.n), s.n)
+          : -1;
+        return { r, support };
+      }).sort((a, b) => b.support - a.support);
+      const rows = scored.map((x) => x.r);
+      const strongest = scored.length ? scored[0].support : -1;
       // The slate row for this game -- and only if it is genuinely the same
       // fixture. Looking a team up finds *a* game it plays, which is not the
       // same thing: the NFL board's rows describe 2025 matchups (that season
@@ -301,8 +326,16 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
 
       <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Verdicts</div>
       <div style={{ margin: "12px 0 0", display: "grid", gap: 7, fontSize: 11.5, color: "var(--text-2, var(--dim))", lineHeight: 1.5 }}>
-        <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Leans over/under</b> &mdash; {Math.round(LEAN_HI * 100)}%+ on {minGames} or more games, or below {Math.round(LEAN_LO * 100)}% the other way.</span>
-        <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Coin flip</b> &mdash; inside {Math.round(LEAN_LO * 100)}&ndash;{Math.round(LEAN_HI * 100)}%.</span>
+        {/* Stated as what the sample supports, because that is what the words
+            measure now. A percentage on its own cannot separate 9 of 10 from
+            13 of 20, and those two deserve different sentences. */}
+        <span>These read <b style={{ color: "var(--amber-ink, var(--amber))" }}>how far the games back the rate</b>, not the rate itself &mdash; so a big percentage over few games and a modest one over many are weighed on the same scale.</span>
+        {SUPPORT_BANDS.map((b) => (
+          <span key={b.id}>
+            <b style={{ color: "var(--amber-ink, var(--amber))" }}>{b.word} over/under</b> &mdash; the sample holds up at {Math.round(b.min * 100)}% or better.
+          </span>
+        ))}
+        <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Not established</b> &mdash; {minGames} games or more, but not enough of them to tell an edge from a coin flip.</span>
         <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Too few</b> &mdash; under {minGames} games, no rate stated.</span>
       </div>
     </div>
@@ -820,13 +853,12 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen }) {
   // and fell short on the bars in this same row, and a green verdict pill
   // would overload the colour two inches from where it means something else.
   //
-  // Thresholds are the handoff's 65/45, not the 60/40 this shipped with, and
-  // the side comes from `row.direction` rather than being assumed to be over
+  // The side comes from `row.direction` rather than being assumed to be over
   // -- see verdictFor. An under-priced row with a strong rate was reading
   // "Leans over", which is the exact opposite of what its own games say.
   const v = verdictFor(rate, n, minGames, row.direction);
   const verdict = v.label;
-  const verdictLeans = !v.thin && v.label !== "Coin flip";
+  const verdictLeans = !v.thin && !v.flat;
 
   const bars = (split && split.games.length ? split.games : row.recent || []).slice(-8);
 

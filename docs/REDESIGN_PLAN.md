@@ -394,6 +394,46 @@ each from its own file; do not generalise one into four.
 | News | **Open** — was the closest of all of them in the first pass |
 | Mobile | **Open** — audit only. **Do not build a bottom tab bar**: the `navItems` array in the mobile file is dead code the template never renders. The `.mobile-player-strip` is the real furniture |
 
+## The board's verdict, decided 2026-08-23
+
+Alex, looking at a 9-of-10 row labelled "Leans over": *that's much more than
+simply leans over, and I can't figure out what it would be useful for.* The
+question behind it was whether the board earns its own route at all, given the
+feed shows the same rows off the same builders.
+
+**Both screens stay.** The reason that holds up is not the one the older note
+gives ("different jobs") but the count: the NFL feed carries ~3,095 props, and
+that is not a list a person triages. Something has to answer *which handful are
+worth opening*, and a table with better filters is still a table. The board was
+failing at that job, not doing a redundant one.
+
+**The verdict now ranks on how far the sample backs the rate**, not on the rate.
+See `src/lib/support.js`. This replaces the handoff's flat 65/45 thresholds,
+deliberately: those gave 13-of-20 and 9-of-10 the same sentence, and the first
+of the two establishes nothing. The bug was overclaiming at the weak end, not
+underclaiming at the strong one.
+
+| | old | new |
+|---|---|---|
+| 9 of 10 (90%) | Leans over | **Strong over** |
+| 8 of 10 (80%) | Leans over | Leans over |
+| 7 of 10 (70%) | Leans over | **Not established** |
+| 13 of 20 (65%) | Leans over | **Not established** |
+| 35 of 50 (70%) | Leans over | Leans over |
+| 6 of 10 (60%) | Coin flip | Not established |
+
+Three things worth knowing before touching it:
+
+- **Wilson, not the normal approximation.** 10-of-10 is common on short seasons
+  and the normal interval claims certainty there; Wilson does not.
+- **z = 1.28 (90% one-sided), not 1.96.** At 95% almost nothing on a 17-game NFL
+  season clears the bar and the screen stops ranking anything. This is a triage
+  question, not a publication one.
+- **The label weighs both sides; the ranking weighs only the priced one.** They
+  are different jobs and using one function for both was a bug caught by driving
+  it: every 0-of-10 is a perfectly well-supported claim, so the top of every card
+  filled with backups who have never scored.
+
 ### The one element of the landing file that is not built
 
 Its hero has a third button, **"Take the 2-minute tour"**. There is no tour:
