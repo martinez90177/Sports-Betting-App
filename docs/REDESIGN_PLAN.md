@@ -17,7 +17,7 @@ rebuild is complete; data track sections A and C complete.**
 | **Data track** | Live rosters (all four sports) + real game logs (NBA/MLB/WNBA) | **A and C done.** B done for NBA; MLB/WNBA logs were already real. See below |
 | **Monetisation track** | Accounts, Stripe subscription, beginner tutorial | Not started. Full spec in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md) |
 | **Item 5b** | WNBA game chips + concluded-game filtering | **Shipped** (`ee3c461`, `52954f1`) |
-| **v2 rebuild** | Every screen rebuilt against `design_handoff_proppalace_v2/` | **First pass complete**, `98f8579`…`c34df94`. A second, element-for-element pass is **9 of 12 screens** in — see "The transcription pass" below |
+| **v2 rebuild** | Every screen rebuilt against `design_handoff_proppalace_v2/` | **First pass complete**, `98f8579`…`c34df94`. A second, element-for-element pass is **10 of 12 screens** in — see "The transcription pass" below |
 
 The tracks are independent. Redesign items follow Alex's order and are not to be
 resequenced; the data and monetisation tracks can run whenever.
@@ -390,9 +390,22 @@ each from its own file; do not generalise one into four.
 | Prop Feed | Done |
 | The Board | Done |
 | Games | Done, `cae7c3e` |
-| Landing | **Open** |
+| Landing | Done, `LANDING_SHA` |
 | News | **Open** — was the closest of all of them in the first pass |
 | Mobile | **Open** — audit only. **Do not build a bottom tab bar**: the `navItems` array in the mobile file is dead code the template never renders. The `.mobile-player-strip` is the real furniture |
+
+### The one element of the landing file that is not built
+
+Its hero has a third button, **"Take the 2-minute tour"**. There is no tour:
+it is specified in [`ACCOUNTS_SUBSCRIPTION_TUTORIAL.md`](./ACCOUNTS_SUBSCRIPTION_TUTORIAL.md)
+and that track has not been started. `LandingPage` renders the button only when
+an `onTakeTour` handler is passed and nothing passes one yet, so building the
+tour is the whole of the remaining work — the button appears on its own.
+
+The file also carries a **"Routing" note card** in the hero, explaining
+`propPalaceTour.dismissed` to whoever implements it. That is handoff
+documentation, not product UI, and is deliberately not rendered. The behaviour
+it describes is built.
 
 ### Games, and what "resemble the mock" turned out to mean
 

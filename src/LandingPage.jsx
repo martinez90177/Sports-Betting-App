@@ -2,6 +2,8 @@ import React, { useMemo } from "react";
 import PalaceMark from "./PalaceMark.jsx";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import FeedFormStrip, { feedFormScale, FORM_PLOT_H } from "./FormGraph.jsx";
+import TeamLogo from "./TeamLogo.jsx";
+import { straightRunOf } from "./MatchupCardModal.jsx";
 
 // --------------------------------------------------------------------------
 // Landing page (item 16)
@@ -31,6 +33,13 @@ const LABEL = {
   fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
 };
 
+// The rules strip's own pair, a size up from LABEL and a step brighter: this
+// is the page's argument, not a caption under it.
+const RULE_LABEL = {
+  fontSize: 12.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))",
+};
+const RULE_BODY = { fontSize: 15, lineHeight: 1.5, marginTop: 10, color: "var(--text)" };
+
 // A rate is only quotable once it has ten games behind it -- the same
 // threshold the feed's cells and the phone card use.
 const MIN_QUOTABLE = 10;
@@ -39,11 +48,37 @@ function pct(v) {
   return `${Math.round(v * 100)}%`;
 }
 
-// `showNav` is false when this renders inside the app shell, which already
-// has the mark, the wordmark, the section nav and the search. The design draws
-// its own nav because the mock is a standalone page; rendering both would put
-// two PROP PALACE lockups on one screen.
-export default function LandingPage({ rows = [], showNav = false, onOpenBoard, onOpenFeed, onOpenProp, onOpenNews }) {
+// This page draws its own nav, and the app shell deliberately withholds the
+// standard one from it (see NAV_PAGES in PropLedger) so there is only ever one
+// PROP PALACE lockup on screen. It used to default to *off* while the shell
+// also skipped it, which left the front door with no wordmark, no nav and no
+// way out but the two buttons in the hero.
+export default function LandingPage({
+  rows = [], showNav = true, firstVisit = false,
+  onOpenBoard, onOpenGames, onOpenFeed, onOpenProp, onOpenNews, onOpenSettings, onTakeTour,
+}) {
+  // "How we count" is a self-link in the file -- it stays on this page and
+  // takes you to the rules. It used to open the Prop Feed, which is not where
+  // the counting is explained.
+  const rulesRef = React.useRef(null);
+  const flashTimer = React.useRef(null);
+  const [rulesFlash, setRulesFlash] = React.useState(false);
+  const showRules = React.useCallback(() => {
+    const el = rulesRef.current;
+    if (!el) return;
+    // On a tall screen the rules are already in view, so the scroll alone is a
+    // no-op and the link reads as broken. The wash is what answers the click
+    // at any viewport height. Reduced motion gets the jump, not the glide --
+    // and a browser in that mode drops a `smooth` scroll entirely rather than
+    // converting it, so this has to ask rather than assume.
+    const reduce = typeof window !== "undefined"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    setRulesFlash(true);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setRulesFlash(false), 1400);
+  }, []);
+  React.useEffect(() => () => clearTimeout(flashTimer.current), []);
   // Hero: the strongest row that actually has a sample worth quoting. Sorted
   // by rate, then by sample, so a 100%-of-10 beats a 100%-of-11 only when it
   // genuinely is stronger -- and never a 100%-of-3.
@@ -82,7 +117,7 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
       {/* Top nav. No active underline here on purpose -- the landing page is
           not one of the sections those links point at. */}
       {showNav && (
-      <div style={{
+      <div className="landing-nav" style={{
         display: "flex", alignItems: "center", gap: 32,
         padding: "20px 48px", borderBottom: "1px solid var(--line)", flexWrap: "wrap",
       }}>
@@ -90,12 +125,44 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
           <PalaceMark />
           <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 26 }}>
-          {navLink("Games", onOpenBoard)}
+        {/* The one nav element this page has that no other screen does. It
+            says why you are looking at the front door rather than the app --
+            which is the whole answer to "what is this page". Shown only while
+            the first-run flag is still up. */}
+        {firstVisit && (
+          <span className="pp-mono" style={{
+            fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
+            border: "1px solid var(--line)", borderRadius: 999, padding: "4px 9px", whiteSpace: "nowrap",
+          }}>
+            First visit
+          </span>
+        )}
+        <span style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
+          {/* Games went to the board, which is a different screen with a
+              different job -- the two are deliberately not one route. */}
+          {navLink("Games", onOpenGames)}
+          {navLink("The Board", onOpenBoard)}
           {navLink("Prop Feed", onOpenFeed)}
           {navLink("News", onOpenNews)}
         </span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+          {onOpenSettings && (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Settings"
+              onClick={onOpenSettings}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenSettings(); } }}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 30, height: 30, borderRadius: 6, cursor: "pointer",
+                fontSize: 15, lineHeight: 1, color: "var(--text-2, var(--dim))",
+                border: "1px solid var(--line)",
+              }}
+            >
+              ⚙
+            </span>
+          )}
           <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
           <span className="pp-mono" style={{
             fontSize: 11, letterSpacing: "0.12em", color: "var(--amber-ink, var(--amber))",
@@ -107,8 +174,8 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
 
       {/* Hero */}
       <div style={{
-        display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 468px)",
-        gap: 64, padding: "72px 48px 88px", alignItems: "start",
+        display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(440px, 520px)",
+        gap: 56, padding: "64px 32px 80px", alignItems: "start",
       }} className="landing-hero">
         <div style={{ minWidth: 0 }}>
           <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>
@@ -133,9 +200,10 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenBoard && onOpenBoard(); } }}
               className="pp-mono"
               style={{
+                display: "inline-flex", alignItems: "center", minHeight: 46, boxSizing: "border-box",
                 cursor: "pointer", background: "var(--amber)", color: "var(--accent-on)",
                 fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
-                padding: "14px 22px", borderRadius: 4,
+                padding: "0 22px", borderRadius: 4,
               }}
             >
               Open the board
@@ -143,10 +211,11 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
             <span
               role="button"
               tabIndex={0}
-              onClick={onOpenFeed}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenFeed && onOpenFeed(); } }}
+              onClick={showRules}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showRules(); } }}
               className="pp-mono"
               style={{
+                display: "inline-flex", alignItems: "center", minHeight: 46,
                 cursor: "pointer", color: "var(--amber-ink, var(--amber))",
                 fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
                 textDecoration: "underline", textUnderlineOffset: 4,
@@ -154,33 +223,63 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
             >
               How we count
             </span>
+            {/* The file's third button here is "Take the 2-minute tour". There
+                is no tour: it is specified in ACCOUNTS_SUBSCRIPTION_TUTORIAL.md
+                and that track has not been started. A dead button on the front
+                door is worse than an absent one, so it renders only once a
+                handler exists to give it. */}
+            {onTakeTour && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={onTakeTour}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTakeTour(); } }}
+                className="pp-mono"
+                style={{
+                  display: "inline-flex", alignItems: "center", minHeight: 46, boxSizing: "border-box",
+                  cursor: "pointer", color: "var(--amber-ink, var(--amber))",
+                  border: "1px solid var(--amber)", borderRadius: 4, padding: "0 18px",
+                  fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
+                }}
+              >
+                Take the 2-minute tour
+              </span>
+            )}
           </div>
 
           {/* The rules strip. This replaced a "props tracked / game logs" stat
               block that was cut for being pointless -- do not reintroduce it.
               Each cell states a rule this product actually follows. */}
-          <div style={{
-            display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24,
-            borderTop: "1px solid var(--line)", marginTop: 56, paddingTop: 24,
+          <div ref={rulesRef} style={{
+            display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 32,
+            borderTop: `1px solid ${rulesFlash ? "var(--amber)" : "var(--line)"}`,
+            // 700 of content plus the 12 of bleed on each side, so the three
+            // rules still measure the file's 700 while the wash can run past
+            // them.
+            maxWidth: 724,
+            padding: "24px 12px 12px", margin: "36px -12px 0",
+            background: rulesFlash ? "var(--amber-dim)" : "transparent",
+            borderRadius: "0 0 6px 6px",
+            transition: "background 0.25s ease, border-color 0.25s ease",
           }}>
             <div>
-              <div className="pp-mono" style={LABEL}>How we count</div>
-              <div style={{ fontSize: 15, lineHeight: 1.55, marginTop: 10, color: "var(--text-2, var(--dim))" }}>
+              <div className="pp-mono" style={RULE_LABEL}>How we count</div>
+              <div style={RULE_BODY}>
                 A rate never appears without its sample.{" "}
                 <span className="pp-mono" style={{ color: "var(--amber-ink, var(--amber))" }}>78% · 7 of 9</span>, never{" "}
                 <span className="pp-mono" style={{ color: "var(--text-2, var(--dim))" }}>78%</span>.
               </div>
             </div>
             <div>
-              <div className="pp-mono" style={LABEL}>Thin samples</div>
-              <div style={{ fontSize: 15, lineHeight: 1.55, marginTop: 10, color: "var(--text-2, var(--dim))" }}>
+              <div className="pp-mono" style={RULE_LABEL}>Thin samples</div>
+              <div style={RULE_BODY}>
                 Under ten games we print a verdict instead of a percentage —{" "}
                 <span className="pp-mono">too few</span>.
               </div>
             </div>
             <div>
-              <div className="pp-mono" style={LABEL}>Margin, not just hits</div>
-              <div style={{ fontSize: 15, lineHeight: 1.55, marginTop: 10, color: "var(--text-2, var(--dim))" }}>
+              <div className="pp-mono" style={RULE_LABEL}>Margin, not just hits</div>
+              <div style={RULE_BODY}>
                 Bar height shows how far a game cleared the line, so a blowout doesn&rsquo;t read
                 like a squeaker.
               </div>
@@ -193,7 +292,7 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
       </div>
 
       {/* Board teaser */}
-      <div style={{ padding: "0 48px 72px" }}>
+      <div style={{ padding: "0 48px 88px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
           <span className="pp-display" style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.01em" }}>Today&rsquo;s board</span>
           <span className="pp-mono" style={{ fontSize: 13, color: "var(--text-2, var(--dim))", textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -212,16 +311,16 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
         </div>
 
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: 20, marginTop: 20,
+          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(232px, 1fr))",
+          gap: 20, marginTop: 24,
         }}>
           {teasers.map((r) => <TeaserCard key={r.key} row={r} onOpen={onOpenProp} />)}
         </div>
       </div>
 
       <div style={{
-        borderTop: "1px solid var(--line)", padding: "24px 48px",
-        display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+        borderTop: "1px solid var(--line)", padding: "28px 48px 40px",
+        display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap",
       }}>
         <PalaceMark />
         <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
@@ -230,8 +329,8 @@ export default function LandingPage({ rows = [], showNav = false, onOpenBoard, o
         <span
           role="button"
           tabIndex={0}
-          onClick={onOpenFeed}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenFeed && onOpenFeed(); } }}
+          onClick={showRules}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showRules(); } }}
           className="pp-mono"
           style={{ marginLeft: "auto", cursor: "pointer", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}
         >
@@ -276,6 +375,11 @@ function HeroCard({ row, onOpen }) {
   // be exactly that.
   const avg = shown.length ? shown.reduce((t, g) => t + g.v, 0) / shown.length : 0;
   const margin = avg - row.line;
+  // The same run the Matchup Card counts, from the same function -- a second
+  // copy of "how many in a row" is how the two would come to disagree. Zero
+  // when the most recent game went the other way, and the line only prints a
+  // run when there is one.
+  const straight = straightRunOf(shown, row.line, row.direction || "over");
 
   return (
     <div
@@ -290,8 +394,19 @@ function HeroCard({ row, onOpen }) {
     >
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
         <div style={{ minWidth: 0 }}>
-          <div className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
-            {row.team}{row.opp ? ` · vs ${row.opp}` : ""}
+          {/* The file draws a 26px lettered square here; it is meant to be the
+              real crest, the same substitution TeamLogo makes everywhere. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <span style={{
+              display: "flex", alignItems: "center", justifyContent: "center", flex: "none",
+              width: 26, height: 26, borderRadius: 4,
+              background: "var(--surface-2)", border: "1px solid var(--line)",
+            }}>
+              <TeamLogo sport={row.sport} abbr={row.team} size={19} />
+            </span>
+            <span className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+              {row.team}{row.opp ? ` · vs ${row.opp}` : ""}
+            </span>
           </div>
           <div className="pp-display" style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.01em", marginTop: 6 }}>{row.name}</div>
           <div className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))", marginTop: 6 }}>
@@ -326,11 +441,17 @@ function HeroCard({ row, onOpen }) {
           Last {shown.length} games · margin vs. line
         </div>
         <div style={{ marginTop: 14 }}>
+          {/* caption off: the graph's own "N of M · K straight" line would sit
+              above the per-game numbers, and the file puts that count on one
+              row with the average, below them. The run track it draws under
+              the trailing bars stays -- that is the part that has to line up
+              with the columns. */}
           <FeedFormStrip
             size="hero"
             r={{ recent: shown, line: row.line, isBinary: !!row.isBinary, subtitle: row.subtitle }}
             direction={row.direction || "over"}
             streak={null}
+            caption={false}
             tag
           />
           {/* Per-game values, on the same grid as the bars so each sits under
@@ -353,10 +474,15 @@ function HeroCard({ row, onOpen }) {
             ))}
           </div>
         </div>
-        {/* Average and margin, both off the same game log the bars draw, so
-            they cannot disagree with the graph above them. */}
-        <div className="pp-mono" style={{ fontSize: 12, color: "var(--text-2, var(--dim))", marginTop: 10 }}>
-          avg {avg.toFixed(1)} · {margin >= 0 ? "+" : "−"}{Math.abs(margin).toFixed(1)} vs. line
+        {/* The count and the margin, both off the same game log the bars draw,
+            so neither can disagree with the graph above them. */}
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+          <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.06em", color: "var(--pos-solid, var(--pos))" }}>
+            {over} of {n}{straight > 0 ? ` · ${straight} straight` : ""}
+          </span>
+          <span className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: "var(--text-2, var(--dim))" }}>
+            avg {avg.toFixed(1)} · {margin >= 0 ? "+" : "−"}{Math.abs(margin).toFixed(1)} vs. line
+          </span>
         </div>
         <div style={{ display: "flex", gap: 14, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
           <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>

@@ -1145,6 +1145,27 @@ select.select-sm:focus, select.select-sm:focus-visible {
    v2 Games screen does not draw. */
 .gm-sticky { position: sticky; top: 0; z-index: 20; background: var(--bg); }
 
+/* The landing hero: two columns at desktop, one below it.
+   `PropPalace Landing v2.dc.html` is a fixed 1280-minimum canvas and states no
+   phone layout at all, but its right column is `minmax(440px, 520px)` -- left
+   to apply on a 375px screen that is a 440px floor inside a 375px viewport,
+   which is a horizontal scrollbar on the front door. The class was already on
+   the element and had no rule behind it. */
+@media (max-width: 980px) {
+  .landing-hero {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 36px !important;
+    padding: 40px 20px 56px !important;
+  }
+  /* The nav's desktop gap of 32 puts every group on its own row once it wraps,
+     which cost about 500px of empty header before the headline. */
+  .landing-nav { gap: 14px !important; padding: 14px 20px !important; }
+  .landing-nav > span { gap: 14px !important; }
+  /* `margin-left: auto` on the right-hand group forces a row break of its own
+     the moment the links wrap. On one column it just follows them. */
+  .landing-nav > span:last-child { margin-left: 0 !important; }
+}
+
 .gm-back { transition: color 0.12s ease; cursor: pointer; }
 .gm-back:hover { color: var(--text) !important; }
 

@@ -22603,12 +22603,18 @@ export default function PropLedger() {
     setPage(PAGE_IDS.has(startPage) ? startPage : DEFAULTS.display.startPage);
   }, [startPage]);
 
-  // Opening the board is what ends the first run -- not rendering the intro.
-  // Someone who loads the page and reloads before engaging has not seen it
+  // Leaving the intro on purpose is what ends the first run -- not rendering
+  // it. Someone who loads the page and reloads before engaging has not seen it
   // yet, and spending a once-ever prompt on a bounce is how it gets missed.
-  const openBoardFromIntro = useCallback(() => {
+  //
+  // Any deliberate exit counts, not only the board. The intro now draws the
+  // full nav, so Games, Prop Feed and News are three more ways off this page,
+  // and leaving by one of them without flipping the flag would put the intro
+  // back on the next load -- a loop the reader cannot get out of except
+  // through one specific button.
+  const leaveIntro = useCallback((to) => {
     markTourDismissed();
-    setPage("board");
+    setPage(to);
   }, []);
 
   // Real rows for the landing page's hero and teaser cards. NFL because its
@@ -23255,9 +23261,16 @@ export default function PropLedger() {
         <LazyPane minHeight={400}>
           <LandingPage
             rows={landingRows}
-            onOpenBoard={openBoardFromIntro}
-            onOpenFeed={() => setPage("feed")}
-            onOpenNews={() => setPage("news")}
+            // Always true here: `landing` is not in PAGE_IDS, so the only way
+            // onto this page is the first run itself. Passed rather than
+            // assumed, so the pill stays correct if Settings > Tutorial ever
+            // routes back here.
+            firstVisit
+            onOpenBoard={() => leaveIntro("board")}
+            onOpenGames={() => leaveIntro("games")}
+            onOpenFeed={() => leaveIntro("feed")}
+            onOpenNews={() => leaveIntro("news")}
+            onOpenSettings={() => setSettingsOpen(true)}
             onOpenProp={goToProp}
           />
         </LazyPane>
