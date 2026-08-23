@@ -360,6 +360,12 @@ function statusCenterContent(game, isMobile) {
 // the props column taking the slack, rather than four fr weights -- the
 // matchup and research columns hold fixed content and were stretching with
 // the window while the sentence in the middle stayed cramped.
+// Strip and rail type, off `PropPalace Games v2.dc.html` -- the same pair the
+// Board and Prop Feed strips use.
+const GM_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const GM_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+const GM_RAIL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+
 const SLATE_COLS = "minmax(240px, 300px) 168px minmax(0, 1fr) 128px";
 
 // What the reader gets by opening this row. The destination is already decided
@@ -826,7 +832,6 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
 
   const hero = (
     <div style={{
-      background: heroBackground(isMobile),
       borderRadius: isMobile ? 0 : "var(--r-xl) var(--r-xl) 0 0",
       padding: isMobile ? "14px 0 12px" : "22px 22px 14px",
     }}>
@@ -852,12 +857,14 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
           {` ${gameCount === 1 ? "game" : "games"} · ${subtitle}`}
         </div>
       </div>
-      <SportTabs
-        sport={sport}
-        onChange={(s) => { setSport(s); setPickedKey(null); }}
-        isMobile={isMobile}
-        options={ALL_SPORTS_TABS}
-      />
+      {isMobile && (
+        <SportTabs
+          sport={sport}
+          onChange={(s) => { setSport(s); setPickedKey(null); }}
+          isMobile={isMobile}
+          options={ALL_SPORTS_TABS}
+        />
+      )}
     </div>
   );
 
@@ -872,22 +879,123 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     />
   );
 
+
+  // ---- The v2 shell (PropPalace Games v2.dc.html) --------------------------
+  //
+  // 196px | 1fr | 196px, the same three columns the Board and the Prop Feed
+  // use. The screen was a single 992px column with the league switcher and the
+  // date tabs stacked inside a raised panel.
+  const v2Strip = (() => {
+    const live = games.filter((g) => isActiveStatus(g.status)).length;
+    const done = games.filter((g) => g.status === GAME_STATUS.FINAL).length;
+    const next = games
+      .filter((g) => !isActiveStatus(g.status) && g.status !== GAME_STATUS.FINAL && g.startsAt)
+      .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))[0];
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 0, marginTop: 14,
+        background: "var(--surface-sunken)", border: "1px solid var(--line)",
+        borderRadius: 6, overflow: "hidden",
+      }}>
+        <div style={{ flex: 1, minWidth: 0, padding: "11px 16px" }}>
+          <div style={GM_CELL_LABEL}>Showing</div>
+          <div style={GM_CELL_VALUE}>{games.length} {games.length === 1 ? "game" : "games"}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+          <div style={GM_CELL_LABEL}>In progress</div>
+          <div style={GM_CELL_VALUE}>{live}</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+          <div style={GM_CELL_LABEL}>Final</div>
+          <div style={GM_CELL_VALUE}>{done}</div>
+        </div>
+        <div style={{ flex: 1.4, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+          <div style={GM_CELL_LABEL}>Next start</div>
+          {/* The next one that has not started, by its own clock. Nothing left
+              to start is an em dash, not a blank. */}
+          <div style={GM_CELL_VALUE}>{next && next.startsAt ? timeLabel(next.startsAt) : "\u2014"}</div>
+        </div>
+      </div>
+    );
+  })();
+
+  const v2RightRail = (
+    <div>
+      <div style={GM_RAIL_LABEL}>Game state</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 12 }}>
+        {[
+          ["Live", "var(--pos-solid, var(--pos))", "the clock is running"],
+          ["Final", "var(--dim)", "settled, box score only"],
+          ["Scheduled", "var(--text-2)", "not started"],
+        ].map(([label, colour, note]) => (
+          <span key={label} className="pp-mono" style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", color: "var(--text-2)" }}>
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: colour, flex: "none", transform: "translateY(-2px)" }} />
+            <span style={{ textTransform: "uppercase" }}>{label}</span>
+            <span style={{ color: "var(--dim)", textTransform: "none", letterSpacing: 0 }}>{note}</span>
+          </span>
+        ))}
+      </div>
+
+      <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Props in play</div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 12, lineHeight: 1.6 }}>
+        A game's prop count is what this app can build for it from the rosters
+        it holds, not a book's board.
+      </div>
+
+      <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Linescores</div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 12, lineHeight: 1.6 }}>
+        MLB &mdash; innings, then R H E. Open a gamecast for the full line.
+      </div>
+    </div>
+  );
+
+
+  // League leads the left rail, as the file draws it. It was a row of tabs
+  // inside the page header.
+  const v2LeftRail = (
+    <div>
+      <div style={GM_RAIL_LABEL}>League</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+        {ALL_SPORTS_TABS.map((o) => {
+          const on = sport === o.id;
+          const n = o.id === "all" ? games.length : games.filter((g) => g.sport === o.id).length;
+          return (
+            <div
+              key={o.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => { setSport(o.id); setPickedKey(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSport(o.id); setPickedKey(null); } }}
+              style={{
+                display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
+                padding: "9px 11px", borderRadius: 6, cursor: "pointer",
+                background: on ? "var(--amber-dim)" : "transparent",
+                border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+              }}
+            >
+              <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.1em", color: on ? "var(--amber-ink, var(--amber))" : "var(--text-2)" }}>{o.label}</span>
+              <span className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{n}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 20, lineHeight: 1.6 }}>
+        Scores and state come from the league feed. Props are this app's own.
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{
-      maxWidth: isMobile ? "none" : 992,
-      margin: "0 auto",
-      padding: isMobile ? 0 : "0 16px 32px",
-      boxSizing: "border-box",
+    <div style={isMobile ? { margin: "0 auto", padding: 0, boxSizing: "border-box" } : {
+      display: "grid", gridTemplateColumns: "196px minmax(0, 1fr) 196px",
+      gap: 20, padding: "20px 0 40px", alignItems: "start", boxSizing: "border-box",
     }}>
+      {!isMobile && <div>{v2LeftRail}</div>}
+      <div style={{ minWidth: 0 }}>
       {/* The reference's whole content column is a raised panel a shade above
           the page black, with the cards a further shade above that -- keeping
           that three-step ramp is most of why the list reads as grouped. */}
-      <div style={{
-        background: isMobile ? "transparent" : "var(--surface-sunken)",
-        borderRadius: isMobile ? 0 : "var(--r-xl)",
-        border: isMobile ? "none" : "1px solid var(--line-subtle)",
-        overflow: "visible",
-      }}>
+      <div style={{ overflow: "visible" }}>
       {/* Desktop pins only the date row (the hero and search scroll away, per
           dfull/D00121); the iOS reference pins the entire header, so on mobile
           the whole block gets the sticky treatment instead. */}
@@ -896,6 +1004,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       ) : (
         <>
           {hero}
+          {v2Strip}
           <div className="gm-sticky">{dates}</div>
         </>
       )}
@@ -1062,6 +1171,8 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         </a>
       </div>
       </div>
+      </div>
+      {!isMobile && v2RightRail}
     </div>
   );
 }
