@@ -2,6 +2,9 @@ import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import FeedFormStrip from "./FormGraph.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
+import TeamLogo from "./TeamLogo.jsx";
+import { teamInfo } from "./lib/gamesData.js";
+import { matchupTones as boardTones } from "./lib/teamColors.js";
 
 // --------------------------------------------------------------------------
 // The board (item 17)
@@ -604,89 +607,109 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                       : "No props to show."}
               </div>
             ) : shown.map((g) => (
-              <div key={g.key}>
-                <div style={{
-                  display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap",
-                  padding: "12px 20px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)",
-                }}>
-                  <span className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.1em", textTransform: "uppercase" }}>{g.label}</span>
-                  {/* Records, kickoff and venue come from the slate row this
-                      card joined to. Each is rendered only where the provider
-                      actually supplied it -- a game with no venue simply has
-                      no venue, rather than an empty slot. */}
-                  {g.slate?.away?.record && g.slate?.home?.record && (
-                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
-                      {g.slate.away.abbr} {g.slate.away.record} · {g.slate.home.abbr} {g.slate.home.record}
-                    </span>
-                  )}
-                  {g.slate?.startsAt && timeLabel && (
-                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))", whiteSpace: "nowrap" }}>
-                      {timeLabel(g.slate.startsAt)}
-                    </span>
-                  )}
-                  {g.slate?.venue?.name && (
-                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>
-                      {g.slate.venue.name}{g.slate.venue.indoor ? " · indoors" : ""}
-                    </span>
-                  )}
-                  {/* The row's own kickoff label, and only when the slate join
-                      didn't already supply one -- both were printing, so an
-                      MLB card read "2:10 PM ... 2:10 PM". The slate's time is
-                      preferred because it is the one that keeps updating. */}
-                  {g.time && !(g.slate?.startsAt && timeLabel) && (
-                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))" }}>{g.time}</span>
-                  )}
-                  {/* The count is what the card knows about this game; the
-                      action is a move to the feed. Deliberately not phrased
-                      "All 148 props ->" the way the mock draws it: the feed
-                      does not open filtered to one game (see goToGameProps in
-                      PropLedger, which documents why), so that label would
-                      promise a narrowing that does not happen. */}
-                  <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-                    {(() => {
-                      const lineup = lineupStateFor(g.rows);
-                      if (!lineup) return null;
-                      return (
-                        <span
-                          className="pp-mono"
-                          title={lineup === "posted"
-                            ? "Every prop on this card is from a posted lineup"
-                            : "Lineups not posted yet — these are projections"}
-                          style={{
-                            display: "flex", alignItems: "center", gap: 6,
-                            fontSize: 11.5, letterSpacing: "0.06em",
-                            textTransform: "uppercase", color: "var(--text-2, var(--dim))",
-                          }}
-                        >
-                          <span style={{
-                            width: 8, height: 8, borderRadius: "50%", boxSizing: "border-box",
-                            background: lineup === "posted" ? "var(--text-2, var(--dim))" : "transparent",
-                            border: "1.5px solid var(--text-2, var(--dim))",
-                          }} />
-                          {lineup === "posted" ? "Lineup posted" : "Projected"}
-                        </span>
-                      );
-                    })()}
-                    <span className="pp-mono" style={{ fontSize: 11.5, color: "var(--text-2, var(--dim))" }}>
-                      {g.rows.length} {g.rows.length === 1 ? "prop" : "props"}
-                    </span>
-                    {onOpenGameProps && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => { e.stopPropagation(); onOpenGameProps(g); }}
-                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onOpenGameProps(g); } }}
-                        className="pp-mono"
-                        style={{
-                          cursor: "pointer", fontSize: 11.5, letterSpacing: "0.08em",
-                          textTransform: "uppercase", color: "var(--amber-ink, var(--amber))",
-                        }}
-                      >
-                        Open in feed →
+              <div key={g.key} style={{ background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden", marginBottom: 14 }}>
+                {/* The band. Away and home each take a half with a 3px rule in
+                    their own muted tone, and the kickoff and venue sit between
+                    them -- the same card the matchup band on Player Detail
+                    draws, which is deliberate: it is the same fixture.
+
+                    Only drawn when the slate join gave us both sides. A group
+                    with no slate row keeps the plain heading below, because a
+                    band with two blank halves states less than the label. */}
+                {g.slate && g.slate.away && g.slate.home ? (
+                  <div style={{ display: "flex", alignItems: "stretch" }}>
+                    <BoardBandHalf
+                      sport={sport}
+                      side="Away"
+                      abbr={g.slate.away.abbr}
+                      record={g.slate.away.record}
+                      tone={boardTones(sport, g.slate.away.abbr, g.slate.home.abbr).away}
+                    />
+                    <div style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      gap: 3, padding: "12px 18px", background: "var(--surface-sunken)",
+                      borderLeft: "1px solid var(--line)", borderRight: "1px solid var(--line)", flex: "none",
+                    }}>
+                      <span className="pp-mono" style={{ fontSize: 14, color: "var(--text)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+                        {(g.slate.startsAt && timeLabel ? timeLabel(g.slate.startsAt) : g.time) || "\u2014"}
                       </span>
-                    )}
+                      {g.slate.venue && g.slate.venue.name && (
+                        <span className="pp-mono" style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+                          {g.slate.venue.name}
+                        </span>
+                      )}
+                    </div>
+                    <BoardBandHalf
+                      sport={sport}
+                      side="Home"
+                      align="right"
+                      abbr={g.slate.home.abbr}
+                      record={g.slate.home.record}
+                      tone={boardTones(sport, g.slate.away.abbr, g.slate.home.abbr).home}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)" }}>
+                    <span className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.1em", textTransform: "uppercase" }}>{g.label}</span>
+                  </div>
+                )}
+
+                {/* Meta strip: lineup state, the count, indoors, and the way
+                    into the feed. */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap",
+                  padding: "10px 18px", background: "var(--surface-sunken)",
+                  borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)",
+                }}>
+                  {(() => {
+                    const lineup = lineupStateFor(g.rows);
+                    if (!lineup) return null;
+                    return (
+                      <span
+                        className="pp-mono"
+                        title={lineup === "posted"
+                          ? "Every prop on this card is from a posted lineup"
+                          : "Lineups not posted yet \u2014 these are projections"}
+                        style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2, var(--dim))", whiteSpace: "nowrap" }}
+                      >
+                        <span style={{
+                          width: 6, height: 6, borderRadius: 999, flex: "none", boxSizing: "border-box",
+                          background: lineup === "posted" ? "var(--text-2, var(--dim))" : "transparent",
+                          border: "1.5px solid var(--text-2, var(--dim))",
+                        }} />
+                        {lineup === "posted" ? "Lineup posted" : "Projected"}
+                      </span>
+                    );
+                  })()}
+                  <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2, var(--dim))", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                    {g.rows.length} {g.rows.length === 1 ? "prop" : "props"}
                   </span>
+                  {g.slate && g.slate.venue && g.slate.venue.indoor && (
+                    <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>Indoors</span>
+                  )}
+                  {onOpenGameProps && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onOpenGameProps(g); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onOpenGameProps(g); } }}
+                      className="pp-mono"
+                      style={{ marginLeft: "auto", flex: "none", cursor: "pointer", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}
+                    >
+                      {/* Not "All N props ->" as the file writes it: the feed
+                          does not open filtered to one game (see goToGameProps
+                          in PropLedger), so that label would promise a
+                          narrowing that does not happen. */}
+                      Open in feed &rarr;
+                    </span>
+                  )}
                 </div>
+
+                {/* The mock labels the rows before listing them. */}
+                <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", padding: "14px 18px 4px" }}>
+                  Three strongest samples
+                </div>
+
                 {g.rows.slice(0, CARD_ROWS).map((r, i, arr) => (
                   <BoardRow
                     key={r.key}
@@ -737,6 +760,45 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         </div>
         {v2RightRail}
       </div>
+    </div>
+  );
+}
+
+// One side of a game card's band. Same shape as the matchup band on Player
+// Detail -- crest, side and record above the team name, with a 3px rule in the
+// team's own muted tone across the top.
+function BoardBandHalf({ sport, side, abbr, record, tone, align }) {
+  const info = teamInfo(sport, abbr);
+  const text = (
+    <div style={{ minWidth: 0, textAlign: align === "right" ? "right" : "left" }}>
+      <div className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+        {record ? `${side} \u00b7 ${record}` : side}
+      </div>
+      <div className="pp-display" style={{ fontWeight: 600, fontSize: 17, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {info.name || abbr}
+      </div>
+    </div>
+  );
+  // The crest, not a lettered box. Same treatment the player page's band uses:
+  // a light trace so a dark mark still separates from a dark card.
+  const badge = (
+    <span style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: "none", width: 44, height: 44 }}>
+      <TeamLogo
+        sport={sport}
+        abbr={abbr}
+        size={38}
+        title={info.full || abbr}
+        style={{ filter: "drop-shadow(0 0 1px color-mix(in srgb, var(--text) 70%, transparent))" }}
+      />
+    </span>
+  );
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12, padding: "14px 18px",
+      borderTop: `3px solid ${tone}`, flex: 1, minWidth: 0,
+      justifyContent: align === "right" ? "flex-end" : "flex-start",
+    }}>
+      {align === "right" ? <>{text}{badge}</> : <>{badge}{text}</>}
     </div>
   );
 }
