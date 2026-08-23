@@ -940,9 +940,13 @@ The existing per-player TTL + sessionStorage caches are built for a handful of
 teams on today's slate, not a whole-league historical pull. Expect this piece to
 need a genuine caching/batching strategy, and possibly a build-time or cron-time
 prefetch rather than on-demand fetching in the browser. Do not promise this as
-a quick change — see [[nba-feed-is-four-teams]].
+a quick change — see [[nba-data-is-real-this-note-used-to-say-the-opposite]].
 
 ## Knock-on effects once NBA is real
+
+**Done, 2026-08-23.** Both of these landed with the data track; kept for the
+reasoning. The badge in particular must not come back — see the note in
+`FEED_SPORTS`.
 
 - The `· SIMULATED DATA` badge on the NBA sport tab comes off (item 5 added it).
 - NBA can get its allows-line, currently withheld because the numbers are RNG.

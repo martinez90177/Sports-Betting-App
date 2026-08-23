@@ -136,27 +136,48 @@ Related: [[proppalace-master-deploys-live]]
 
 ---
 
-## Nba feed is four teams
+## Nba data is real — this note used to say the opposite
 
-PropPalace's NBA data is entirely synthetic (`genGames`, a seeded RNG), which is
-why NBA picks can't be graded in the Ledger. ESPN's free gamelog endpoint would
-supply real logs — `/apis/common/v3/sports/basketball/nba/athletes/{espnId}/gamelog`
-works, returns ~101 games, and NBA player records already carry `espnId`.
+**Corrected 2026-08-23.** Everything below the line was true on 2026-08-14 and
+is not true now. It is kept, struck through in prose rather than deleted,
+because the stale version was read and acted on as current as recently as this
+correction — the failure mode is the note, not the reader.
 
-**But Alex rejected doing it (2026-08-14), and he's right about why:** the app only
-has **4 NBA teams** hardcoded (NYK, SAS, PHI, MIA). Making NBA real means sourcing
-and maintaining all **30 rosters**, which is a large data problem, not the small
-fetcher port it looks like from the endpoint alone.
+### What is actually true
 
-**Why:** the fetcher is genuinely ~an afternoon; the roster data behind it is not.
-Don't pitch this as low-effort again.
+NBA game logs are **real ESPN 2025-26 box scores**. `NBA_REAL_GAME_LOGS` is
+filled at runtime by `fetchNBAPlayerGameLog(espnId)`, and `getNBAGames` returns
+those. Rosters are live and league-wide through `NBA_LIVE_PLAYERS`, built on
+`src/lib/rosters.js`. Team defence comes from `fetchNBATeamDefense`, not a
+seeded RNG. The feed carries ~6,000 NBA props across the whole league, and its
+disclaimer says "Real 2025-26 regular-season game logs (ESPN Stats API)".
 
-**How to apply:** if NBA comes up, lead with the roster problem, not the endpoint.
-A cheaper interim option that was never proposed: label the NBA feed clearly as
-simulated data, since right now nothing on screen distinguishes it from MLB's real
-numbers on a publicly shared site.
+`genGames` still exists as a **cold-start fallback**, reached only when a
+player has no `espnId` or their fetch failed, *and* they carry a `base`, *and*
+they are not `liveOnly` — in practice the four hand-written teams when a fetch
+misses. It is guarded where it matters: a feed row is stamped
+`gradeKind: "nba"` **only** when a real log is present, so the Ledger surfaces
+a fallback player as unsettleable rather than grading a pick against a
+generated number. `nbaRosterNote` states partial coverage on screen while
+rosters are still loading.
 
-Related: [[free-data-only-no-fake-edge]], [[outlier-benchmark-phases]]
+### Do not "fix" this by labelling NBA as simulated
+
+The old note's suggestion — badge the NBA feed as simulated — was considered
+and **deliberately removed** once the logs became real. `FEED_SPORTS` in
+PropLedger carries the reasoning inline: a badge saying the numbers are
+generated when they are ESPN box scores "would be its own kind of wrong
+number". Adding it back is the error, not the fix.
+
+### How to apply
+
+Check the code before repeating a dated claim from this file. This note was
+written 2026-08-14; the data track that superseded it ran on 2026-08-20 and the
+plan's own summary table already said "B done for NBA". A note carrying a date
+is evidence about that date, not about today.
+
+Related: [[free-data-only-no-fake-edge]], [[outlier-benchmark-phases]],
+[[data-track-live-rosters-and-real-logs]]
 
 ---
 
@@ -165,7 +186,13 @@ Related: [[free-data-only-no-fake-edge]], [[outlier-benchmark-phases]]
 A second track of work Alex asked for on 2026-08-20, separate from the 15-item
 redesign and runnable independently. Written up in full at the end of
 `~/.claude/plans/read-design-handoff-proppalace-redesign-snug-kazoo.md` under
-"Data track". **Not started.**
+"Data track".
+
+**Largely done — see docs/REDESIGN_PLAN.md for the authoritative state, not this
+paragraph.** As of 2026-08-23: live rosters ship for all four sports on
+`src/lib/rosters.js`, and NBA/MLB/WNBA all read real game logs. What follows
+describes the asks as they were framed, which is still useful for *why*; it is
+not a to-do list any more.
 
 Two asks, deliberately distinct because their scopes differ:
 
@@ -176,8 +203,9 @@ Two asks, deliberately distinct because their scopes differ:
    property of fetching and is lost entirely by hard-coding. `fetchWNBATeamRoster`
    is the existing pattern to generalise into `src/lib/rosters.js`.
 2. **Real/deeper game logs — NBA, MLB, WNBA** (last season including playoffs).
-   NBA is by far the biggest: it has *no* real game-log fetcher at all, only 4 of
-   30 rosters, and seeded-RNG defence ranks — see [[nba-feed-is-four-teams]].
+   NBA was by far the biggest at the time of writing — no real game-log fetcher,
+   4 of 30 rosters, seeded-RNG defence ranks. **All three of those are now
+   done**; see [[nba-data-is-real-this-note-used-to-say-the-opposite]].
 
 **Why:** the app's whole promise is real hit rates, and a generated number is
 indistinguishable from a real one on screen — so anything synthetic is a
