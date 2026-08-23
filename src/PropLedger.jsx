@@ -4877,7 +4877,7 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
 // depends on browsers hit-testing those pseudo-elements independently of
 // their parent's pointer-events, which doesn't hold up reliably everywhere
 // and left both thumbs undraggable.
-function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, rangeEnabled, onToggleRange, showToggle = true }) {
+function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, rangeEnabled, onToggleRange, showToggle = true, compact = false }) {
   const trackRef = React.useRef(null);
   const draggingRef = React.useRef(null); // "lo" | "hi" | "single" | null
   const pct = (v) => ((v - min) / (max - min)) * 100;
@@ -4929,9 +4929,9 @@ function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, r
   const thumbStyle = (value) => ({
     position: "absolute", left: `${pct(value)}%`, top: "50%",
     transform: "translate(-50%, -50%)",
-    width: 18, height: 18, borderRadius: "50%",
-    background: "var(--amber)", border: "2px solid var(--accent-on)",
-    boxShadow: "var(--shadow-2)", cursor: "pointer",
+    width: compact ? 14 : 18, height: compact ? 14 : 18, borderRadius: "50%",
+    background: "var(--amber)", border: `2px solid var(--accent-on)`,
+    boxShadow: compact ? "none" : "var(--shadow-2)", cursor: "pointer",
     touchAction: "none",
   });
 
@@ -4940,11 +4940,11 @@ function ThresholdSlider({ min, max, step = 1, lo, hi, onChangeLo, onChangeHi, r
       <div
         ref={trackRef}
         onPointerDown={handleTrackPointerDown}
-        style={{ position: "relative", height: 24, display: "flex", alignItems: "center", cursor: "pointer", touchAction: "none" }}
+        style={{ position: "relative", height: compact ? 22 : 24, display: "flex", alignItems: "center", cursor: "pointer", touchAction: "none" }}
       >
         <div
           style={{
-            position: "absolute", left: 0, right: 0, height: 6, borderRadius: 3,
+            position: "absolute", left: 0, right: 0, height: compact ? 4 : 6, borderRadius: 999,
             background: rangeEnabled
               ? `linear-gradient(to right, var(--line) ${pct(lo)}%, var(--amber) ${pct(lo)}%, var(--amber) ${pct(hi)}%, var(--line) ${pct(hi)}%)`
               : `linear-gradient(to right, var(--amber) ${pct(lo)}%, var(--line) ${pct(lo)}%)`,
@@ -18660,6 +18660,18 @@ const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["ALL", "all
 // The v2 feed's rail and summary-strip type, straight off
 // `PropPalace Prop Feed v2.dc.html` -- the same three styles the player-detail
 // transcription uses, which is the point: both screens draw the same rails.
+// The Filters panel's own furniture: one pill and one section label, so the
+// six rows of controls in there cannot drift apart from each other.
+const FEED_PILL = (on) => ({
+  fontFamily: "'Space Mono', monospace",
+  fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px",
+  cursor: "pointer", whiteSpace: "nowrap",
+  background: on ? "var(--amber)" : "transparent",
+  color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
+  border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+});
+const FEED_SECTION_LABEL = { fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+
 const FEED_RAIL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
 const FEED_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
 const FEED_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
@@ -18670,9 +18682,9 @@ const FEED_KEY_ROW = { display: "flex", alignItems: "center", gap: 8, fontSize: 
 // made it look like a per-player toggle even though picking one actually
 // changed the whole feed's odds/sort. Pulling it out to a single control
 // above the list makes the "this affects everything" behavior obvious.
-// Label is rendered by the caller (see the FEED_LABEL_STYLE row layout in
-// PropFeedPage) so this lines up in the same label/control column as the
-// other feed filter rows instead of carrying its own separately-styled label.
+// The label is rendered by the caller, so this control carries no label of
+// its own and sits under the same mono micro-label as every other row in the
+// Filters panel.
 // Shared chrome for the filter rail's segmented controls (sample size, and
 // the Over/Under side switcher below), so the two read as the same control
 // type rather than two separately-styled lookalikes.
@@ -18772,21 +18784,6 @@ function LinesModeSwitcher({ value, onChange, fill }) {
   );
 }
 
-// Shared label style for the feed's filter-row form (TEAM / SAMPLE SIZE /
-// SORT BY) -- a fixed width + right-aligned text means every row's
-// control starts at the same x position, so the whole block reads as one
-// neatly aligned form instead of each row centering independently at
-// whatever width its own label+control happen to add up to.
-// Label sits on its own centered line above the control, rather than beside
-// it -- putting label+control side by side means the control's own midpoint
-// is offset from center by however wide the label happens to be (a longer
-// label like "SAMPLE SIZE" pushes its control further right than a short one
-// like "TEAM"), so no single fixed layout keeps every control's actual
-// midpoint on the true page center. Stacking removes that coupling: each
-// control centers independently of its label's width.
-const FEED_LABEL_STYLE = { fontSize: 12, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.04em" };
-const FEED_FILTER_ROW_STYLE = { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 };
-const FEED_CONTROL_WIDTH = 190;
 
 // Today's MLB props, fetched once for whichever surface is asking.
 //
@@ -19002,9 +18999,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   React.useEffect(() => { setExpandedKey(null); }, [sport, selectedMarkets, sampleWindow, direction, linesMode]);
   const [sortMode, setSortMode] = useState("matchup");
   const [sortDir, setSortDir] = useState("desc");
-  const [showSortInfo, setShowSortInfo] = useState(false);
-  const [sortInfoHover, setSortInfoHover] = useState(false);
-  const [sortDirInfoHover, setSortDirInfoHover] = useState(false);
   const oddsFormat = useOddsFormat();
   // Secondary filters (Sort By, Odds Range, Defense Rank Range) collapse
   // behind this Filters disclosure instead of always sitting open in the
@@ -19306,6 +19300,23 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       : `${activeMarketLabels.length} props`;
 
   const maxRank = feedTeamCount(sport);
+
+  // The four bands the Defence pills set, cut exactly where defTier cuts.
+  // Derived from the same `teams / 3` rather than restated: defTier owns the
+  // thirds, and a second copy of that arithmetic is how the pills and the word
+  // printed on the row would come to disagree. Floor, not round, so the pill
+  // boundary lands on the last rank defTier still calls tough.
+  const defTierBands = React.useMemo(() => {
+    const third = maxRank / 3;
+    const toughHi = Math.floor(third);
+    const softLo = Math.floor(maxRank - third) + 1;
+    return [
+      { id: "all", label: "All", lo: 1, hi: maxRank },
+      { id: "soft", label: "Easy", lo: softLo, hi: maxRank },
+      { id: "mid", label: "Mid", lo: toughHi + 1, hi: softLo - 1 },
+      { id: "tough", label: "Tough", lo: 1, hi: toughHi },
+    ];
+  }, [maxRank]);
   React.useEffect(() => {
     { const first = PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null; setSelectedMarkets(first ? [first] : []); }
     setRankLo(1);
@@ -19325,6 +19336,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // The Filters panel s Reset. Clears the controls the panel itself owns and
   // nothing else -- the sport, the sort and the saved screens are not filters
   // and resetting them would move the reader somewhere they did not ask to go.
+  // Everything the panel's own Reset can see. It used to clear the top half
+  // only, so a defence tier or an odds band set in the bottom half survived a
+  // Reset and went on quietly removing rows -- with the panel closed there was
+  // nothing on screen to say why the feed was short.
   const resetFeedFilters = React.useCallback(() => {
     setSelectedMarkets([]);
     setSelectedGameIds(new Set());
@@ -19332,7 +19347,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setSampleWindow("l10");
     setLinesMode("main");
     setMinGames(10);
-  }, []);
+    setRankLo(1);
+    setRankHi(maxRank);
+    setSortMode("matchup");
+    setSortDir("desc");
+    setOddsMinX(4);
+    setOddsMaxX(96);
+    setPostedLineupsOnly(false);
+  }, [maxRank]);
 
   const feedFilters = useMemo(
     () => ({
@@ -20358,7 +20380,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 {showFeedKey ? "Hide key ▴" : "What am I looking at? ▾"}
               </span>
             </div>
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 12 }} />
           </div>
         )}
         {/* Minimum sample lives in the Filters panel on desktop and in the
@@ -20376,237 +20397,184 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             />
           </div>
         )}
-        <div style={FEED_FILTER_ROW_STYLE}>
-          <span className="oswald" style={FEED_LABEL_STYLE}>SORT BY</span>
-          {/* The "i" info button sits absolutely positioned just outside the
-              select's right edge rather than as a normal flex sibling -- as a
-              sibling it widens the row and pulls the select's own center left
-              of true page-center; positioned this way the select alone
-              determines centering and the icon just rides along beside it. */}
-          <div style={{ position: "relative", display: "flex" }}>
-            <select
-              className="select"
-              style={{ width: FEED_CONTROL_WIDTH }}
-              value={sortMode}
-              onChange={(e) => {
-                const mode = FEED_SORT_MODES.find((mo) => mo.id === e.target.value);
-                setSortMode(mode.id);
-                setSortDir(mode.defaultDir);
-              }}
-            >
-              {FEED_SORT_MODES.map((mo) => (
-                <option key={mo.id} value={mo.id}>{mo.label}</option>
-              ))}
-            </select>
-            <div style={{ position: "absolute", left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 8 }}>
-              <div
-                onClick={() => setShowSortInfo((v) => !v)}
-                onMouseEnter={() => setSortInfoHover(true)}
-                onMouseLeave={() => setSortInfoHover(false)}
-                role="button"
-                aria-expanded={showSortInfo}
-                className="mono"
-                style={{
-                  cursor: "pointer",
-                  width: 20, height: 20, borderRadius: "50%",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 12, fontWeight: 700,
-                  border: `1px solid ${showSortInfo ? "var(--amber)" : "var(--line-strong)"}`,
-                  color: showSortInfo ? "var(--amber)" : "var(--dim)",
-                  background: showSortInfo ? "var(--amber-dim)" : "var(--info-btn-bg)",
-                }}
-              >
-                i
-              </div>
-              {sortInfoHover && (
-                // Opens upward (bottom-anchored) rather than downward -- a
-                // downward tooltip's height depends on how much room the rows
-                // below happen to leave, which varies as filters are added/
-                // removed. Anchoring to the icon's own bottom edge means it
-                // never depends on that and can't overlap the Odds Range
-                // slider beneath it.
-                <div
-                  className="mono"
-                  style={{
-                    position: "absolute", bottom: 26, right: 0, zIndex: 10,
-                    width: 200, padding: "8px 10px",
-                    background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
-                    fontSize: 11.5, color: "var(--text)", lineHeight: 1.4,
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
-                  }}
+      {/* ---- Matchup, lineups, sort and price ------------------------------
+          The last four v1 controls on the feed, and the ones the panel around
+          them made look their age: a centred <select> with an "i" button
+          hanging off it, a second chip for the sort direction with its own "i"
+          button, and two-handle sliders for defence rank and odds. Everything
+          centred, in Oswald, at a different size and rhythm to the pills
+          eighteen pixels above them.
+
+          They are the panel's own idiom now: a mono micro-label, a row of
+          pills, one line of prose. Two changes go beyond restyling and are
+          deliberate:
+
+          * The sort direction folds into the mode pills. It was a separate
+            chip that could only be understood in terms of another control
+            ("flips whatever Sort By is set to"); clicking the active mode now
+            flips it and the arrow lives on the pill it applies to.
+          * The defence-rank slider becomes the file's four tiers. The rows
+            themselves speak in tough/mid/easy -- FEED_SORT_MODES and
+            feedMatchupRead both cut the league in thirds -- so a #1-to-#30
+            band was a second, finer vocabulary for a fact the feed only ever
+            states three ways. The exact band still prints beside the label,
+            so a range carried over from the slider is visible rather than
+            stranded. */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: isNarrow ? "1fr" : (sport === "mlb" ? "1fr 1fr" : "1fr"),
+        gap: "16px 24px", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)",
+      }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <span className="pp-mono" style={FEED_SECTION_LABEL}>Defence vs. this market</span>
+            <span className="pp-mono tnum" style={{ fontSize: 10, color: "var(--dim)" }}>
+              #{rankLo}&ndash;#{rankHi} of {maxRank}
+            </span>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+            {defTierBands.map((b) => {
+              const on = rankLo === b.lo && rankHi === b.hi;
+              return (
+                <span
+                  key={b.id}
+                  role="button"
+                  aria-pressed={on}
+                  tabIndex={0}
+                  onClick={() => { setRankLo(b.lo); setRankHi(b.hi); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRankLo(b.lo); setRankHi(b.hi); } }}
+                  className="pp-mono"
+                  style={FEED_PILL(on)}
                 >
-                  Click to see what each sort option means and how to use it.
-                </div>
-              )}
-            </div>
+                  {b.label}
+                </span>
+              );
+            })}
+          </div>
+          {/* #1 is the toughest defence for this stat, which runs backwards to
+              the word -- said once, here, rather than as a parenthetical
+              beside every number. */}
+          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+            Ranked on this market alone, not the opponent&rsquo;s record. #1 is the toughest,
+            and the tiers flip with the side you are reading.
           </div>
         </div>
 
-      {/* Sort mode explainer -- collapsed by default so it doesn't add
-          visual noise for users who already know what each option does.
-          Sits here (before the High to low chip, Odds Range, and Defense
-          Rank) so expanding it pushes all three down the page together
-          instead of shoving just the feed list underneath them. */}
-      {showSortInfo && (
-        <div
-          style={{
-            marginBottom: 20, padding: "12px 14px",
-            background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
-          }}
-        >
-          {FEED_SORT_MODES.map((mo) => (
-            <div key={mo.id} style={{ marginBottom: 10 }}>
-              <div
-                className="oswald"
-                style={{ fontSize: 12.5, fontWeight: 700, color: mo.id === sortMode ? "var(--amber)" : "var(--text)" }}
+        {/* MLB only: every other sport's rows carry no lineupConfirmed flag at
+            all, so there is nothing honest this could filter on for them. */}
+        {sport === "mlb" && (
+          <div>
+            <span className="pp-mono" style={FEED_SECTION_LABEL}>Lineups</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+              {[[false, "All batters"], [true, "Posted only"]].map(([v, label]) => (
+                <span
+                  key={label}
+                  role="button"
+                  aria-pressed={postedLineupsOnly === v}
+                  tabIndex={0}
+                  onClick={() => setPostedLineupsOnly(v)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPostedLineupsOnly(v); } }}
+                  className="pp-mono"
+                  style={FEED_PILL(postedLineupsOnly === v)}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+            <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+              Posted only drops anyone still on a projected order.
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+          <span className="pp-mono" style={FEED_SECTION_LABEL}>Sort by</span>
+          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
+            hit rate leads; these break its ties
+          </span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+          {FEED_SORT_MODES.map((mo) => {
+            const on = sortMode === mo.id;
+            // Clicking the mode you are already on flips its direction. One
+            // control, and the arrow sits on the thing it describes.
+            const pick = () => {
+              if (on) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+              else { setSortMode(mo.id); setSortDir(mo.defaultDir); }
+            };
+            return (
+              <span
+                key={mo.id}
+                role="button"
+                aria-pressed={on}
+                tabIndex={0}
+                onClick={pick}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } }}
+                title={on ? "Click again to flip the direction" : mo.description}
+                className="pp-mono"
+                style={{ ...FEED_PILL(on), display: "flex", alignItems: "center", gap: 7 }}
               >
                 {mo.label}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
-                {mo.description}
-              </div>
-            </div>
-          ))}
-          <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 2, fontStyle: "italic" }}>
-            Use the ↓/↑ chip to flip any of these (e.g. "Most Consistent" ascending vs. descending).
-          </div>
+                {on && <span style={{ opacity: 0.85 }}>{sortDir === "desc" ? "↓" : "↑"}</span>}
+              </span>
+            );
+          })}
         </div>
-      )}
-
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-        {/* Same technique as the SORT BY select's "i" button above -- the icon
-            sits absolutely positioned outside the chip's right edge instead
-            of as a normal flex sibling, so the chip alone determines this
-            row's centering and lines up with the controls above/below it
-            instead of being dragged left by the icon's own width+gap. */}
-        <div style={{ position: "relative", display: "flex" }}>
-          <div
-            className="chip"
-            onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
-            title="Toggle sort direction"
-          >
-            {sortDir === "desc" ? "↓ High to low" : "↑ Low to high"}
-          </div>
-          <div style={{ position: "absolute", left: "100%", top: "50%", transform: "translateY(-50%)", marginLeft: 8 }}>
-            <div
-              onMouseEnter={() => setSortDirInfoHover(true)}
-              onMouseLeave={() => setSortDirInfoHover(false)}
-              role="button"
-              className="mono"
-              style={{
-                cursor: "default",
-                width: 20, height: 20, borderRadius: "50%",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: 700,
-                border: "1px solid var(--line-strong)",
-                color: "var(--dim)",
-                background: "var(--info-btn-bg)",
-              }}
-            >
-              i
-            </div>
-            {sortDirInfoHover && (
-              <div
-                className="mono"
-                style={{
-                  position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 8, zIndex: 10,
-                  width: 220, padding: "8px 10px",
-                  background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 6,
-                  fontSize: 11.5, color: "var(--text)", lineHeight: 1.4,
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
-                }}
-              >
-                This chip flips the sort direction for whatever "Sort By" mode is selected above. Click it to switch between "↓ High to low" and "↑ Low to high".
-              </div>
-            )}
-          </div>
+        {/* The active mode's own explanation, always on. It used to be three
+            paragraphs behind an "i" button, which meant the one sentence that
+            applied right now was the one you could not see. */}
+        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+          {(FEED_SORT_MODES.find((mo) => mo.id === sortMode) || {}).description}
+          {" "}
+          {sortDir === "desc" ? "High to low." : "Low to high."} Click the selected pill to flip it.
         </div>
       </div>
 
-      {/* Odds range filter -- lets you exclude extreme heavy favorites
-          and/or extreme longshots so the feed only shows the odds band
-          you'd actually consider betting. */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-          <span className="oswald" style={{ fontSize: 12, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.04em" }}>
-            ODDS RANGE
-          </span>
-          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <span className="pp-mono" style={{ ...FEED_SECTION_LABEL, whiteSpace: "nowrap" }}>Odds range</span>
+          {(oddsMinX !== 4 || oddsMaxX !== 96) && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={() => { setOddsMinX(4); setOddsMaxX(96); }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOddsMinX(4); setOddsMaxX(96); } }}
+              className="pp-mono"
+              style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
+            >
+              Reset
+            </span>
+          )}
+          <div style={{ flex: "1 1 220px", minWidth: 180 }}>
+            <ThresholdSlider
+              min={4}
+              max={96}
+              step={1}
+              lo={oddsMinX}
+              hi={oddsMaxX}
+              onChangeLo={setOddsMinX}
+              onChangeHi={setOddsMaxX}
+              rangeEnabled={true}
+              onToggleRange={() => {}}
+              showToggle={false}
+              compact
+            />
+          </div>
+          <span className="pp-mono tnum" style={{ fontSize: 13, color: "var(--accent-text, var(--amber))", whiteSpace: "nowrap", minWidth: 118, textAlign: "right" }}>
             {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMinX)), oddsFormat)} to {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMaxX)), oddsFormat)}
           </span>
-          {(oddsMinX !== 4 || oddsMaxX !== 96) && (
-            <span className="chip" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => { setOddsMinX(4); setOddsMaxX(96); }}>
-              Reset
-            </span>
-          )}
         </div>
-        <div style={{ maxWidth: 420, margin: "0 auto" }}>
-          <ThresholdSlider
-            min={4}
-            max={96}
-            step={1}
-            lo={oddsMinX}
-            hi={oddsMaxX}
-            onChangeLo={setOddsMinX}
-            onChangeHi={setOddsMaxX}
-            rangeEnabled={true}
-            onToggleRange={() => {}}
-            showToggle={false}
-          />
+        {/* Says what it is reading. The feed's own ODDS column prints "Coming
+            soon" because no book is wired up yet, so a filter that silently
+            removed rows on a price nothing on screen shows would be the one
+            control in here a reader could not check. */}
+        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+          This app&rsquo;s own implied price, from the hit rate &mdash; the odds column is not
+          wired to a book yet. It will read the real number when one is.
         </div>
       </div>
-
-      {/* Defense rank range filter -- pick exactly which opponent-toughness
-          band to look at (#1 = toughest matchup, #N = easiest), instead of
-          relying on the Easiest Matchup sort to surface it indirectly. */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-          <span className="oswald" style={{ fontSize: 12, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.04em" }}>
-            DEFENSE RANK RANGE
-          </span>
-          <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
-            #{rankLo} to #{rankHi}
-          </span>
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>(1 = toughest, {maxRank} = easiest)</span>
-          {(rankLo !== 1 || rankHi !== maxRank) && (
-            <span className="chip" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => { setRankLo(1); setRankHi(maxRank); }}>
-              Reset
-            </span>
-          )}
-        </div>
-        <div style={{ maxWidth: 420, margin: "0 auto" }}>
-          <ThresholdSlider
-            min={1}
-            max={maxRank}
-            step={1}
-            lo={rankLo}
-            hi={rankHi}
-            onChangeLo={setRankLo}
-            onChangeHi={setRankHi}
-            rangeEnabled={true}
-            onToggleRange={() => {}}
-            showToggle={false}
-          />
-        </div>
-      </div>
-
-      {/* MLB only -- every other sport's rows carry no lineupConfirmed flag
-          at all (see the avatar dot's own comment), so there is nothing
-          honest this toggle could filter on for them. */}
-      {sport === "mlb" && (
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <div
-            className="chip"
-            onClick={() => setPostedLineupsOnly((v) => !v)}
-            title="Only show batters in today's confirmed lineup -- hides anyone still on a projected order"
-            style={postedLineupsOnly ? {
-              borderColor: "var(--amber)", color: "var(--amber)", background: "var(--amber-dim)",
-            } : undefined}
-          >
-            {postedLineupsOnly ? "✓ " : ""}Posted lineups only
-          </div>
-        </div>
-      )}
       </div>
       )}
 
