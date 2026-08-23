@@ -41,6 +41,11 @@ import MinSampleControl, { loadSamplePresets, saveSamplePresets, MIN_SAMPLE_ALL 
 const GRID = "232px 176px 148px 1fr 132px";
 const LABEL = { fontSize: 11.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)" };
 
+// The summary strip's two type styles, off `PropPalace Board v2.dc.html` --
+// the same pair the Prop Feed and Player Detail strips use.
+const BOARD_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const BOARD_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+
 // The splits the rail offers. Each is a predicate over a row's own game log,
 // so a split recomputes the rate AND its sample together -- the README calls
 // this out as critical, and it is why `rateFor` below returns both numbers
@@ -257,75 +262,143 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
     });
   };
 
-  return (
-    <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", boxSizing: "border-box" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
-        <h1 className="pp-display" style={{ fontSize: 34, margin: 0, letterSpacing: "-0.01em", fontWeight: 600 }}>The board</h1>
-        <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
-          {visible.length} {visible.length === 1 ? "game" : "games"} · {propCount.toLocaleString()} props
-        </span>
-        {/* The league switcher, reusing the feed's own set rather than
-            inventing a second one. NFL in the mock was only an example. */}
-        <span style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {sports.map((s) => (
-            <span
-              key={s.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => s.available && onSetSport && onSetSport(s.id)}
-              onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && s.available) { e.preventDefault(); onSetSport(s.id); } }}
-              title={s.available ? (s.simulated ? "Generated sample data, not a live feed" : undefined) : "Coming soon"}
-              className="pp-mono"
-              style={{
-                cursor: s.available ? "pointer" : "not-allowed",
-                fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase",
-                padding: "8px 14px", borderRadius: 4,
-                background: sport === s.id ? "var(--amber)" : "transparent",
-                color: sport === s.id ? "var(--accent-on)" : "var(--text-2, var(--dim))",
-                border: `1px solid ${sport === s.id ? "var(--amber)" : "var(--line)"}`,
-                opacity: s.available ? 1 : 0.5,
-              }}
-            >
-              {s.label}
-            </span>
-          ))}
+
+  const v2RightRail = (
+    <div>
+      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Reading a card</div>
+      <div style={{ margin: "12px 0 20px", display: "grid", gap: 9 }}>
+        {[
+          { mark: <span style={{ width: 8, height: 17, background: "var(--pos-solid, var(--pos))", borderRadius: 2, flex: "0 0 auto" }} />, text: "cleared the line" },
+          { mark: <span style={{ width: 8, height: 17, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box", flex: "0 0 auto" }} />, text: "fell short" },
+          { mark: <span style={{ width: 16, borderTop: "1.5px dashed var(--text)", flex: "0 0 auto" }} />, text: "the line" },
+        ].map((it, i) => (
+          <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+            {it.mark}{it.text}
+          </span>
+        ))}
+      </div>
+
+      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Lineups</div>
+      <div style={{ margin: "12px 0 20px", display: "grid", gap: 9 }}>
+        {[
+          { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text-2, var(--dim))", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "posted" },
+          { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "transparent", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "projected" },
+          { mark: <span style={{ width: 8, flex: "0 0 auto" }} />, text: "no dot \u00b7 unknown" },
+        ].map((it, i) => (
+          <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+            {it.mark}{it.text}
+          </span>
+        ))}
+        <span style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5 }}>
+          Unknown is never assumed to be available.
         </span>
       </div>
 
-      <div className="board-layout" style={{ display: "grid", gridTemplateColumns: "236px minmax(0, 1fr)", gap: 24, alignItems: "start" }}>
+      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Verdicts</div>
+      <div style={{ margin: "12px 0 0", display: "grid", gap: 7, fontSize: 11.5, color: "var(--text-2, var(--dim))", lineHeight: 1.5 }}>
+        <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Leans over/under</b> &mdash; {Math.round(LEAN_HI * 100)}%+ on {minGames} or more games, or below {Math.round(LEAN_LO * 100)}% the other way.</span>
+        <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Coin flip</b> &mdash; inside {Math.round(LEAN_LO * 100)}&ndash;{Math.round(LEAN_HI * 100)}%.</span>
+        <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Too few</b> &mdash; under {minGames} games, no rate stated.</span>
+      </div>
+    </div>
+  );
+
+  // The mock's four-cell strip under the title.
+  const v2Posted = visible.filter((g) => g.lineup === "posted").length;
+  const v2FirstKick = (() => {
+    // Earliest by the same kickoff key the rail already sorts on, then that
+    // game's own printed time -- no second time formatter in the file, and an
+    // em dash when the slate carries no start rather than a made-up one.
+    const withKick = visible.filter((g) => Number.isFinite(g.kickoff));
+    if (!withKick.length) return "\u2014";
+    const first = withKick.reduce((a, b) => (a.kickoff <= b.kickoff ? a : b));
+    return first.time || "\u2014";
+  })();
+
+  const v2SummaryStrip = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 0, marginTop: 14,
+      background: "var(--surface-sunken)", border: "1px solid var(--line)",
+      borderRadius: 6, overflow: "hidden",
+    }}>
+      <div style={{ flex: 1, minWidth: 0, padding: "11px 16px" }}>
+        <div style={BOARD_CELL_LABEL}>Games</div>
+        <div style={BOARD_CELL_VALUE}>{visible.length}</div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+        <div style={BOARD_CELL_LABEL}>Props</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 7, marginTop: 6 }}>
+          <span className="pp-mono" style={{ fontSize: 15, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{propCount.toLocaleString()}</span>
+          <span className="pp-mono" style={{ fontSize: 9.5, color: "var(--dim)", whiteSpace: "nowrap" }}>on this slate</span>
+        </div>
+      </div>
+      <div style={{ flex: 1.2, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+        <div style={BOARD_CELL_LABEL}>Lineups posted</div>
+        {/* Lineup state is published for MLB batters and nothing else, so on
+            the other three leagues this is 0 of N rather than a blank -- the
+            zero is the real answer, not a missing one. */}
+        <div style={BOARD_CELL_VALUE}>{v2Posted} of {visible.length}</div>
+      </div>
+      <div style={{ flex: 1.4, minWidth: 0, padding: "11px 16px", borderLeft: "1px solid var(--line)" }}>
+        <div style={BOARD_CELL_LABEL}>First {sport === "nfl" ? "kickoff" : "start"}</div>
+        <div style={BOARD_CELL_VALUE}>{v2FirstKick}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 20, marginBottom: 4 }}>
+        <div>
+          <h1 className="pp-display" style={{ fontSize: 34, margin: 0, letterSpacing: "-0.02em", fontWeight: 600 }}>The Board</h1>
+          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 7 }}>
+            Research by matchup &middot; <span style={{ color: "var(--amber-ink, var(--amber))" }}>Games</span> has scores and live state
+          </div>
+        </div>
+        {/* The date. The mock steps through days with ‹ ›; this slate is
+            always today's -- fetchMlbSlate and the rest take no date -- so the
+            label states which day it is and the arrows are not drawn rather
+            than drawn dead. */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, border: "1px solid var(--line)", borderRadius: 6, background: "var(--surface-1)", padding: "8px 14px" }}>
+          <span className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)", whiteSpace: "nowrap" }}>
+            {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+          </span>
+        </div>
+      </div>
+
+      <div className="board-layout" style={{ display: "grid", gridTemplateColumns: "196px minmax(0, 1fr) 196px", gap: 20, alignItems: "start", paddingTop: 20 }}>
         {/* ---- Filter rail ---- */}
-        <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 20 }}>
-          {/* Reading a card. The bars, the dot and the pill each carry
-              meaning by a device rather than by a colour anyone could be
-              expected to guess, so the key for all three lives in one place
-              instead of being inferred from a legend strip under the table.
-              Thresholds are printed from the same constants the pill uses,
-              so the key cannot drift from the behaviour it describes. */}
-          <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Reading a card</div>
-          <div style={{ margin: "10px 0 18px", display: "grid", gap: 9 }}>
-            {[
-              { mark: <span style={{ width: 7, height: 14, background: "var(--pos-solid, var(--pos))", borderRadius: 2, flex: "0 0 auto" }} />, text: "cleared the line" },
-              { mark: <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box", flex: "0 0 auto" }} />, text: "fell short" },
-              { mark: <span style={{ width: 14, borderTop: "1.5px dashed var(--text)", flex: "0 0 auto" }} />, text: "the prop line" },
-              { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text-2, var(--dim))", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "lineup posted" },
-              { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "transparent", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "lineup projected" },
-              { mark: <span style={{ width: 8, flex: "0 0 auto" }} />, text: "no dot · lineup unknown" },
-            ].map((it, i) => (
-              <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
-                {it.mark}{it.text}
-              </span>
-            ))}
-            <span style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5 }}>
-              Unknown is never assumed to be available.
-            </span>
+        <div>
+          {/* League leads the rail, which is where the mock puts it -- it was
+              a row of pills up beside the title. */}
+          <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>League</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "12px 0 22px" }}>
+            {sports.map((sp) => {
+              const on = sport === sp.id;
+              return (
+                <div
+                  key={sp.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => sp.available && onSetSport && onSetSport(sp.id)}
+                  onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && sp.available) { e.preventDefault(); onSetSport(sp.id); } }}
+                  title={sp.available ? (sp.simulated ? "Generated sample data, not a live feed" : undefined) : "Coming soon"}
+                  style={{
+                    display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
+                    padding: "9px 11px", borderRadius: 6,
+                    cursor: sp.available ? "pointer" : "not-allowed",
+                    background: on ? "var(--amber-dim)" : "transparent",
+                    border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+                    opacity: sp.available ? 1 : 0.5,
+                  }}
+                >
+                  <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.1em", color: on ? "var(--amber-ink, var(--amber))" : "var(--text-2, var(--dim))" }}>{sp.label}</span>
+                  {on && <span className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{visible.length}</span>}
+                </div>
+              );
+            })}
           </div>
 
-          <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Verdicts</div>
-          <div style={{ margin: "10px 0 18px", display: "grid", gap: 7, fontSize: 11.5, color: "var(--text-2, var(--dim))", lineHeight: 1.5 }}>
-            <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Leans over/under</b> — {Math.round(LEAN_HI * 100)}%+ on {minGames} or more games, or below {Math.round(LEAN_LO * 100)}% the other way.</span>
-            <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Coin flip</b> — inside {Math.round(LEAN_LO * 100)}–{Math.round(LEAN_HI * 100)}%.</span>
-            <span><b style={{ color: "var(--amber-ink, var(--amber))" }}>Too few</b> — under {minGames} games, no rate stated.</span>
-          </div>
 
           {/* Slate work: which games, in what order. The market chips
               below narrow what is *on* a card; these two decide which cards
@@ -496,8 +569,10 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
           )}
         </div>
 
-        {/* ---- Prop table ---- */}
+        {/* ---- Centre column ---- */}
         <div style={{ minWidth: 0 }}>
+          {v2SummaryStrip}
+          <div style={{ height: 16 }} />
           <div className="board-grid" style={{
             display: "grid", gridTemplateColumns: GRID, gap: 16, padding: "14px 20px",
             background: "var(--surface-sunken)", border: "1px solid var(--line)",
@@ -658,18 +733,9 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                 Show {Math.min(10, visible.length - shown.length)} more games
               </span>
             )}
-            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              {[["cleared the line", "fill"], ["fell short", "outline"], ["the line", "dash"]].map(([label, kind]) => (
-                <span key={label} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
-                  {kind === "fill" && <span style={{ width: 7, height: 14, background: "var(--pos)", borderRadius: 2 }} />}
-                  {kind === "outline" && <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box" }} />}
-                  {kind === "dash" && <span style={{ width: 14, borderTop: "1.5px dashed var(--text)" }} />}
-                  {label}
-                </span>
-              ))}
-            </span>
           </div>
         </div>
+        {v2RightRail}
       </div>
     </div>
   );
