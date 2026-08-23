@@ -1661,7 +1661,27 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // exists here too, and his games come from getNBAGames -- real ESPN log when
   // one has loaded, generated only for the four hand-written teams, empty for
   // a live-only player whose log hasn't landed.
-  const player = useMemo(() => nbaPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
+  // Never undefined.
+  //
+  // The pools are built from module-level `let` caches that live-roster
+  // fetches fill in, while `playerId` is component state. Anything that
+  // re-runs this module without remounting the tree -- a hot update in dev,
+  // and any future code-split reload -- empties the cache while the id
+  // survives, and every hook below then reads `player.pos`, `player.id`,
+  // `player.team` off undefined. That was a guaranteed crash to the error
+  // boundary, and guarding the leaves one at a time only moved it.
+  //
+  // Falling back to the roster's first player keeps the page rendering
+  // something real, and the effect below moves `playerId` to match so the
+  // fallback is momentary rather than a page quietly describing one player
+  // under another's name.
+  const player = useMemo(() => {
+    const pool = nbaPlayerPool();
+    return pool.find((p) => p.id === playerId) || (matchup.teamA.players[0]) || pool[0] || null;
+  }, [playerId, dataVersion, matchup]);
+  React.useEffect(() => {
+    if (player && player.id !== playerId) setPlayerId(player.id);
+  }, [player, playerId]);
 
   // This season's log. Kept separate from the scoped view below because the
   // scope control has to read the whole thing to know what it can offer --
@@ -4157,6 +4177,7 @@ function estimateLongReception(rec, recYds) {
 }
 
 function estimateSnapPct(player, full) {
+  if (!player) return null;
   const profile = SNAP_PROFILE[player.id];
   if (!profile) return null; // kicker
   const recProxy = Math.max(full.tgt, full.rec);
@@ -4459,6 +4480,15 @@ async function fetchNFLPlayerGameLogForDisplay(espnId) {
 }
 
 function getNFLGames(player) {
+  // The same guard getNBAGames carries, and for a reason that is not
+  // hypothetical: NFL_LIVE_PLAYERS is a module-level `let` and `playerId` is
+  // component state, so anything that re-runs this module without remounting
+  // the tree -- a hot update in dev, and any future code-split reload --
+  // empties the live pool while the selected id survives. `player` then
+  // resolves to undefined and this threw on `player.id`, taking the page to
+  // the error boundary. An absent player has no games, which every consumer
+  // already handles.
+  if (!player) return [];
   if (NFL_REAL_GAME_LOGS[player.id]) return NFL_REAL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
   if (NFL_GAME_LOGS[player.id]) return NFL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
   // A player who exists only because the live roster listed him has no
@@ -6978,9 +7008,19 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     if (!jumpTo) return;
     const jumpPlayer = nflPlayerPool().find((p) => p.id === jumpTo.playerId);
     if (jumpPlayer) {
+      // By player first, then by team. The team pass is what catches a
+      // live-roster player: NFL_MATCHUPS holds the hand-written rosters while
+      // nflPlayerPool() is live rosters merged over them, so matching on id
+      // alone leaves everyone who arrived from a fetch on someone else's game.
       const jumpMatchup = NFL_MATCHUPS.find(
         (m) => m.teamA.players.some((p) => p.id === jumpPlayer.id) || m.teamB.players.some((p) => p.id === jumpPlayer.id)
-      );
+      ) || (jumpPlayer.team ? NFL_MATCHUPS.find(
+        (m) => (m.teamA.players[0] || {}).team === jumpPlayer.team
+          || (m.teamB.players[0] || {}).team === jumpPlayer.team
+      ) : null);
+      // Still nothing means this player's team is not on the week's card at
+      // all. `unplacedPlayer` below is what stops the page dressing him in
+      // whichever fixture happened to be selected.
       if (jumpMatchup) setMatchupId(jumpMatchup.id);
     }
     setPlayerId(jumpTo.playerId);
@@ -7036,7 +7076,27 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // Resolved from the merged pool, so a player reached from the feed or a
   // search result exists here even when he arrived on the live roster after
   // the hand-written arrays were written.
-  const player = useMemo(() => nflPlayerPool().find((p) => p.id === playerId), [playerId, dataVersion]);
+  // Never undefined.
+  //
+  // The pools are built from module-level `let` caches that live-roster
+  // fetches fill in, while `playerId` is component state. Anything that
+  // re-runs this module without remounting the tree -- a hot update in dev,
+  // and any future code-split reload -- empties the cache while the id
+  // survives, and every hook below then reads `player.pos`, `player.id`,
+  // `player.team` off undefined. That was a guaranteed crash to the error
+  // boundary, and guarding the leaves one at a time only moved it.
+  //
+  // Falling back to the roster's first player keeps the page rendering
+  // something real, and the effect below moves `playerId` to match so the
+  // fallback is momentary rather than a page quietly describing one player
+  // under another's name.
+  const player = useMemo(() => {
+    const pool = nflPlayerPool();
+    return pool.find((p) => p.id === playerId) || teamRoster.players[0] || pool[0] || null;
+  }, [playerId, dataVersion, teamRoster.players[0]]);
+  React.useEffect(() => {
+    if (player && player.id !== playerId) setPlayerId(player.id);
+  }, [player, playerId]);
   // This season's log, then last season's for this player alone, then the two
   // as one list -- the same three steps as the NBA page. See usePriorSeasonLog
   // for why the season asked for is derived from the log rather than the
@@ -7053,7 +7113,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     // reads, and the prior season has not been through it. Applied here rather
     // than inside the fetcher because it needs the player (snap share is
     // estimated per position).
-    () => mergeSeasonLogs(currentSeasonLog, priorSeasonLog && priorSeasonLog.map((g) => normalizeNFLGame(g, player))),
+    () => mergeSeasonLogs(currentSeasonLog, player && priorSeasonLog ? priorSeasonLog.map((g) => normalizeNFLGame(g, player)) : null),
     [currentSeasonLog, priorSeasonLog, player]
   );
   const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
@@ -7089,7 +7149,14 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // Whenever the selected player (and thus position) changes, make sure the
   // active market is still one that applies to them.
   React.useEffect(() => {
-    if (!playerMarkets.some((m) => m.id === market)) {
+    if (playerMarkets.length && !playerMarkets.some((m) => m.id === market)) {
+      // Guarded on length. A player whose position has no markets at all --
+      // live rosters carry linemen and defenders, and NFL_MARKETS covers only
+      // QB/RB/WR/TE/K -- makes this list empty, and `[0].id` then throws
+      // "Cannot read properties of undefined (reading 'id')" and takes the
+      // whole page to the error boundary. It fires on remount, which is why it
+      // showed up as an HMR-only crash: a hot update remounts with the
+      // previously selected player still in state.
       setMarket(playerMarkets[0].id);
       setLine(null);
     }
@@ -7217,6 +7284,14 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // right-hand panel flips the sides.
   const playerOnTeamA = teamRoster.players.some((p) => p.id === playerId);
   const gameOppRoster = playerOnTeamA ? oppRoster : teamRoster;
+  // True when the selected player is in neither roster of the selected
+  // fixture -- a live-roster player whose team is not on this week's card.
+  // The fixture furniture is suppressed rather than shown wrong: the same
+  // "omit the cell rather than fill it" rule the matchup context row follows.
+  const unplacedPlayer = !!player && !teamRoster.players.some((p) => p.id === player.id)
+    && !oppRoster.players.some((p) => p.id === player.id)
+    && (player.team !== ((teamRoster.players[0] || {}).team))
+    && (player.team !== ((oppRoster.players[0] || {}).team));
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getNFLDefRank(market, player.pos, gameOppAbbr) : null;
   // The slate row for this fixture, if the slate has it (see
@@ -7860,7 +7935,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const v2AwayAbbr = ((matchup.teamA.players[0] || {}).team) || null;
   const v2HomeAbbr = ((matchup.teamB.players[0] || {}).team) || null;
 
-  const v2Fixture = [
+  // Empty for a player whose team is not on this week's card: the breadcrumb
+  // would otherwise name a fixture he is not in, and it is the label the rest
+  // of the page gets read against.
+  const v2Fixture = unplacedPlayer ? "" : [
     `${v2AwayAbbr || ""} @ ${v2HomeAbbr || ""}`,
     matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short" }) : null,
     (v2Cells.band && v2Cells.band.start) || (matchup.date ? matchupTimeLabel(matchup.date) : null),
@@ -7912,7 +7990,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       // fixture for this game (out of season, or the log's opponent is not who
       // the slate has this team facing) the card renders with those cells
       // empty rather than the whole card disappearing.
-      band={(v2AwayAbbr && v2HomeAbbr) ? {
+      band={(!unplacedPlayer && v2AwayAbbr && v2HomeAbbr) ? {
         away: { abbr: v2AwayAbbr, name: matchup.teamA.label, record: (v2Cells.band || {}).awayRecord || null },
         home: { abbr: v2HomeAbbr, name: matchup.teamB.label, record: (v2Cells.band || {}).homeRecord || null },
         dateLabel: matchup.date ? new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }) : null,
@@ -7920,10 +7998,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         venue: matchup.venue || null,
       } : null}
       context={{
-        allowsLabel: `${gameOppAbbr || "OPP"} allows`,
-        allows: gameOppDef && gameOppDef.rating != null ? String(gameOppDef.rating) : null,
-        rank: gameOppDef ? `#${gameOppDef.rank} of ${NFL_TEAMS.length}` : null,
-        rankWord: gameOppTier || null,
+        allowsLabel: unplacedPlayer ? "Opponent" : `${gameOppAbbr || "OPP"} allows`,
+        allows: (!unplacedPlayer && gameOppDef && gameOppDef.rating != null) ? String(gameOppDef.rating) : null,
+        rank: (!unplacedPlayer && gameOppDef) ? `#${gameOppDef.rank} of ${NFL_TEAMS.length}` : null,
+        rankWord: unplacedPlayer ? null : (gameOppTier || null),
         rankColor: gameOppTier === "soft" ? "var(--pos)" : gameOppTier === "tough" ? "var(--neg)" : "var(--dim)",
         lastMeeting: v2Last ? `${statValueNFL(v2Last, market)} \u00b7 ${axisDateShort(v2Last.date)}` : null,
         // The NFL file's fourth cell is WEATHER, where MLB says PARK and the
@@ -9105,6 +9183,7 @@ async function fetchWNBAPlayerGameLog(espnId, season = WNBA_LOG_SEASON) {
 const wnbaGameKey = (g) => `${g.date}|${g.opp}`;
 
 function getWNBAGames(player, seedOffset) {
+  if (!player) return [];
   const real = player && player.espnId && WNBA_REAL_GAME_LOGS[String(player.espnId)];
   if (real && real.length) return real;
   return genWNBAGames(player, seedOffset);
@@ -9449,7 +9528,14 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // still one that applies to them (DD/TD only show up for a handful of
   // players -- see WNBA_DD_PLAYERS/WNBA_TD_PLAYERS).
   React.useEffect(() => {
-    if (!playerMarkets.some((m) => m.id === market)) {
+    if (playerMarkets.length && !playerMarkets.some((m) => m.id === market)) {
+      // Guarded on length. A player whose position has no markets at all --
+      // live rosters carry linemen and defenders, and NFL_MARKETS covers only
+      // QB/RB/WR/TE/K -- makes this list empty, and `[0].id` then throws
+      // "Cannot read properties of undefined (reading 'id')" and takes the
+      // whole page to the error boundary. It fires on remount, which is why it
+      // showed up as an HMR-only crash: a hot update remounts with the
+      // previously selected player still in state.
       setMarket(playerMarkets[0].id);
       setLine(null);
     }
@@ -13889,7 +13975,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // pitcher, make sure the active market still applies to them.
   React.useEffect(() => {
     const validMarkets = isPitcher ? MLB_PITCHER_MARKETS : MLB_MARKETS;
-    if (!validMarkets.some((m) => m.id === market)) {
+    if (validMarkets.length && !validMarkets.some((m) => m.id === market)) {
       setMarket(validMarkets[0].id);
       setLine(null);
     }
