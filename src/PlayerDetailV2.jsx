@@ -281,7 +281,7 @@ export default function PlayerDetailV2({
           The outer tracks are minmax(0, 1fr) so they stay equal and let their
           own contents ellipsis rather than pushing the middle off centre when
           a long team name arrives. */}
-      <div style={{
+      <div className="pp-pd-crumb" style={{
         display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
         alignItems: "center", gap: 12, padding: "16px 32px", borderBottom: "1px solid var(--line)",
       }}>
@@ -344,7 +344,7 @@ export default function PlayerDetailV2({
 
         <div>
           {band && band.away && band.home && (
-            <div style={{ display: "flex", alignItems: "stretch", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+            <div className="pp-pd-band" style={{ display: "flex", alignItems: "stretch", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
               <BandHalf sport={sport} team={band.away} side="Away" align="left" tone={tones.away} />
               <div style={{
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -359,7 +359,7 @@ export default function PlayerDetailV2({
             </div>
           )}
 
-          <div style={{ display: "flex", alignItems: "center", gap: 0, marginTop: 12, background: "var(--surface-sunken)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
+          <div className="pp-pd-context" style={{ display: "flex", alignItems: "center", gap: 0, marginTop: 12, background: "var(--surface-sunken)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
             <div style={{ flex: 1.1, minWidth: 0, padding: "12px 18px" }}>
               <div style={cellLabel}>{context.allowsLabel}</div>
               <div style={cellValue}>{context.allows ?? "—"}</div>
@@ -400,19 +400,19 @@ export default function PlayerDetailV2({
             </div>
           </div>
 
-          <div style={{
+          <div className="pp-pd-hero" style={{
             display: "flex", alignItems: "stretch", gap: 0, marginTop: 12,
             background: "var(--surface-1)", border: "1px solid var(--line)",
             borderLeft: `3px solid ${mutedTeamColor(sport, player.team)}`,
             borderRadius: 6, overflow: "hidden",
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 20, padding: "20px 24px", flex: 1, minWidth: 0 }}>
-              <span style={{ position: "relative", flex: "none", width: 104, height: 104 }}>
+            <div className="pp-pd-hero-id" style={{ display: "flex", alignItems: "center", gap: 20, padding: "20px 24px", flex: 1, minWidth: 0 }}>
+              <span className="pp-pd-portrait" style={{ position: "relative", flex: "none", width: 104, height: 104 }}>
                 {player.avatar}
               </span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                  <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 46, lineHeight: 1, letterSpacing: "-0.025em" }}>{player.name}</span>
+                  <span className="pp-pd-name" style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 46, lineHeight: 1, letterSpacing: "-0.025em" }}>{player.name}</span>
                   {player.jersey != null && (
                     <span style={{ fontFamily: MONO, fontSize: 24, color: mutedTeamColor(sport, player.team), fontVariantNumeric: "tabular-nums" }}>{player.jersey}</span>
                   )}

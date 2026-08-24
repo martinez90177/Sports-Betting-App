@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { TEAM_COLORS_BY_SPORT } from "./lib/teamColors.js";
 import { buildFindings, filterFindings, FINDING_SPLITS, FINDING_SIDES, FINDING_SORTS } from "./lib/findings.js";
+import useIsNarrow from "./lib/useIsNarrow.js";
 
 const MONO = "'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -100,6 +101,11 @@ export default function FindingsPage({
   // would be the same failure as one that silently dropped a game.
   const [hideStructural, setHideStructural] = useState(true);
   const [shown, setShown] = useState(20);
+  // 900 to match .pp-findings-grid's own breakpoint in index.css -- a
+  // component that folded at a different width from the stylesheet would
+  // collapse its rail while the grid was still two columns.
+  const narrow = useIsNarrow(900);
+  const [railOpen, setRailOpen] = useState(false);
 
   const all = useMemo(() => buildFindings(rows, sport), [rows, sport]);
   const structuralCount = useMemo(() => all.filter((f) => f.structural).length, [all]);
@@ -117,7 +123,39 @@ export default function FindingsPage({
           .pp-findings-grid. */}
       <div className="pp-findings-grid" style={{ display: "grid", gap: 22 }}>
 
-        <div className="pp-findings-rail">
+        <div className="pp-findings-rail" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* On a phone the rail is a disclosure, not a column.
+               Expanded it runs about a screen tall, which put the list itself
+               below the fold and made changing one filter a scroll down and a
+               scroll back up every time. Alex asked for it compacted.
+               Collapsed it is one line that names what is currently on, so
+               nothing is hidden -- only folded. */}
+          {narrow && (
+            <div
+              role="button" tabIndex={0} aria-expanded={railOpen}
+              onClick={() => setRailOpen((v) => !v)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRailOpen((v) => !v); } }}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6,
+                cursor: "pointer", minHeight: "var(--tap, 44px)", boxSizing: "border-box",
+              }}
+            >
+              <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)", flex: "none" }}>
+                Filters
+              </span>
+              <span className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {[sport.toUpperCase(), split, side].join(" · ")}
+              </span>
+              <span className="pp-mono" style={{ marginLeft: "auto", flex: "none", fontSize: 12, color: "var(--amber-ink, var(--amber))" }}>
+                {railOpen ? "−" : "+"}
+              </span>
+            </div>
+          )}
+
+          {/* The rail proper. Always open on a wide screen; on a phone it is
+               what the disclosure above reveals. */}
+          <div style={{ display: narrow && !railOpen ? "none" : "block" }}>
           <div style={LABEL}>League</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
             {sports.map((s) => (
@@ -164,6 +202,7 @@ export default function FindingsPage({
                 ? `Hiding ${structuralCount} findings that are properties of the market rather than of the player — a log that never moves off one number. They are true and they are not news.`
                 : `Showing everything, including ${structuralCount} structural near-certainties. Expect the list to fill with rows whose numbers never move.`}
             </div>
+          </div>
           </div>
         </div>
 

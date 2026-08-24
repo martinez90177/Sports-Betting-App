@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { TEAM_COLORS_BY_SPORT, STATUS } from "./lib/teamColors.js";
+import useIsNarrow from "./lib/useIsNarrow.js";
 
 const MONO = "'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -68,6 +69,11 @@ export default function InjuriesPage({
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState(kickoffFor ? "kickoff" : "name");
+  // 900 to match .pp-findings-grid's own breakpoint in index.css -- a
+  // component that folded at a different width from the stylesheet would
+  // collapse its rail while the grid was still two columns.
+  const narrow = useIsNarrow(900);
+  const [railOpen, setRailOpen] = useState(false);
 
   const now = Date.now();
   const NEAR_MS = 48 * 60 * 60 * 1000;
@@ -115,7 +121,39 @@ export default function InjuriesPage({
           .pp-findings-grid. */}
       <div className="pp-findings-grid" style={{ display: "grid", gap: 22 }}>
 
-        <div className="pp-findings-rail">
+        <div className="pp-findings-rail" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* On a phone the rail is a disclosure, not a column.
+               Expanded it runs about a screen tall, which put the list itself
+               below the fold and made changing one filter a scroll down and a
+               scroll back up every time. Alex asked for it compacted.
+               Collapsed it is one line that names what is currently on, so
+               nothing is hidden -- only folded. */}
+          {narrow && (
+            <div
+              role="button" tabIndex={0} aria-expanded={railOpen}
+              onClick={() => setRailOpen((v) => !v)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRailOpen((v) => !v); } }}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6,
+                cursor: "pointer", minHeight: "var(--tap, 44px)", boxSizing: "border-box",
+              }}
+            >
+              <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)", flex: "none" }}>
+                Filters
+              </span>
+              <span className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {[sport === "all" ? "All leagues" : sport.toUpperCase(), status === "all" ? "All statuses" : status].join(" · ")}
+              </span>
+              <span className="pp-mono" style={{ marginLeft: "auto", flex: "none", fontSize: 12, color: "var(--amber-ink, var(--amber))" }}>
+                {railOpen ? "−" : "+"}
+              </span>
+            </div>
+          )}
+
+          {/* The rail proper. Always open on a wide screen; on a phone it is
+               what the disclosure above reveals. */}
+          <div style={{ display: narrow && !railOpen ? "none" : "block" }}>
           <div style={LABEL}>League</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
             <Pill label="All" count={countBySport("all")} on={sport === "all"} onPick={() => setSport("all")} />
@@ -144,6 +182,7 @@ export default function InjuriesPage({
               so {uncoveredSports.length === 1 ? "it is" : "they are"} not listed here at all rather than listed as healthy.
             </div>
           )}
+          </div>
         </div>
 
         <div style={{ minWidth: 0 }}>

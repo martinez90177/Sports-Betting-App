@@ -483,3 +483,31 @@ games crushed to nothing between them.
 The templates live in `index.css` now. **When adding a new multi-column page,
 put the template in the stylesheet from the start** — the inline version looks
 fine on the machine you build it on and is unfixable from CSS later.
+
+## The phone was on the v1 player page until 2026-08-24
+
+All four player pages ended with `if (!isNarrow) return v2Page;` — `useIsNarrow()`
+defaults to **480px**, so every phone got the pre-v2 design. The reasoning at the
+time was that the mobile handoff had its own design for this screen; the effect
+was that a phone saw two charts, a "THE READ" block the v2 verdict row replaced,
+a context row whose columns overlapped, and a graph with no line tag.
+
+Alex, looking at it: *"the whole player detail page in general looks very v1
+anyway, is this even correctly updated?"* It was not. The gate is now
+unconditional and the v2 chassis folds at 560 as well (`.pp-pd-crumb`,
+`.pp-pd-band`, `.pp-pd-context`, `.pp-pd-hero-id`).
+
+The v1 branch below each `return` is unreachable now and was left in place
+rather than deleted in the same pass. **It is dead code — do not "fix" bugs in
+it.**
+
+## Sizing an avatar's wrapper does nothing
+
+`PlayerAvatar` renders at whatever `size` prop it is given. Shrinking the
+wrapping span in CSS leaves the avatar at its original size and lets it overflow
+— a 72px box round a 104px avatar spilled 32px down onto the player's name, and
+measuring the *wrapper* said there was 16px of clearance while the screenshot
+showed an overlap.
+
+**Measure the inner element, not the box.** And if a portrait needs to be
+smaller, change the `size` prop, not the CSS.

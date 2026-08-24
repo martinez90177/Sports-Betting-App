@@ -2771,7 +2771,18 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // The chassis folds now (see .pp-pd-grid in index.css), so the only width
   // this hands over at is the phone -- which has its own design in the mobile
   // handoff, and keeps it.
-  if (!isNarrow) return v2Page;
+  // Every width, including the phone.
+  //
+  // This used to hand over to the pre-v2 page at 480px, on the reasoning that
+  // the mobile handoff had its own design for this screen. The result was that
+  // a phone got the old page -- two charts, a THE READ block the v2 design
+  // replaced with the verdict row, a context row whose columns overlapped, and
+  // a graph with no draggable line tag. Alex, looking at it: "the whole player
+  // detail page in general looks very v1 anyway, is this even correctly
+  // updated?" It was not. The v2 chassis already folds at 1100, 768 and 560
+  // (see .pp-pd-grid), so the phone gets the same page as everything else.
+  return v2Page;
+  // eslint-disable-next-line no-unreachable
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -8468,7 +8479,18 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // The chassis folds now (see .pp-pd-grid in index.css), so the only width
   // this hands over at is the phone -- which has its own design in the mobile
   // handoff, and keeps it.
-  if (!isNarrow) return v2Page;
+  // Every width, including the phone.
+  //
+  // This used to hand over to the pre-v2 page at 480px, on the reasoning that
+  // the mobile handoff had its own design for this screen. The result was that
+  // a phone got the old page -- two charts, a THE READ block the v2 design
+  // replaced with the verdict row, a context row whose columns overlapped, and
+  // a graph with no draggable line tag. Alex, looking at it: "the whole player
+  // detail page in general looks very v1 anyway, is this even correctly
+  // updated?" It was not. The v2 chassis already folds at 1100, 768 and 560
+  // (see .pp-pd-grid), so the phone gets the same page as everything else.
+  return v2Page;
+  // eslint-disable-next-line no-unreachable
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -11056,7 +11078,18 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // The chassis folds now (see .pp-pd-grid in index.css), so the only width
   // this hands over at is the phone -- which has its own design in the mobile
   // handoff, and keeps it.
-  if (!isNarrow) return v2Page;
+  // Every width, including the phone.
+  //
+  // This used to hand over to the pre-v2 page at 480px, on the reasoning that
+  // the mobile handoff had its own design for this screen. The result was that
+  // a phone got the old page -- two charts, a THE READ block the v2 design
+  // replaced with the verdict row, a context row whose columns overlapped, and
+  // a graph with no draggable line tag. Alex, looking at it: "the whole player
+  // detail page in general looks very v1 anyway, is this even correctly
+  // updated?" It was not. The v2 chassis already folds at 1100, 768 and 560
+  // (see .pp-pd-grid), so the phone gets the same page as everything else.
+  return v2Page;
+  // eslint-disable-next-line no-unreachable
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -16354,7 +16387,18 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // The chassis folds now (see .pp-pd-grid in index.css), so the only width
   // this hands over at is the phone -- which has its own design in the mobile
   // handoff, and keeps it.
-  if (!isNarrow) return v2Page;
+  // Every width, including the phone.
+  //
+  // This used to hand over to the pre-v2 page at 480px, on the reasoning that
+  // the mobile handoff had its own design for this screen. The result was that
+  // a phone got the old page -- two charts, a THE READ block the v2 design
+  // replaced with the verdict row, a context row whose columns overlapped, and
+  // a graph with no draggable line tag. Alex, looking at it: "the whole player
+  // detail page in general looks very v1 anyway, is this even correctly
+  // updated?" It was not. The v2 chassis already folds at 1100, 768 and 560
+  // (see .pp-pd-grid), so the phone gets the same page as everything else.
+  return v2Page;
+  // eslint-disable-next-line no-unreachable
 
   return (
     <div className="page-shell page-shell--mobile-nav" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
@@ -18937,6 +18981,44 @@ function feedStreak(values, line, isBinary, direction) {
 // side of the line, and sign-flipped for Unders so positive always means
 // "the sample is on this bet's side". Meaningless for binary markets, which
 // have no distance-to-line to measure.
+// How many games a team has played, and therefore how much of its season each
+// of its players has been available for.
+//
+// Alex: "I kind of don't even want players props viewable if they haven't
+// played in at least 50% of the team's games." A backup who has appeared six
+// times is not a read on tonight, and a feed full of them is a feed you have
+// to filter by hand every time you open it.
+//
+// The team's total is the longest log any of its players carries. That is a
+// proxy and it is a good one: on any roster somebody plays nearly every game,
+// so the maximum is the season length to within a game or two. It needs no new
+// data, which matters -- a real games-played figure per team would be a
+// standings request per league per day for a number the rows already imply.
+//
+// Computed once per row-set rather than per row: this runs over a few thousand
+// NFL rows.
+function teamGamesPlayed(rows) {
+  const byTeam = new Map();
+  (rows || []).forEach((r) => {
+    if (!r || !r.team || r.nAll == null) return;
+    const prev = byTeam.get(r.team) || 0;
+    if (r.nAll > prev) byTeam.set(r.team, r.nAll);
+  });
+  return byTeam;
+}
+
+// Half the team's games, which is the line Alex drew. Rows whose team we cannot
+// place are kept: "we do not know how many games his team has played" is not
+// the same claim as "he is a bench player", and only the second one earns a
+// row's removal.
+const FEED_PARTICIPATION = 0.5;
+
+function feedRowPlaysEnough(r, teamGames) {
+  const total = teamGames.get(r.team);
+  if (!total || r.nAll == null) return true;
+  return r.nAll >= total * FEED_PARTICIPATION;
+}
+
 // The sample floor a given window can actually satisfy.
 //
 // The minimum sample says how much evidence a rate has to stand on. A column
@@ -20266,6 +20348,11 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // default, because a prop for a game three weeks out is not what this screen
   // is for -- see FEED_LOOKAHEAD_MS.
   const [slateScope, setSlateScope] = useState("near");
+  // On by default. A player who has been available for under half his team's
+  // season is not a read on tonight -- see feedRowPlaysEnough. The count it
+  // removes is stated in the result strip, and the control to drop it sits in
+  // the Filters panel, so this is never a silent cut.
+  const [regularsOnly, setRegularsOnly] = useState(true);
   // Switching sport puts the window back. Someone who opened the whole
   // schedule to look at Week 1 has not asked for the same on every other
   // league, and carrying it across is how a preference becomes a surprise.
@@ -20771,10 +20858,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // intentional cutoff, not a bug -- can be loosened again in the future.
   const oddsLoProb = oddsSliderProb(oddsMaxX);
   const oddsHiProb = oddsSliderProb(oddsMinX);
+  // The denominator for the participation filter, off the whole market set so
+  // it does not shrink as other filters narrow the view.
+  const teamGames = useMemo(() => teamGamesPlayed(marketRows), [marketRows]);
+
   const filteredRows = useMemo(() => marketRows.filter((r) => {
     // Games in the next two days only, unless the reader has asked for the
     // whole schedule. See FEED_LOOKAHEAD_MS.
     if (slateScope === "near" && !feedRowIsNear(r, Date.now())) return false;
+    if (regularsOnly && !feedRowPlaysEnough(r, teamGames)) return false;
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
     // The Role floor. A row whose role could not be measured passes rather
@@ -20812,7 +20904,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // there and must let it through rather than wipe pitcher markets whole.
     if (postedLineupsOnly && sport === "mlb" && r.lineupConfirmed === false) return false;
     return true;
-  }), [marketRows, sampleWindow, slateScope, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
+  }), [marketRows, sampleWindow, slateScope, regularsOnly, teamGames, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
 
   // Badge shown on the Filters trigger -- counts only the controls tucked
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
@@ -21149,6 +21241,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     let thin = 0;
     let best = null;
     const games = new Set();
+    // How many rows the participation filter is holding back right now, so the
+    // strip can say so and offer them. Counted over the same near-slate set the
+    // feed is showing, not the whole league, or the number would be dominated
+    // by teams that are not playing.
+    const benched = marketRows.filter((r) =>
+      (slateScope !== "near" || feedRowIsNear(r, Date.now()))
+      && !feedRowPlaysEnough(r, teamGames)).length;
     const key = sampleWindow;
     const nKey = key === "l5" ? "n5" : key === "l20" ? "n20" : key === "all" ? "nAll" : "n10";
     const floor = feedWindowFloor(minGames, key);
@@ -21170,8 +21269,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       // in through a summary cell.
       if (!best || lower > best.lower) best = { lower, rate, name: r.name, prop: r.subtitle || r.marketLabel };
     });
-    return { supported, thin, best, games: games.size };
-  }, [filteredRows, sampleWindow, minGames]);
+    return { supported, thin, best, games: games.size, benched };
+  }, [filteredRows, marketRows, teamGames, slateScope, sampleWindow, minGames]);
 
   // The next kickoff beyond the window, for the empty state. Only computed
   // when the feed is actually empty, so this never runs on a normal render.
@@ -21297,6 +21396,34 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         <div style={FEED_CELL_LABEL}>Showing</div>
         <div style={FEED_CELL_VALUE}>{filteredRows.length} of {rows.length}</div>
         <div style={FEED_CELL_SUB}>
+          {regularsOnly && feedSummary.benched > 0 && (
+            <>
+              {feedSummary.benched} bench {feedSummary.benched === 1 ? "prop" : "props"} hidden ·{" "}
+              <span
+                role="button" tabIndex={0}
+                onClick={() => setRegularsOnly(false)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRegularsOnly(false); } }}
+                style={{ color: "var(--amber-ink, var(--amber))", cursor: "pointer", textDecoration: "underline" }}
+              >
+                show
+              </span>
+              <br />
+            </>
+          )}
+          {!regularsOnly && (
+            <>
+              bench props shown ·{" "}
+              <span
+                role="button" tabIndex={0}
+                onClick={() => setRegularsOnly(true)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRegularsOnly(true); } }}
+                style={{ color: "var(--amber-ink, var(--amber))", cursor: "pointer", textDecoration: "underline" }}
+              >
+                hide
+              </span>
+              <br />
+            </>
+          )}
           {slateScope === "near"
             ? `${feedSummary.games} ${feedSummary.games === 1 ? "game" : "games"} today and tomorrow`
             : (

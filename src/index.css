@@ -1503,13 +1503,14 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
      sitting between the filters and the games. */
   .board-layout > *:nth-child(3) { order: 3; }
 
-  /* Filter rails read as rows of pills on a phone, not as columns of them. */
-  .pp-findings-rail > div[style*="flex-direction: column"],
+  /* The board keeps its filters as wrapping rows -- it has no disclosure of
+     its own, and its rail is short. Findings and Injuries fold theirs behind
+     a Filters button instead (see useIsNarrow in those pages), because their
+     rails run a full screen and put the list below the fold. */
   .board-layout > *:first-child div[style*="flex-direction: column"] {
     flex-direction: row !important;
     flex-wrap: wrap;
   }
-  .pp-findings-rail > div[style*="flex-direction: column"] > *,
   .board-layout > *:first-child div[style*="flex-direction: column"] > * {
     flex: 0 1 auto;
   }
@@ -1544,4 +1545,88 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
   }
   /* The bars take the room the column no longer holds. */
   .pp-finding > div:last-child > div:last-child { flex: 1; }
+}
+
+
+/* ---------- player detail, on a phone ----------
+   This page used to hand over to the pre-v2 design below 480px, so none of
+   these blocks had ever been asked to fold. They are asked now (see the
+   `return v2Page` in each of PropLedger's four player pages), and every one of
+   them was built for a 1600px canvas: a three-track breadcrumb whose outer
+   cells collapsed onto the middle one, a team band that put two full club
+   names and a fixture block on one line, a four-cell context row at 80px a
+   cell, and a hero with a 104px portrait beside a paragraph.
+
+   Everything below is that page at 560 and under. It is the composition mock
+   4b describes, arrived at from the built page rather than transcribed. */
+@media (max-width: 560px) {
+  .pp-pd-crumb {
+    /* Two rows. The back link and the watch toggle are the controls and share
+       the first; the fixture is a label, and it gets its own line rather than
+       being squeezed between them -- at 375px the three tracks were 90px each
+       and all three overlapped. */
+    grid-template-columns: auto 1fr !important;
+    gap: 4px 10px !important;
+    padding: 12px 16px !important;
+  }
+  .pp-pd-crumb > *:nth-child(1) { grid-row: 1; grid-column: 1; }
+  .pp-pd-crumb > *:nth-child(3) { grid-row: 1; grid-column: 2; }
+  .pp-pd-crumb > *:nth-child(2) {
+    grid-row: 2; grid-column: 1 / -1;
+    justify-self: start !important; text-align: left !important;
+    font-size: 10.5px;
+  }
+
+  /* The band stacks: away, fixture, home. Each keeps its own alignment, so
+     the two clubs still read as two sides rather than as a list. */
+  .pp-pd-band { flex-direction: column; }
+  .pp-pd-band > * { border-left: none !important; border-right: none !important; }
+  .pp-pd-band > *:not(:first-child) { border-top: 1px solid var(--line); }
+
+  /* Two by two, not four across. Four cells on a 343px card is 85px each,
+     which clips "Comerica Park" and put "#20 of 30" on top of the value
+     beside it. */
+  .pp-pd-context { flex-wrap: wrap; }
+  .pp-pd-context > * {
+    flex: 1 1 50% !important;
+    box-sizing: border-box;
+    border-left: none !important;
+  }
+  .pp-pd-context > *:nth-child(even) { border-left: 1px solid var(--line) !important; }
+  .pp-pd-context > *:nth-child(n + 3) { border-top: 1px solid var(--line); }
+
+  /* The hero stacks its portrait above the name rather than beside it. */
+  .pp-pd-hero { flex-direction: column; }
+  .pp-pd-hero > * { border-left: none !important; }
+  .pp-pd-hero > *:not(:first-child) { border-top: 1px solid var(--line); }
+  /* No portrait shrink here. Sizing the WRAPPER alone does nothing useful:
+     PlayerAvatar is passed size={104} and renders at 104 regardless, so a 72px
+     box just let it overflow 32px down onto the name. If this ever needs to be
+     smaller, change the size prop in PropLedger, not the box in CSS. */
+}
+
+/* The hero, at phone width.
+   46px display type is right on a 1600px canvas and is two lines of a 375px
+   one, and the 104px portrait beside it left the usage pills about 140px to
+   live in -- "HARD-HIT 47.4% · 2ND ON TEA" clipped mid-word. Portrait above
+   the name, name at a size the card can hold. */
+@media (max-width: 560px) {
+  .pp-pd-hero-id { flex-direction: column; align-items: flex-start !important; gap: 14px !important; padding: 16px 18px !important; }
+  /* The portrait keeps its 104px. Shrinking the wrapper alone spilled the
+     avatar inside it 28px down onto the name -- PlayerAvatar is passed
+     size={104} by the page, so the box and its contents have to be changed
+     together or not at all. Stacked, the card has the room.
+     If this ever needs to be smaller, change the size prop, not the CSS. */
+  .pp-pd-name { font-size: 30px !important; }
+
+  /* Four metric cells across a 343px card is 85px each, and "Coming soon"
+     alone is 75. Two by two. */
+  .pp-pd-verdict-cells { flex-wrap: wrap; gap: 0 !important; }
+  .pp-pd-verdict-cells > div {
+    flex: 1 1 50% !important;
+    box-sizing: border-box;
+    padding: 10px 0 10px 14px;
+  }
+  .pp-pd-verdict-cells > div:nth-child(odd) { padding-left: 0; border-left: none !important; }
+  .pp-pd-verdict-cells > div:nth-child(n + 3) { border-top: 1px solid var(--line); }
 }
