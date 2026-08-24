@@ -407,7 +407,11 @@ export default function PlayerDetailV2({
             borderRadius: 6, overflow: "hidden",
           }}>
             <div className="pp-pd-hero-id" style={{ display: "flex", alignItems: "center", gap: 20, padding: "20px 24px", flex: 1, minWidth: 0 }}>
-              <span className="pp-pd-portrait" style={{ position: "relative", flex: "none", width: 104, height: 104 }}>
+              {/* No fixed size. The avatar inside decides how big it is, and a
+                  wrapper that disagreed with it was the whole bug: 104px of
+                  avatar in a 72px box overflows onto the name, and measuring
+                  the box reports clearance that is not there. */}
+              <span className="pp-pd-portrait" style={{ position: "relative", flex: "none", lineHeight: 0 }}>
                 {player.avatar}
               </span>
               <div style={{ minWidth: 0 }}>
@@ -423,7 +427,7 @@ export default function PlayerDetailV2({
                     {player.identity}
                   </span>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 14 }}>
+                <div className="pp-pd-pills" style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 14 }}>
                   {player.statusPill}
                   {(player.pills || []).map((u) => (
                     <span key={u.label} style={{

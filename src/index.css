@@ -1606,18 +1606,25 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
 }
 
 /* The hero, at phone width.
-   46px display type is right on a 1600px canvas and is two lines of a 375px
-   one, and the 104px portrait beside it left the usage pills about 140px to
-   live in -- "HARD-HIT 47.4% · 2ND ON TEA" clipped mid-word. Portrait above
-   the name, name at a size the card can hold. */
+
+   Two problems, one shape. 46px display type is right on a 1600px canvas and
+   is two lines of a 375px one; and stacked -- portrait above name -- the card
+   ran 526px on an 812px screen, which is most of the viewport for a portrait,
+   a name, four pills and three season figures. Alex: "such a big box for not
+   so much info ... the way it is formatted is causing it to stretch so much".
+
+   So the portrait sits beside the name at 64px instead of above it at 104.
+   The size is set at the source, in PropLedger, NOT here: PlayerAvatar renders
+   at whatever its size prop says and ignores the box around it, so shrinking
+   the wrapper in CSS just spills a 104px avatar onto the name -- and measuring
+   that wrapper reports clearance that is not there. */
 @media (max-width: 560px) {
-  .pp-pd-hero-id { flex-direction: column; align-items: flex-start !important; gap: 14px !important; padding: 16px 18px !important; }
-  /* The portrait keeps its 104px. Shrinking the wrapper alone spilled the
-     avatar inside it 28px down onto the name -- PlayerAvatar is passed
-     size={104} by the page, so the box and its contents have to be changed
-     together or not at all. Stacked, the card has the room.
-     If this ever needs to be smaller, change the size prop, not the CSS. */
-  .pp-pd-name { font-size: 30px !important; }
+  .pp-pd-hero-id { align-items: flex-start !important; gap: 14px !important; padding: 16px 18px !important; }
+  .pp-pd-name { font-size: 24px !important; }
+  /* The width that frees goes to the identity line and the pills: at 375px
+     "CHICAGO WHITE SOX · THIRD BASE · 2026" was four lines beside a 104px
+     portrait and is two beside a 64px one. */
+  .pp-pd-hero-id > div { min-width: 0; }
 
   /* Four metric cells across a 343px card is 85px each, and "Coming soon"
      alone is 75. Two by two. */
@@ -1629,4 +1636,19 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
   }
   .pp-pd-verdict-cells > div:nth-child(odd) { padding-left: 0; border-left: none !important; }
   .pp-pd-verdict-cells > div:nth-child(n + 3) { border-top: 1px solid var(--line); }
+}
+
+/* The usage pills, at phone width.
+   Five pills at desktop type take four rows of a 327px card, because
+   "HARD-HIT 46.6% · 2ND ON TEAM" alone is a full line. A step down in type and
+   padding fits two to a row without shortening any of them -- the rank clause
+   is the useful half and abbreviating it would be trading information for
+   space the type could give up instead. */
+@media (max-width: 560px) {
+  .pp-pd-pills { gap: 6px !important; margin-top: 10px !important; }
+  .pp-pd-pills > span {
+    font-size: 9.5px !important;
+    letter-spacing: 0.06em !important;
+    padding: 3px 8px !important;
+  }
 }

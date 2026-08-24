@@ -2710,7 +2710,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nba" team={player.team}
             colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(player.espnId)}
-            surface="var(--surface-1)" size={104} inset={5}
+            // 64 on a phone. Sized here rather than in CSS because PlayerAvatar
+            // renders at whatever this says and ignores the box around it --
+            // shrinking that box in a media query left a 104px avatar spilling
+            // out of it and onto the player name.
+            surface="var(--surface-1)" size={isNarrow ? 64 : 104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
@@ -8416,7 +8420,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nfl" team={player.team}
             colorMap={NFL_TEAM_COLORS} headshotSrc={nflHeadshot(player)}
-            surface="var(--surface-1)" size={104} inset={5}
+            // 64 on a phone. Sized here rather than in CSS because PlayerAvatar
+            // renders at whatever this says and ignores the box around it --
+            // shrinking that box in a media query left a 104px avatar spilling
+            // out of it and onto the player name.
+            surface="var(--surface-1)" size={isNarrow ? 64 : 104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
@@ -11017,7 +11025,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
             key={player.id} name={player.name} alt={player.name} sport="wnba" team={player.team}
             colorMap={WNBA_TEAM_COLORS} headshotSrc={wnbaHeadshot(player.espnId)}
             status={statusOf(player)}
-            surface="var(--surface-1)" size={104} inset={5}
+            // 64 on a phone. Sized here rather than in CSS because PlayerAvatar
+            // renders at whatever this says and ignores the box around it --
+            // shrinking that box in a media query left a 104px avatar spilling
+            // out of it and onto the player name.
+            surface="var(--surface-1)" size={isNarrow ? 64 : 104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
@@ -16321,7 +16333,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
             key={player.id} name={player.name} alt={player.name} sport="mlb" team={player.team}
             colorMap={MLB_TEAM_COLORS} headshotSrc={mlbHeadshot(player.mlbId)}
             fallbackSrc={mlbEspnHeadshot(player.id)} status={mlbStatusOf(player)}
-            surface="var(--surface-1)" size={104} inset={5}
+            // 64 on a phone. Sized here rather than in CSS because PlayerAvatar
+            // renders at whatever this says and ignores the box around it --
+            // shrinking that box in a media query left a 104px avatar spilling
+            // out of it and onto the player name.
+            surface="var(--surface-1)" size={isNarrow ? 64 : 104} inset={5}
             imgBorder="1px solid var(--line)" fadeIn
           />
         ),
