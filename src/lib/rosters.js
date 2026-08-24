@@ -189,7 +189,7 @@ export async function fetchTeamRoster(sport, abbr, teamEspnId, { slugFor } = {})
   if (!path || !teamEspnId) return null;
   const key = `${sport}_${abbr}`;
   const cached = readCache(key, ROSTER_TTL_MS);
-  if (cached !== undefined) return applySlugs(cached, slugFor);
+  if (cached !== undefined) return applySlugs(seedJerseys(cached), slugFor);
 
   const data = await once(key, async () => {
     try {
@@ -227,7 +227,73 @@ export async function fetchTeamRoster(sport, abbr, teamEspnId, { slugFor } = {})
   });
 
   if (data) writeCache(key, data);
-  return applySlugs(data, slugFor);
+  return applySlugs(seedJerseys(data), slugFor);
+}
+
+// --------------------------------------------------------------------------
+// Jersey numbers
+// --------------------------------------------------------------------------
+// Keyed by ESPN athlete id, shared across sports, and filled from two places.
+//
+// The cheap one is above: every roster already carries `jersey`, so the NBA
+// and NFL pages -- which pull all thirty-odd teams on mount -- populate this
+// for free, and a player page opened afterwards costs nothing.
+//
+// The gap is that the WNBA page loads no rosters (it reads the slate instead),
+// and that a player in a hand-written pool can be off ESPN's current roster
+// altogether -- traded, waived, retired. `fetchEspnJersey` covers both, one
+// athlete at a time.
+//
+// A miss is stored as null rather than left absent, so a player who genuinely
+// has no number is asked about once instead of on every render. That is also
+// why callers must distinguish `undefined` (never looked up) from `null`
+// (looked up, hasn't got one).
+const JERSEY_BY_ESPN_ID = new Map();
+
+function seedJerseys(data) {
+  if (!data || !data.players) return data;
+  data.players.forEach((pl) => {
+    if (!pl.espnId) return;
+    const k = String(pl.espnId);
+    // Roster data never overwrites a direct athlete lookup: the roster is the
+    // bulk source and the athlete endpoint is the specific one.
+    if (!JERSEY_BY_ESPN_ID.has(k)) JERSEY_BY_ESPN_ID.set(k, pl.jersey || null);
+  });
+  return data;
+}
+
+// undefined = not looked up yet. null = looked up, no number.
+export function jerseyFor(espnId) {
+  if (espnId == null) return undefined;
+  return JERSEY_BY_ESPN_ID.get(String(espnId));
+}
+
+// One athlete's number. Resolves to the number, or null -- never throws, and
+// never leaves the key unset, so a failed lookup is not retried in a loop.
+export async function fetchEspnJersey(sport, espnId) {
+  const path = LEAGUE_PATH[sport];
+  const k = espnId == null ? null : String(espnId);
+  if (!k) return null;
+  if (JERSEY_BY_ESPN_ID.has(k)) return JERSEY_BY_ESPN_ID.get(k);
+  if (!path) { JERSEY_BY_ESPN_ID.set(k, null); return null; }
+
+  return once(`jersey_${sport}_${k}`, async () => {
+    let n = null;
+    try {
+      const res = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/${path}/athletes/${k}`);
+      if (res.ok) {
+        const json = await res.json();
+        const j = json?.athlete?.jersey;
+        // "0" is a real jersey number and a falsy string is not, so test for
+        // emptiness rather than truthiness.
+        n = j != null && String(j) !== "" ? String(j) : null;
+      }
+    } catch {
+      n = null;
+    }
+    JERSEY_BY_ESPN_ID.set(k, n);
+    return n;
+  });
 }
 
 // Applied on read rather than baked into the cache, so the same cached payload

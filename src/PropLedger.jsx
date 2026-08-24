@@ -33,7 +33,7 @@ import MinSampleControl, { loadSamplePresets, saveSamplePresets, seedSampleValue
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
-import { fetchLeagueRosters } from "./lib/rosters.js";
+import { fetchLeagueRosters, fetchEspnJersey, jerseyFor } from "./lib/rosters.js";
 import { NFL_STADIUMS, fetchNFLKickoffWeather } from "./lib/weather.js";
 import OpposingLineup from "./OpposingLineup.jsx";
 import PercentilePair from "./PercentilePair.jsx";
@@ -1689,6 +1689,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   React.useEffect(() => {
     if (player && player.id !== playerId) setPlayerId(player.id);
   }, [player, playerId]);
+  const jerseyNumber = useEspnJersey("nba", player && player.espnId);
 
   // This season's log. Kept separate from the scoped view below because the
   // scope control has to read the whole thing to know what it can offer --
@@ -2692,7 +2693,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       }}
       player={{
         name: player.name,
-        jersey: null,
+        jersey: jerseyNumber,
         team: player.team,
         teamLabel: v2OwnRoster.label,
         identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
@@ -7437,6 +7438,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   React.useEffect(() => {
     if (player && player.id !== playerId) setPlayerId(player.id);
   }, [player, playerId]);
+  // Same id chain the prior-season log uses below: the hand-written pool keys
+  // ESPN ids in NFL_ESPN_ID, the live roster carries its own.
+  const jerseyNumber = useEspnJersey(
+    "nfl",
+    player && (NFL_ESPN_ID[player.id] || player.espnId)
+  );
   // This season's log, then last season's for this player alone, then the two
   // as one list -- the same three steps as the NBA page. See usePriorSeasonLog
   // for why the season asked for is derived from the log rather than the
@@ -8405,9 +8412,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       }}
       player={{
         name: player.name,
-        // No provider this page reads carries an NFL jersey number, so the
-        // slot collapses rather than printing one.
-        jersey: null,
+        jersey: jerseyNumber,
         team: player.team,
         teamLabel: v2OwnRoster.label,
         identity: [v2OwnRoster.label, NFL_POSITION_WORD[player.pos] || player.pos,
@@ -9940,6 +9945,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     if (first && first.id !== playerId) setPlayerId(first.id);
   }, [player, matchup, playerId]);
 
+  // This page loads no rosters, so unlike the NBA and NFL pages every one of
+  // these is a real request. One per player viewed, cached for the session.
+  const jerseyNumber = useEspnJersey("wnba", player && player.espnId);
+
   // Every deliberate player pick goes through here. Choosing someone by hand
   // ends whatever jump was pending, so a later slate change is free to
   // self-heal the selection again.
@@ -11006,7 +11015,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       }}
       player={{
         name: player.name,
-        jersey: null,
+        jersey: jerseyNumber,
         team: player.team,
         teamLabel: v2OwnRoster.label,
         identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
@@ -13234,6 +13243,32 @@ const HOOPS_POSITION_WORD = {
 // request per player, cached for the session: a number does not change
 // mid-season, and a miss renders nothing rather than a placeholder.
 const mlbJerseyCache = new Map();
+// The jersey number for the three ESPN-backed sports. MLB has its own below,
+// because its number comes from statsapi's `primaryNumber` rather than ESPN.
+//
+// Most calls cost nothing. The NBA and NFL pages fetch every league roster on
+// mount and those rosters carry jerseys, so by the time a player page opens
+// the number is already indexed. The lookup only reaches the network for the
+// WNBA (which loads a slate, not rosters) and for a hand-written pool player
+// who is off ESPN's current roster.
+//
+// `undefined` from jerseyFor means never looked up; `null` means looked up and
+// hasn't got one. Only the first triggers a fetch -- otherwise a player with
+// no number would be re-requested on every render.
+function useEspnJersey(sport, espnId) {
+  const [, bump] = useState(0);
+  React.useEffect(() => {
+    if (espnId == null || jerseyFor(espnId) !== undefined) return undefined;
+    let cancelled = false;
+    fetchEspnJersey(sport, espnId).then(() => { if (!cancelled) bump((v) => v + 1); });
+    return () => { cancelled = true; };
+  }, [sport, espnId]);
+  // Read through on every render rather than into state: a roster load that
+  // fills the index after this effect has already run re-renders the page for
+  // its own reasons, and this picks the number up on that pass.
+  return espnId == null ? null : (jerseyFor(espnId) ?? null);
+}
+
 function useMlbJersey(mlbId) {
   const [, bump] = useState(0);
   React.useEffect(() => {
