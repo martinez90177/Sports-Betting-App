@@ -22,13 +22,20 @@ const TTL_MS = 6 * 60 * 60 * 1000;
 // with four at-bats, and is better than excluding him from the lookup and
 // making the page unable to tell "no data" from "not fetched".
 const SELECTIONS = {
+  // whiff_percent, oz_swing_percent (chase) and xwoba joined the batter list
+  // for the expected-lineup table and the percentile pair -- competitive brief
+  // items 2 and 3, mocks 3b and 3c. They cost nothing extra: this is one
+  // request for the whole league either way, and the columns ride along in the
+  // same CSV.
   batter: [
     "b_total_pa", "barrel_batted_rate", "hard_hit_percent",
     "k_percent", "bb_percent", "sweet_spot_percent", "xba", "xslg",
+    "whiff_percent", "oz_swing_percent", "xwoba",
   ],
   pitcher: [
     "p_formatted_ip", "barrel_batted_rate", "hard_hit_percent",
     "k_percent", "bb_percent", "whiff_percent", "xba",
+    "oz_swing_percent", "xwoba", "in_zone_percent",
   ],
 };
 
@@ -144,4 +151,68 @@ export function ordinal(n) {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+// Where a value sits in the league's own distribution for one measure.
+//
+// Competitive brief item 3 (mock 3c). The league table is already in memory --
+// one request per side covers every player -- so a percentile is a pass over a
+// Map rather than anything fetched, which is what makes it cheap enough to
+// draw eight of them on a page.
+//
+// `min` filters the population, and it matters more than it looks: without it
+// the denominator is every player who took one plate appearance, several
+// hundred of whom have a 100% or 0% rate on a handful of pitches. That makes
+// every regular look average. 100 PA for a batter and 20 innings for a pitcher
+// are the usual qualifying-ish floors and are what this defaults to.
+const POPULATION_MIN = {
+  batter: { field: "b_total_pa", min: 100 },
+  pitcher: { field: "p_formatted_ip", min: 20 },
+};
+
+function leagueValues(field, kind) {
+  const c = cache[kind];
+  if (!c) return null;
+  const gate = POPULATION_MIN[kind];
+  const out = [];
+  c.byId.forEach((rec) => {
+    if (!rec || rec[field] == null) return;
+    if (gate && rec[gate.field] != null && rec[gate.field] < gate.min) return;
+    out.push(rec[field]);
+  });
+  return out.length >= 30 ? out : null;
+}
+
+// 0-100. Null until the league table has landed, or when the qualifying
+// population is too small to rank against -- never a default of 50, which
+// would read as "exactly average" for a player we simply cannot place.
+export function statcastPercentile(value, field, kind = "batter") {
+  if (value == null) return null;
+  const vals = leagueValues(field, kind);
+  if (!vals) return null;
+  const below = vals.filter((v) => v < value).length;
+  const equal = vals.filter((v) => v === value).length;
+  // Midpoint of the tied block, so a common round value does not land at the
+  // top or bottom of everyone who shares it.
+  return Math.round(((below + equal / 2) / vals.length) * 100);
+}
+
+export function statcastPercentileFor(mlbId, field, kind = "batter") {
+  const rec = statcastFor(mlbId, kind);
+  if (!rec || rec[field] == null) return null;
+  return { value: rec[field], pct: statcastPercentile(rec[field], field, kind) };
+}
+
+// The mean of one measure across a set of players -- a lineup, or a team.
+//
+// Returns the count it was taken over as well as the value, because a mean of
+// four batters and a mean of nine are different claims and the caller has to
+// be able to say which it is showing.
+export function statcastMean(mlbIds, field, kind = "batter") {
+  const vals = (mlbIds || [])
+    .map((id) => statcastFor(id, kind))
+    .filter((r) => r && r[field] != null)
+    .map((r) => r[field]);
+  if (!vals.length) return null;
+  return { value: vals.reduce((a, b) => a + b, 0) / vals.length, n: vals.length };
 }

@@ -35,6 +35,8 @@ import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters } from "./lib/rosters.js";
 import { NFL_STADIUMS, fetchNFLKickoffWeather } from "./lib/weather.js";
+import OpposingLineup from "./OpposingLineup.jsx";
+import PercentilePair from "./PercentilePair.jsx";
 import {
   LOG_SCOPE_DEFAULT, LogScopeControl, PlayoffTag,
   scopeGames, scopeFilterCount, isPlayoffGame, hasLogScopeChoices,
@@ -52,7 +54,7 @@ import { fetchNews, timeAgo } from "./lib/newsdata.js";
 // the matchup screen read the same data.
 import {
   MLB_TEAM_ID_ABBR, MLB_ABBR_TEAM_ID, MLB_STATUS_BADGES, mlbRosterStatusCache,
-  fetchMLBTeamRosterStatus, currentMLBDayKey, mlbHeadshot, mlbAvailability,
+  fetchMLBTeamRosterStatus, currentMLBDayKey, easternDateKey, mlbHeadshot, mlbAvailability,
   MLB_ROSTER_STATUS_TTL_MS,
 } from "./lib/mlbStatus.js";
 import {
@@ -6275,7 +6277,7 @@ function mlbConditions(nextGame, teamAbbr, isPitcher) {
     weather: w
       ? { temp: w.temp != null ? parseInt(w.temp, 10) : null, wind: w.wind || null }
       : null,
-    noForecastReason: w ? null : "unknown",
+    noForecastReason: w ? null : "pregame",
     parkFactors: park
       ? [
           { label: "Home runs", value: park.hr - 100 },
@@ -12556,39 +12558,20 @@ function mlbGameSuffix(slate, game) {
 // Prop Feed's MATCHUP dropdown show only the teams actually playing, sorted
 // by first pitch, and why it only ever needs a single refetch a day.
 
-async function fetchMLBDaySlate() {
-  const dayKey = currentMLBDayKey();
-  if (mlbSlateCache && mlbSlateCache.dayKey === dayKey && Date.now() - mlbSlateCache.fetchedAt < MLB_SLATE_TTL_MS) {
-    return mlbSlateCache.games;
-  }
-  // v2: the cached shape gained home/awayLineupIds below, so a v1 payload
-  // left over in sessionStorage would silently skip the confirmed-lineup
-  // narrowing for the rest of the day.
-  // v3: gained gamePk/gameNumber for doubleheaders (see mlbGameNumber) --
-  // a leftover v2 payload would leave both halves of a doubleheader
-  // indistinguishable, which is the exact case that used to collide.
-  const cacheKey = "mlb_day_slate_v3";
-  try {
-    const stored = sessionStorage.getItem(cacheKey);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < MLB_SLATE_TTL_MS) {
-        mlbSlateCache = parsed;
-        return parsed.games;
-      }
-    }
-  } catch {}
-
-  // `lineups` is hydrated here too (not just in the per-team schedule fetch)
-  // so the Prop Feed can narrow each team to its confirmed batting order off
-  // the same single league-wide request -- see reconcileMlbLineup.
+// One day's games, as the API returns them.
+async function fetchMLBSlateForDay(dayKey) {
   const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dayKey}&hydrate=probablePitcher,lineups`);
   const data = await res.json();
   const rawGames = (data?.dates || []).flatMap((d) => d.games || []);
-  const games = rawGames
+  return rawGames
     .map((g) => ({
       date: g.gameDate,
       status: g.status?.detailedState || "Scheduled",
+      // The coarse state as well as the detailed one. "Final", "Game Over" and
+      // "Completed Early" are three strings that all mean finished, and
+      // deciding whether a slate is spent by string-matching the detailed
+      // field is how a fourth one silently breaks it.
+      finished: g.status?.abstractGameState === "Final",
       // Both halves of a doubleheader are kept (see mlbGameNumber) -- gamePk
       // is the only field guaranteed to differ between them, and gameNumber
       // is MLB's own 1/2 rather than one inferred from slate order.
@@ -12606,6 +12589,61 @@ async function fetchMLBDaySlate() {
         : null,
     }))
     .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+async function fetchMLBDaySlate() {
+  let dayKey = currentMLBDayKey();
+  if (mlbSlateCache && mlbSlateCache.dayKey === dayKey && Date.now() - mlbSlateCache.fetchedAt < MLB_SLATE_TTL_MS) {
+    return mlbSlateCache.games;
+  }
+  // v2: the cached shape gained home/awayLineupIds below, so a v1 payload
+  // left over in sessionStorage would silently skip the confirmed-lineup
+  // narrowing for the rest of the day.
+  // v3: gained gamePk/gameNumber for doubleheaders (see mlbGameNumber) --
+  // a leftover v2 payload would leave both halves of a doubleheader
+  // indistinguishable, which is the exact case that used to collide.
+  // v4: games gained `finished`, and the record's dayKey can now be today
+  // rather than the rolled-back slate day (see the fall-forward below). A
+  // leftover v3 payload would put the feed back on last night.
+  const cacheKey = "mlb_day_slate_v4";
+  try {
+    const stored = sessionStorage.getItem(cacheKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.dayKey === dayKey && Date.now() - parsed.fetchedAt < MLB_SLATE_TTL_MS) {
+        mlbSlateCache = parsed;
+        return parsed.games;
+      }
+    }
+  } catch {}
+
+  // `lineups` is hydrated inside fetchMLBSlateForDay (not just in the per-team
+  // schedule fetch) so the Prop Feed can narrow each team to its confirmed
+  // batting order off the same single league-wide request -- see
+  // reconcileMlbLineup.
+  let games = await fetchMLBSlateForDay(dayKey);
+
+  // Fall forward once last night is spent.
+  //
+  // currentMLBDayKey reports yesterday until 3am ET, which is correct for a
+  // game that started at 10pm and is still going at 1am. It is wrong the
+  // moment those games end: between midnight and 3am the feed was fetching a
+  // slate on which every game was final, printing "NO GAMES LEFT TODAY --
+  // EVERY GAME HAS FINISHED", and building zero rows. MLB was empty for three
+  // hours every night, and they are not idle hours for someone reading up on
+  // a slate.
+  //
+  // Checked against the games rather than the clock, so a west-coast game
+  // running to 1:30am still holds the slate on yesterday, and a night that
+  // finished early rolls on as soon as it actually did.
+  const etKey = easternDateKey();
+  if (etKey !== dayKey && games.length && games.every((g) => g.finished)) {
+    const today = await fetchMLBSlateForDay(etKey);
+    if (today.length) {
+      dayKey = etKey;
+      games = today;
+    }
+  }
 
   const record = { dayKey, games, fetchedAt: Date.now() };
   mlbSlateCache = record;
@@ -15930,7 +15968,16 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // the league and is cached for six hours, so this is a no-op on every page
   // after the first.
   const [, bumpStatcast] = useState(0);
-  React.useEffect(() => { fetchStatcast(isPitcher ? "pitcher" : "batter").then(() => bumpStatcast((v) => v + 1)); }, [isPitcher]);
+  // Both sides on a pitcher page. The pills only ever needed the side whose
+  // page you were on, but the expected lineup and the percentile pair are a
+  // pitcher read against nine batters (competitive brief items 2 and 3), and
+  // with only the pitcher table loaded every batter rate rendered as a dash.
+  // Still two requests at most per session -- each covers the whole league and
+  // is cached for six hours -- so the second one is free after the first page.
+  React.useEffect(() => {
+    const sides = isPitcher ? ["pitcher", "batter"] : ["batter"];
+    Promise.all(sides.map((k) => fetchStatcast(k))).then(() => bumpStatcast((v) => v + 1));
+  }, [isPitcher]);
   const jerseyNumber = useMlbJersey(player.mlbId);
   // Each rail reads its own side's posted lineup. Using the team's list for
   // both would number the opponent's rail against a lineup they aren't in.
@@ -16006,6 +16053,60 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       separated: pitchers.length > 0 && i === pitchers.length,
     }));
   };
+
+  // The batting order he is facing, joined to names and headshots.
+  // Competitive brief item 2 (mock 3b).
+  //
+  // Two sources, and which one is in use is stated rather than blurred: once
+  // MLB posts the order, `oppLineupIds` is that order and the rows are it.
+  // Before then the reconciled roster's own batter order is a projection, and
+  // the block says "Projected" -- the same distinction the board draws on its
+  // game cards, meaning the same thing.
+  const oppLineupBatters = useMemo(() => {
+    const players = (liveOppRoster && liveOppRoster.players) || [];
+    if (!players.length) return [];
+    const ids = (nextGame && nextGame.oppLineupIds) || [];
+    const byId = new Map(players.filter((p) => p.mlbId != null).map((p) => [p.mlbId, p]));
+    const build = (p, i, mlbId) => ({
+      order: i + 1,
+      mlbId,
+      name: p ? p.name : null,
+      pos: p ? p.pos : null,
+      hand: null,
+      headshot: mlbHeadshot(mlbId),
+      status: p ? mlbStatusOf(p) : null,
+    });
+    if (ids.length) {
+      // A posted id with no roster row still gets its slot. Dropping it would
+      // renumber everyone below him, which turns a data gap into a wrong
+      // batting order -- a worse error than a row with a missing name.
+      return ids.map((id, i) => build(byId.get(id) || null, i, id)).filter((b) => b.name);
+    }
+    return players.filter((p) => p.pos !== "SP" && p.pos !== "RP").slice(0, 9).map((p, i) => build(p, i, p.mlbId));
+  }, [liveOppRoster, nextGame]);
+
+  // Only for a pitcher's prop. On a batter's page the lineup he is in is the
+  // rail beside him, and the nine hitters around him say nothing about
+  // whether he gets a hit.
+  const v2ExtraBlocks = isPitcher && oppLineupBatters.length ? (
+    <>
+      <OpposingLineup
+        teamLabel={(liveOppRoster || {}).label}
+        teamAbbr={nextGame && nextGame.opp}
+        batters={oppLineupBatters}
+        posted={!!(nextGame && nextGame.oppLineupIds && nextGame.oppLineupIds.length)}
+        market={market}
+      />
+      <PercentilePair
+        leftLabel={(player && player.name) || "This pitcher"}
+        rightLabel={`${(liveOppRoster || {}).label || (nextGame && nextGame.opp) || "Opponent"}, as a lineup`}
+        leftId={player && player.mlbId}
+        leftKind="pitcher"
+        rightIds={oppLineupBatters.map((b) => b.mlbId).filter((x) => x != null)}
+        rightKind="batter"
+      />
+    </>
+  ) : null;
 
   const v2Def = nextGame && nextGame.opp ? getMLBDefRank(market, nextGame.opp) : null;
   const v2Tier = v2Def ? defTier(v2Def.rank, MLB_TEAMS.length) : null;
@@ -16147,6 +16248,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         odds: null,
         sampleVerdict: `${values.length} games`,
       }}
+      extraBlocks={v2ExtraBlocks}
       conditions={mlbConditions(nextGame, teamAbbr, isPitcher)}
       log={{
         rows: buildLogRows(allGames, filtered, statValueFn),

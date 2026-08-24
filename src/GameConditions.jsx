@@ -66,6 +66,10 @@ export default function GameConditions({
     unknown: "No forecast for this venue yet.",
     pending: "Fetching the forecast…",
     horizon: "Kickoff is more than a week out, which is past what any forecast covers.",
+    // MLB attaches weather to the schedule itself, and only close to first
+    // pitch. "No forecast for this venue" would blame the venue for a game
+    // that simply has not been reported on yet.
+    pregame: "MLB posts conditions closer to first pitch.",
     retractable: "Roof may be closed; whether it is on the day is not published, so no forecast is claimed.",
   }[noForecastReason] || "No forecast for this venue yet.";
 

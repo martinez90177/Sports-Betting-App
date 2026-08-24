@@ -32,6 +32,20 @@ export const mlbHeadshot = (mlbId) => `https://midfield.mlbstatic.com/v1/people/
 
 // The MLB "day". Rolls over at 3am Eastern rather than midnight local, so a
 // west-coast game finishing after midnight still belongs to the day it started.
+// The actual calendar date in ET, with no rollback.
+//
+// currentMLBDayKey below deliberately reports yesterday until 3am, which is
+// right for a cache key -- a game that started at 10pm is still last night's
+// game at 1am. It is wrong for "which slate should the feed show", and those
+// two questions had been sharing one answer. See mlbSlateDayKeys.
+export function easternDateKey() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 export function currentMLBDayKey() {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23",

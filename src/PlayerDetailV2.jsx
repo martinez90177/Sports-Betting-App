@@ -165,6 +165,13 @@ export default function PlayerDetailV2({
   // that is worth -- park factors where a sport has published ones, forecast
   // where the game is outdoors, and a stated reason where neither applies.
   conditions = null,
+  // Blocks only one sport has. Baseball is the only league that publishes a
+  // batting order and a public plate-discipline leaderboard, so the expected
+  // lineup and the percentile pair (competitive brief items 2 and 3) exist
+  // there and nowhere else. A generic slot rather than two named props, so
+  // this component does not grow a baseball-shaped hole the other three
+  // sports pass null into.
+  extraBlocks = null,
   sport,
   // `crumbSelect` is the game switcher, rendered in place of the plain
   // fixture text. The mock prints the fixture as static type because it has
@@ -471,6 +478,8 @@ export default function PlayerDetailV2({
           {filtersOpen && filtersPanel}
 
           {log && log.seasons && <SeasonSplit seasons={log.seasons} />}
+
+          {extraBlocks}
 
           {conditions && <GameConditions {...conditions} />}
 
