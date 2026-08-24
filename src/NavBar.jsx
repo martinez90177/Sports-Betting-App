@@ -25,6 +25,10 @@ export const NAV_TABS = [
   { id: "findings", label: "Findings" },
   { id: "feed", label: "Prop Feed" },
   { id: "news", label: "News" },
+  // Its own destination rather than a rail on News. Sixty-nine players in a
+  // 196px column is a scrollbox; the same list in its own page is readable and
+  // can be filtered by league, which is what Alex asked for.
+  { id: "injuries", label: "Injuries" },
 ];
 
 // Both states share their type. Only colour and the underline differ, which is

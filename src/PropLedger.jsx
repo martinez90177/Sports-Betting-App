@@ -5,7 +5,7 @@ import {
 import PlayerNewsModule from "./PlayerNewsModule.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import { roleValue, roleTiers, clearsRole, roleUnit } from "./lib/role.js";
-import { readFor } from "./lib/support.js";
+import { readFor, wilsonLower, supportBand } from "./lib/support.js";
 import { useSettings, useDisplaySettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits, isFirstRun, markTourDismissed, DEFAULTS } from "./settings.jsx";
 import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
@@ -71,6 +71,7 @@ import {
 const GamesPage = React.lazy(() => import("./GamesPage.jsx"));
 const NewsPageRedesign = React.lazy(() => import("./NewsPageRedesign.jsx"));
 const FindingsPage = React.lazy(() => import("./FindingsPage.jsx"));
+const InjuriesPage = React.lazy(() => import("./InjuriesPage.jsx"));
 const ColorWheel = React.lazy(() => import("./ColorWheel.jsx"));
 
 // Every lazy component needs a Suspense boundary above it. These chunks are
@@ -16093,10 +16094,17 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       const projected = canProject && !pitchers.includes(p) && paOf(p) != null
         ? ordered.indexOf(p) + 1
         : null;
+      // A batter the projection cannot place, on a rail that is otherwise
+      // numbered. Corey Julks has three games and six plate appearances all
+      // season, so there is no honest slot for him -- but leaving a silent gap
+      // between #8 and nothing is indistinguishable from a bug, which is
+      // exactly how Alex read it. The slot renders an em dash and says why.
+      const unplaceable = canProject && !base.order && projected == null && !pitchers.includes(p);
       return {
         ...base,
         order: base.order || projected,
         orderProjected: !base.order && projected != null,
+        orderUnknown: unplaceable,
         // Extra space above the first batter, so the pitchers read as their own
         // short group. Only when there is actually a pitcher above to divide.
         separated: pitchers.length > 0 && i === pitchers.length,
@@ -16222,7 +16230,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       ownRail={{
         label: (v2AwayRoster || {}).label || "Loading…",
         players: railPlayers(v2AwayRoster, v2AwayIsPlayers ? "team" : "opp"),
-        legend: "Dot: green available, amber questionable, red out. Number: batting order — filled once MLB posts it, outlined while it is our projection from plate appearances per game. Neither shown when unknown — never assumed.",
+        legend: "Dot: green available, amber questionable, red out. #: batting order — filled once MLB posts it, outlined while it is our projection from plate appearances per game, #— for a log too short to place. Never assumed.",
       }}
       oppRail={{ label: (v2HomeRoster || {}).label || "Loading…", players: railPlayers(v2HomeRoster, v2AwayIsPlayers ? "opp" : "team") }}
       band={slateCells.band ? {
@@ -18055,6 +18063,16 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // while the line is dragged, that it is off-market and how to put it back;
   // otherwise, how far the average clears it. Rendered under the proposition,
   // in --dim, because both are notes ON the line rather than the line itself.
+  // What the cushion actually is, spelled out.
+  //
+  // It read "+0.9 avg", which names neither the window it is averaged over nor
+  // the number it is 0.9 above -- Alex: "a bit confusing as it doesn't specify
+  // what it is in + to". Both are already known here, and stating them turns a
+  // floating figure into the row's most useful line: how much room the average
+  // has over the number being asked about.
+  const windowWord = sampleWindow === "all" ? "SEASON" : sampleWindow.toUpperCase();
+  const cushionAvg = cushion == null ? null : (direction === "under" ? lineVal - cushion : lineVal + cushion);
+
   const lineNote = adjusted ? (
     <span
       role="button"
@@ -18068,10 +18086,19 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   ) : cushion !== null ? (
     <span
       className="pp-mono"
-      title={`Averages ${cushion >= 0 ? "clear" : "short of"} the line by ${Math.abs(cushion).toFixed(1)} over the ${sampleWindow.toUpperCase()} sample`}
-      style={{ fontSize: 11, color: "var(--dim)", whiteSpace: "nowrap" }}
+      title={`Over the last ${windowWord === "SEASON" ? "season" : windowWord} he averages ${cushionAvg.toFixed(1)}, which is ${Math.abs(cushion).toFixed(1)} ${cushion >= 0 ? "above" : "below"} the ${Number(lineVal).toFixed(1)} line`}
+      // No line value in the text. It overflowed the proposition track by
+      // 25px measured -- and the line is already stated in the proposition
+      // directly above ("OVER 8.5 RECEPTIONS"), so repeating it here was
+      // costing width to say something twice. The title carries the long form.
+      style={{ fontSize: 10.5, color: "var(--dim)", whiteSpace: "nowrap", letterSpacing: "0.04em", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
     >
-      {cushion >= 0 ? "+" : "−"}{Math.abs(cushion).toFixed(1)} avg
+      {windowWord} AVG <span style={{ color: "var(--text-2)" }}>{cushionAvg.toFixed(1)}</span>
+      {" · "}
+      <span style={{ color: cushion >= 0 ? "var(--pos)" : "var(--neg)" }}>
+        {cushion >= 0 ? "+" : "−"}{Math.abs(cushion).toFixed(1)}
+      </span>
+      {" VS LINE"}
     </span>
   ) : null;
 
@@ -18243,6 +18270,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         <span className="pp-display" style={{ fontSize: isNarrow ? 15 : 17, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {r.name}
         </span>
+        {/* The crest beside the abbreviation, both here and on the fixture
+             line below. Three letters is a lookup the reader has to do; the
+             crest is the thing they actually recognise, and every other
+             surface in the app already pairs the two. */}
+        <TeamLogo sport={sport} abbr={r.team} size={14} style={{ flexShrink: 0, alignSelf: "center" }} />
         <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2, var(--dim))", flexShrink: 0 }}>
           {r.team}
         </span>
@@ -18330,18 +18362,21 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
       )}
       {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
            otherwise produce two visually identical rows per prop. */}
-      <span style={{ whiteSpace: "nowrap" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
         {/* "@ NYJ" when the player is on the road, "vs NYJ" at home, and a
              bare opponent when the fixture never said. Away-first with an @
              is how the slate, the board and the player page's breadcrumb all
              write a matchup; this line was the one surface that flattened
              both halves of the season into "vs". */}
-        {venueWord(r.homeGame)}{r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}
+        <span>{venueWord(r.homeGame)}</span>
+        {r.opp && <TeamLogo sport={sport} abbr={r.opp} size={14} style={{ flexShrink: 0 }} />}
+        <span>{r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}
         {/* The streak rides here on the phone only. On desktop it is already
              the second half of the form graph's caption; this card has no
              caption (see FeedFormStrip's `caption` prop), so without this the
              run would go unstated on mobile entirely. */}
         {isNarrow && Math.abs(streak) >= 3 ? ` · ${Math.abs(streak)} ${streak > 0 ? "straight" : "cold"}` : ""}
+        </span>
       </span>
     </div>
   );
@@ -19800,7 +19835,10 @@ const FEED_SECTION_LABEL = { fontSize: 10.5, letterSpacing: "0.14em", textTransf
 
 const FEED_RAIL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
 const FEED_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
-const FEED_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+const FEED_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+// The line under each figure. Every cell in the result strip now carries one,
+// which is what turns four numbers into four statements.
+const FEED_CELL_SUB = { fontFamily: "'Space Mono', monospace", fontSize: 9.5, marginTop: 5, color: "var(--dim)", lineHeight: 1.45 };
 const FEED_KEY_ROW = { display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" };
 
 // One global segmented control for the L5/L10/L20 sample-size window --
@@ -21051,6 +21089,40 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     });
   }, [activeMatchupOptions]);
 
+  // What the result strip says, all of it derived from the rows in view so
+  // that every cell moves when a filter does.
+  //
+  // One pass, memoised on the filtered set: this runs over a few thousand NFL
+  // rows and the strip re-renders on every window and market change.
+  const feedSummary = useMemo(() => {
+    let supported = 0;
+    let thin = 0;
+    let best = null;
+    const games = new Set();
+    const key = sampleWindow;
+    const nKey = key === "l5" ? "n5" : key === "l20" ? "n20" : key === "all" ? "nAll" : "n10";
+    const floor = key === "l5" ? Math.min(minGames, 5) : minGames;
+    filteredRows.forEach((r) => {
+      if (r.gameId) games.add(r.gameId);
+      else if (r.opp) games.add([r.team, r.opp].sort().join("-"));
+      const rate = r[key];
+      const n = r[nKey];
+      if (rate == null || n == null) return;
+      if (n < floor) { thin += 1; return; }
+      // The same lower bound the board ranks on, and the same band. A row
+      // "worth opening" here is a row the board would call Leans or better --
+      // two screens, one definition.
+      const lower = wilsonLower(Math.round(rate * n), n);
+      if (supportBand(lower)) supported += 1;
+      // Ranked on the lower bound, shown as the rate. Ranking on the rate
+      // itself would put 5-of-5 above 40-of-50, which is the overclaiming the
+      // board was rebuilt to remove -- the same bug does not get to walk back
+      // in through a summary cell.
+      if (!best || lower > best.lower) best = { lower, rate, name: r.name, prop: r.subtitle || r.marketLabel };
+    });
+    return { supported, thin, best, games: games.size };
+  }, [filteredRows, sampleWindow, minGames]);
+
   const resultCount = (
     <>
       Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
@@ -21153,20 +21225,47 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // controls -- which is the division the two boxes now draw.
   const v2SummaryStrip = (
     <div style={{
-      display: "flex", alignItems: "center", gap: 0, marginTop: 12,
+      display: "flex", alignItems: "stretch", gap: 0, marginTop: 12,
       background: "var(--surface-sunken)", border: "1px solid var(--line)",
-      borderRadius: 6, overflow: "hidden",
+      borderRadius: 6, overflow: "hidden", flexWrap: "wrap",
     }}>
-      <div style={{ flex: 1.2, minWidth: 0, padding: "12px 18px" }}>
+      <div style={{ flex: "1 1 150px", minWidth: 0, padding: "12px 18px" }}>
         <div style={FEED_CELL_LABEL}>Showing</div>
         <div style={FEED_CELL_VALUE}>{filteredRows.length} of {rows.length}</div>
+        <div style={FEED_CELL_SUB}>{feedSummary.games} {feedSummary.games === 1 ? "game" : "games"} on this slate</div>
       </div>
-      <div style={{ flex: 1.7, minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
-        <div style={FEED_CELL_LABEL}>Thin samples</div>
-        {/* States the rule rather than a count: a rate under the minimum is
-            not hidden, it prints "too few". */}
+      {/* The triage number, which is what this strip was missing.
+           It held "Under 10 games read 'too few'" -- a rule, identical on
+           every load, restating what the cells themselves already print. Alex,
+           on the whole strip: "there's so much empty space there and not a lot
+           in there". These three cells all move when the filters do. */}
+      <div style={{ flex: "1 1 190px", minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
+        <div style={FEED_CELL_LABEL}>Worth opening</div>
+        <div style={{ ...FEED_CELL_VALUE, color: feedSummary.supported ? "var(--amber-ink, var(--amber))" : "var(--dim)" }}>
+          {feedSummary.supported}
+        </div>
+        <div style={FEED_CELL_SUB}>
+          {/* Wilson, the same test the board ranks on -- so "worth opening"
+              here and "Strong/Leans" there can never disagree. */}
+          rate the sample actually supports
+        </div>
+      </div>
+      <div style={{ flex: "1 1 170px", minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
+        <div style={FEED_CELL_LABEL}>Too few</div>
+        <div style={{ ...FEED_CELL_VALUE, color: "var(--dim)" }}>{feedSummary.thin}</div>
+        <div style={FEED_CELL_SUB}>
+          {minGames === MIN_SAMPLE_ALL
+            ? "no minimum set — every row states a rate"
+            : `under ${minGames} games, so no rate is stated`}
+        </div>
+      </div>
+      <div style={{ flex: "1 1 170px", minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
+        <div style={FEED_CELL_LABEL}>Best in view</div>
         <div style={{ ...FEED_CELL_VALUE, fontSize: 14 }}>
-          {minGames === MIN_SAMPLE_ALL ? "Shown at any size" : `Under ${minGames} games read "too few"`}
+          {feedSummary.best ? `${Math.round(feedSummary.best.rate * 100)}% · ${feedSummary.best.name}` : "—"}
+        </div>
+        <div style={FEED_CELL_SUB}>
+          {feedSummary.best ? feedSummary.best.prop : "nothing clears the sample floor yet"}
         </div>
       </div>
     </div>
@@ -23708,6 +23807,22 @@ function newsWirePropLine(status, affects) {
 // which means the WNBA rosters it fetched on mount, plus MLB once those pages
 // have been open. Players reading ACTIVE are only listed when there's a pick of
 // yours riding on them; the rest of a healthy league isn't news.
+// The leagues that publish an availability designation this app can read, and
+// the ones that do not.
+//
+// The gate lives in buildNewsInjuryWire below, and these two lists are what the
+// Injuries page uses to say so out loud. Kept beside it deliberately: a filter
+// row offering NFL and returning nothing would read as "nobody in the NFL is
+// hurt", and that is a worse failure than the missing feed itself.
+const INJURY_FEED_SPORTS = [
+  { id: "wnba", label: "WNBA" },
+  { id: "mlb", label: "MLB" },
+];
+const INJURY_FEED_MISSING = [
+  { id: "nfl", label: "The NFL" },
+  { id: "nba", label: "the NBA" },
+];
+
 function buildNewsInjuryWire(pool, affectsByPlayer, watchingKeys) {
   const rows = [];
   pool.forEach((entry) => {
@@ -23717,11 +23832,17 @@ function buildNewsInjuryWire(pool, affectsByPlayer, watchingKeys) {
     const key = `${entry.sport}:${entry.playerId}`;
     const watching = watchingKeys.has(key);
     if (status === "active" && !watching) return;
+    const affects = affectsByPlayer.get(key);
     rows.push({
       key, sport: entry.sport, name: entry.name, team: entry.team, position: entry.position,
       espnId: entry.espnId, headshotSrc: entry.headshotSrc, fallbackSrc: entry.fallbackSrc,
       status,
-      propLine: newsWirePropLine(status, affectsByPlayer.get(key)),
+      // What goToProp needs to open this player. `marketId` is whichever prop
+      // of theirs the app has a read on, so the click lands on the market the
+      // line beneath the name is talking about rather than the sport default.
+      playerId: entry.playerId,
+      marketId: affects && affects[0] ? affects[0].marketId : undefined,
+      propLine: newsWirePropLine(status, affects),
     });
   });
   // Questionable first -- it's the only one of the three that's still a
@@ -23877,6 +23998,7 @@ const PAGES = [
   { id: "games", label: "Games" },
   { id: "board", label: "The Board" },
   { id: "findings", label: "Findings" },
+  { id: "injuries", label: "Injuries" },
   { id: "nfl", label: "NFL Props" },
   { id: "mlb", label: "MLB Props" },
   { id: "nba", label: "NBA Props" },
@@ -24450,11 +24572,11 @@ export default function PropLedger() {
   // nflDataVersion/wnbaDataVersion bump as the real game logs and rosters
   // resolve, and a rate built before them is the fallback data, not the feed's.
   const newsPlayerPool = useMemo(
-    () => (page === "news" ? buildNewsPlayerPool() : []),
+    () => (page === "news" || page === "injuries" ? buildNewsPlayerPool() : []),
     [page, wnbaDataVersion]
   );
   const newsAffects = useMemo(
-    () => (page === "news" ? buildNewsAffects() : new Map()),
+    () => (page === "news" || page === "injuries" ? buildNewsAffects() : new Map()),
     [page, nflDataVersion, wnbaDataVersion]
   );
   // "Watching" is the app's own slip: a saved, still-unsettled pick on that
@@ -24481,7 +24603,7 @@ export default function PropLedger() {
   // The rail only has room for so many, and on a day with a long injury report
   // the rest are still counted rather than quietly cut (see NEWS_WIRE_LIMIT).
   const newsInjuryWireAll = useMemo(
-    () => (page === "news" ? buildNewsInjuryWire(newsPlayerPool, newsAffects, newsWatching) : []),
+    () => (page === "news" || page === "injuries" ? buildNewsInjuryWire(newsPlayerPool, newsAffects, newsWatching) : []),
     [page, newsPlayerPool, newsAffects, newsWatching]
   );
   const newsInjuryWire = useMemo(() => newsInjuryWireAll.slice(0, NEWS_WIRE_LIMIT), [newsInjuryWireAll]);
@@ -24648,6 +24770,19 @@ export default function PropLedger() {
             onSetSport={setBoardSport}
             onOpenProp={goToProp}
             loading={boardSport === "mlb" && mlb.mlbLoading}
+          />
+        </LazyPane>
+      )}
+      {/* The full wire, not the rail's first handful. NEWS_WIRE_LIMIT exists
+          to keep a rail short; this page has no such problem. */}
+      {page === "injuries" && (
+        <LazyPane minHeight={400}>
+          <InjuriesPage
+            rows={newsInjuryWireAll}
+            coveredSports={INJURY_FEED_SPORTS}
+            uncoveredSports={INJURY_FEED_MISSING}
+            onOpenProp={goToProp}
+            loading={newsInjuryWireAll.length === 0}
           />
         </LazyPane>
       )}

@@ -85,26 +85,31 @@ function RosterRow({ p, sport, onSelect }) {
           lineup" -- the two are one fact for a batter. Absent until the lineup
           posts, and absent for anyone left out of it, so an empty slot here
           never reads as a guess. */}
-      {p.order != null && (
+      {(p.order != null || p.orderUnknown) && (
         <span
-          title={p.orderProjected
-            ? `Projected to bat ${p.order}. MLB has not posted this lineup yet, so this is read from plate appearances per game — a leadoff bat sees about 4.6, a number nine about 3.9.`
-            : `Batting ${p.order} in the posted lineup`}
+          title={p.orderUnknown
+            ? "Too few games logged to place him in the order, so he is listed last rather than given a slot we cannot support."
+            : p.orderProjected
+              ? `Projected to bat ${p.order}. MLB has not posted this lineup yet, so this is read from plate appearances per game — a leadoff bat sees about 4.6, a number nine about 3.9.`
+              : `Batting ${p.order} in the posted lineup`}
           style={{
-            flex: "none", width: 18, height: 18, borderRadius: 4,
-            display: "flex", alignItems: "center", justifyContent: "center",
+            // Wider than it was: a bare "3" in a box reads as a count or a
+            // rank as easily as a lineup slot, and Alex said so. "#3" cannot
+            // be read as anything else.
+            flex: "none", minWidth: 26, height: 18, borderRadius: 4, padding: "0 4px",
+            display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
             fontFamily: MONO, fontSize: 10,
             fontVariantNumeric: "tabular-nums",
             // Filled once the order is real, outlined while it is ours. The
             // number is worth showing either way -- the top of the order is
             // where the most-read players are -- but a projected slot must not
             // look like a posted one.
-            border: `1px solid ${p.orderProjected ? "var(--line)" : "var(--text-2)"}`,
-            background: p.orderProjected ? "transparent" : "var(--surface-sunken)",
-            color: p.orderProjected ? "var(--dim)" : "var(--text-2)",
+            border: `1px solid ${p.orderProjected || p.orderUnknown ? "var(--line)" : "var(--text-2)"}`,
+            background: p.orderProjected || p.orderUnknown ? "transparent" : "var(--surface-sunken)",
+            color: p.orderProjected || p.orderUnknown ? "var(--dim)" : "var(--text-2)",
           }}
         >
-          {p.order}
+          {p.orderUnknown ? "#—" : `#${p.order}`}
         </span>
       )}
     </div>
