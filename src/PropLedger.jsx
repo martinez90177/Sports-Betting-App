@@ -11514,11 +11514,14 @@ const METS_PLAYERS = [
   { id: "semien", name: "Marcus Semien", team: "NYM", pos: "2B", mlbId: 543760 },
   { id: "bichette", name: "Bo Bichette", team: "NYM", pos: "3B", mlbId: 666182 },
   { id: "alvarez", name: "Francisco Alvarez", team: "NYM", pos: "C", mlbId: 682626 },
-  { id: "polanco", name: "Jorge Polanco", team: "NYM", pos: "DH", mlbId: 593871 },
   { id: "robert", name: "Luis Robert Jr.", team: "NYM", pos: "CF", mlbId: 673357 },
   { id: "benge", name: "Carson Benge", team: "NYM", pos: "RF", mlbId: 701807 },
   { id: "taylor", name: "Tyrone Taylor", team: "NYM", pos: "LF", mlbId: 621438 },
   { id: "wagaman", name: "Eric Wagaman", team: "NYM", pos: "1B", mlbId: 676572 },
+  // Polanco placed on the IL 2026-08-19 with left ankle bursitis, headed
+  // for season-ending surgery; Morel (called up 2026-08-17) is getting the
+  // bulk of the DH at-bats in his absence.
+  { id: "morel", name: "Christopher Morel", team: "NYM", pos: "DH", mlbId: 666624 },
   { id: "peralta", name: "Freddy Peralta", team: "NYM", pos: "SP", mlbId: 642547 },
 ];
 
@@ -11585,9 +11588,11 @@ const REDSOX_PLAYERS = [
 const CUBS_PLAYERS = [
   { id: "amaya", name: "Miguel Amaya", team: "CHC", pos: "C", mlbId: 665804 },
   { id: "busch", name: "Michael Busch", team: "CHC", pos: "1B", mlbId: 683737 },
-  { id: "hoerner", name: "Nico Hoerner", team: "CHC", pos: "2B", mlbId: 663538 },
+  // Swanson strained his left oblique (2026-08-16, IL 08-17), a 4-6 week
+  // injury; Hoerner has slid over to short with Triantos taking over second.
+  { id: "triantos", name: "James Triantos", team: "CHC", pos: "2B", mlbId: 701649 },
   { id: "bregman", name: "Alex Bregman", team: "CHC", pos: "3B", mlbId: 608324 },
-  { id: "swanson", name: "Dansby Swanson", team: "CHC", pos: "SS", mlbId: 621020 },
+  { id: "hoerner", name: "Nico Hoerner", team: "CHC", pos: "SS", mlbId: 663538 },
   { id: "happ", name: "Ian Happ", team: "CHC", pos: "LF", mlbId: 664023 },
   { id: "pca", name: "Pete Crow-Armstrong", team: "CHC", pos: "CF", mlbId: 691718 },
   { id: "suzuki", name: "Seiya Suzuki", team: "CHC", pos: "RF", mlbId: 673548 },
@@ -11793,12 +11798,19 @@ const MARLINS_PLAYERS = [
   { id: "junk", name: "Janson Junk", team: "MIA", pos: "SP", mlbId: 676083 },
 ];
 const ATHLETICS_PLAYERS = [
-  { id: "langeliers", name: "Shea Langeliers", team: "ATH", pos: "C", mlbId: 669127 },
+  // Langeliers underwent knee surgery for a torn meniscus (~2026-08-19),
+  // season-ending; Heim takes over full-time behind the plate.
+  { id: "heim", name: "Jonah Heim", team: "ATH", pos: "C", mlbId: 641680 },
   { id: "kurtz", name: "Nick Kurtz", team: "ATH", pos: "1B", mlbId: 701762 },
   { id: "mcneil", name: "Jeff McNeil", team: "ATH", pos: "2B", mlbId: 643446 },
   { id: "twhite", name: "Tommy White", team: "ATH", pos: "3B", mlbId: 695720 },
-  { id: "jwilson", name: "Jacob Wilson", team: "ATH", pos: "SS", mlbId: 805779 },
-  { id: "soderstrom", name: "Tyler Soderstrom", team: "ATH", pos: "LF", mlbId: 691016 },
+  // Wilson placed on the IL 2026-08-20 with a left shoulder injury expected
+  // to keep him out for the rest of the season; Hernaiz recalled from
+  // Triple-A Las Vegas as the primary fill-in at short.
+  { id: "hernaiz", name: "Darell Hernaiz", team: "ATH", pos: "SS", mlbId: 687231 },
+  // Soderstrom underwent season-ending left hip surgery (~2026-08-19-21);
+  // Thomas has started in left in his absence.
+  { id: "cthomas", name: "Colby Thomas", team: "ATH", pos: "LF", mlbId: 687515 },
   { id: "bolte", name: "Henry Bolte", team: "ATH", pos: "CF", mlbId: 703607 },
   { id: "butler", name: "Lawrence Butler", team: "ATH", pos: "RF", mlbId: 671732 },
   { id: "cortes", name: "Carlos Cortes", team: "ATH", pos: "DH", mlbId: 666126 },
