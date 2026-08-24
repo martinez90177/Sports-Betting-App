@@ -2546,6 +2546,21 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const v2Edge = avg - v2LiveLine;
 
   const v2OwnRoster = playerOnTeamA ? matchup.teamA : matchup.teamB;
+  // The rails are pinned to the fixture, not to the selection: away on the
+  // left, home on the right, in the same order as the band directly above
+  // them and the "GS @ MIN" in the breadcrumb.
+  //
+  // They used to be "the selected player's team" and "the other one", which
+  // meant clicking anyone in the right rail swapped both rosters across the
+  // screen. The list under the cursor became a different team mid-click, and
+  // the rails ended up contradicting the band two inches above them -- the
+  // band still said Golden State away, Minnesota home, while the rails had
+  // Minnesota on the left. Reported by Alex from a screen recording.
+  //
+  // `v2OwnRoster` stays the player's own team and keeps feeding the header
+  // and the identity line, which is where "own" actually means something.
+  const v2AwayRoster = matchup.teamA;
+  const v2HomeRoster = matchup.teamB;
   const v2Cells = slateMatchupCells(slateGame, "nba");
 
   const v2Rail = (roster) => ((roster || {}).players || []).map((pl) => ({
@@ -2641,11 +2656,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         ),
       }}
       ownRail={{
-        label: v2OwnRoster.label,
-        players: v2Rail(v2OwnRoster),
+        label: v2AwayRoster.label,
+        players: v2Rail(v2AwayRoster),
         legend: "No availability feed for this league, so no dots — never assumed. No starter flags either, so no starters/bench split.",
       }}
-      oppRail={{ label: gameOppRoster.label, players: v2Rail(gameOppRoster) }}
+      oppRail={{ label: v2HomeRoster.label, players: v2Rail(v2HomeRoster) }}
       // The band is built from the matchup, which is always there. The slate
       // row only adds the two records and a real start time -- when it has no
       // fixture for this game (out of season, or the log's opponent is not who
@@ -8038,6 +8053,22 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const v2Edge = avg - v2LiveLine;
 
   const v2OwnRoster = playerOnTeamA ? teamRoster : oppRoster;
+  // The rails are pinned to the fixture, not to the selection: away on the
+  // left, home on the right, in the same order as the band directly above
+  // them and the "GS @ MIN" in the breadcrumb.
+  //
+  // They used to be "the selected player's team" and "the other one", which
+  // meant clicking anyone in the right rail swapped both rosters across the
+  // screen. The list under the cursor became a different team mid-click, and
+  // the rails ended up contradicting the band two inches above them -- the
+  // band still said Golden State away, Minnesota home, while the rails had
+  // Minnesota on the left. Reported by Alex from a screen recording.
+  //
+  // `v2OwnRoster` stays the player's own team and keeps feeding the header
+  // and the identity line, which is where "own" actually means something.
+  // teamRoster is matchup.teamA, which is always the away side.
+  const v2AwayRoster = teamRoster;
+  const v2HomeRoster = oppRoster;
   const v2Cells = slateMatchupCells(slateGame, "nfl");
 
   // The rail avatar is the app's standard avatar at 32px -- `inset` reveals the
@@ -8119,11 +8150,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         ),
       }}
       ownRail={{
-        label: v2OwnRoster.label,
-        players: v2Rail(v2OwnRoster),
+        label: v2AwayRoster.label,
+        players: v2Rail(v2AwayRoster),
         legend: "No availability feed for this league, so no dots — never assumed. Rail order is the roster's, not a depth chart.",
       }}
-      oppRail={{ label: gameOppRoster.label, players: v2Rail(gameOppRoster) }}
+      oppRail={{ label: v2HomeRoster.label, players: v2Rail(v2HomeRoster) }}
       // The band is built from the matchup, which is always there. The slate
       // row only adds the two records and a real start time -- when it has no
       // fixture for this game (out of season, or the log's opponent is not who
@@ -10562,6 +10593,21 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   const v2Edge = avg - v2LiveLine;
 
   const v2OwnRoster = playerOnTeamA ? matchup.teamA : matchup.teamB;
+  // The rails are pinned to the fixture, not to the selection: away on the
+  // left, home on the right, in the same order as the band directly above
+  // them and the "GS @ MIN" in the breadcrumb.
+  //
+  // They used to be "the selected player's team" and "the other one", which
+  // meant clicking anyone in the right rail swapped both rosters across the
+  // screen. The list under the cursor became a different team mid-click, and
+  // the rails ended up contradicting the band two inches above them -- the
+  // band still said Golden State away, Minnesota home, while the rails had
+  // Minnesota on the left. Reported by Alex from a screen recording.
+  //
+  // `v2OwnRoster` stays the player's own team and keeps feeding the header
+  // and the identity line, which is where "own" actually means something.
+  const v2AwayRoster = matchup.teamA;
+  const v2HomeRoster = matchup.teamB;
   const v2Cells = slateMatchupCells(slateGame, "wnba");
 
   const v2RailRow = (pl) => ({
@@ -10635,7 +10681,8 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // The starters split is a real fact about a real game, but usually the
   // *last* one -- an upcoming game has no box score. The legend says which,
   // rather than letting a prior game's five read as tonight's.
-  const v2StartersNote = starters && starters.byTeam && starters.byTeam[(v2OwnRoster || {}).abbr]
+  // Keyed on the away roster because that is the rail this legend sits under.
+  const v2StartersNote = starters && starters.byTeam && starters.byTeam[(v2AwayRoster || {}).abbr]
     ? `Top five started ${starters.fromThisGame ? "this game" : "the last game"}; the rest are bench. `
     : "";
 
@@ -10680,11 +10727,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         ),
       }}
       ownRail={{
-        label: v2OwnRoster.label,
-        players: v2Rail(v2OwnRoster),
+        label: v2AwayRoster.label,
+        players: v2Rail(v2AwayRoster),
         legend: `Dot: green available, amber questionable, red out; none when unknown — never assumed. ${v2StartersNote}`.trim(),
       }}
-      oppRail={{ label: gameOppRoster.label, players: v2Rail(gameOppRoster) }}
+      oppRail={{ label: v2HomeRoster.label, players: v2Rail(v2HomeRoster) }}
       // The band is built from the matchup, which is always there. The slate
       // row only adds the two records and a real start time -- when it has no
       // fixture for this game (out of season, or the log's opponent is not who
@@ -15722,6 +15769,17 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // projection sorts by their real slot too, and anyone left out of the lineup
   // falls to the end instead of being dropped.
   const isPitcher_ = (p) => p.pos === "SP" || p.pos === "P";
+  // MLB has no teamA/teamB -- its two rosters are "the player's team" and
+  // "the opponent" -- so which one is away comes off the fixture itself.
+  // nextGame.home is true when the *player's* team is at home.
+  //
+  // `side` stays tied to the roster's identity rather than to its side of
+  // the screen: postedIdsFor and railPlayer both use it to pick the right
+  // posted lineup, and swapping that would hang one team's batting order on
+  // the other team's players.
+  const v2AwayIsPlayers = !(nextGame && nextGame.home);
+  const v2AwayRoster = v2AwayIsPlayers ? liveTeamRoster : liveOppRoster;
+  const v2HomeRoster = v2AwayIsPlayers ? liveOppRoster : liveTeamRoster;
   const railPlayers = (roster, side) => {
     const players = (roster || {}).players || [];
     const ids = postedIdsFor(side);
@@ -15746,7 +15804,19 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // drop out individually when the schedule hasn't answered yet rather than
   // printing a placeholder, so the line shortens instead of lying.
   const v2Fixture = [
-    `${(slateCells.band && slateCells.band.awayAbbr) || teamAbbr} @ ${(slateCells.band && slateCells.band.homeAbbr) || (nextGame && nextGame.opp) || ""}`,
+    // Away first, and it has to be worked out rather than assumed. The
+    // fallback here used to be `teamAbbr @ nextGame.opp`, which prints the
+    // player’s own team as the away side every time -- so whenever the slate
+    // band was missing and the player was at home, the crumb stated the
+    // fixture backwards. Keibert Ruiz read “WSH @ COL” on a night the
+    // schedule has COL @ WSH at Nationals Park, and the rails below him,
+    // which read the fixture properly, looked wrong instead.
+    (() => {
+      const band = slateCells.band;
+      if (band && band.awayAbbr && band.homeAbbr) return `${band.awayAbbr} @ ${band.homeAbbr}`;
+      if (!nextGame || !nextGame.opp) return teamAbbr || "";
+      return nextGame.home ? `${nextGame.opp} @ ${teamAbbr}` : `${teamAbbr} @ ${nextGame.opp}`;
+    })(),
     nextGame && nextGame.date ? new Date(nextGame.date).toLocaleDateString(undefined, { weekday: "short" }) : null,
     (slateCells.band && slateCells.band.start) || (nextGame && nextGame.date ? matchupTimeLabel(nextGame.date) : null),
   ].filter(Boolean).join(" · ");
@@ -15787,11 +15857,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         ),
       }}
       ownRail={{
-        label: (liveTeamRoster || {}).label,
-        players: railPlayers(liveTeamRoster, "team"),
+        label: (v2AwayRoster || {}).label || "Loading…",
+        players: railPlayers(v2AwayRoster, v2AwayIsPlayers ? "team" : "opp"),
         legend: "Dot: green available, amber questionable, red out. Number: batting order once the lineup posts. Neither shown when unknown — never assumed.",
       }}
-      oppRail={{ label: (liveOppRoster || {}).label || "Loading…", players: railPlayers(liveOppRoster, "opp") }}
+      oppRail={{ label: (v2HomeRoster || {}).label || "Loading…", players: railPlayers(v2HomeRoster, v2AwayIsPlayers ? "opp" : "team") }}
       band={slateCells.band ? {
         away: { abbr: slateCells.band.awayAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.awayAbbr] || {}).label, record: slateCells.band.awayRecord },
         home: { abbr: slateCells.band.homeAbbr, name: (MLB_TEAM_ROSTERS[slateCells.band.homeAbbr] || {}).label, record: slateCells.band.homeRecord },
@@ -23020,6 +23090,10 @@ const PAGE_IDS = new Set(PAGES.filter((p) => p.id !== "landing").map((p) => p.id
 // them this one too would put two lockups on one screen. Derived from NAV_TABS
 // so the set and the row it describes cannot drift apart.
 const NAV_PAGES = new Set(NAV_TABS.map((t) => t.id));
+// The four player-detail pages the shell can actually render. goToProp checks
+// against this so a caller with a bad sport lands on the feed rather than on a
+// page value nothing matches.
+const PLAYER_PAGES = new Set(["nfl", "mlb", "nba", "wnba"]);
 
 export default function PropLedger() {
   // Read before the page state below, which seeds off it. Safe: PropLedger is
@@ -23472,6 +23546,17 @@ export default function PropLedger() {
   }, [page, boardSport]);
 
   const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
+    // A sport this shell has no page for would set `page` to something no
+    // branch below matches, and the app would render an empty div -- no nav,
+    // no error, nothing to click. That is what a missing `row.sport` on the
+    // board did for months (see BoardRow). The caller is wrong when this
+    // fires, so it says so rather than failing silently, and the reader lands
+    // somewhere real instead of on a blank page.
+    if (!PLAYER_PAGES.has(targetSport)) {
+      console.warn("goToProp: no player page for sport", targetSport, "- staying on the feed");
+      setPage("feed");
+      return;
+    }
     setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now(), meta });
     setPage(targetSport);
   };

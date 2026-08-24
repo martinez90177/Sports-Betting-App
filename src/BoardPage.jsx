@@ -773,6 +773,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                     minGames={minGames}
                     activeSplits={activeSplits}
                     isLast={i === arr.length - 1 && g.rows.length <= CARD_ROWS}
+                    sport={sport}
                     onOpen={onOpenProp}
                   />
                 ))}
@@ -859,7 +860,7 @@ function BoardBandHalf({ sport, side, abbr, record, tone, align }) {
   );
 }
 
-function BoardRow({ row, minGames, activeSplits, isLast, onOpen }) {
+function BoardRow({ row, minGames, activeSplits, isLast, onOpen, sport }) {
   const split = rateFor(row, activeSplits);
   const n = split ? split.n : 0;
   const rate = split ? split.rate : null;
@@ -868,7 +869,12 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen }) {
   // minimum flips the row to TOO FEW rather than showing a percentage over
   // three games.
   const thin = rate == null || n < minGames;
-  const open = row.playerId && onOpen ? () => onOpen(row.sport, row.playerId, row.marketId, { name: row.name, team: row.team }) : null;
+  // `sport` comes from the page, not from the row. It used to read
+  // `row.sport` -- a field none of the four feed-row builders has ever
+  // written -- so every click here called onOpen(undefined, ...), the shell
+  // set its page to undefined, and the whole app rendered blank. The feed's
+  // own rows never hit it because FeedRow passes the page's sport too.
+  const open = row.playerId && onOpen ? () => onOpen(sport, row.playerId, row.marketId, { name: row.name, team: row.team }) : null;
 
   // Verdicts ride the accent, never green or red: green and red mean cleared
   // and fell short on the bars in this same row, and a green verdict pill
