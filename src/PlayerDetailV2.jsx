@@ -583,7 +583,7 @@ export default function PlayerDetailV2({
             </span>
           </div>
 
-          <GameByGame sport={sport} {...chart} />
+          <GameByGame sport={sport} {...chart} pickAdded={pickAdded} onAddPick={onAddPick} />
 
           {filtersOpen && filtersPanel}
 
@@ -607,23 +607,12 @@ export default function PlayerDetailV2({
             />
           )}
 
+          {/* The note stays; the pick button moved up into the chart header.
+              Nothing replaces it here -- two copies of the same control two
+              screens apart is worse than one in the right place. */}
           <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
             <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)", lineHeight: 1.6 }}>
               {footerNote}
-            </span>
-            <span
-              role="button" tabIndex={0} onClick={onAddPick}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAddPick(); } }}
-              style={{
-                marginLeft: "auto", flex: "none", fontFamily: MONO, fontSize: 12,
-                letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer",
-                color: pickAdded ? "var(--amber-ink)" : "#ffffff",
-                background: pickAdded ? "transparent" : "var(--amber)",
-                border: `1px solid var(--amber)`,
-                borderRadius: 4, padding: "14px 20px",
-              }}
-            >
-              {pickAdded ? "✓ On my picks" : "+ Add to my picks"}
             </span>
           </div>
         </div>
@@ -728,6 +717,11 @@ function GameByGame({
   // change, and an index into yesterday's list points at a different game
   // today. A date still means the same game whatever else moved.
   onZoomRange, zoomed, onClearZoom,
+  // The pick control lives in this header rather than under the card. It used
+  // to sit below the game-log table at the foot of the column, which on a
+  // full-length player page is a scroll and a half past the chart the
+  // decision is actually made on. Alex asked for it up here.
+  pickAdded, onAddPick,
 }) {
   // Non-null only while a drag is in progress -- see startDrag.
   const [rawLine, setRawLine] = React.useState(null);
@@ -874,36 +868,68 @@ function GameByGame({
 
   return (
     <div style={{ background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6, padding: "16px 20px 16px" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 14, marginBottom: 4, borderBottom: "1px solid var(--line)" }}>
+      <div className="pp-gbg-head" style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 14, marginBottom: 4, borderBottom: "1px solid var(--line)" }}>
         <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 18 }}>Game by game</span>
         <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
           oldest to newest · bar height is the number{canZoom && !zoomed ? " · drag to zoom" : ""}
         </span>
-        {/* Derived here rather than passed in. Every page was handing this a
-            hard 0, so the mock's own caption had never once rendered -- and it
-            is a fact about the games already on screen, which is exactly the
-            kind of thing the chart should be reading for itself. */}
-        {straightRun > 1 && (
-          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
-            {straightRun} straight {direction === "under" ? "under" : "over"}
-          </span>
-        )}
-        {/* The way back. A zoom narrows the sample every figure on the page
-             reads, so it cannot be a state you can only leave by guessing --
-             it names itself and offers the exit in the same breath. */}
-        {zoomed && (
-          <span
-            role="button" tabIndex={0} onClick={onClearZoom}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClearZoom(); } }}
-            style={{
-              marginLeft: straightRun > 1 ? 12 : "auto", flex: "none", cursor: "pointer",
-              fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
-              color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 4, padding: "4px 9px",
-            }}
-          >
-            Zoomed · {n} games · reset ×
-          </span>
-        )}
+        {/* One group holds everything on the right. Each of these used to
+            claim its own margin-left:auto, and the zoom chip carried a
+            conditional margin to dodge the streak badge -- which works for two
+            and stops working the moment there is a third. They queue here
+            instead, in reading order: what the chart says, what has been done
+            to it, and what you can do about it.
+
+            Centred rather than baseline-aligned: the row's baseline belongs to
+            the 18px title, and a padded control hung off it sits low. */}
+        <div className="pp-gbg-actions" style={{ marginLeft: "auto", alignSelf: "center", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          {/* Derived here rather than passed in. Every page was handing this a
+              hard 0, so the mock's own caption had never once rendered -- and
+              it is a fact about the games already on screen, which is exactly
+              the kind of thing the chart should be reading for itself. */}
+          {straightRun > 1 && (
+            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
+              {straightRun} straight {direction === "under" ? "under" : "over"}
+            </span>
+          )}
+          {/* The way back. A zoom narrows the sample every figure on the page
+              reads, so it cannot be a state you can only leave by guessing --
+              it names itself and offers the exit in the same breath. */}
+          {zoomed && (
+            <span
+              role="button" tabIndex={0} onClick={onClearZoom}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClearZoom(); } }}
+              style={{
+                flex: "none", cursor: "pointer",
+                fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
+                color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 4, padding: "4px 9px",
+              }}
+            >
+              Zoomed · {n} games · reset ×
+            </span>
+          )}
+          {/* Filled while it is an action, outlined once it is a state -- the
+              same two-mode treatment it had at the foot of the page, at the
+              scale of the row it now sits in. */}
+          {onAddPick && (
+            <span
+              className="pp-gbg-pick"
+              role="button" tabIndex={0} aria-pressed={!!pickAdded}
+              title={pickAdded ? "Remove from My Picks" : "Add to My Picks"}
+              onClick={onAddPick}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAddPick(); } }}
+              style={{
+                flex: "none", cursor: "pointer", whiteSpace: "nowrap",
+                fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
+                color: pickAdded ? "var(--amber-ink)" : "#ffffff",
+                background: pickAdded ? "transparent" : "var(--amber)",
+                border: "1px solid var(--amber)", borderRadius: 4, padding: "6px 12px",
+              }}
+            >
+              {pickAdded ? "✓ On my picks" : "+ Add to my picks"}
+            </span>
+          )}
+        </div>
       </div>
 
       <div>

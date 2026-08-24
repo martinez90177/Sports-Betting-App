@@ -1652,3 +1652,30 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
     padding: 3px 8px !important;
   }
 }
+
+
+/* ---------- the game-by-game header, on a phone ----------
+   This row used to hold a title and a caption. It holds a control now --
+   the pick button moved up out of the page footer, where it was a screen
+   and a half below the chart -- and three items on a 327px row squeezed
+   the two-word title into three lines.
+
+   The badges and the button drop to their own row. That hands the title
+   and caption the full width back, and gives the button a tap target
+   worth its name rather than a 153px sliver competing with the heading. */
+@media (max-width: 560px) {
+  .pp-gbg-head { flex-wrap: wrap; }
+  /* margin-left is set inline, so resetting it needs the !important -- a
+     media query does not outrank a style attribute. */
+  .pp-gbg-actions {
+    margin-left: 0 !important;
+    width: 100%;
+    margin-top: 10px;
+  }
+  .pp-gbg-pick {
+    flex: 1 1 auto !important;
+    display: flex; align-items: center; justify-content: center;
+    min-height: var(--tap, 44px);
+    box-sizing: border-box;
+  }
+}
