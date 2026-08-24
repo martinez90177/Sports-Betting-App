@@ -16287,7 +16287,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       ownRail={{
         label: (v2AwayRoster || {}).label || "Loading…",
         players: railPlayers(v2AwayRoster, v2AwayIsPlayers ? "team" : "opp"),
-        legend: "Dot: green available, amber questionable, red out. #: batting order — filled once MLB posts it, outlined while it is our projection from plate appearances per game, #— for a log too short to place. Never assumed.",
+        // The legend names the boxed number rather than a "#", because the
+        // slot dropped its hash: the hash means jersey number here, and it is
+        // on the hero two inches away.
+        legend: "Dot: green available, amber questionable, red out. Boxed number: batting order — filled once MLB posts it, outlined while it is our projection from plate appearances per game, — for a log too short to place. Never assumed.",
       }}
       oppRail={{ label: (v2HomeRoster || {}).label || "Loading…", players: railPlayers(v2HomeRoster, v2AwayIsPlayers ? "opp" : "team") }}
       band={slateCells.band ? {

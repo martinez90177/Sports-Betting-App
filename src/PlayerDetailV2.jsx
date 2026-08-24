@@ -113,10 +113,17 @@ function RosterRow({ p, sport, onSelect }) {
               ? `Projected to bat ${p.order}. MLB has not posted this lineup yet, so this is read from plate appearances per game — a leadoff bat sees about 4.6, a number nine about 3.9.`
               : `Batting ${p.order} in the posted lineup`}
           style={{
-            // Wider than it was: a bare "3" in a box reads as a count or a
-            // rank as easily as a lineup slot, and Alex said so. "#3" cannot
-            // be read as anything else.
-            flex: "none", minWidth: 26, height: 18, borderRadius: 4, padding: "0 4px",
+            // No "#" on this one. The hash means jersey number -- that is what
+            // it says on the hero and in the matchup card -- so putting it on a
+            // lineup slot made one mark stand for two different numbers on the
+            // same page. Alex reserved it for the jersey.
+            //
+            // What the hash was doing here was stopping a bare "3" from reading
+            // as a count or a rank. That job moves to the parts that were
+            // already doing it: the box, the fill (solid once the lineup is
+            // posted, outlined while the slot is ours) and the tooltip. The box
+            // narrows back to one digit's width now that it holds one digit.
+            flex: "none", minWidth: 20, height: 18, borderRadius: 4, padding: "0 4px",
             display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
             fontFamily: MONO, fontSize: 10,
             fontVariantNumeric: "tabular-nums",
@@ -129,7 +136,7 @@ function RosterRow({ p, sport, onSelect }) {
             color: p.orderProjected || p.orderUnknown ? "var(--dim)" : "var(--text-2)",
           }}
         >
-          {p.orderUnknown ? "#—" : `#${p.order}`}
+          {p.orderUnknown ? "—" : p.order}
         </span>
       )}
     </div>
