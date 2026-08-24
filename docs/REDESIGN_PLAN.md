@@ -5,11 +5,11 @@ has been decided. Read this before starting any item. It is committed to the
 repo on purpose: this project is worked on from more than one machine, and
 Claude's own memory does not travel between them.
 
-**Status as of 2026-08-23 — `master` at `e84eac9`, 7 commits unpushed. Items
-1–18 shipped; the v2 rebuild and the transcription pass are complete; data track
-sections A and C complete.** What has happened since the transcription pass is
-Alex reading the built screens and calling changes on them — see "After the
-transcription pass" below.
+**Status as of 2026-08-24 — Items 1–18 shipped; the v2 rebuild and the
+transcription pass are complete; data track sections A and C complete; the
+competitive brief (all eight items) is built.** What has happened since the
+transcription pass is Alex reading the built screens and calling changes on
+them — see "After the transcription pass" and "The competitive brief" below.
 
 ## The five tracks
 
@@ -1547,3 +1547,75 @@ the tutorial — the tutorial spotlights real UI and wants that UI settled. Wort
 weighing against the redesign items: items 16/17 change the surfaces this would
 gate, so building the paywall first means gating screens that are about to be
 rebuilt.
+
+---
+
+# The competitive brief — built 2026-08-24
+
+Design mocked the Outlier/PropsMadness brief as `3a`–`3g` in
+`NEW CLAUDE MOCKS V3/3 - PropPalace Brief Mocks.dc.html` (turn 3). Alex: *"I
+want everything from turn 3 implemented."* All eight items are built.
+
+| Item | Mock | Where it lives |
+|---|---|---|
+| 1 — the games, listed | 3a | `src/PlayerGameLog.jsx`, under the chart on all four player pages |
+| 2 — opposing lineup joined to Savant | 3b | `src/OpposingLineup.jsx`, MLB pitcher pages |
+| 3 — percentiles, both sides | 3c | `src/PercentilePair.jsx`, MLB pitcher pages |
+| 4 — H2H | 3d | A feed column, from `h2hSplit` |
+| 5 — both seasons | 3d | A feed column (lazy) **and** `SeasonSplit` on the player page |
+| 6 — findings as sentences | 3e | `src/FindingsPage.jsx` + `src/lib/findings.js`, its own nav tab |
+| 7 — game conditions | 3f | `src/GameConditions.jsx` + `src/lib/weather.js` |
+| 8 — who has no props | 3g | `WithoutProps` in `BoardPage.jsx`, fed by `FEED_SKIPS` |
+
+Pitch mix and the bullpen block are not built and were not mocked, per the
+brief's own ordering.
+
+## Decisions taken while building it — do not silently reverse
+
+**The prop feed lost its ODDS and LINE columns.** ODDS printed "Coming soon" on
+every row of every sport. LINE printed a number the row already states twice —
+in the proposition and on the chart's draggable tag — and what it alone carried
+(the average cushion, and the way back from a dragged line) moved under the
+proposition as `lineNote`. Together they were 198px of a table that was
+*already* overflowing its card by 164px before H2H was added. Player Detail's
+verdict block still keeps an Odds slot; that is where a real feed lands first.
+
+**Last season is lazy on the feed, eager on the player page.** Prior seasons
+load one player at a time (`usePriorSeasonLog`) and the NFL feed carries ~3,000
+rows, so the column fills only for rows currently on screen — a page of rows is
+a much smaller set of *players*. On the player page both seasons come off the
+merged log that was already in memory. Do not make the feed column eager.
+
+**Findings and the Board both stay.** Asked directly whether one replaces the
+other: no. The Board ranks one number per prop, so a prop that is a coin flip
+on the season and 8-of-8 at home cannot appear on it. Findings runs the splits.
+One is a ranker, the other a search.
+
+**Structural near-certainties are detected by the half-point line, not by
+variance.** The variance test is the principled-looking one and is wrong: FG
+attempts run 1–4, so variance is large while the outcome never changes, and a
+kicker clearing 0.5 attempts 18 straight times led the NFL findings list. 0.5
+is the market's minimum granularity; when the log never crosses it, the line is
+a property of the stat.
+
+**The opposing-lineup ranking has a 100-PA floor.** Without it the Pirates
+lineup led with a call-up at 38.8% K over 49 plate appearances, flagged as the
+batter who most favours the strikeout prop, ahead of a regular at 29% over 536.
+Under the floor a batter keeps his row and his numbers and is simply not
+ranked; the count of who that applies to is stated.
+
+**No API key was added.** MLB weather already arrives on the schedule request
+and reads wind against the field ("6 mph, In From CF"), which a lat/lon
+forecast cannot. NFL weather is Open-Meteo — no key, no account, CORS-open —
+and deliberately reports compass wind only, because turning "220° at 12 mph"
+into "blowing out to right" needs 32 stadium bearings entered by hand.
+
+## Still open on this track
+
+- **3b and 3c are MLB pitcher pages only.** They need a published batting order
+  and a public plate-discipline leaderboard; no other league has both.
+- **The `vs this opponent` finding is thin in the NFL** (teams meet once or
+  twice a year), rich in the WNBA/NBA. Working as intended, worth knowing.
+- **Indoor sports render no conditions block when the slate row has no venue.**
+  There is genuinely nothing to say about conditions for an indoor game, but
+  the venue name would still be worth showing when it is known.

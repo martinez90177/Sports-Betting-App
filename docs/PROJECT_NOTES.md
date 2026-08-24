@@ -334,3 +334,60 @@ Design decisions worth not re-deriving:
 `src/GamesPage.jsx` change removing the `gm-tab` class, and an untracked `dev-mac.sh`.
 
 Related: [[free-data-only-no-fake-edge]]
+
+---
+
+## The MLB feed was empty between midnight and 3am — 2026-08-24
+
+`currentMLBDayKey()` (`src/lib/mlbStatus.js`) reports **yesterday** until 3am
+ET. That is right for a cache key: a game that started at 10pm is still last
+night's game at 1am, and rolling the key at midnight would drop a live game.
+
+It was also the *only* answer to "which slate should the feed show", and those
+are different questions. Between midnight and 3am the feed fetched a slate on
+which every game was final, printed "NO GAMES LEFT TODAY — EVERY GAME HAS
+FINISHED", and built zero rows. MLB was blank for three hours every night —
+and they are not idle hours for someone reading up on a slate.
+
+Found by accident: the Games page showed 10 MLB games with a 6:40 PM start
+while the feed on the same screen said every game had finished. One of them had
+to be wrong.
+
+`fetchMLBDaySlate` now falls forward to `easternDateKey()` once every game on
+the rolled-back day is `abstractGameState === "Final"`. Checked against the
+games, never the clock, so a west-coast game running to 1:30am still holds the
+slate on yesterday. The sessionStorage key went to `mlb_day_slate_v4`, since a
+leftover v3 payload would put the feed straight back on last night.
+
+**If MLB ever looks empty, check the hour before you check anything else.**
+
+## Verification is hostage to the MLB slate
+
+Three of the competitive-brief items are MLB-only, and MLB is the one sport
+whose rows depend on today having games left. Between the bug above and an
+ordinary off-day, "MLB shows nothing" is the normal state for a lot of the
+clock, and it is not evidence of a regression.
+
+When a change touches MLB, drive it through a **pitcher** prop specifically —
+`Strikeouts Thrown`, not `Strikeouts`, which is the batter market and sits
+beside it in the same pill row. The expected lineup and the percentile pair
+only render for a pitcher.
+
+## Savant gives more than the pills asked for
+
+`src/lib/statcast.js` fetches one CSV per side for the whole league, so adding
+a column costs nothing — `whiff_percent`, `oz_swing_percent` (chase) and
+`xwoba` were added for the lineup table and the percentile pair and ride along
+in the same request.
+
+Two things that are easy to get wrong there:
+
+- **Chase% is `oz_swing_percent`.** There is no `chase_percent`.
+- **A percentile needs a qualifying floor or it is meaningless.** Without one
+  the population includes several hundred players with a handful of plate
+  appearances and 100%/0% rates, and every regular lands near the middle.
+  `POPULATION_MIN` is 100 PA for batters, 20 IP for pitchers.
+- A **mean** placed among **individuals** sits nearer the middle than its own
+  members. A nine-batter lineup averaging 25.0% K reads as the 67th percentile
+  while its hitters run to the 90th. Stated in the component's own footnote
+  rather than silently.
