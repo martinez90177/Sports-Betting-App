@@ -137,7 +137,7 @@ export function PlayerHeaderCard({
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
           <span className="oswald" style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em" }}>{name}</span>
           {jersey != null && (
-            <span className={MONO} style={{ fontSize: 19, color: "var(--dim)" }}>{jersey}</span>
+            <span className={MONO} style={{ fontSize: 19, color: "var(--dim)" }}>#{jersey}</span>
           )}
         </div>
 

@@ -418,7 +418,14 @@ export default function PlayerDetailV2({
                 <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
                   <span className="pp-pd-name" style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 46, lineHeight: 1, letterSpacing: "-0.025em" }}>{player.name}</span>
                   {player.jersey != null && (
-                    <span style={{ fontFamily: MONO, fontSize: 24, color: mutedTeamColor(sport, player.team), fontVariantNumeric: "tabular-nums" }}>{player.jersey}</span>
+                    // "#2", not "2". Alex asked for the hash on every number a
+                    // player carries; it went onto the rail’s batting slot and
+                    // was missed here. A bare numeral beside a name reads as a
+                    // count or a rank as easily as a shirt number -- and this
+                    // one sits next to a card that also shows a batting order,
+                    // which is exactly the confusion the hash removes.
+                    // MatchupCardModal has written it this way all along.
+                    <span style={{ fontFamily: MONO, fontSize: 24, color: mutedTeamColor(sport, player.team), fontVariantNumeric: "tabular-nums" }}>#{player.jersey}</span>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
