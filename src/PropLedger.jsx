@@ -11465,7 +11465,9 @@ const MLB_PLAYERS = [
   { id: "chisholm", name: "Jazz Chisholm Jr.", team: "NYY", pos: "2B", mlbId: 665862 },
   { id: "dominguez", name: "Jasson Dominguez", team: "NYY", pos: "RF", mlbId: 691176 },
   { id: "volpe", name: "Anthony Volpe", team: "NYY", pos: "SS", mlbId: 683011 },
-  { id: "mcmahon", name: "Ryan McMahon", team: "NYY", pos: "3B", mlbId: 641857 },
+  // McMahon placed on the 10-day IL (thumb sprain, 2026-08-21); Rosario has
+  // taken over at third in the meantime.
+  { id: "rosario", name: "Amed Rosario", team: "NYY", pos: "3B", mlbId: 642708 },
   { id: "wells", name: "Austin Wells", team: "NYY", pos: "C", mlbId: 669224 },
   // Live probable starter for the 2026-07-26 Phillies game (see MLB_MATCHUPS)
   // -- pos "SP" is what tells TeamRosterPanel to section it off from the
@@ -11514,7 +11516,9 @@ const METS_PLAYERS = [
   { id: "semien", name: "Marcus Semien", team: "NYM", pos: "2B", mlbId: 543760 },
   { id: "bichette", name: "Bo Bichette", team: "NYM", pos: "3B", mlbId: 666182 },
   { id: "alvarez", name: "Francisco Alvarez", team: "NYM", pos: "C", mlbId: 682626 },
-  { id: "polanco", name: "Jorge Polanco", team: "NYM", pos: "DH", mlbId: 593871 },
+  // Polanco placed on the IL for season-ending ankle surgery (2026-08-19);
+  // Morel, recalled from Triple-A, is getting the bulk of the DH at-bats.
+  { id: "morel", name: "Christopher Morel", team: "NYM", pos: "DH", mlbId: 666624 },
   { id: "robert", name: "Luis Robert Jr.", team: "NYM", pos: "CF", mlbId: 673357 },
   { id: "benge", name: "Carson Benge", team: "NYM", pos: "RF", mlbId: 701807 },
   { id: "taylor", name: "Tyrone Taylor", team: "NYM", pos: "LF", mlbId: 621438 },
