@@ -24321,6 +24321,7 @@ export default function PropLedger() {
             loading={boardSport === "mlb" && mlb.mlbLoading}
             slateByTeam={boardSlate}
             timeLabel={slateTimeLabel}
+            playersWithoutProps={playersWithoutProps}
           />
         </LazyPane>
       )}

@@ -66,6 +66,79 @@ const SPLITS = [
 // lists forty rows has gone back to being the feed with headings on it.
 const CARD_ROWS = 3;
 
+// The players this game has no props for, named. Competitive brief item 8
+// (mock 3g), and the other half of the "three strongest shown" line further
+// down the card: that one accounts for rows that exist and are not shown,
+// this one accounts for players no row was ever built for.
+//
+// CLAUDE.md rule 4 says nothing is ever silently dropped. A card listing three
+// props off a forty-man roster obeyed the letter of that -- every row it has,
+// it shows -- while leaving no way to tell a team with four props from a team
+// with four props and thirty-six players whose logs we could not read.
+//
+// The reason is the whole point. "No game log" is a fact about our data, and
+// stating it is a different claim from implying the player is not playing.
+function WithoutProps({ sport, teams, lookup }) {
+  const [open, setOpen] = React.useState(false);
+  const teamKey = (teams || []).join(",");
+  const missing = React.useMemo(() => {
+    if (typeof lookup !== "function") return [];
+    return (teams || []).flatMap((t) => lookup(sport, t).map((m) => ({ ...m, team: t })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookup, sport, teamKey]);
+
+  if (!missing.length) return null;
+
+  return (
+    <div style={{ borderBottom: "1px solid var(--line)" }}>
+      <div
+        role="button" tabIndex={0} aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v); } }}
+        className="pp-mono"
+        style={{
+          display: "flex", alignItems: "center", gap: 10, padding: "10px 20px",
+          fontSize: 11, letterSpacing: "0.06em", color: "var(--amber-ink, var(--amber))",
+          cursor: "pointer", minHeight: "var(--tap, 44px)", boxSizing: "border-box",
+        }}
+      >
+        <span style={{ width: 12 }}>{open ? "\u2212" : "+"}</span>
+        <span>
+          {open
+            ? "Hide the " + missing.length + " without props"
+            : "+" + missing.length + " player" + (missing.length === 1 ? "" : "s") + " without props \u00b7 Show"}
+        </span>
+      </div>
+      {open && (
+        <div style={{ padding: "0 20px 14px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {missing.map((m) => (
+              <span
+                key={m.team + "-" + m.name}
+                className="pp-mono"
+                style={{
+                  fontSize: 10, letterSpacing: "0.04em", color: "var(--text-2, var(--dim))",
+                  border: "1px solid var(--line)", borderRadius: 4, padding: "6px 9px", whiteSpace: "nowrap",
+                }}
+              >
+                {m.name}
+                <span style={{ color: "var(--dim)" }}>{" \u00b7 " + m.team + " \u00b7 " + m.reason}</span>
+              </span>
+            ))}
+          </div>
+          {/* The last sentence is the load-bearing one. A list of absent names
+              on a betting-adjacent screen reads as an injury report unless it
+              says otherwise, and not one of these is an availability call. */}
+          <div className="pp-mono" style={{ fontSize: 9.5, color: "var(--dim)", marginTop: 11, lineHeight: 1.65 }}>
+            Listed with the reason, so an absent player is a stated fact rather than a gap.
+            None of these are assumed unavailable.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // The verdict pill states which side the games actually favour, which is not
 // the same as the row's own direction. `rateFor` counts hits *for the side the
 // row is priced on*, so a row priced under with a 0.70 rate means 70% of games
@@ -206,7 +279,7 @@ function rateFor(row, activeSplits) {
 // while for the synchronous leagues it means the builders really found nothing.
 // Reading the difference off rows.length alone is what makes a slow fetch look
 // like an empty slate.
-export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, loading = false, slateByTeam = null, timeLabel = null }) {
+export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, loading = false, slateByTeam = null, timeLabel = null, playersWithoutProps = null }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
   // See the note in PropLedger: the scale is the sport's, not a fixed 10.
   // The value each sport was last left on, remembered per sport.
@@ -850,6 +923,15 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
                     Three strongest shown · {g.rows.length - CARD_ROWS} more in the feed
                   </div>
                 )}
+                {/* And the players this card has nothing at all for. The line
+                    above accounts for the rows that exist and are not shown;
+                    this accounts for the ones that were never built. Same
+                    rule, other half. */}
+                <WithoutProps
+                  sport={sport}
+                  teams={g.slate ? [g.slate.away.abbr, g.slate.home.abbr] : []}
+                  lookup={playersWithoutProps}
+                />
               </div>
             ))}
           </div>
