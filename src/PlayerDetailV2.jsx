@@ -9,6 +9,7 @@ import MatchupCardModal, { straightRunOf } from "./MatchupCardModal.jsx";
 // arbitrary-column table for the matchup view, with no notion of a split
 // excluding a game.
 import PlayerGameLog, { SeasonSplit } from "./PlayerGameLog.jsx";
+import GameConditions from "./GameConditions.jsx";
 
 // A transcription of `design_handoff_proppalace_v2/Player Detail <SPORT> v2.dc.html`.
 //
@@ -160,6 +161,10 @@ export default function PlayerDetailV2({
   // the WHOLE log, each carrying an `excluded` flag, which is what lets the
   // table keep a filtered-out game visible instead of dropping it.
   log = null,
+  // Competitive brief item 7 (mock 3f). Where the game is played and what
+  // that is worth -- park factors where a sport has published ones, forecast
+  // where the game is outdoors, and a stated reason where neither applies.
+  conditions = null,
   sport,
   // `crumbSelect` is the game switcher, rendered in place of the plain
   // fixture text. The mock prints the fixture as static type because it has
@@ -466,6 +471,8 @@ export default function PlayerDetailV2({
           {filtersOpen && filtersPanel}
 
           {log && log.seasons && <SeasonSplit seasons={log.seasons} />}
+
+          {conditions && <GameConditions {...conditions} />}
 
           {log && log.rows && log.rows.length > 0 && (
             <PlayerGameLog

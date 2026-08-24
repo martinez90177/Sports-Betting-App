@@ -34,6 +34,7 @@ import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters } from "./lib/rosters.js";
+import { NFL_STADIUMS, fetchNFLKickoffWeather } from "./lib/weather.js";
 import {
   LOG_SCOPE_DEFAULT, LogScopeControl, PlayoffTag,
   scopeGames, scopeFilterCount, isPlayoffGame, hasLogScopeChoices,
@@ -2734,6 +2735,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         odds: null,
         sampleVerdict: `${values.length} games`,
       }}
+      conditions={indoorConditions(slateGame)}
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: nbaNextGameForTeam(player?.team),
@@ -6193,6 +6195,124 @@ function useGameRange(resetKey) {
   return { range, setRange, applyRange };
 }
 
+// The forecast at kickoff for an outdoor NFL game, or null with a reason.
+//
+// A hook rather than a value on the row, because unlike everything else on the
+// conditions block this is a network call. It is one call per player page, not
+// per row -- the page is about one game -- so it needs none of the visibility
+// machinery the prior-season column does.
+function useNFLKickoffWeather(homeAbbr, kickoffIso) {
+  const [state, setState] = useState({ weather: null, reason: "pending" });
+  React.useEffect(() => {
+    const park = NFL_STADIUMS[homeAbbr];
+    if (!homeAbbr || !park) { setState({ weather: null, reason: "unknown" }); return undefined; }
+    if (park.roof === "dome") { setState({ weather: null, reason: "dome" }); return undefined; }
+    if (park.roof === "retractable") { setState({ weather: null, reason: "retractable" }); return undefined; }
+    // Past the forecast horizon there is nothing to ask for. Checked before
+    // the request rather than after, because "we asked and got nothing" and
+    // "it is three weeks away" are different sentences and only the second
+    // one is true in September for a January game. Saves the request too.
+    const daysOut = kickoffIso ? (new Date(kickoffIso) - Date.now()) / 86400000 : null;
+    if (daysOut != null && daysOut > 7) { setState({ weather: null, reason: "horizon" }); return undefined; }
+    let cancelled = false;
+    setState({ weather: null, reason: "pending" });
+    fetchNFLKickoffWeather(homeAbbr, kickoffIso).then((w) => {
+      if (cancelled) return;
+      setState(w ? { weather: w, reason: null } : { weather: null, reason: "unknown" });
+    });
+    return () => { cancelled = true; };
+  }, [homeAbbr, kickoffIso]);
+  return state;
+}
+
+// The conditions block for an NFL game, from the two tables above.
+//
+// No park factors: the NFL does not publish anything equivalent, and inventing
+// a home-field number from scoring history would be a projection wearing a
+// published table's clothes. The block is the venue and the forecast, which is
+// all that is real here -- and it still stands when there is no forecast,
+// which is the whole point of drawing the two rows separately.
+function nflConditions(player, nextGame, weatherState) {
+  if (!player || !nextGame) return null;
+  const homeAbbr = nextGame.home ? player.team : nextGame.opp;
+  const park = NFL_STADIUMS[homeAbbr];
+  const w = weatherState && weatherState.weather;
+  return {
+    venue: park ? park.name : null,
+    fixture: nextGame.home ? `${nextGame.opp} @ ${player.team}` : `${player.team} @ ${nextGame.opp}`,
+    time: nextGame.date ? matchupTimeLabel(nextGame.date) : null,
+    weather: w
+      ? {
+          temp: w.temp,
+          wind: w.windMph != null ? `${w.windMph} mph${w.windDir ? " " + w.windDir : ""}` : null,
+          precipPct: w.precipPct,
+        }
+      : null,
+    noForecastReason: weatherState ? weatherState.reason : "pending",
+    parkFactors: [],
+  };
+}
+
+// The conditions block for an MLB game.
+//
+// This is the one sport with a published park-factor table, and the app has
+// carried it since 2026-08-15 -- it was just stranded on the old compact
+// layout, which the v2 page replaced. computeMLBGameConditions still does the
+// blending; this only reshapes its output into the three deviation bars the
+// mock draws, plus the verdict pill.
+function mlbConditions(nextGame, teamAbbr, isPitcher) {
+  if (!nextGame || !nextGame.venue) return null;
+  const homeAbbr = nextGame.home ? teamAbbr : nextGame.opp;
+  const park = MLB_PARK_FACTORS[homeAbbr];
+  const { verdict } = computeMLBGameConditions({ weather: nextGame.weather, homeAbbr });
+  const w = nextGame.weather;
+  return {
+    venue: nextGame.venue,
+    fixture: nextGame.home ? `${nextGame.opp} @ ${teamAbbr}` : `${teamAbbr} @ ${nextGame.opp}`,
+    time: nextGame.date ? matchupTimeLabel(nextGame.date) : null,
+    // MLB's own feed, not Open-Meteo: the Stats API reports wind against the
+    // field ("6 mph, In From CF"), which a lat/lon forecast cannot.
+    weather: w
+      ? { temp: w.temp != null ? parseInt(w.temp, 10) : null, wind: w.wind || null }
+      : null,
+    noForecastReason: w ? null : "unknown",
+    parkFactors: park
+      ? [
+          { label: "Home runs", value: park.hr - 100 },
+          { label: "Runs", value: park.runs - 100 },
+          { label: "Singles", value: park.single - 100 },
+        ]
+      : [],
+    parkEntered: MLB_PARK_FACTORS_ENTERED,
+    // Flipped for a pitcher, which is what the old strip did too: the same
+    // hitter-friendly park is the opposite news depending on whose prop is
+    // open.
+    verdict: isPitcher
+      ? (verdict === "Hitter Friendly" ? "Tough for the pitcher" : verdict === "Pitcher Friendly" ? "Helps the pitcher" : "Neutral")
+      : verdict,
+  };
+}
+
+// Indoor sports. No forecast and no published park factors, so the block is
+// the venue and a sentence saying why there is nothing else -- which is a
+// better answer than the block simply not appearing, because "we have no
+// conditions data" and "conditions do not apply here" are different facts.
+function indoorConditions(slateGame) {
+  if (!slateGame) return null;
+  const venue = slateGame.venue && slateGame.venue.name;
+  const away = slateGame.away && slateGame.away.abbr;
+  const home = slateGame.home && slateGame.home.abbr;
+  if (!venue && !(away && home)) return null;
+  return {
+    venue: venue || null,
+    fixture: away && home ? `${away} @ ${home}` : null,
+    time: slateGame.startsAt ? slateTimeLabel(slateGame.startsAt) : null,
+    weather: null,
+    noForecastReason: "indoor",
+    parkFactors: [],
+  };
+}
+
 // This season and last, as two separate records. Item 5 of the competitive
 // brief (mock 3d).
 //
@@ -7505,6 +7625,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
   // who the slate has this team facing -- this stays null and the kickoff
   // and venue cells below simply do not render.
   const slateGame = usePlayerSlateGame("nfl", player?.team, gameOppAbbr);
+  // Competitive brief item 7. One request per page, not per row: the page is
+  // about one game.
+  const nflNext = nflNextGameForTeam(player?.team);
+  const nflWeather = useNFLKickoffWeather(
+    nflNext ? (nflNext.home ? player?.team : nflNext.opp) : null,
+    nflNext ? nflNext.date : null
+  );
   const gameOppTier = gameOppDef ? nflDefTier(gameOppDef.rank) : null;
   // Once the real defense table has loaded, the rank/rating is points allowed
   // per game for every market, not a per-market split -- so the Game Info
@@ -8305,6 +8432,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         odds: null,
         sampleVerdict: `${values.length} games`,
       }}
+      conditions={nflConditions(player, nflNextGameForTeam(player?.team), nflWeather)}
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValueNFL(g, market)),
         upcoming: nflNextGameForTeam(player?.team),
@@ -10883,6 +11011,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         odds: null,
         sampleVerdict: `${values.length} games`,
       }}
+      conditions={indoorConditions(slateGame)}
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: wnbaNextGameForTeam(player?.team),
@@ -16018,6 +16147,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         odds: null,
         sampleVerdict: `${values.length} games`,
       }}
+      conditions={mlbConditions(nextGame, teamAbbr, isPitcher)}
       log={{
         rows: buildLogRows(allGames, filtered, statValueFn),
         upcoming: nextGame,
