@@ -7,3 +7,7 @@ desktop.ini
 Screen recording for Claude/
 VIDEOS FOR CLAUDE/
 .DS_Store
+
+# Scratch space for rendering design mocks against the dev server.
+public/__mockcheck/
+public/__vid/
