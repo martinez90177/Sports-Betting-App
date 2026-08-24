@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import FeedFormStrip from "./FormGraph.jsx";
-import MinSampleControl, { loadSamplePresets, saveSamplePresets, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
+import MinSampleControl, { loadSamplePresets, saveSamplePresets, seedSampleValue, saveSampleValue, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import { wilsonLower, supportBand, SUPPORT_BANDS } from "./lib/support.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { teamInfo } from "./lib/gamesData.js";
@@ -100,6 +100,41 @@ export function verdictFor(rate, n, minGames, direction) {
   return { label: `${band.word} ${side}`, side, band: band.id, lower, n };
 }
 
+// How full the verdict pill is drawn, 0 to 4.
+//
+// Five states used to be five identical pills with different words, so a
+// genuine "Strong over" and a "Not established" looked the same until you read
+// them. Hue cannot separate them: green and red already mean cleared and fell
+// short on the bars in the same row. Weight was the other obvious reach and is
+// the wrong one -- heavier type on Strong makes it *louder*, which is a
+// different claim from *better supported*, and this product has no editorial
+// voice to be loud in.
+//
+// So the pill grades by quantity of fill, which is what the bands actually
+// measure. Design's own reading (mock 7a): a five-step accent ramp, empty at
+// the bottom and solid at the top, read like a meter that happens to be pill
+// shaped. Same hue, same weight, same size at every step.
+//
+// Mixed from --amber rather than pinned to the hexes the mock drew, because
+// --amber is the user's accent and re-tints from Settings; the percentages are
+// the design, the colour is theirs. Mixing against --surface-1 keeps each step
+// sitting on the card it is drawn on rather than glowing over it.
+const VERDICT_STEP = { strong: 4, leans: 3, slight: 2 };
+export function verdictFill(v) {
+  const step = v.thin ? 0 : v.flat ? 1 : (VERDICT_STEP[v.band] ?? 1);
+  const mix = (pct) => `color-mix(in srgb, var(--amber) ${pct}%, var(--surface-1))`;
+  return {
+    step,
+    background: step === 0 ? "transparent" : step === 4 ? "var(--amber)" : mix([0, 18, 42, 70][step]),
+    // The border carries the step too, so the empty end still reads as a pill
+    // rather than as a gap where a pill should be.
+    border: step === 0 ? "var(--line)" : step >= 3 ? "var(--amber)" : mix(70),
+    // White only once the fill is dark enough to carry it. --dim at the empty
+    // end, accent ink in between.
+    color: step >= 3 ? "var(--accent-on)" : step === 0 ? "var(--dim)" : "var(--amber-ink, var(--amber))",
+  };
+}
+
 // Lineup state for a game card, derived from the rows it holds rather than
 // stored twice. Confirmed / projected / unknown is a *confidence* signal --
 // how settled the slate is -- not a good-or-bad one, so it uses no outcome
@@ -174,11 +209,33 @@ function rateFor(row, activeSplits) {
 export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, loading = false, slateByTeam = null, timeLabel = null }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
   // See the note in PropLedger: the scale is the sport's, not a fixed 10.
-  const [minGames, setMinGames] = useState(() => sampleScale(sport).floor);
+  // The value each sport was last left on, remembered per sport.
+  //
+  // It used to snap back to the sport's floor on every switch, which threw
+  // away a setting the reader had chosen. seedSampleValue restores what
+  // this sport was left on; only a first visit inherits the value being
+  // carried in, and when that cannot stand here it is clamped and says so
+  // rather than moving silently.
+  const [minGames, setMinGames] = useState(() => seedSampleValue(sport, null).value);
   const [samplePresets, setSamplePresets] = useState(() => loadSamplePresets(sport));
+  const [carriedNote, setCarriedNote] = useState(null);
+  // Ref, not state: reading it must not itself cause a render, and it is
+  // only ever consulted at the moment the sport changes.
+  const lastSample = React.useRef({ sport, value: null });
   React.useEffect(() => {
-    setMinGames(sampleScale(sport).floor);
+    const carried = lastSample.current.sport === sport ? null : lastSample.current.value;
+    const seeded = seedSampleValue(sport, carried);
+    setMinGames(seeded.value);
+    setCarriedNote(seeded.note);
     setSamplePresets(loadSamplePresets(sport));
+    lastSample.current = { sport, value: seeded.value };
+  }, [sport]);
+  // Every change is remembered against the sport it was made on.
+  const changeMinGames = React.useCallback((n) => {
+    setMinGames(n);
+    setCarriedNote(null);
+    lastSample.current = { sport, value: n };
+    saveSampleValue(sport, n);
   }, [sport]);
   const [activeSplits, setActiveSplits] = useState(["season"]);
   const [visibleGames, setVisibleGames] = useState(10);
@@ -585,7 +642,8 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
             <MinSampleControl
               sport={sport}
               value={minGames}
-              onChange={setMinGames}
+              onChange={changeMinGames}
+                carriedNote={carriedNote}
               presets={samplePresets}
               onSetPresets={updateSamplePresets}
               compact
@@ -885,7 +943,7 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen, sport }) {
   // "Leans over", which is the exact opposite of what its own games say.
   const v = verdictFor(rate, n, minGames, row.direction);
   const verdict = v.label;
-  const verdictLeans = !v.thin && !v.flat;
+  const verdictStyle = verdictFill(v);
 
   const bars = (split && split.games.length ? split.games : row.recent || []).slice(-8);
 
@@ -968,12 +1026,19 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen, sport }) {
       </div>
 
       <div style={{ textAlign: "right" }}>
-        <span className="pp-mono" style={{
-          display: "inline-block", borderRadius: 999, padding: "5px 10px",
-          fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.06em",
-          color: verdictLeans ? "var(--amber-ink, var(--amber))" : "var(--text-2, var(--dim))",
-          border: `1px solid ${verdictLeans ? "var(--amber)" : "var(--line)"}`,
-        }}>
+        <span
+          className="pp-mono"
+          title={v.n != null && v.lower != null
+            ? `${Math.round(v.lower * 100)}% is the most this sample supports, over ${v.n} games`
+            : undefined}
+          style={{
+            display: "inline-block", borderRadius: 999, padding: "5px 10px",
+            fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.06em",
+            background: verdictStyle.background,
+            color: verdictStyle.color,
+            border: `1px solid ${verdictStyle.border}`,
+          }}
+        >
           {verdict}
         </span>
       </div>

@@ -29,7 +29,7 @@ import TeamLogo from "./TeamLogo.jsx";
 import { usagePills, roleSentence } from "./lib/usagePills.js";
 import { fetchStatcast } from "./lib/statcast.js";
 import { MatchupBand, PlayerHeaderCard, GameByGameChart, ReadingTheGraph } from "./PlayerDetail.jsx";
-import MinSampleControl, { loadSamplePresets, saveSamplePresets, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
+import MinSampleControl, { loadSamplePresets, saveSamplePresets, seedSampleValue, saveSampleValue, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
@@ -19410,11 +19410,33 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // Both seeded from the sport's own scale -- a 10-game minimum is over half
   // an NFL season and a rounding error on a baseball one. Re-seeded on every
   // sport switch by the effect below.
-  const [minGames, setMinGames] = useState(() => sampleScale(sport).floor);
+  // The value each sport was last left on, remembered per sport.
+  //
+  // It used to snap back to the sport's floor on every switch, which threw
+  // away a setting the reader had chosen. seedSampleValue restores what
+  // this sport was left on; only a first visit inherits the value being
+  // carried in, and when that cannot stand here it is clamped and says so
+  // rather than moving silently.
+  const [minGames, setMinGames] = useState(() => seedSampleValue(sport, null).value);
   const [samplePresets, setSamplePresets] = useState(() => loadSamplePresets(sport));
+  const [carriedNote, setCarriedNote] = useState(null);
+  // Ref, not state: reading it must not itself cause a render, and it is
+  // only ever consulted at the moment the sport changes.
+  const lastSample = React.useRef({ sport, value: null });
   React.useEffect(() => {
-    setMinGames(sampleScale(sport).floor);
+    const carried = lastSample.current.sport === sport ? null : lastSample.current.value;
+    const seeded = seedSampleValue(sport, carried);
+    setMinGames(seeded.value);
+    setCarriedNote(seeded.note);
     setSamplePresets(loadSamplePresets(sport));
+    lastSample.current = { sport, value: seeded.value };
+  }, [sport]);
+  // Every change is remembered against the sport it was made on.
+  const changeMinGames = React.useCallback((n) => {
+    setMinGames(n);
+    setCarriedNote(null);
+    lastSample.current = { sport, value: n };
+    saveSampleValue(sport, n);
   }, [sport]);
   const updateSamplePresets = React.useCallback((next) => {
     setSamplePresets(next);
@@ -19779,7 +19801,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setDirection("over");
     setSampleWindow("l10");
     setLinesMode("main");
-    setMinGames(10);
+    // The sport's own floor, not a hardcoded 10 -- reset should land where
+    // this sport opens, which on MLB is 15 and on NFL is 9.
+    changeMinGames(sampleScale(sport).floor);
     setRankLo(1);
     setRankHi(maxRank);
     setSortMode("matchup");
@@ -20445,35 +20469,58 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           All markets
         </span>
       </div>
-      {/* Every market for this sport, as pills. There is no "All" pill: an
-          empty selection already means all props -- that is what the feed
-          reads it as -- so "nothing selected" is the all state, showing as
-          every pill sitting unselected rather than as an extra control that
-          has to be kept in sync with the others. "All markets" clears back
-          to it. */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9, alignItems: "center" }}>
-        {propGroups.flatMap((g) => g.markets).map((m) => {
-          const on = selectedMarkets.includes(m.id);
-          return (
-            <span
-              key={m.id}
-              role="button"
-              aria-pressed={on}
-              tabIndex={0}
-              onClick={() => setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id])}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id]); } }}
-              className="pp-mono"
-              style={{
-                fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
-                background: on ? "var(--amber)" : "transparent",
-                color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
-                border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
-              }}
-            >
-              {m.label}
+      {/* Grouped by section, on one scrolling line (mock 5b).
+          -------------------------------------------------------------------
+          Seventeen equal pills is seventeen equal claims on the eye, sitting
+          permanently above a table whose whole job is to be scanned. The
+          reversal that put them here was right -- these are navigation -- but
+          navigation earns hierarchy, and Pass Yds and XP Made had the same
+          size, weight and colour.
+
+          The grouping is not invented for this: Passing / Rushing / Receiving
+          already exist in the data as PROP_GROUPS. Section labels carry the
+          hierarchy, so nothing goes behind a click -- which is why this beat
+          the other two readings. 5a collapsed to a shelf of six you curate,
+          and on a research tool market choice *is* the navigation, so hiding
+          markets is the wrong thing to charge for.
+
+          There is still no "All" pill. An empty selection already means all
+          props -- that is what the feed reads it as -- so "nothing selected"
+          is the all state, showing as every pill unselected rather than as an
+          extra control to keep in sync. "All markets" clears back to it. */}
+      <div style={{ display: "flex", gap: 18, marginTop: 9, alignItems: "flex-start", overflowX: "auto", paddingBottom: 2 }}>
+        {propGroups.map((g) => (
+          <div key={g.label} style={{ flex: "none", display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="pp-mono" style={{ fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+              {g.label}
             </span>
-          );
-        })}
+            <div style={{ display: "flex", gap: 7 }}>
+              {g.markets.map((m) => {
+                const on = selectedMarkets.includes(m.id);
+                return (
+                  <span
+                    key={m.id}
+                    role="button"
+                    aria-pressed={on}
+                    tabIndex={0}
+                    onClick={() => setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id])}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id]); } }}
+                    className="pp-mono"
+                    style={{
+                      fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      background: on ? "var(--amber)" : "transparent",
+                      color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
+                      border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+                    }}
+                  >
+                    {m.label}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
       <div style={{
         display: "flex", alignItems: "flex-end", gap: 24, flexWrap: "wrap",
@@ -20827,7 +20874,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               <MinSampleControl
                 sport={sport}
                 value={minGames}
-                onChange={setMinGames}
+                onChange={changeMinGames}
+                carriedNote={carriedNote}
                 presets={samplePresets}
                 onSetPresets={updateSamplePresets}
               />
@@ -20872,7 +20920,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             <MinSampleControl
               sport={sport}
               value={minGames}
-              onChange={setMinGames}
+              onChange={changeMinGames}
+                carriedNote={carriedNote}
               presets={samplePresets}
               onSetPresets={updateSamplePresets}
               compact
@@ -20963,17 +21012,27 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                   className="pp-mono"
                   style={FEED_PILL(on)}
                 >
-                  {t.label}{t.min != null ? ` ${t.min}+` : ""}
+                  {/* The tier name, then the threshold as a bare number.
+                       It used to read "Contributors 6+" -- three things said
+                       inside one pill (tier, number, and an implied unit),
+                       which no other pill row in the app does and which left
+                       the section header with nothing to do. The unit lives in
+                       the header now and the number rides here, quieter. */}
+                  {t.label}
+                  {t.min != null && (
+                    <span style={{ marginLeft: 6, fontSize: 9.5, opacity: 0.7, fontVariantNumeric: "tabular-nums" }}>{t.min}</span>
+                  )}
                 </span>
               );
             })}
           </div>
-          {/* Says what it is and what it is not, because the difference is the
-              whole reason the control is called Role. */}
+          {/* One clause, because the header is doing its share now: it names
+              the unit, so this only has to make the one point the unit cannot
+              -- that this is size of role, not prominence. The old version
+              spent three lines denying it was betting volume, which raised the
+              idea in order to reject it. Not naming it is the stronger move. */}
           <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
-            How much of the game a player actually plays, measured. Not betting popularity
-            &mdash; there is no wagering feed here, and a starter on a bad team logs the same
-            minutes as a star.
+            A starter on a bad team logs the same {roleUnit(sport)} as a star.
           </div>
         </div>
 

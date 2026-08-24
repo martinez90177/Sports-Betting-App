@@ -1060,6 +1060,10 @@ select.select-sm:focus, select.select-sm:focus-visible {
 
    Written as a class because a media query cannot live in a style prop, and
    the grid has to be one declaration or the two halves drift. */
+/* Desktop default. It lives here rather than inline because the folded rule
+   below has to override it, and an inline style beats a stylesheet. */
+.pp-pd-tabs { flex-wrap: wrap; }
+
 .pp-pd-grid {
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr) 196px;
@@ -1077,7 +1081,68 @@ select.select-sm:focus, select.select-sm:focus-visible {
      "how much fits" is a function of the sample size as much as the viewport
      -- twenty games at 1400px is tighter than ten at 700px, and a media query
      cannot see the difference. */
-  .pp-pd-verdict { flex-wrap: wrap; row-gap: 14px; }
+  /* The market tabs scroll rather than wrap, and Filters holds the corner.
+     mask-image fades the right edge so a half-cut tab reads as "there is
+     more" instead of as a clipping bug. */
+  .pp-pd-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .pp-pd-tabs::-webkit-scrollbar { display: none; }
+
+  /* The verdict row becomes a card: rate and sentence on the first line,
+     then the metric cells as equal divided columns under a rule -- the same
+     1px rule the context row above uses. !important is not decoration here:
+     these three properties are inline on the elements, and a stylesheet only
+     beats an inline style this way. */
+  .pp-pd-verdict {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    background: var(--surface-1);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px 16px 16px;
+  }
+  .pp-pd-verdict-head { padding-bottom: 12px; }
+  .pp-pd-verdict-cells {
+    margin-left: 0 !important;
+    gap: 0 !important;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .pp-pd-verdict-cells > div {
+    flex: 1;
+    min-width: 0;
+    text-align: left !important;
+    padding-left: 14px;
+    border-left: 1px solid var(--line);
+  }
+  .pp-pd-verdict-cells > div:first-child { padding-left: 0; border-left: none; }
+  /* The sample pill sits with the cells rather than stretching to the card
+     width, which is what align-items: stretch would otherwise do to it. */
+  .pp-pd-verdict-sample { align-self: flex-start; margin-top: 12px; }
+  /* Reserve two lines for every cell label, so a label that wraps
+     ("Clears it by") does not push its own number below the others. */
+  .pp-pd-verdict-cells > div > div:first-child { min-height: 2.2em; }
+}
+
+/* Narrower than about a phone-and-a-half the tab row cannot hold both, so
+   Filters takes its own 44px row underneath -- the same answer the mobile
+   handoff reaches at 390, arrived at one width earlier. */
+@media (max-width: 560px) {
+  .pp-pd-tabrow { flex-direction: column; align-items: stretch; }
+  .pp-pd-filters {
+    margin-left: 0 !important;
+    margin-bottom: 0 !important;
+    margin-top: 10px;
+    align-self: flex-start;
+    min-height: 44px;
+    box-sizing: border-box;
+  }
 }
 
 /* MobilePlayerNav: persistent bottom player-switcher strip + slide-in

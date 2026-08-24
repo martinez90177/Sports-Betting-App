@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;background:#f0eee9;font-family:Archivo,system-ui,sans-serif}
+  a{color:#2a78d6;text-decoration:none}
+  a:hover{color:#12161c}
+  .dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08)}
+  .dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 16px}
+  .dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}
+  .dv-tname{font:600 13px/1.2 Archivo,sans-serif;color:#1a1a1a}
+  .dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+  .dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+  .dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}
+  .dv-olabel{display:flex;align-items:baseline;gap:8px;max-width:640px;font:400 11px/1.4 Archivo,sans-serif;color:rgba(0,0,0,.55)}
+  .dv-card{max-width:100%;background:#0a0b0d;border:1px solid rgba(0,0,0,.2);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.14);overflow:hidden;color:#e8ecf2}
+  .dv-opt:target .dv-oid{background:#2a78d6;color:#fff}
+  .dv-next{margin:22px 0 0;font:12px/1.5 Archivo,sans-serif;color:rgba(0,0,0,.5)}
+  .dv-note{max-width:920px;background:#fff;border:1px solid rgba(0,0,0,.09);border-radius:8px;padding:20px 22px;margin:0 0 26px;font:13px/1.65 Archivo,sans-serif;color:#2b2f36}
+  .dv-note h4{margin:0 0 8px;font:600 11px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(0,0,0,.45)}
+  [data-thin-scroll]::-webkit-scrollbar{width:6px}
+  [data-thin-scroll]::-webkit-scrollbar-track{background:transparent}
+  [data-thin-scroll]::-webkit-scrollbar-thumb{background:#2b2f36;border-radius:3px}
+</style></helmet>
+
+<section class="dv-turn" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Outlier / PropsMadness brief — items 1 to 8</span></div>
+
+<div class="dv-note">
+<h4>Scope</h4>
+<p style="margin:0 0 12px">Seven cards covering the eight build items. Nothing here needs an odds feed: every number is from the game logs, Savant's cached leaderboard, posted lineups, or a static park-factor table. The "do not commission" list is untouched — no odds columns, no implied probability, no line movement.</p>
+<h4>Where each item landed</h4>
+<p style="margin:0">1 → <a class="dv-oid" href="#3a">3a</a> · 2 → <a class="dv-oid" href="#3b">3b</a> · 3 → <a class="dv-oid" href="#3c">3c</a> · 4 and 5 → <a class="dv-oid" href="#3d">3d</a> (both are feed columns, so one card) · 6 → <a class="dv-oid" href="#3e">3e</a> · 7 → <a class="dv-oid" href="#3f">3f</a> · 8 → <a class="dv-oid" href="#3g">3g</a>. Pitch mix and the bullpen block are not mocked, per the brief's own ordering.</p>
+</div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a>Item 1 — the games, listed. Records table, not a second chart. Toggle the header row; excluded-by-split games stay visible and struck through.</div>
+<div class="dv-card" style="width:620px; padding:20px 22px 22px;">
+  <div style="display:flex; align-items:flex-end; gap:14px;">
+    <div>
+      <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:20px;">Garrett Crochet</div>
+      <div style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#8b98ab; margin-top:5px;">Strikeouts over 6.5 · BOS vs NYY</div>
+    </div>
+    <div style="margin-left:auto; text-align:right;">
+      <div style="font-family:'Space Mono',monospace; font-size:20px; font-variant-numeric:tabular-nums; color:{{ logRateColor }};">{{ logRate }}</div>
+      <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:4px; font-variant-numeric:tabular-nums;">{{ logSample }}</div>
+    </div>
+  </div>
+
+  <div style="position:relative; display:flex; align-items:stretch; gap:4px; height:78px; margin-top:16px;">
+    <sc-for list="{{ logBars }}" as="b" hint-placeholder-count="12">
+      <div onClick="{{ b.hover }}" style="flex:1; display:flex; flex-direction:column; justify-content:flex-end; cursor:pointer;">
+        <div style="height:{{ b.h }}px; border-radius:2px 2px 0 0; box-sizing:border-box; background:{{ b.bg }}; border:{{ b.border }}; opacity:{{ b.opacity }};"></div>
+      </div>
+    </sc-for>
+    <span style="position:absolute; left:0; right:0; bottom:{{ logLineY }}px; border-top:1.5px dashed #e8ecf2;"></span>
+  </div>
+
+  <div onClick="{{ toggleLog }}" style="display:flex; align-items:center; gap:10px; margin-top:14px; padding:10px 0; border-top:1px solid #2b2f36; border-bottom:1px solid #2b2f36; cursor:pointer;">
+    <span style="font-family:'Space Mono',monospace; font-size:11px; color:#8fa6ff; width:12px;">{{ logGlyph }}</span>
+    <span style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#e8ecf2;">Game by game</span>
+    <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab;">{{ logCount }}</span>
+  </div>
+
+  <sc-if value="{{ logOpen }}" hint-placeholder-val="{{ true }}">
+    <div data-thin-scroll style="max-height:330px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#2b2f36 transparent;">
+      <div style="display:grid; grid-template-columns:78px 1fr 62px 54px 92px; gap:10px; padding:10px 2px; position:sticky; top:0; background:#0a0b0d; border-bottom:1px solid #2b2f36;">
+        <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Date</span>
+        <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Opponent</span>
+        <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">Result</span>
+        <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">Line</span>
+        <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">Over / under</span>
+      </div>
+      <sc-for list="{{ logRows }}" as="l" hint-placeholder-count="12">
+        <div style="display:grid; grid-template-columns:78px 1fr 62px 54px 92px; gap:10px; padding:9px 2px; border-bottom:1px solid #191c21; opacity:{{ l.opacity }};">
+          <span style="font-family:'Space Mono',monospace; font-size:11px; color:#aab2c0; font-variant-numeric:tabular-nums;">{{ l.date }}</span>
+          <span style="font-family:'Space Mono',monospace; font-size:11px; color:{{ l.oppColor }}; text-decoration:{{ l.strike }};">{{ l.opp }}</span>
+          <span style="font-family:'Space Mono',monospace; font-size:12px; text-align:right; font-variant-numeric:tabular-nums; color:{{ l.resultColor }};">{{ l.result }}</span>
+          <span style="font-family:'Space Mono',monospace; font-size:11px; text-align:right; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ l.line }}</span>
+          <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; text-align:right; color:{{ l.sideColor }};">{{ l.side }}</span>
+        </div>
+      </sc-for>
+      <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; padding:11px 2px 0; line-height:1.6;">{{ logFootnote }}</div>
+    </div>
+  </sc-if>
+</div>
+</div>
+
+<div class="dv-opt" id="3b">
+<div class="dv-olabel"><a class="dv-oid" href="#3b">3b</a>Item 2 — the lineup he is facing, joined to Savant. Order number is the left rail; the batters that most favour the prop lead, the rest collapse.</div>
+<div class="dv-card" style="width:660px; padding:20px 22px 22px;">
+  <div style="display:flex; align-items:baseline; gap:12px;">
+    <span style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Expected lineup · New York Yankees</span>
+    <span style="margin-left:auto; display:flex; align-items:center; gap:7px; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#aab2c0;"><span style="width:6px; height:6px; border-radius:999px; background:#aab2c0; flex:none;"></span>Posted 4:55 PM</span>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:10px; color:#8b98ab; margin-top:8px; line-height:1.6;">{{ lineupSummary }}</div>
+
+  <div style="display:grid; grid-template-columns:26px 1fr 46px 52px 52px 52px 52px; gap:8px; margin-top:16px; padding:9px 0; border-bottom:1px solid #2b2f36;">
+    <span></span>
+    <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Batter</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">PA</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">K%</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">Whiff%</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">Chase%</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; text-align:right;">BB%</span>
+  </div>
+  <sc-for list="{{ lineupRows }}" as="b" hint-placeholder-count="4">
+    <div style="display:grid; grid-template-columns:26px 1fr 46px 52px 52px 52px 52px; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid #191c21; background:{{ b.rowBg }};">
+      <span style="display:flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:4px; font-family:'Space Mono',monospace; font-size:9.5px; color:{{ b.orderFg }}; background:{{ b.orderBg }}; border:1px solid {{ b.orderBorder }};">{{ b.order }}</span>
+      <div style="min-width:0;">
+        <div style="display:flex; align-items:baseline; gap:7px;">
+          <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:13.5px; white-space:nowrap;">{{ b.name }}</span>
+          <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; color:#8b98ab;">{{ b.hand }} · {{ b.pos }}</span>
+        </div>
+        <sc-if value="{{ b.flagged }}" hint-placeholder-val="{{ false }}">
+          <div style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:#8fa6ff; margin-top:3px;">{{ b.flag }}</div>
+        </sc-if>
+      </div>
+      <span style="font-family:'Space Mono',monospace; font-size:11px; text-align:right; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ b.pa }}</span>
+      <span style="font-family:'Space Mono',monospace; font-size:12px; text-align:right; font-variant-numeric:tabular-nums; color:{{ b.kColor }};">{{ b.k }}</span>
+      <span style="font-family:'Space Mono',monospace; font-size:11.5px; text-align:right; color:#aab2c0; font-variant-numeric:tabular-nums;">{{ b.whiff }}</span>
+      <span style="font-family:'Space Mono',monospace; font-size:11.5px; text-align:right; color:#aab2c0; font-variant-numeric:tabular-nums;">{{ b.chase }}</span>
+      <span style="font-family:'Space Mono',monospace; font-size:11.5px; text-align:right; color:#aab2c0; font-variant-numeric:tabular-nums;">{{ b.bb }}</span>
+    </div>
+  </sc-for>
+  <div onClick="{{ toggleLineup }}" style="display:flex; align-items:center; gap:10px; padding:11px 0 0; cursor:pointer;">
+    <span style="font-family:'Space Mono',monospace; font-size:11px; color:#8fa6ff; width:12px;">{{ lineupGlyph }}</span>
+    <span style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#8fa6ff;">{{ lineupToggleLabel }}</span>
+    <span style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; line-height:1.6;">Rates are season to date · Baseball Savant</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="3c">
+<div class="dv-olabel"><a class="dv-oid" href="#3c">3c</a>Item 3 — percentiles, both sides. Two columns with their own split selectors, one bar device reused from the usage pills.</div>
+<div class="dv-card" style="width:660px; padding:20px 22px 22px;">
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+    <div>
+      <div style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;">Crochet</div>
+      <div style="display:flex; gap:4px; margin-top:9px;">
+        <sc-for list="{{ pSplits }}" as="p" hint-placeholder-count="4">
+          <span onClick="{{ p.pick }}" style="flex:1; text-align:center; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.06em; border-radius:4px; padding:6px 2px; cursor:pointer; background:{{ p.bg }}; color:{{ p.fg }}; border:1px solid {{ p.border }};">{{ p.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+    <div>
+      <div style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;">Yankees, as a lineup</div>
+      <div style="display:flex; gap:4px; margin-top:9px;">
+        <sc-for list="{{ tSplits }}" as="t" hint-placeholder-count="4">
+          <span onClick="{{ t.pick }}" style="flex:1; text-align:center; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.06em; border-radius:4px; padding:6px 2px; cursor:pointer; background:{{ t.bg }}; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:18px;">
+    <sc-for list="{{ pctRows }}" as="m" hint-placeholder-count="8">
+      <div style="display:grid; grid-template-columns:1fr 92px 1fr; gap:14px; align-items:center; padding:11px 0; border-top:1px solid #191c21;">
+        <div>
+          <div style="display:flex; align-items:baseline; gap:8px; justify-content:flex-end;">
+            <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ m.pOrd }}</span>
+            <span style="font-family:'Space Mono',monospace; font-size:13px; font-variant-numeric:tabular-nums;">{{ m.pVal }}</span>
+          </div>
+          <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+            <div style="height:4px; border-radius:2px; width:100%; background:#191c21; display:flex; justify-content:flex-end;">
+              <div style="height:4px; border-radius:2px; width:{{ m.pFill }}; background:#3b5bdb;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align:center; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:#aab2c0;">{{ m.label }}</div>
+        <div>
+          <div style="display:flex; align-items:baseline; gap:8px;">
+            <span style="font-family:'Space Mono',monospace; font-size:13px; font-variant-numeric:tabular-nums;">{{ m.tVal }}</span>
+            <span style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ m.tOrd }}</span>
+          </div>
+          <div style="height:4px; border-radius:2px; margin-top:6px; background:#191c21;">
+            <div style="height:4px; border-radius:2px; width:{{ m.tFill }}; background:#8fa6ff;"></div>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:14px; padding-top:12px; border-top:1px solid #2b2f36; line-height:1.6;">Percentile is against the league table already cached for the leaderboard. Bars run outward from the label so the two sides read as a comparison, not a ranking.</div>
+</div>
+</div>
+
+<div class="dv-opt" id="3d">
+<div class="dv-olabel"><a class="dv-oid" href="#3d">3d</a>Items 4 and 5 — H2H and both seasons as feed columns. H2H is where "too few" earns its keep: three meetings never print a percentage.</div>
+<div class="dv-card" style="width:1000px; padding:20px 22px 22px;">
+  <div style="display:flex; align-items:baseline; gap:14px;">
+    <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:19px;">Prop Feed</span>
+    <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab;">Counts first, rate second · H2H is named, not buried in a split</span>
+  </div>
+  <div style="display:grid; grid-template-columns:32px minmax(0,2fr) repeat(6, 82px); gap:10px; align-items:center; margin-top:14px; padding:10px 14px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px 6px 0 0;">
+    <span></span>
+    <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#aab2c0;">Proposition</span>
+    <sc-for list="{{ feedCols }}" as="c" hint-placeholder-count="5">
+      <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; text-align:center; color:{{ c.fg }};">{{ c.label }}</span>
+    </sc-for>
+  </div>
+  <div style="background:#131519; border:1px solid #2b2f36; border-top:none; border-radius:0 0 6px 6px;">
+    <sc-for list="{{ feedRows }}" as="r" hint-placeholder-count="6">
+      <div style="display:grid; grid-template-columns:32px minmax(0,2fr) repeat(6, 82px); gap:10px; align-items:center; padding:12px 14px; border-top:1px solid #2b2f36;">
+        <span onClick="{{ r.togglePick }}" title="{{ r.pickTitle }}" style="display:flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:5px; cursor:pointer; font-family:'Space Mono',monospace; font-size:13px; box-sizing:border-box; color:{{ r.pickFg }}; background:{{ r.pickBg }}; border:1px solid {{ r.pickBorder }};">{{ r.pickGlyph }}</span>
+        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+          <span style="position:relative; flex:none; width:32px; height:32px;">
+            <span style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:999px; background:#191c21; border:1.5px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:9px; color:#8b98ab;">{{ r.initials }}</span>
+            <span style="position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border-radius:999px; box-sizing:border-box; background:{{ r.dotFill }}; border:2px solid #131519;"></span>
+          </span>
+          <div style="min-width:0;">
+            <div style="display:flex; align-items:baseline; gap:7px;">
+              <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:14.5px; white-space:nowrap;">{{ r.name }}</span>
+              <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; color:#8b98ab; white-space:nowrap;">{{ r.game }}</span>
+            </div>
+            <div style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; color:#aab2c0; margin-top:3px;">{{ r.prop }}</div>
+          </div>
+        </div>
+        <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="5">
+          <div style="border-radius:4px; padding:7px 4px; text-align:center; background:{{ c.bg }}; border:1px solid {{ c.border }};">
+            <div style="font-family:'Space Mono',monospace; font-size:13px; font-variant-numeric:tabular-nums; color:{{ c.fg }};">{{ c.pct }}</div>
+            <div style="font-family:'Space Mono',monospace; font-size:9px; color:#8b98ab; margin-top:4px; font-variant-numeric:tabular-nums;">{{ c.sample }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+  <div style="margin-top:14px; padding:13px 16px; background:#0d0f12; border:1px solid {{ slipBorder }}; border-radius:6px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#e8ecf2;">My picks</span>
+      <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; color:#8b98ab;">{{ slipLabel }}</span>
+      <sc-if value="{{ slipAny }}" hint-placeholder-val="{{ false }}">
+        <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; color:#8b98ab;">· {{ slipNote }}</span>
+      </sc-if>
+      <span onClick="{{ clearSlip }}" style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">Clear</span>
+    </div>
+    <sc-if value="{{ slipEmpty }}" hint-placeholder-val="{{ true }}">
+      <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:10px; line-height:1.65;">Nothing added yet. The + beside a row puts it here — a shortlist to work through, with no odds and no payout.</div>
+    </sc-if>
+    <sc-if value="{{ slipAny }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:11px;">
+        <sc-for list="{{ slipRows }}" as="p" hint-placeholder-count="2">
+          <span style="display:flex; align-items:center; gap:9px; border:1px solid #2b2f36; border-radius:5px; padding:7px 10px; background:#131519;">
+            <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:12.5px; white-space:nowrap;">{{ p.name }}</span>
+            <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; color:#aab2c0; white-space:nowrap;">{{ p.prop }}</span>
+            <span onClick="{{ p.remove }}" title="Remove" style="font-family:'Space Mono',monospace; font-size:12px; color:#8b98ab; cursor:pointer;">×</span>
+          </span>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+  <div style="display:flex; gap:22px; margin-top:14px;">
+    <div style="flex:1; font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; line-height:1.7;">H2H reads every meeting in the log, so its sample is usually small — under the support band it states the count and no percentage. Never a bare rate off three games.</div>
+    <div style="flex:1; font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; line-height:1.7;">2026 outranks 2025 by position and weight. Early season, the current column is visibly thin rather than quietly blended into one "Season" number.</div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="3e">
+<div class="dv-olabel"><a class="dv-oid" href="#3e">3e</a>Item 6 — findings as sentences, its own screen. The sentence is the row; the split that makes it qualify sits under it. Filters at the left, suppression rule stated.</div>
+<div class="dv-card" style="width:1180px;">
+  <div style="display:flex; align-items:center; gap:30px; padding:14px 22px; border-bottom:1px solid #2b2f36;">
+    <span style="font-family:'Space Mono',monospace; font-size:12px; letter-spacing:.14em; text-transform:uppercase;">Prop Palace</span>
+    <div style="display:flex; align-items:center; gap:24px; font-family:'Space Mono',monospace; font-size:11.5px; letter-spacing:.12em; text-transform:uppercase;">
+      <span style="color:#aab2c0;">Games</span>
+      <span style="color:#8fa6ff; padding-bottom:4px; border-bottom:2px solid #3b5bdb;">Findings</span>
+      <span style="color:#aab2c0;">The Board</span>
+      <span style="color:#aab2c0;">Prop Feed</span>
+      <span style="color:#aab2c0;">News</span>
+    </div>
+  </div>
+  <div style="display:grid; grid-template-columns:196px minmax(0,1fr); gap:22px; padding:20px 22px 26px;">
+    <div>
+      <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab;">Finding type</div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:10px;">
+        <sc-for list="{{ findingTypes }}" as="f" hint-placeholder-count="3">
+          <span onClick="{{ f.pick }}" style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.06em; border-radius:4px; padding:8px 10px; cursor:pointer; background:{{ f.bg }}; color:{{ f.fg }}; border:1px solid {{ f.border }};">{{ f.label }}<span style="font-size:9px; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ f.count }}</span></span>
+        </sc-for>
+      </div>
+      <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36;">Split</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
+        <sc-for list="{{ findingSplits }}" as="f" hint-placeholder-count="5">
+          <span onClick="{{ f.pick }}" style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; border-radius:4px; padding:6px 9px; cursor:pointer; white-space:nowrap; background:{{ f.bg }}; color:{{ f.fg }}; border:1px solid {{ f.border }};">{{ f.label }}</span>
+        </sc-for>
+      </div>
+      <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; margin-top:20px; padding-top:16px; border-top:1px solid #2b2f36;">Side</div>
+      <div style="display:flex; gap:6px; margin-top:10px;">
+        <sc-for list="{{ findingSides }}" as="f" hint-placeholder-count="3">
+          <span onClick="{{ f.pick }}" style="flex:1; text-align:center; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; border-radius:4px; padding:7px 4px; cursor:pointer; background:{{ f.bg }}; color:{{ f.fg }}; border:1px solid {{ f.border }};">{{ f.label }}</span>
+        </sc-for>
+      </div>
+      <div style="margin-top:20px; padding:12px; border:1px solid #2b2f36; border-radius:6px; background:#0d0f12;">
+        <div style="display:flex; align-items:flex-start; gap:10px;">
+          <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#aab2c0; line-height:1.6; flex:1;">Hide structural near-certainties</div>
+          <span onClick="{{ toggleObvious }}" style="flex:none; width:36px; height:21px; border-radius:999px; cursor:pointer; display:flex; align-items:center; padding:2px; box-sizing:border-box; justify-content:{{ obviousJustify }}; background:{{ obviousBg }}; border:1px solid {{ obviousBorder }};"><span style="width:15px; height:15px; border-radius:999px; background:#e8ecf2;"></span></span>
+        </div>
+        <div style="font-family:'Space Mono',monospace; font-size:9px; color:#8b98ab; margin-top:9px; line-height:1.65;">{{ obviousNote }}</div>
+      </div>
+    </div>
+
+    <div style="min-width:0;">
+      <div style="display:flex; align-items:flex-end; gap:16px;">
+        <div>
+          <h1 style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:29px; margin:0; letter-spacing:-.02em;">Findings</h1>
+          <div style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab; margin-top:6px;">{{ findingSubtitle }}</div>
+        </div>
+        <div style="margin-left:auto; display:flex; gap:2px; border:1px solid #2b2f36; border-radius:6px; padding:2px; background:#0d0f12;">
+          <sc-for list="{{ findingSorts }}" as="f" hint-placeholder-count="3">
+            <span onClick="{{ f.pick }}" style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; border-radius:4px; padding:7px 11px; cursor:pointer; white-space:nowrap; background:{{ f.bg }}; color:{{ f.fg }};">{{ f.label }}</span>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+        <sc-for list="{{ findings }}" as="f" hint-placeholder-count="6">
+          <div style="display:flex; align-items:stretch; gap:16px; padding:15px 18px; background:#131519; border:1px solid #2b2f36; border-radius:6px;">
+            <div style="min-width:0; flex:1;">
+              <div style="font-size:15.5px; line-height:1.5; color:#e8ecf2; text-wrap:pretty;">{{ f.sentence }}</div>
+              <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:11px;">
+                <sc-for list="{{ f.tags }}" as="t" hint-placeholder-count="3">
+                  <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; border-radius:4px; padding:5px 8px; color:{{ t.fg }}; border:1px solid {{ t.border }};">{{ t.label }}</span>
+                </sc-for>
+                <span style="font-family:'Space Mono',monospace; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#8b98ab; padding:5px 0;">{{ f.game }}</span>
+              </div>
+            </div>
+            <div style="flex:none; width:118px; display:flex; flex-direction:column; justify-content:center; gap:7px; padding-left:16px; border-left:1px solid #2b2f36;">
+              <div style="display:flex; align-items:baseline; gap:8px;">
+                <span style="font-family:'Space Mono',monospace; font-size:19px; font-variant-numeric:tabular-nums; color:{{ f.rateColor }};">{{ f.rate }}</span>
+                <span style="font-family:'Space Mono',monospace; font-size:9px; color:#8b98ab; font-variant-numeric:tabular-nums;">{{ f.sample }}</span>
+              </div>
+              <div style="position:relative; display:flex; align-items:stretch; gap:2px; height:26px;">
+                <sc-for list="{{ f.bars }}" as="b" hint-placeholder-count="10">
+                  <div style="flex:1; display:flex; flex-direction:column; justify-content:flex-end;">
+                    <div style="height:{{ b.h }}px; border-radius:1px 1px 0 0; box-sizing:border-box; background:{{ b.bg }}; border:{{ b.border }};"></div>
+                  </div>
+                </sc-for>
+                <span style="position:absolute; left:0; right:0; bottom:{{ f.lineY }}px; border-top:1px dashed #e8ecf2;"></span>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px; margin-top:16px;">
+        <span style="font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:4px; padding:10px 15px; cursor:pointer;">Load 20 more findings</span>
+        <span style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; line-height:1.7;">Every finding names its split and its sample. A streak under the support band is stated as a count of games, never as a rate.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="3f">
+<div class="dv-olabel"><a class="dv-oid" href="#3f">3f</a>Item 7 — conditions. Park factors are static and always present; weather is a dependency, so toggle it off and the block still stands.</div>
+<div class="dv-card" style="width:520px; padding:20px 22px 22px;">
+  <div style="display:flex; align-items:baseline; gap:12px;">
+    <span style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:17px;">Fenway Park</span>
+    <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab;">NYY @ BOS · 7:10 PM</span>
+    <span onClick="{{ toggleWeather }}" style="margin-left:auto; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#8fa6ff; cursor:pointer;">{{ weatherToggleLabel }}</span>
+  </div>
+
+  <sc-if value="{{ weatherOn }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex; align-items:center; gap:18px; margin-top:14px; padding:12px 14px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px;">
+      <div>
+        <div style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Temp</div>
+        <div style="font-family:'Space Mono',monospace; font-size:15px; margin-top:5px; font-variant-numeric:tabular-nums;">84°F</div>
+      </div>
+      <div style="padding-left:18px; border-left:1px solid #2b2f36;">
+        <div style="font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:#8b98ab;">Wind</div>
+        <div style="font-family:'Space Mono',monospace; font-size:15px; margin-top:5px; font-variant-numeric:tabular-nums;">10 mph L→R</div>
+      </div>
+      <div style="margin-left:auto; text-align:right; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#8b98ab; line-height:1.6;">Forecast at first pitch</div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ weatherOff }}" hint-placeholder-val="{{ false }}">
+    <div style="margin-top:14px; padding:12px 14px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px; font-family:'Space Mono',monospace; font-size:10px; color:#8b98ab; line-height:1.6;">No forecast for this park yet. Park factors below are unaffected.</div>
+  </sc-if>
+
+  <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#8b98ab; margin-top:18px;">Park factor · 3-year</div>
+  <div style="display:flex; flex-direction:column; gap:9px; margin-top:11px;">
+    <sc-for list="{{ parkFactors }}" as="p" hint-placeholder-count="4">
+      <div style="display:grid; grid-template-columns:78px 1fr 58px; gap:12px; align-items:center;">
+        <span style="font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#aab2c0;">{{ p.label }}</span>
+        <div style="position:relative; height:6px; border-radius:3px; background:#191c21;">
+          <span style="position:absolute; left:50%; top:-3px; bottom:-3px; width:1px; background:#2b2f36;"></span>
+          <div style="position:absolute; top:0; height:6px; border-radius:3px; left:{{ p.left }}; width:{{ p.width }}; background:{{ p.color }};"></div>
+        </div>
+        <span style="font-family:'Space Mono',monospace; font-size:12px; text-align:right; font-variant-numeric:tabular-nums; color:{{ p.color }};">{{ p.value }}</span>
+      </div>
+    </sc-for>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px; margin-top:16px; padding-top:14px; border-top:1px solid #2b2f36;">
+    <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#8fa6ff; border:1px solid #3b5bdb; border-radius:999px; padding:5px 11px;">Hitter friendly</span>
+    <span style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; line-height:1.6; flex:1;">Published park factors, not a projection. Bars run either side of league average.</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="3g">
+<div class="dv-olabel"><a class="dv-oid" href="#3g">3g</a>Item 8 — the count of what is not listed, as a control. CLAUDE.md rule 4 made visible.</div>
+<div class="dv-card" style="width:520px; padding:20px 22px 22px;">
+  <div style="font-family:'Space Mono',monospace; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:#8b98ab;">Boston Red Sox · props on this game</div>
+  <div style="margin-top:12px;">
+    <sc-for list="{{ withLines }}" as="r" hint-placeholder-count="3">
+      <div style="display:flex; align-items:center; gap:11px; padding:11px 0; border-bottom:1px solid #191c21;">
+        <span style="position:relative; flex:none; width:30px; height:30px;">
+          <span style="display:flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:999px; background:#191c21; border:1.5px solid #2b2f36; box-sizing:border-box; font-family:'Space Mono',monospace; font-size:9px; color:#8b98ab;">{{ r.initials }}</span>
+          <span style="position:absolute; right:-1px; bottom:-1px; width:9px; height:9px; border-radius:999px; box-sizing:border-box; background:{{ r.dotFill }}; border:2px solid #0a0b0d;"></span>
+        </span>
+        <div style="min-width:0; flex:1;">
+          <div style="font-family:'Bricolage Grotesque',sans-serif; font-weight:600; font-size:14px;">{{ r.name }}</div>
+          <div style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:#8b98ab; margin-top:3px;">{{ r.prop }}</div>
+        </div>
+        <span style="font-family:'Space Mono',monospace; font-size:14px; font-variant-numeric:tabular-nums; color:{{ r.rateColor }};">{{ r.rate }}</span>
+      </div>
+    </sc-for>
+  </div>
+  <div onClick="{{ toggleNoLines }}" style="display:flex; align-items:center; gap:10px; padding:12px 0 0; cursor:pointer;">
+    <span style="font-family:'Space Mono',monospace; font-size:11px; color:#8fa6ff; width:12px;">{{ noLinesGlyph }}</span>
+    <span style="font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.06em; color:#8fa6ff;">{{ noLinesLabel }}</span>
+  </div>
+  <sc-if value="{{ noLinesOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="margin-top:12px; padding:12px 14px; background:#0d0f12; border:1px solid #2b2f36; border-radius:6px;">
+      <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        <sc-for list="{{ noLinePlayers }}" as="p" hint-placeholder-count="8">
+          <span style="font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.04em; color:#aab2c0; border:1px solid #2b2f36; border-radius:4px; padding:6px 9px; white-space:nowrap;">{{ p.name }}<span style="color:#8b98ab;"> · {{ p.reason }}</span></span>
+        </sc-for>
+      </div>
+      <div style="font-family:'Space Mono',monospace; font-size:9.5px; color:#8b98ab; margin-top:11px; line-height:1.65;">Listed with the reason, so an absent player is a stated fact rather than a gap. None of these are assumed unavailable.</div>
+    </div>
+  </sc-if>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "build <a class="dv-oid" href="#3e">3e</a> out to a full slate with the ranking rule" · "put <a class="dv-oid" href="#3a">3a</a> and <a class="dv-oid" href="#3b">3b</a> together on one pitcher page" · "mock the Matchup Card with <a class="dv-oid" href="#3f">3f</a> in it"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1300,&quot;height&quot;:1100}}">
+// One pitcher's log, used by 3a. Real-shaped: strikeouts per start, with the
+// date and opponent each came from, and the upcoming start last.
+const LOG = [
+  { date:'Apr 04', opp:'@ TOR', v:8, line:6.5, split:'away' },
+  { date:'Apr 10', opp:'vs BAL', v:5, line:6.5, split:'home' },
+  { date:'Apr 16', opp:'vs TB', v:9, line:6.5, split:'home' },
+  { date:'Apr 22', opp:'@ NYY', v:7, line:6.5, split:'away' },
+  { date:'Apr 28', opp:'@ CLE', v:11, line:7.5, split:'away' },
+  { date:'May 04', opp:'vs SEA', v:4, line:6.5, split:'home' },
+  { date:'May 11', opp:'vs NYY', v:8, line:6.5, split:'home' },
+  { date:'May 17', opp:'@ DET', v:6, line:6.5, split:'away' },
+  { date:'May 23', opp:'vs MIN', v:10, line:7.5, split:'home' },
+  { date:'May 29', opp:'@ TB', v:5, line:6.5, split:'away' },
+  { date:'Jun 04', opp:'vs NYY', v:7, line:6.5, split:'home' },
+  { date:'Jun 10', opp:'@ BAL', v:9, line:6.5, split:'away' },
+];
+const UPCOMING = { date:'Jun 16', opp:'vs NYY', line:6.5 };
+
+// 3b — the expected lineup, joined to the cached Savant leaderboard.
+const LINEUP = [
+  { order:1, name:'Ben Rice', hand:'L', pos:'DH', pa:412, k:24.8, whiff:29.1, chase:24.2, bb:9.4 },
+  { order:2, name:'Aaron Judge', hand:'R', pos:'RF', pa:498, k:25.1, whiff:30.4, chase:21.7, bb:16.2 },
+  { order:3, name:'Cody Bellinger', hand:'L', pos:'LF', pa:441, k:16.9, whiff:21.8, chase:28.6, bb:7.1 },
+  { order:4, name:'Giancarlo Stanton', hand:'R', pos:'DH', pa:301, k:31.2, whiff:34.7, chase:26.9, bb:8.8 },
+  { order:5, name:'Anthony Volpe', hand:'R', pos:'SS', pa:455, k:27.6, whiff:31.2, chase:30.4, bb:6.9 },
+  { order:6, name:'Austin Wells', hand:'L', pos:'C', pa:388, k:28.9, whiff:32.6, chase:25.1, bb:9.2 },
+  { order:7, name:'Jazz Chisholm Jr.', hand:'L', pos:'2B', pa:421, k:26.4, whiff:30.9, chase:29.8, bb:8.4 },
+  { order:8, name:'Trent Grisham', hand:'L', pos:'CF', pa:366, k:24.1, whiff:27.8, chase:22.4, bb:11.6 },
+  { order:9, name:'Oswaldo Cabrera', hand:'R', pos:'3B', pa:288, k:19.7, whiff:23.4, chase:31.2, bb:6.2 },
+];
+
+// 3c — two-sided percentiles. Values are the rate; pct is the league percentile
+// the cached leaderboard already supports computing.
+const PCT = [
+  { label:'K%',       p:[28.4, 82], t:[25.1, 71], unit:'%' },
+  { label:'Whiff%',   p:[31.2, 79], t:[29.4, 68], unit:'%' },
+  { label:'Chase%',   p:[29.8, 64], t:[26.7, 41], unit:'%' },
+  { label:'CSW%',     p:[31.6, 86], t:[29.1, 58], unit:'%' },
+  { label:'BB%',      p:[6.8, 74],  t:[9.7, 81],  unit:'%' },
+  { label:'Contact%', p:[72.1, 26], t:[74.6, 38], unit:'%' },
+  { label:'xBA',      p:[0.221, 77], t:[0.248, 62], unit:'' },
+  { label:'xwOBA',    p:[0.288, 81], t:[0.324, 69], unit:'' },
+];
+
+// 3d — feed rows carrying L5 / L10 / L20 / H2H / 2026 / 2025.
+const FEED = [
+  { name:'Aaron Judge', game:'NYY @ BOS', prop:'Total bases over 1.5', avail:'available',
+    l5:[3,2,1,4,3], l10:[3,2,1,4,3,0,3,3,0,3], l20:[3,2,1,4,3,0,3,3,0,3,4,2,1,0,5,1,4,1,0,5], h2h:[3,1,2], y26:0.58, y25:0.54 },
+  { name:'Juan Soto', game:'NYY @ BOS', prop:'Hits over 0.5', avail:'available',
+    l5:[2,2,0,2,3], l10:[2,2,0,2,3,0,2,2,0,2], l20:[2,2,0,2,3,0,2,2,0,2,2,2,0,0,4,0,3,1,0,3], h2h:[2,0,1,2,1,0,2], y26:0.71, y25:0.66 },
+  { name:'Rafael Devers', game:'NYY @ BOS', prop:'H+R+RBI over 1.5', avail:'questionable',
+    l5:[2,1,2,2,3], l10:[2,1,2,2,3,0,3,3,0,2], l20:[2,1,2,2,3,0,3,3,0,2,3,2,1,0,4,1,3,0,1,3], h2h:[2,3,1,0,2,2,1,3,0,1,2,2], y26:0.62, y25:0.49 },
+  { name:'Shohei Ohtani', game:'LAD @ SD', prop:'Home runs over 0.5', avail:'available',
+    l5:[1,0,1,2,0], l10:[1,0,1,2,0,0,1,1,0,1], l20:[1,0,1,2,0,0,1,1,0,1,0,2,1,0,1,0,1,1,0,2], h2h:[1,0,0,1], y26:0.44, y25:0.41 },
+  { name:'Yordan Alvarez', game:'HOU @ SEA', prop:'Total bases over 1.5', avail:'available',
+    l5:[4,1,2,3,0], l10:[4,1,2,3,0,2,4,1,3,2], l20:[4,1,2,3,0,2,4,1,3,2,2,5,1,0,3,2,4,0,2,3], h2h:[4,2,1,3,0,2,3,1,2], y26:0.55, y25:0.60 },
+  { name:'Julio Rodríguez', game:'HOU @ SEA', prop:'H+R+RBI over 1.5', avail:'available',
+    l5:[3,1,2,2,4], l10:[3,1,2,2,4,0,2,3,1,2], l20:[3,1,2,2,4,0,2,3,1,2,3,1,0,2,4,1,2,2,0,3], h2h:[3,2], y26:0.51, y25:0.47 },
+];
+
+// 3e — findings. The sentence is written from the split, the streak and the
+// log; nothing here is fetched.
+const FINDINGS = [
+  { sentence:'Rafael Devers has cleared 1.5 hits + runs + RBIs in 8 straight home games (2.4 per game over the run).',
+    split:'Home only', streak:'8 straight', sample:'8 of 8', rate:100, obvious:false,
+    game:'NYY @ BOS · 7:10 PM', line:1.5, g:[2,3,2,4,2,3,2,3] },
+  { sentence:'Aaron Judge has failed to reach 1.5 total bases in 6 of his last 7 trips to Fenway Park (0.9 total bases per game).',
+    split:'This park', streak:'6 of 7', sample:'1 of 7', rate:14, obvious:false,
+    game:'NYY @ BOS · 7:10 PM', line:1.5, g:[1,0,2,1,0,1,1] },
+  { sentence:'Julio Rodríguez has cleared 1.5 hits + runs + RBIs in 9 of 10 games against right-handed starters.',
+    split:'vs RHP', streak:'9 of 10', sample:'9 of 10', rate:90, obvious:false,
+    game:'HOU @ SEA · 9:40 PM', line:1.5, g:[3,2,2,4,2,0,2,3,2,2] },
+  { sentence:'Yordan Alvarez has gone over 1.5 total bases in every meeting with Logan Gilbert this season, on 4 plate appearances a game.',
+    split:'vs this pitcher', streak:'4 straight', sample:'4 of 4', rate:100, obvious:false,
+    game:'HOU @ SEA · 9:40 PM', line:1.5, g:[4,2,3,2] },
+  { sentence:'Shohei Ohtani has hit a home run in 5 of his last 12 games at Petco Park, against a park factor of −6% for home runs.',
+    split:'This park', streak:'5 of 12', sample:'5 of 12', rate:42, obvious:false,
+    game:'LAD @ SD · 9:40 PM', line:0.5, g:[1,0,0,1,0,1,0,0,1,0,1,0] },
+  { sentence:'Zack Wheeler has stayed under 0.5 stolen bases allowed in 31 straight starts.',
+    split:'Season', streak:'31 straight', sample:'31 of 31', rate:100, obvious:true,
+    game:'ATL @ PHI · 6:40 PM', line:0.5, g:[0,0,0,0,0,0,0,0,0,0] },
+];
+
+const PARK = [
+  { label:'Home runs', value:4 },
+  { label:'Runs', value:9 },
+  { label:'Singles', value:11 },
+  { label:'Strikeouts', value:-3 },
+];
+
+const NO_LINES = [
+  { name:'Ceddanne Rafaela', reason:'no line' }, { name:'David Hamilton', reason:'no line' },
+  { name:'Romy Gonzalez', reason:'no line' }, { name:'Nick Sogard', reason:'called up' },
+  { name:'Abraham Toro', reason:'no line' }, { name:'Carlos Narváez', reason:'no line' },
+  { name:'Kristian Campbell', reason:'no game log' }, { name:'Marcelo Mayer', reason:'no game log' },
+];
+
+const DOT = { available:'#3ecf8e', questionable:'#e8b13a', out:'#ef5b5b', unknown:'transparent' };
+const initialsOf = n => n.split(' ').map(w => w[0]).join('').slice(0, 2);
+const band = pct => pct >= 65 ? '#2faa72' : pct < 45 ? '#ef5b5b' : '#aab2c0';
+
+class Component extends DCLogic {
+  state = {
+    logOpen:true, logSplit:'all',
+    lineupOpen:false,
+    pSplit:'L6', tSplit:'L20',
+    findingType:'Players', findingSplit:'All splits', findingSide:'Both', findingSort:'Strength',
+    hideObvious:true,
+    weatherOn:true, noLinesOpen:false,
+    picks:[],
+  };
+
+  togglePick(key) {
+    return () => this.setState(st => ({
+      picks: st.picks.indexOf(key) === -1 ? st.picks.concat(key) : st.picks.filter(x => x !== key),
+    }));
+  }
+
+  set(k, v) { return () => this.setState({ [k]: v }); }
+
+  bars(vals, line, H, PED) {
+    const lo = Math.min(Math.min.apply(null, vals), line);
+    const hi = Math.max(Math.max.apply(null, vals), line);
+    const span = Math.max(hi - lo, 1) * 1.25;
+    const axisMin = lo - Math.max(hi - lo, 1) * 0.18;
+    const y = v => PED + Math.round(((v - axisMin) / span) * (H - PED));
+    return {
+      bars: vals.map(v => ({ h: y(v), bg: v > line ? '#2faa72' : 'transparent', border: v > line ? 'none' : '1.5px solid #ef5b5b' })),
+      lineY: y(line),
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const chip = on => ({ bg: on ? '#3b5bdb' : 'transparent', fg: on ? '#ffffff' : '#aab2c0', border: on ? '#3b5bdb' : '#2b2f36' });
+    const seg = (list, cur, key) => list.map(label => Object.assign({ label, pick: this.set(key, label) }, chip(cur === label)));
+
+    // --- 3a
+    const counted = LOG.filter(l => s.logSplit === 'all' || l.split === s.logSplit);
+    const hits = counted.filter(l => l.v > l.line).length;
+    const logPct = Math.round((hits / counted.length) * 100);
+    const chart = this.bars(LOG.map(l => l.v), 6.5, 78, 10);
+
+    // --- 3b: the batters that most favour a strikeout prop lead the table
+    const ranked = LINEUP.slice().sort((a, b) => b.k - a.k);
+    const flagged = ranked.slice(0, 3).map(b => b.name);
+    const lineupShown = s.lineupOpen ? LINEUP : LINEUP.filter(b => flagged.indexOf(b.name) !== -1);
+
+    // --- 3e
+    const visibleFindings = FINDINGS.filter(f => !(s.hideObvious && f.obvious));
+
+    return {
+      // ---------------- 3a
+      logOpen: s.logOpen,
+      logGlyph: s.logOpen ? '−' : '+',
+      toggleLog: () => this.setState(st => ({ logOpen: !st.logOpen })),
+      logCount: LOG.length + ' starts · 1 upcoming',
+      logRate: logPct + '%',
+      logRateColor: band(logPct),
+      logSample: hits + ' of ' + counted.length + ' cleared',
+      logBars: chart.bars.map(b => Object.assign({}, b, { opacity: 1, hover: () => {} })),
+      logLineY: chart.lineY,
+      logRows: LOG.slice().reverse().map(l => {
+        const over = l.v > l.line;
+        const excluded = s.logSplit !== 'all' && l.split !== s.logSplit;
+        return {
+          date: l.date, opp: l.opp, result: l.v, line: l.line.toFixed(1),
+          side: over ? 'Over' : 'Under',
+          sideColor: over ? '#2faa72' : '#ef5b5b',
+          resultColor: over ? '#2faa72' : '#ef5b5b',
+          oppColor: '#aab2c0',
+          strike: excluded ? 'line-through' : 'none',
+          opacity: excluded ? 0.45 : 1,
+        };
+      }).concat([{
+        date: UPCOMING.date, opp: UPCOMING.opp, result: '—', line: UPCOMING.line.toFixed(1),
+        side: 'Upcoming', sideColor: '#8fa6ff', resultColor: '#8b98ab', oppColor: '#e8ecf2',
+        strike: 'none', opacity: 1,
+      }]),
+      logFootnote: 'One row per start, oldest at the bottom. Games the active split excludes stay listed and struck through rather than disappearing.',
+
+      // ---------------- 3b
+      lineupSummary: (function () {
+        const hard = LINEUP.filter(b => b.k >= 25).length;
+        return hard + ' of the 9 strike out in more than a quarter of plate appearances · lineup K% ' +
+          (LINEUP.reduce((a, b) => a + b.k, 0) / LINEUP.length).toFixed(1) + '%';
+      })(),
+      lineupRows: lineupShown.map(b => {
+        const on = flagged.indexOf(b.name) !== -1;
+        return {
+          order: b.order, name: b.name, hand: b.hand, pos: b.pos, pa: b.pa,
+          k: b.k.toFixed(1) + '%', whiff: b.whiff.toFixed(1) + '%',
+          chase: b.chase.toFixed(1) + '%', bb: b.bb.toFixed(1) + '%',
+          kColor: b.k >= 28 ? '#2faa72' : b.k <= 20 ? '#ef5b5b' : '#e8ecf2',
+          flagged: on,
+          flag: on ? 'Most favours the strikeout prop' : '',
+          rowBg: on ? '#101318' : 'transparent',
+          orderFg: on ? '#8fa6ff' : '#8b98ab',
+          orderBg: on ? '#131519' : 'transparent',
+          orderBorder: on ? '#3b5bdb' : '#2b2f36',
+        };
+      }),
+      lineupOpen: s.lineupOpen,
+      lineupGlyph: s.lineupOpen ? '−' : '+',
+      lineupToggleLabel: s.lineupOpen ? 'Show only the three that matter' : 'Show all nine batters',
+      toggleLineup: () => this.setState(st => ({ lineupOpen: !st.lineupOpen })),
+
+      // ---------------- 3c
+      pSplits: seg(['L3', 'L6', 'L10', 'All'], s.pSplit, 'pSplit'),
+      tSplits: seg(['L10', 'L20', 'L30', 'All'], s.tSplit, 'tSplit'),
+      pctRows: PCT.map(m => ({
+        label: m.label,
+        pVal: m.unit ? m.p[0].toFixed(1) + m.unit : m.p[0].toFixed(3),
+        tVal: m.unit ? m.t[0].toFixed(1) + m.unit : m.t[0].toFixed(3),
+        pOrd: m.p[1] + 'th',
+        tOrd: m.t[1] + 'th',
+        pFill: m.p[1] + '%',
+        tFill: m.t[1] + '%',
+      })),
+
+      // ---------------- 3d
+      feedCols: ['L5', 'L10', 'L20', 'H2H', '2026', '2025'].map(label => ({
+        label, fg: label === 'H2H' ? '#8fa6ff' : '#aab2c0',
+      })),
+      feedRows: FEED.map(r => {
+        const line = r.prop.indexOf('1.5') !== -1 ? 1.5 : 0.5;
+        // The threshold scales with the window: a 5-game column asks for 5
+        // games, an H2H column asks for the support band (5 meetings). A flat
+        // count would blank L5 permanently.
+        const cell = (vals, want, unit, active) => {
+          const c = vals.filter(v => v > line).length;
+          const pct = Math.round((c / vals.length) * 100);
+          const thin = vals.length < want;
+          return {
+            pct: thin ? '—' : pct + '%',
+            sample: thin ? vals.length + ' ' + (vals.length === 1 ? unit[0] : unit[1]) : c + ' of ' + vals.length,
+            fg: thin ? '#aab2c0' : band(pct),
+            bg: active ? '#191c21' : 'transparent',
+            border: active ? '#2b2f36' : 'transparent',
+          };
+        };
+        const season = (rate, label, active) => ({
+          pct: Math.round(rate * 100) + '%',
+          sample: label,
+          fg: band(Math.round(rate * 100)),
+          bg: active ? '#191c21' : 'transparent',
+          border: active ? '#2b2f36' : 'transparent',
+        });
+        const key = r.name + r.prop;
+        const picked = s.picks.indexOf(key) !== -1;
+        return {
+          name: r.name, game: r.game, prop: r.prop,
+          initials: initialsOf(r.name), dotFill: DOT[r.avail],
+          picked,
+          pickGlyph: picked ? '\u2713' : '+',
+          pickTitle: picked ? 'On the slip · click to remove' : 'Add to slip',
+          pickFg: picked ? '#ffffff' : '#8fa6ff',
+          pickBg: picked ? '#3b5bdb' : 'transparent',
+          pickBorder: picked ? '#3b5bdb' : '#2b2f36',
+          togglePick: this.togglePick(key),
+          cells: [
+            cell(r.l5, 5, ['game', 'games'], false),
+            cell(r.l10, 8, ['game', 'games'], true),
+            cell(r.l20, 8, ['game', 'games'], false),
+            cell(r.h2h, 5, ['meeting', 'meetings'], false),
+            season(r.y26, 'this season', true),
+            season(r.y25, 'last season', false),
+          ],
+        };
+      }),
+
+      slipBorder: s.picks.length ? '#3b5bdb' : '#2b2f36',
+      slipCount: s.picks.length,
+      slipEmpty: s.picks.length === 0,
+      slipAny: s.picks.length > 0,
+      slipLabel: s.picks.length === 1 ? '1 pick on the slip' : s.picks.length + ' picks on the slip',
+      slipNote: (function () {
+        const games = {};
+        FEED.forEach(r => { if (s.picks.indexOf(r.name + r.prop) !== -1) games[r.game] = 1; });
+        const n = Object.keys(games).length;
+        return n <= 1 ? 'One game' : 'Across ' + n + ' games';
+      })(),
+      slipRows: FEED.filter(r => s.picks.indexOf(r.name + r.prop) !== -1).map(r => ({
+        name: r.name, prop: r.prop, game: r.game,
+        remove: this.togglePick(r.name + r.prop),
+      })),
+      clearSlip: this.set('picks', []),
+
+      // ---------------- 3e
+      findingTypes: [['Players', String(1284)], ['Games', String(412)], ['Teams', String(254)]]
+        .map(([label, count]) => Object.assign({ label, count, pick: this.set('findingType', label) }, chip(s.findingType === label))),
+      findingSplits: seg(['All splits', 'Home / away', 'This park', 'vs RHP / LHP', 'vs this pitcher'], s.findingSplit, 'findingSplit'),
+      findingSides: seg(['Both', 'Over', 'Under'], s.findingSide, 'findingSide'),
+      findingSorts: [['Strength', 'Strength'], ['Streak', 'Longest streak'], ['Kickoff', 'First start']]
+        .map(([id, label]) => ({
+          label, pick: this.set('findingSort', id),
+          bg: s.findingSort === id ? '#3b5bdb' : 'transparent',
+          fg: s.findingSort === id ? '#ffffff' : '#aab2c0',
+        })),
+      findingSubtitle: visibleFindings.length + ' findings on tonight\u2019s slate · each states its split and its sample',
+      toggleObvious: () => this.setState(st => ({ hideObvious: !st.hideObvious })),
+      obviousJustify: s.hideObvious ? 'flex-end' : 'flex-start',
+      obviousBg: s.hideObvious ? '#3b5bdb' : 'transparent',
+      obviousBorder: s.hideObvious ? '#3b5bdb' : '#2b2f36',
+      obviousNote: s.hideObvious
+        ? 'Hiding 214 findings that are properties of the market, not the player — “under 0.5 stolen bases”, “under 0.5 home runs” for a contact hitter. They are true and they are not news.'
+        : 'Showing everything, including 214 structural near-certainties. Expect the list to fill with 96%+ unders.',
+      findings: visibleFindings.map(f => {
+        const chartF = this.bars(f.g, f.line, 26, 4);
+        return {
+          sentence: f.sentence,
+          game: f.game,
+          rate: f.rate + '%',
+          rateColor: band(f.rate),
+          sample: f.sample,
+          bars: chartF.bars,
+          lineY: chartF.lineY,
+          tags: [
+            { label: f.split, fg: '#8fa6ff', border: '#3b5bdb' },
+            { label: f.streak, fg: '#aab2c0', border: '#2b2f36' },
+          ].concat(f.obvious ? [{ label: 'structural', fg: '#8b98ab', border: '#2b2f36' }] : []),
+        };
+      }),
+
+      // ---------------- 3f
+      weatherOn: s.weatherOn,
+      weatherOff: !s.weatherOn,
+      toggleWeather: () => this.setState(st => ({ weatherOn: !st.weatherOn })),
+      weatherToggleLabel: s.weatherOn ? 'Preview without forecast' : 'Restore forecast',
+      parkFactors: PARK.map(p => {
+        const mag = Math.min(Math.abs(p.value), 20) / 20 * 50;
+        return {
+          label: p.label,
+          value: (p.value > 0 ? '+' : '\u2212') + Math.abs(p.value) + '%',
+          left: p.value >= 0 ? '50%' : (50 - mag) + '%',
+          width: mag + '%',
+          color: p.value >= 0 ? '#8fa6ff' : '#aab2c0',
+        };
+      }),
+
+      // ---------------- 3g
+      withLines: [
+        { name:'Rafael Devers', prop:'H+R+RBI over 1.5', rate:62 },
+        { name:'Jarren Duran', prop:'Total bases over 1.5', rate:54 },
+        { name:'Trevor Story', prop:'Hits over 0.5', rate:71 },
+      ].map(r => ({
+        name: r.name, prop: r.prop, initials: initialsOf(r.name),
+        dotFill: DOT.available, rate: r.rate + '%', rateColor: band(r.rate),
+      })),
+      noLinesOpen: s.noLinesOpen,
+      noLinesGlyph: s.noLinesOpen ? '−' : '+',
+      noLinesLabel: s.noLinesOpen ? 'Hide the ' + NO_LINES.length + ' without lines' : '+' + NO_LINES.length + ' players without lines · Show',
+      toggleNoLines: () => this.setState(st => ({ noLinesOpen: !st.noLinesOpen })),
+      noLinePlayers: NO_LINES,
+    };
+  }
+}
+</script>
+</body>
+</html>

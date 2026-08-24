@@ -338,7 +338,13 @@ export default function PlayerDetailV2({
             )}
           </div>
 
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 26, marginTop: 20, borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
+          {/* Tabs and Filters are separate boxes so the fold can rearrange
+               them: one line with Filters in the corner at 768, two lines at
+               500. Wrapping them as one flex row put "Anytime TD" on its own
+               line with the button beside it, which reads as a mistake rather
+               than as a second row. */}
+          <div className="pp-pd-tabrow" style={{ display: "flex", alignItems: "flex-end", marginTop: 20, borderBottom: "1px solid var(--line)" }}>
+          <div className="pp-pd-tabs" style={{ display: "flex", alignItems: "flex-end", gap: 26, minWidth: 0 }}>
             {markets.map((m) => (
               <span
                 key={m.id}
@@ -346,6 +352,10 @@ export default function PlayerDetailV2({
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); m.onPick(); } }}
                 style={{
                   fontSize: 15, paddingBottom: 11, cursor: "pointer",
+                  // The row wraps between tabs on a wide screen and scrolls on
+                  // a narrow one; a tab label breaking across two lines is
+                  // neither, and it made every tab two lines tall at 768.
+                  whiteSpace: "nowrap",
                   color: m.active ? "var(--text)" : "var(--dim)",
                   borderBottom: `2px solid ${m.active ? "var(--amber)" : "transparent"}`,
                   marginBottom: -1,
@@ -354,7 +364,9 @@ export default function PlayerDetailV2({
                 {m.label}
               </span>
             ))}
+          </div>
             <span
+              className="pp-pd-filters"
               role="button" tabIndex={0} onClick={onToggleFilters}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggleFilters(); } }}
               style={{
@@ -387,11 +399,11 @@ export default function PlayerDetailV2({
               cells drop under it, and it still cannot jump mid-drag: at a full
               row width the sentence is one line at every value it can take. */}
           <div className="pp-pd-verdict" style={{ display: "flex", alignItems: "center", gap: 24, padding: "20px 0 30px", position: "relative" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 }}>
+            <div className="pp-pd-verdict-head" style={{ display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 }}>
               <span style={{ fontFamily: MONO, fontSize: 40, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: verdict.rateColor, flex: "none" }}>{verdict.rate}</span>
               <span style={{ fontSize: 15, color: "var(--text-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{verdict.sentence}</span>
             </div>
-            <div style={{ marginLeft: "auto", display: "flex", gap: 28, flex: "none" }}>
+            <div className="pp-pd-verdict-cells" style={{ marginLeft: "auto", display: "flex", gap: 28, flex: "none" }}>
               <div style={{ textAlign: "right" }}>
                 <div style={metricLabel}>Average</div>
                 <div style={metricValue}>{verdict.average}</div>
@@ -429,7 +441,7 @@ export default function PlayerDetailV2({
                   : <div style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.06em", marginTop: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>Coming soon</div>}
               </div>
             </div>
-            <span style={{
+            <span className="pp-pd-verdict-sample" style={{
               flex: "none", fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase",
               color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 4, padding: "11px 14px",
             }}>
