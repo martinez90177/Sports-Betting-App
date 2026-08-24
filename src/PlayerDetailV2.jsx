@@ -87,13 +87,21 @@ function RosterRow({ p, sport, onSelect }) {
           never reads as a guess. */}
       {p.order != null && (
         <span
-          title={`Batting ${p.order} in the posted lineup`}
+          title={p.orderProjected
+            ? `Projected to bat ${p.order}. MLB has not posted this lineup yet, so this is read from plate appearances per game — a leadoff bat sees about 4.6, a number nine about 3.9.`
+            : `Batting ${p.order} in the posted lineup`}
           style={{
             flex: "none", width: 18, height: 18, borderRadius: 4,
             display: "flex", alignItems: "center", justifyContent: "center",
-            border: "1px solid var(--line)", background: "var(--surface-sunken)",
-            fontFamily: MONO, fontSize: 10, color: "var(--text-2)",
+            fontFamily: MONO, fontSize: 10,
             fontVariantNumeric: "tabular-nums",
+            // Filled once the order is real, outlined while it is ours. The
+            // number is worth showing either way -- the top of the order is
+            // where the most-read players are -- but a projected slot must not
+            // look like a posted one.
+            border: `1px solid ${p.orderProjected ? "var(--line)" : "var(--text-2)"}`,
+            background: p.orderProjected ? "transparent" : "var(--surface-sunken)",
+            color: p.orderProjected ? "var(--dim)" : "var(--text-2)",
           }}
         >
           {p.order}
@@ -203,6 +211,32 @@ export default function PlayerDetailV2({
     ? matchupTones(sport, band.away.abbr, band.home.abbr)
     : { away: "var(--dim)", home: "var(--dim)" };
 
+  // One line of conditions for the context row at the top of the page.
+  //
+  // `live` distinguishes a real reading from a reason there isn't one, which
+  // is the difference between "84°F · 10 mph SW" and "Indoors" -- the first is
+  // data and gets --text-2, the second is a statement about our data and gets
+  // --dim. Short forms only: the cell is one line, and the full sentence is
+  // already on the block further down.
+  const conditionsLine = React.useMemo(() => {
+    if (!conditions) return null;
+    const w = conditions.weather;
+    if (w) {
+      const parts = [w.temp != null ? `${w.temp}°F` : null, w.wind || null].filter(Boolean);
+      if (w.precipPct != null && w.precipPct >= 30) parts.push(`${w.precipPct}% rain`);
+      if (parts.length) return { text: parts.join(" · "), live: true };
+    }
+    const short = {
+      dome: "Indoors",
+      indoor: "Indoors",
+      retractable: "Roof may be closed",
+      horizon: "Forecast nearer kickoff",
+      pregame: "Posted nearer first pitch",
+      pending: "Checking the forecast…",
+    }[conditions.noForecastReason];
+    return short ? { text: short, live: false } : null;
+  }, [conditions]);
+
   const [cardOpen, setCardOpen] = React.useState(false);
   // Open by default: the table is the answer to "where are the games",
   // and a collapsed answer is the state the page was already in.
@@ -211,34 +245,50 @@ export default function PlayerDetailV2({
   return (
     <div style={{ width: "100%", maxWidth: 1600, margin: "0 auto", background: "var(--bg)", color: "var(--text)" }}>
 
-      <div style={{ display: "flex", alignItems: "center", padding: "16px 32px", borderBottom: "1px solid var(--line)" }}>
-        <span
-          role="button" tabIndex={0} onClick={onBack}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack(); } }}
-          style={{ ...crumb, color: "var(--text-2)", cursor: "pointer" }}
-        >
-          ← Prop Feed
-        </span>
-        {/* The Matchup Card file adds exactly this button to the breadcrumb,
-            20px after the back link, and it is the only thing that opens the
-            modal. */}
-        <span
-          role="button" tabIndex={0} onClick={() => setCardOpen(true)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCardOpen(true); } }}
-          style={{
-            ...crumb, marginLeft: 20, color: "var(--text-2)", cursor: "pointer",
-            border: "1px solid var(--line)", borderRadius: 4, padding: "6px 12px",
-          }}
-        >
-          Matchup card
-        </span>
-        <span style={{ ...crumb, margin: "0 auto", color: "var(--dim)" }}>
+      {/* Three tracks, not a flex row with `margin: 0 auto` on the middle
+          child. That is what this was, and it does not centre: auto margins
+          share out the space LEFT OVER, so a 219px left group and a 59px
+          right group put the fixture 89px right of the page's centre line --
+          measured, at a 1600px viewport -- while the team band directly
+          beneath it sat dead centre. Two things that plainly belong on one
+          axis, visibly off it.
+
+          The outer tracks are minmax(0, 1fr) so they stay equal and let their
+          own contents ellipsis rather than pushing the middle off centre when
+          a long team name arrives. */}
+      <div style={{
+        display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+        alignItems: "center", gap: 12, padding: "16px 32px", borderBottom: "1px solid var(--line)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+          <span
+            role="button" tabIndex={0} onClick={onBack}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack(); } }}
+            style={{ ...crumb, color: "var(--text-2)", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            ← Prop Feed
+          </span>
+          {/* The Matchup Card file adds exactly this button to the breadcrumb,
+              20px after the back link, and it is the only thing that opens the
+              modal. */}
+          <span
+            role="button" tabIndex={0} onClick={() => setCardOpen(true)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCardOpen(true); } }}
+            style={{
+              ...crumb, marginLeft: 20, color: "var(--text-2)", cursor: "pointer", whiteSpace: "nowrap",
+              border: "1px solid var(--line)", borderRadius: 4, padding: "6px 12px",
+            }}
+          >
+            Matchup card
+          </span>
+        </div>
+        <span style={{ ...crumb, color: "var(--dim)", justifySelf: "center", textAlign: "center" }}>
           {crumbSelect || crumbFixture} · <span style={{ color: "var(--text)" }}>{marketLabel}</span>
         </span>
         <span
           role="button" tabIndex={0} onClick={onWatch}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onWatch && onWatch(); } }}
-          style={{ ...crumb, color: "var(--amber-ink)", cursor: onWatch ? "pointer" : "default" }}
+          style={{ ...crumb, color: "var(--amber-ink)", cursor: onWatch ? "pointer" : "default", justifySelf: "end", whiteSpace: "nowrap" }}
         >
           {watching ? "✓ Watching" : "+ Watch"}
         </span>
@@ -302,9 +352,26 @@ export default function PlayerDetailV2({
               <div style={cellLabel}>Last meeting</div>
               <div style={cellValue}>{context.lastMeeting ?? "—"}</div>
             </div>
+            {/* The venue, and what the sky is doing there.
+                 Alex, on the conditions block at the foot of the page: "this
+                 weather info should go into this top area as it is important
+                 info that should be seen upfront." It reads off the same
+                 `conditions` object the full block does rather than a second
+                 copy, so the two can never disagree -- this is the headline,
+                 that is the detail. */}
             <div style={{ flex: 1.3, minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
-              <div style={cellLabel}>{context.parkLabel}</div>
-              <div style={{ ...cellValue, overflow: "hidden", textOverflow: "ellipsis" }}>{context.park ?? "—"}</div>
+              <div style={cellLabel}>{conditionsLine ? "Conditions" : context.parkLabel}</div>
+              <div style={{ ...cellValue, overflow: "hidden", textOverflow: "ellipsis" }}>
+                {context.park ?? (conditions && conditions.venue) ?? "—"}
+              </div>
+              {conditionsLine && (
+                <div style={{
+                  fontFamily: MONO, fontSize: 11, marginTop: 4, color: conditionsLine.live ? "var(--text-2)" : "var(--dim)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {conditionsLine.text}
+                </div>
+              )}
             </div>
           </div>
 

@@ -14365,6 +14365,19 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
   // roster player's log for every team on the slate; this fetches two rosters
   // for the one game already open.
   const [railStats, setRailStats] = useState(new Map());
+  // Plate appearances per game, per rail batter.
+  //
+  // This is the projected batting order, and it is derived rather than
+  // guessed: where a hitter bats decides how many times he comes up, and the
+  // gap is real -- a leadoff bat sees about 4.6 a game and a number nine about
+  // 3.9. It is the same signal roleValue already uses on the feed.
+  //
+  // It replaces reading the order off the static roster array, which was tried
+  // first and is wrong: applyActiveRoster filters that array and
+  // topUpProjectedBatters appends call-ups to the end of it, so what survives
+  // is roster order with holes, not a lineup. It had Yandy Diaz batting ninth
+  // for Tampa Bay behind a backup catcher.
+  const [railPaPerGame, setRailPaPerGame] = useState(new Map());
   React.useEffect(() => {
     const roster = [...(liveTeamRoster?.players || []), ...(liveOppRoster?.players || [])];
     if (!roster.length) return undefined;
@@ -14382,11 +14395,21 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       // recognise, so reading them directly here would print a batter's hit
       // count under a strikeouts-thrown label.
       const m = new Map();
+      const pa = new Map();
       entries.forEach(([id, games, isP]) => {
         const mk = mlbRailMarket(isP, market);
         m.set(id, railSeasonAvg(games, (g) => (isP ? statValueMLBPitcher(g, mk) : statValueMLB(g, mk))));
+        // Five games minimum. Below that one pinch-hit appearance sets a
+        // rate, and the rail would put a bench bat at the top of the order.
+        if (!isP && games && games.length >= 5) {
+          const withPa = games.filter((g) => g.pa != null);
+          if (withPa.length >= 5) {
+            pa.set(id, withPa.reduce((a, g) => a + g.pa, 0) / withPa.length);
+          }
+        }
       });
       setRailStats(m);
+      setRailPaPerGame(pa);
     });
     return () => { cancelled = true; };
   }, [liveTeamRoster, liveOppRoster, market]);
@@ -16046,13 +16069,39 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     const pitchers = players.filter(isPitcher_);
     const batters = players.filter((p) => !isPitcher_(p));
     const slot = (p) => { const i = ids.indexOf(p.mlbId); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
-    const ordered = ids.length ? [...batters].sort((a, b) => slot(a) - slot(b)) : batters;
-    return [...pitchers, ...ordered].map((p, i) => ({
-      ...railPlayer(p, side),
-      // Extra space above the first batter, so the pitchers read as their own
-      // short group. Only when there is actually a pitcher above to divide.
-      separated: pitchers.length > 0 && i === pitchers.length,
-    }));
+    // Posted order when MLB has published one. Otherwise the order plate
+    // appearances imply -- see railPaPerGame. Alex asked for this: "the more
+    // wagered on players are usually higher in a lineup and it'll make them
+    // easier to find", and an unordered rail buries exactly those players.
+    //
+    // The projection needs enough batters to be worth calling an order. Below
+    // that the rail keeps roster order and shows no numbers at all, because a
+    // partial order is one that is wrong about everybody under the gap.
+    const paOf = (p) => railPaPerGame.get(p.id);
+    const rated = batters.filter((b) => paOf(b) != null);
+    const canProject = !ids.length && rated.length >= Math.max(5, Math.ceil(batters.length * 0.6));
+    const ordered = ids.length
+      ? [...batters].sort((a, b) => slot(a) - slot(b))
+      : canProject
+        ? [...batters].sort((a, b) => (paOf(b) ?? -1) - (paOf(a) ?? -1))
+        : batters;
+    return [...pitchers, ...ordered].map((p, i) => {
+      const base = railPlayer(p, side);
+      // A projected slot only for a batter the projection can actually see.
+      // One with too short a log sorts to the bottom and carries no number,
+      // which is the honest reading: we do not know where he bats.
+      const projected = canProject && !pitchers.includes(p) && paOf(p) != null
+        ? ordered.indexOf(p) + 1
+        : null;
+      return {
+        ...base,
+        order: base.order || projected,
+        orderProjected: !base.order && projected != null,
+        // Extra space above the first batter, so the pitchers read as their own
+        // short group. Only when there is actually a pitcher above to divide.
+        separated: pitchers.length > 0 && i === pitchers.length,
+      };
+    });
   };
 
   // The batting order he is facing, joined to names and headshots.
@@ -16173,7 +16222,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       ownRail={{
         label: (v2AwayRoster || {}).label || "Loading…",
         players: railPlayers(v2AwayRoster, v2AwayIsPlayers ? "team" : "opp"),
-        legend: "Dot: green available, amber questionable, red out. Number: batting order once the lineup posts. Neither shown when unknown — never assumed.",
+        legend: "Dot: green available, amber questionable, red out. Number: batting order — filled once MLB posts it, outlined while it is our projection from plate appearances per game. Neither shown when unknown — never assumed.",
       }}
       oppRail={{ label: (v2HomeRoster || {}).label || "Loading…", players: railPlayers(v2HomeRoster, v2AwayIsPlayers ? "opp" : "team") }}
       band={slateCells.band ? {
