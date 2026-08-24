@@ -85,6 +85,26 @@ function RosterRow({ p, sport, onSelect }) {
           lineup" -- the two are one fact for a batter. Absent until the lineup
           posts, and absent for anyone left out of it, so an empty slot here
           never reads as a guess. */}
+      {/* OUT / QUES, in the designation's own colour. Literal hexes rather
+           than --amber or --accent: CLAUDE.md rule 2, and the naming trap
+           behind it -- --amber is the user's accent, so a status drawn with it
+           turns blue on a re-tint and health starts reading as "selected". */}
+      {p.statusWord && (
+        <span
+          className="pp-mono"
+          title={p.statusWord === "out"
+            ? "Ruled out — this app hides their props while they are"
+            : "Questionable — still a decision at the time this was published"}
+          style={{
+            flex: "none", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase",
+            borderRadius: 3, padding: "2px 5px", whiteSpace: "nowrap",
+            color: p.statusWord === "out" ? "#ef5b5b" : "#e8b13a",
+            border: `1px solid ${p.statusWord === "out" ? "#ef5b5b" : "#e8b13a"}`,
+          }}
+        >
+          {p.statusWord === "out" ? "Out" : "Ques"}
+        </span>
+      )}
       {(p.order != null || p.orderUnknown) && (
         <span
           title={p.orderUnknown

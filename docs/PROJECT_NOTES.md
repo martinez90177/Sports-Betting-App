@@ -391,3 +391,53 @@ Two things that are easy to get wrong there:
   members. A nine-batter lineup averaging 25.0% K reads as the 67th percentile
   while its hitters run to the 90th. Stated in the component's own footnote
   rather than silently.
+
+## The prop feed only looks two days ahead — 2026-08-24
+
+`FEED_LOOKAHEAD_MS` in `PropLedger.jsx` is 48 hours, with six hours of grace
+behind now so a game already under way stays listed.
+
+Before it, the feed showed every player in the league with a game anywhere on
+the schedule: in late August that was **6,032 NBA props for a season starting in
+October** and 3,089 NFL props for a Week 1 kickoff twenty days out. Alex called
+it — "it leads to unnecessary info being presented when a player isn't even
+playing but is taking up space" — and pointed at Outlier.
+
+Checked against them rather than assumed: Outlier's MLB props page that same
+afternoon carried only that day's fixtures, and **their NFL props page was
+empty**. Empty is the right answer out of season. This app says which sport,
+names the next kickoff, and offers a "show that slate" button rather than
+silently backfilling.
+
+**If a sport's feed looks empty, read the sentence before assuming a bug.** The
+scope resets to `near` on every sport switch, deliberately: someone who opened
+the whole NFL schedule has not asked for the same on MLB.
+
+## Where the availability designation comes from, and where it does not
+
+`buildNewsInjuryWire` gates on WNBA and MLB. That is not an oversight — the NFL
+and NBA publish nothing this app can read, which is also why the NFL player
+page's rail legend says "no availability feed for this league".
+
+`INJURY_FEED_SPORTS` and `INJURY_FEED_MISSING` sit directly above that function
+so the Injuries page can *name* the missing two. A league filter that offered
+NFL and returned nothing would read as "nobody in the NFL is hurt", which is a
+worse failure than the missing feed.
+
+## The rail's batting order is derived, not published
+
+MLB publishes a lineup only once it is posted, usually an hour or two before
+first pitch. Before that the rail orders batters by **plate appearances per
+game** — a leadoff bat sees about 4.6 and a number nine about 3.9, so the slot
+is a real derivation rather than a guess.
+
+The obvious-looking alternative is wrong and was tried: the static roster arrays
+in `MLB_MATCHUPS` *are* written in batting order, but `applyActiveRoster` filters
+them and `topUpProjectedBatters` appends call-ups to the end, so what survives is
+roster order with holes. It put Yandy Díaz ninth for Tampa Bay behind a backup
+catcher.
+
+Posted slots render filled, projected ones outlined, and a batter with fewer
+than five logged games gets `#—` and sorts last. That last case is not a bug and
+was reported as one: Corey Julks had three games and six plate appearances all
+season.

@@ -57,21 +57,51 @@ export default function InjuriesPage({
   // ones that do not instead of showing them as empty.
   coveredSports = [],
   uncoveredSports = [],
+  // (sport, teamAbbr) => ISO kickoff, or null when that team is not on a
+  // slate we hold. Optional: without it the page simply does not offer the
+  // "playing next" sort rather than offering one that cannot work.
+  kickoffFor = null,
   onOpenProp,
   loading = false,
 }) {
   const [sport, setSport] = useState("all");
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState(kickoffFor ? "kickoff" : "name");
+
+  const now = Date.now();
+  const NEAR_MS = 48 * 60 * 60 * 1000;
 
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return rows
+    const kickoff = (r) => {
+      const iso = kickoffFor ? kickoffFor(r.sport, r.team) : null;
+      const t = iso ? new Date(iso).getTime() : NaN;
+      return Number.isFinite(t) ? t : null;
+    };
+    const decorated = rows
       .filter((r) => sport === "all" || r.sport === sport)
       .filter((r) => status === "all" || r.status === status)
       .filter((r) => !needle || r.name.toLowerCase().includes(needle) || (r.team || "").toLowerCase().includes(needle))
-      .sort((a, b) => (STATUS_ORDER[a.status] - STATUS_ORDER[b.status]) || a.name.localeCompare(b.name));
-  }, [rows, sport, status, q]);
+      .map((r) => {
+        const t = kickoff(r);
+        return { ...r, kickoff: t, playingSoon: t != null && t <= now + NEAR_MS && t >= now - 6 * 60 * 60 * 1000 };
+      });
+
+    if (sort === "kickoff") {
+      // Playing soonest first, then by how urgent the designation is. A team
+      // with no game on a slate we hold sorts last rather than being read as
+      // playing at the epoch.
+      return decorated.sort((a, b) =>
+        (a.kickoff == null ? 1 : 0) - (b.kickoff == null ? 1 : 0)
+        || (a.kickoff != null && b.kickoff != null ? a.kickoff - b.kickoff : 0)
+        || (STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
+        || a.name.localeCompare(b.name));
+    }
+    return decorated.sort((a, b) => (STATUS_ORDER[a.status] - STATUS_ORDER[b.status]) || a.name.localeCompare(b.name));
+  }, [rows, sport, status, q, sort, kickoffFor, now]);
+
+  const playingSoon = list.filter((r) => r.playingSoon).length;
 
   const countBySport = (id) => (id === "all" ? rows.length : rows.filter((r) => r.sport === id).length);
   const countByStatus = (id) => {
@@ -119,9 +149,34 @@ export default function InjuriesPage({
             <div>
               <h1 style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 29, margin: 0, letterSpacing: "-0.02em" }}>Injury wire</h1>
               <div style={{ ...LABEL, marginTop: 6, letterSpacing: "0.1em", fontSize: 10.5 }}>
-                {loading ? "Reading designations…" : `${list.length} listed · questionable first, because it is the only one still a decision`}
+                {loading
+                  ? "Reading designations…"
+                  : sort === "kickoff"
+                    ? `${list.length} listed · ${playingSoon} on a team playing in the next two days`
+                    : `${list.length} listed · questionable first, because it is the only one still a decision`}
               </div>
             </div>
+            {kickoffFor && (
+              <div style={{ marginLeft: "auto", display: "flex", gap: 2, border: "1px solid var(--line)", borderRadius: 6, padding: 2, background: "var(--surface-sunken)" }}>
+                {[["kickoff", "Playing next"], ["name", "By status"]].map(([id, label]) => (
+                  <span
+                    key={id}
+                    role="button" tabIndex={0} aria-pressed={sort === id}
+                    onClick={() => setSort(id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSort(id); } }}
+                    className="pp-mono"
+                    style={{
+                      fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 4,
+                      padding: "7px 11px", cursor: "pointer", whiteSpace: "nowrap",
+                      background: sort === id ? "var(--amber)" : "transparent",
+                      color: sort === id ? "var(--accent-on)" : "var(--text-2)",
+                    }}
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -129,7 +184,7 @@ export default function InjuriesPage({
               aria-label="Search the injury wire"
               className="pp-mono"
               style={{
-                marginLeft: "auto", minWidth: 210, fontSize: 12, padding: "9px 12px",
+                minWidth: 210, fontSize: 12, padding: "9px 12px",
                 background: "var(--surface-sunken)", border: "1px solid var(--line)",
                 borderRadius: 6, color: "var(--text)", outline: "none",
               }}
@@ -192,6 +247,16 @@ export default function InjuriesPage({
                     {r.propLine && (
                       <div className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {r.propLine}
+                      </div>
+                    )}
+                    {/* When his team next plays, which is what turns this list
+                        from a roster of the injured into a list of who might
+                        be missing tonight. */}
+                    {kickoffFor && (
+                      <div className="pp-mono" style={{ fontSize: 9.5, marginTop: 4, color: r.playingSoon ? "var(--amber-ink, var(--amber))" : "var(--dim)", whiteSpace: "nowrap" }}>
+                        {r.kickoff == null
+                          ? "no game on a slate we hold"
+                          : new Date(r.kickoff).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" })}
                       </div>
                     )}
                   </div>

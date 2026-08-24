@@ -10826,6 +10826,15 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     meta: railMeta ? railMeta(pl) : pl.pos,
     active: pl.id === playerId,
     dotFill: (STATUS[statusOf(pl)] || {}).dot || null,
+    // The word, not only the dot. Alex: "along with the red dot, add an 'OUT'
+    // red box on the player side rail profile ... and do the same for
+    // questionable with a yellow QUES box". The dot is the app's grammar and
+    // it stays; a nine-pixel circle is not enough on its own to carry "this
+    // player is ruled out" on a rail you are scanning for someone to open.
+    //
+    // Only ever out or questionable. An ACTIVE badge on every healthy row is
+    // noise, and it would make the two that matter harder to find, not easier.
+    statusWord: statusOf(pl) === "out" || statusOf(pl) === "questionable" ? statusOf(pl) : null,
     dotRing: "var(--surface-1)",
     order: null,
     avatar: (
@@ -16015,6 +16024,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     meta: railMeta ? railMeta(p) : p.pos,
     active: p.id === playerId,
     dotFill: (STATUS[mlbStatusOf(p)] || {}).dot || null,
+    // See the WNBA rail above for why the word rides beside the dot, and why
+    // only these two states get one.
+    statusWord: mlbStatusOf(p) === "out" || mlbStatusOf(p) === "questionable" ? mlbStatusOf(p) : null,
     dotRing: "var(--surface-1)",
     // Batting order, and the only place lineup state shows in the rail. The
     // list is in batting order (see fetchMLBTeamNextGame), so the index is the
@@ -18316,35 +18328,47 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
     </div>
   );
 
+  // The matchup, on one line: who he is facing, how that defence ranks
+  // against this market, and the word for it.
+  //
+  // It used to be two. "OPP RANK" sat on its own as a label, the badge said
+  // "#31 of 32", the read said "easy", and the fixture wrapped onto a second
+  // line underneath -- five stacked lines of near-identical dim mono in a
+  // 262px column, which Alex called crammed and messy and which it was.
+  //
+  // Nothing is dropped. The fixture leads, because "who is he playing" is the
+  // first question; the badge carries the rank with its denominator, because
+  // "#27" means nothing until you know whether the league has 32 teams or 15,
+  // and rank is per *market* -- a defence can be #27 against receptions and
+  // #6 against rush yards. What went is the words "OPP RANK", which cost a
+  // third of the line to say what the badge's own tooltip says better.
   const oppRankLine = (
-    // Wraps as whole chips rather than mid-label: the Form column narrowed
-    // the Proposition track enough that "OPP RANK" itself was breaking across
-    // two lines once the streak and lineup badges joined the row.
-    // The design's third proposition line is a bare `VS TEX` in 10.5px
-    // --dim. This is that line, carrying the opponent-rank badge the mock's
-    // placeholder data had nothing to put in it -- real information the app
-    // already computes, in the design's own type size and colour.
-    <div className="pp-mono" style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.12em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 6px" }}>
+    <div className="pp-mono" style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.1em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 5px" }}>
+      {/* "@ NYJ" when the player is on the road, "vs NYJ" at home, and a bare
+           opponent when the fixture never said. Away-first with an @ is how
+           the slate, the board and the player page's breadcrumb all write a
+           matchup. The crest rides beside the abbreviation, as it does on the
+           name line above. */}
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+        <span>{venueWord(r.homeGame)}</span>
+        {r.opp && <TeamLogo sport={sport} abbr={r.opp} size={14} style={{ flexShrink: 0 }} />}
+        <span>{r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}</span>
+      </span>
       {/* No rank, no chip. Printing a placeholder here is what made a missing
            matchup read as an average one. */}
       {r.rank != null && (
         <>
-          <span style={{ whiteSpace: "nowrap" }}>OPP RANK</span>
           <span
             className="mono"
-            title={`#${r.rank} of ${feedTeamCount(sport)} in ${r.rankLabel}`}
+            title={`This opponent is #${r.rank} of ${feedTeamCount(sport)} against ${r.rankLabel}`}
             style={{
               display: "inline-block", padding: "1px 6px", borderRadius: 4,
-              fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
+              fontSize: 10, fontWeight: 800, letterSpacing: 0,
               background: tierBg, color: tierFg, border: tierBorder,
               whiteSpace: "nowrap",
             }}
           >
-            {/* The denominator is per league and stated, not implied. "#27"
-                 alone means nothing until you know whether the league has 32
-                 teams or 15 -- and rank is per *market*, so a defence can be
-                 #27 against receptions and #6 against rush yards. */}
-            #{r.rank} of {feedTeamCount(sport)}
+            D #{r.rank}/{feedTeamCount(sport)}
           </span>
           {(() => {
             const read = feedMatchupRead(r.rank, sport, direction);
@@ -18360,24 +18384,15 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           })()}
         </>
       )}
-      {/* "Gm 1"/"Gm 2" only on a doubleheader, where the same two teams
-           otherwise produce two visually identical rows per prop. */}
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
-        {/* "@ NYJ" when the player is on the road, "vs NYJ" at home, and a
-             bare opponent when the fixture never said. Away-first with an @
-             is how the slate, the board and the player page's breadcrumb all
-             write a matchup; this line was the one surface that flattened
-             both halves of the season into "vs". */}
-        <span>{venueWord(r.homeGame)}</span>
-        {r.opp && <TeamLogo sport={sport} abbr={r.opp} size={14} style={{ flexShrink: 0 }} />}
-        <span>{r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}
-        {/* The streak rides here on the phone only. On desktop it is already
-             the second half of the form graph's caption; this card has no
-             caption (see FeedFormStrip's `caption` prop), so without this the
-             run would go unstated on mobile entirely. */}
-        {isNarrow && Math.abs(streak) >= 3 ? ` · ${Math.abs(streak)} ${streak > 0 ? "straight" : "cold"}` : ""}
+      {/* The streak rides here on the phone only. On desktop it is already the
+           second half of the form graph's caption; the phone card has no
+           caption (see FeedFormStrip's `caption` prop), so without this the run
+           would go unstated on mobile entirely. */}
+      {isNarrow && Math.abs(streak) >= 3 && (
+        <span style={{ whiteSpace: "nowrap" }}>
+          · {Math.abs(streak)} {streak > 0 ? "straight" : "cold"}
         </span>
-      </span>
+      )}
     </div>
   );
 
@@ -20223,6 +20238,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the Sort By dropdown's mode until cleared. null means "use the Sort By/
   // primary-hit-rate behavior below" (see sortedRows).
   const [columnSort, setColumnSort] = useState(null);
+  // "near" is today and tomorrow; "all" is the whole schedule. Near by
+  // default, because a prop for a game three weeks out is not what this screen
+  // is for -- see FEED_LOOKAHEAD_MS.
+  const [slateScope, setSlateScope] = useState("near");
+  // Switching sport puts the window back. Someone who opened the whole
+  // schedule to look at Week 1 has not asked for the same on every other
+  // league, and carrying it across is how a preference becomes a surprise.
+  React.useEffect(() => { setSlateScope("near"); }, [sport]);
   // Three-state cycle per column: neutral -> strongest-first -> weakest-first
   // -> neutral. There's a branch back to null because otherwise, once you'd
   // sorted a column, there was no way to get the list back to its default
@@ -20725,6 +20748,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const oddsLoProb = oddsSliderProb(oddsMaxX);
   const oddsHiProb = oddsSliderProb(oddsMinX);
   const filteredRows = useMemo(() => marketRows.filter((r) => {
+    // Games in the next two days only, unless the reader has asked for the
+    // whole schedule. See FEED_LOOKAHEAD_MS.
+    if (slateScope === "near" && !feedRowIsNear(r, Date.now())) return false;
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
     // The Role floor. A row whose role could not be measured passes rather
@@ -20762,7 +20788,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // there and must let it through rather than wipe pitcher markets whole.
     if (postedLineupsOnly && sport === "mlb" && r.lineupConfirmed === false) return false;
     return true;
-  }), [marketRows, sampleWindow, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
+  }), [marketRows, sampleWindow, slateScope, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
 
   // Badge shown on the Filters trigger -- counts only the controls tucked
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
@@ -21123,6 +21149,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     return { supported, thin, best, games: games.size };
   }, [filteredRows, sampleWindow, minGames]);
 
+  // The next kickoff beyond the window, for the empty state. Only computed
+  // when the feed is actually empty, so this never runs on a normal render.
+  const nextKickoff = useMemo(() => {
+    if (slateScope !== "near") return null;
+    let best = null;
+    const now = Date.now();
+    rows.forEach((r) => {
+      const t = feedRowKickoff(r);
+      if (t == null || t < now) return;
+      if (best == null || t < best) best = t;
+    });
+    return best;
+  }, [rows, slateScope]);
+
   const resultCount = (
     <>
       Showing <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>{filteredRows.length}</span> of{" "}
@@ -21232,7 +21272,23 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       <div style={{ flex: "1 1 150px", minWidth: 0, padding: "12px 18px" }}>
         <div style={FEED_CELL_LABEL}>Showing</div>
         <div style={FEED_CELL_VALUE}>{filteredRows.length} of {rows.length}</div>
-        <div style={FEED_CELL_SUB}>{feedSummary.games} {feedSummary.games === 1 ? "game" : "games"} on this slate</div>
+        <div style={FEED_CELL_SUB}>
+          {slateScope === "near"
+            ? `${feedSummary.games} ${feedSummary.games === 1 ? "game" : "games"} today and tomorrow`
+            : (
+              <>
+                {feedSummary.games} {feedSummary.games === 1 ? "game" : "games"} · whole schedule ·{" "}
+                <span
+                  role="button" tabIndex={0}
+                  onClick={() => setSlateScope("near")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSlateScope("near"); } }}
+                  style={{ color: "var(--amber-ink, var(--amber))", cursor: "pointer", textDecoration: "underline" }}
+                >
+                  back to today
+                </span>
+              </>
+            )}
+        </div>
       </div>
       {/* The triage number, which is what this strip was missing.
            It held "Under 10 games read 'too few'" -- a rule, identical on
@@ -22062,6 +22118,35 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 actually exists to be filtered. */}
             {sport === "mlb" && mlbLoading
               ? "Loading live MLB matchup data…"
+              /* The window, not the filters. This is the out-of-season case:
+                 3,089 NFL props exist and every one of them is for a game
+                 weeks away. Naming the next kickoff and offering it is the
+                 difference between a screen that looks broken and one that
+                 has told you what the schedule says. */
+              : slateScope === "near" && rows.length > 0 && nextKickoff != null
+              ? (
+                <span>
+                  No {sport.toUpperCase()} games today or tomorrow, so there are no props to read yet.
+                  {" "}Next kickoff is{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {new Date(nextKickoff).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                  </b>.
+                  <span
+                    role="button" tabIndex={0}
+                    onClick={() => setSlateScope("all")}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSlateScope("all"); } }}
+                    className="pp-mono"
+                    style={{
+                      display: "inline-block", marginLeft: 10, cursor: "pointer",
+                      fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
+                      color: "var(--amber-ink, var(--amber))", border: "1px solid var(--amber)",
+                      borderRadius: 4, padding: "7px 12px",
+                    }}
+                  >
+                    Show that slate
+                  </span>
+                </span>
+              )
               : rows.length === 0 && finishedTeams.size > 0
               ? "Every game on today's slate has finished. Tomorrow's board arrives once the new slate is posted."
               : emptyStateNames.length
@@ -23823,6 +23908,42 @@ const INJURY_FEED_MISSING = [
   { id: "nba", label: "the NBA" },
 ];
 
+// How far ahead the prop feed looks, and how far back it keeps a game.
+//
+// The feed used to show every player in the league with a game anywhere on the
+// schedule. In late August that meant 6,032 NBA props for a season that starts
+// in October, and 3,089 NFL props for a Week 1 kickoff twenty days out. Alex:
+// "it leads to unnecessary info being presented when a player isn't even
+// playing but is taking up space on the prop feed."
+//
+// Checked against Outlier, which is what he asked me to compare with: their
+// MLB props page on the same afternoon carries only that day's fixtures, and
+// their NFL page is empty. Empty is the correct answer when there is no
+// upcoming slate -- it is a fact about the schedule, not a broken screen, and
+// this app says so in a sentence and offers the next slate rather than
+// silently backfilling three thousand rows nobody asked for.
+//
+// Six hours of grace behind now, so a game already under way stays on the feed
+// rather than dropping out at first pitch.
+const FEED_LOOKAHEAD_MS = 48 * 60 * 60 * 1000;
+const FEED_GRACE_MS = 6 * 60 * 60 * 1000;
+
+// The kickoff a row belongs to, or null when the schedule never said. A row
+// with no date is kept by the window rather than dropped: "we do not know when
+// this game is" is not the same claim as "this game is not soon", and only the
+// second one earns a row's removal.
+function feedRowKickoff(r) {
+  if (!r || !r.date) return null;
+  const t = new Date(r.date).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function feedRowIsNear(r, now) {
+  const t = feedRowKickoff(r);
+  if (t == null) return true;
+  return t >= now - FEED_GRACE_MS && t <= now + FEED_LOOKAHEAD_MS;
+}
+
 function buildNewsInjuryWire(pool, affectsByPlayer, watchingKeys) {
   const rows = [];
   pool.forEach((entry) => {
@@ -24607,6 +24728,40 @@ export default function PropLedger() {
     [page, newsPlayerPool, newsAffects, newsWatching]
   );
   const newsInjuryWire = useMemo(() => newsInjuryWireAll.slice(0, NEWS_WIRE_LIMIT), [newsInjuryWireAll]);
+
+  // When each team next plays, for the Injuries page's "playing next" sort.
+  //
+  // Alex: "make the injury sortable by upcoming games so users can quickly see
+  // who might be missing from the upcoming games that day/night or tomorrow."
+  // An out player whose team is not on tonight's slate is a fact about next
+  // week; one whose team plays in two hours is the reason to look at the page.
+  //
+  // Both leagues come from the caches the feed already fills, so opening this
+  // page cold costs the two slate requests and nothing per player. A team the
+  // slate does not mention is simply absent from the map, which the page reads
+  // as "not playing soon" and says so rather than sorting it silently.
+  const [injurySlate, setInjurySlate] = useState(() => new Map());
+  React.useEffect(() => {
+    if (page !== "injuries") return undefined;
+    let cancelled = false;
+    Promise.all([
+      fetchMLBDaySlate().catch(() => []),
+      fetchWNBALiveSlate().catch(() => null),
+    ]).then(([mlbGames, wnba]) => {
+      if (cancelled) return;
+      const m = new Map();
+      (mlbGames || []).forEach((g) => {
+        if (g.awayAbbr) m.set(`mlb:${g.awayAbbr}`, g.date);
+        if (g.homeAbbr) m.set(`mlb:${g.homeAbbr}`, g.date);
+      });
+      ((wnba && wnba.matchups) || []).forEach((g) => {
+        if (g.teamA?.abbr) m.set(`wnba:${g.teamA.abbr}`, g.date);
+        if (g.teamB?.abbr) m.set(`wnba:${g.teamB.abbr}`, g.date);
+      });
+      setInjurySlate(m);
+    });
+    return () => { cancelled = true; };
+  }, [page]);
   const newsInjuryWireMore = Math.max(0, newsInjuryWireAll.length - newsInjuryWire.length);
   const newsInjuryWireMeta = useMemo(() => {
     const sports = [...new Set(newsInjuryWireAll.map((p) => p.sport))].map((s) => s.toUpperCase());
@@ -24779,6 +24934,7 @@ export default function PropLedger() {
         <LazyPane minHeight={400}>
           <InjuriesPage
             rows={newsInjuryWireAll}
+            kickoffFor={(sp, team) => injurySlate.get(`${sp}:${team}`) || null}
             coveredSports={INJURY_FEED_SPORTS}
             uncoveredSports={INJURY_FEED_MISSING}
             onOpenProp={goToProp}
