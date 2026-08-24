@@ -19,6 +19,10 @@ import PalaceMark from "./PalaceMark.jsx";
 export const NAV_TABS = [
   { id: "games", label: "Games" },
   { id: "board", label: "The Board" },
+  // Between the Board and the Feed, which is the reading order: the Board says
+  // which games are worth opening, Findings says what is true inside them, the
+  // Feed is the table both are built from.
+  { id: "findings", label: "Findings" },
   { id: "feed", label: "Prop Feed" },
   { id: "news", label: "News" },
 ];

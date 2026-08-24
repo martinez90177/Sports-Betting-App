@@ -70,6 +70,7 @@ import {
 // ColorWheel only ever appears inside the Settings drawer.
 const GamesPage = React.lazy(() => import("./GamesPage.jsx"));
 const NewsPageRedesign = React.lazy(() => import("./NewsPageRedesign.jsx"));
+const FindingsPage = React.lazy(() => import("./FindingsPage.jsx"));
 const ColorWheel = React.lazy(() => import("./ColorWheel.jsx"));
 
 // Every lazy component needs a Suspense boundary above it. These chunks are
@@ -16692,6 +16693,11 @@ function buildWNBAFeedRows() {
         // fetchNFLPlayerGameLogForDisplay's fallback) must not be asked for
         // the year before the one he is actually showing.
         logId: player.espnId || null, logSeason: newestSeason(games),
+        // Per-game venue, parallel to `values`. The Findings screen splits a
+        // log by home and away, and `recent` only carries the last ten -- a
+        // split taken off that would silently be a last-ten split wearing a
+        // season label.
+        homes: games.map((g) => g.home),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -19325,6 +19331,11 @@ function buildNBAFeedRows() {
         // Tonight's opponent, every meeting of them this log holds.
         ...h2hSplit(games, values, nextOpp, hit),
         logId: player.espnId || null, logSeason: newestSeason(games),
+        // Per-game venue, parallel to `values`. The Findings screen splits a
+        // log by home and away, and `recent` only carries the last ten -- a
+        // split taken off that would silently be a last-ten split wearing a
+        // season label.
+        homes: games.map((g) => g.home),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -19402,6 +19413,11 @@ function buildNFLFeedRows() {
         // Tonight's opponent, every meeting of them this log holds.
         ...h2hSplit(games, values, nextOpp, hit),
         logId: NFL_ESPN_ID[player.id] || player.espnId || null, logSeason: newestSeason(games),
+        // Per-game venue, parallel to `values`. The Findings screen splits a
+        // log by home and away, and `recent` only carries the last ten -- a
+        // split taken off that would silently be a last-ten split wearing a
+        // season label.
+        homes: games.map((g) => g.home),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -19491,6 +19507,11 @@ function buildMLBFeedRows(teamsData) {
           // Tonight's opponent, every meeting of them this log holds.
           ...h2hSplit(games, values, nextGame.opp, hit),
           logId: player.mlbId || null, logSeason: newestSeason(games),
+        // Per-game venue, parallel to `values`. The Findings screen splits a
+        // log by home and away, and `recent` only carries the last ten -- a
+        // split taken off that would silently be a last-ten split wearing a
+        // season label.
+        homes: games.map((g) => g.home),
           values, line, isBinary: false, variance,
           // Plate appearances per game: a leadoff bat sees ~4.5, a No. 9 ~3.9,
           // so this reads the order without needing the order to be posted.
@@ -19612,6 +19633,11 @@ function buildMLBPitcherFeedRows(teamsData) {
         // `pitcher`, not `player`: this builder loops over teams and reads the
         // probable starter off the schedule, so there is no player in scope.
         logId: pitcher.mlbId || null, logSeason: newestSeason(pitcherGames),
+        // Per-game venue, parallel to `values`. The Findings screen splits a
+        // log by home and away, and `recent` only carries the last ten -- a
+        // split taken off that would silently be a last-ten split wearing a
+        // season label.
+        homes: pitcherGames.map((g) => g.home),
         values, line, isBinary: false, variance,
         role: roleValue({ sport: "mlb", games: pitcherGames, isPitcher: true }),
         direction: "over", matchupScore: rank,
@@ -23801,6 +23827,7 @@ const PAGES = [
   { id: "feed", label: "Prop Feed" },
   { id: "games", label: "Games" },
   { id: "board", label: "The Board" },
+  { id: "findings", label: "Findings" },
   { id: "nfl", label: "NFL Props" },
   { id: "mlb", label: "MLB Props" },
   { id: "nba", label: "NBA Props" },
@@ -24215,7 +24242,11 @@ export default function PropLedger() {
   );
 
   const boardRows = useMemo(() => {
-    if (page !== "board") return [];
+    // Two pages read these now. Findings runs its splits over the same rows
+    // the board ranks, so it is one more pass over a list already built --
+    // but the gate was written when only one page existed, and it quietly
+    // handed Findings an empty array and therefore zero findings.
+    if (page !== "board" && page !== "findings") return [];
     let rows;
     if (boardSport === "nba") rows = buildNBAFeedRows();
     else if (boardSport === "wnba") rows = buildWNBAFeedRows();
@@ -24554,6 +24585,20 @@ export default function PropLedger() {
             slateByTeam={boardSlate}
             timeLabel={slateTimeLabel}
             playersWithoutProps={playersWithoutProps}
+          />
+        </LazyPane>
+      )}
+      {/* Findings runs off the same rows the board does, so it costs one more
+          pass over a list already in memory rather than a second build. */}
+      {page === "findings" && (
+        <LazyPane minHeight={400}>
+          <FindingsPage
+            rows={boardRows}
+            sport={boardSport}
+            sports={FEED_SPORTS}
+            onSetSport={setBoardSport}
+            onOpenProp={goToProp}
+            loading={boardSport === "mlb" && mlb.mlbLoading}
           />
         </LazyPane>
       )}
