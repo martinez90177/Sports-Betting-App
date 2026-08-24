@@ -1292,14 +1292,27 @@ select.select-sm:focus, select.select-sm:focus-visible {
   .pp-nav { gap: 10px; padding: 10px 16px 0; }
   .pp-nav-right { order: 2; margin-left: auto; }
   .pp-nav-tabs {
-    order: 3; flex-basis: 100%; gap: 0 !important;
-    flex-wrap: nowrap !important; margin-top: 4px;
+    order: 3; flex-basis: 100%; margin-top: 4px;
+    /* Scrolls, and no longer divides. It used to give every tab an equal
+       `flex: 1 1 0` share of the row, which worked for the four the mobile
+       handoff drew and broke the moment Findings and Injuries joined them:
+       six tabs at 54px each, with "THE BOARD" needing 63, so the labels ran
+       into one another. Six equal columns of a 375px screen cannot hold these
+       words at any size worth reading.
+
+       mask-image fades the right edge, so a half-cut tab reads as "there is
+       more" rather than as a clipping bug -- the same device the player
+       page's market tabs use at the same breakpoint. */
+    flex-wrap: nowrap !important;
+    gap: 20px !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
   }
+  .pp-nav-tabs::-webkit-scrollbar { display: none; }
   .pp-nav-tabs > button {
-    /* flex-basis 0 with min-width 0, or "PROP FEED" and "THE BOARD" hold a
-       min-content floor wider than a quarter of the row and the four stop
-       being equal -- which is what made the middle two touch. */
-    flex: 1 1 0; min-width: 0; text-align: center;
+    flex: 0 0 auto; white-space: nowrap;
     padding: 14px 0 12px !important;
     margin-bottom: -1px;
     /* The file's own mobile tab type, a step down from the desktop 12/0.12. */
@@ -1462,4 +1475,73 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
   --sport-nfl: #9a8072;
   --sport-nba: #7f8a9a;
   --sport-wnba: #93808f;
+}
+
+
+/* ---------- research grids ----------
+   The Board, Findings and the Injury wire all draw a fixed filter rail beside
+   a fluid column. All three had that template inline, where no media query
+   could reach it -- so on a 375px screen the board's `196px minmax(0,1fr)
+   196px` computed to 196 / 0 / 196: the two rails landed on top of each other
+   with the games crushed to zero width between them. That is the screenshot
+   Alex sent from his phone.
+
+   Below 900px they become one column. The rail keeps its DOM position -- its
+   filters are how you choose what the list underneath shows, and moving them
+   after the results would put the control below the thing it controls -- but
+   its stacked pill columns turn into wrapping rows so it costs a few lines
+   rather than a screenful. */
+.board-layout { grid-template-columns: 196px minmax(0, 1fr) 196px; }
+.pp-findings-grid { grid-template-columns: 196px minmax(0, 1fr); }
+
+@media (max-width: 900px) {
+  .board-layout,
+  .pp-findings-grid { grid-template-columns: minmax(0, 1fr); }
+
+  /* The board's right-hand rail is the legend -- how to read a card. It is
+     reference, not a control, so on one column it goes last rather than
+     sitting between the filters and the games. */
+  .board-layout > *:nth-child(3) { order: 3; }
+
+  /* Filter rails read as rows of pills on a phone, not as columns of them. */
+  .pp-findings-rail > div[style*="flex-direction: column"],
+  .board-layout > *:first-child div[style*="flex-direction: column"] {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+  }
+  .pp-findings-rail > div[style*="flex-direction: column"] > *,
+  .board-layout > *:first-child div[style*="flex-direction: column"] > * {
+    flex: 0 1 auto;
+  }
+}
+
+/* The injury cards are already an auto-fill grid, so they need no breakpoint
+   of their own -- but the minimum has to fit a 375px screen inside the page
+   shell's padding, and 268 + 44 does not. */
+@media (max-width: 420px) {
+  .pp-injury-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+/* A finding is a sentence. On a phone it must not also be a two-column
+   layout: at 375px the 118px rate column left the sentence about five words
+   wide, which is a shape you read one word at a time. Stacked, the sentence
+   gets the full width and the rate sits under it as a strip. */
+@media (max-width: 560px) {
+  .pp-finding { flex-direction: column; }
+  .pp-finding > div:last-child {
+    /* !important because these three are inline on the element, and a
+       stylesheet only beats an inline style this way -- the same trap
+       PROJECT_NOTES records for .pp-pd-verdict-cells. */
+    width: auto !important;
+    padding-left: 0 !important;
+    border-left: none !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 14px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+  /* The bars take the room the column no longer holds. */
+  .pp-finding > div:last-child > div:last-child { flex: 1; }
 }

@@ -111,7 +111,9 @@ export default function InjuriesPage({
 
   return (
     <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", padding: "20px 22px 40px", boxSizing: "border-box" }}>
-      <div className="pp-findings-grid" style={{ display: "grid", gridTemplateColumns: "196px minmax(0,1fr)", gap: 22 }}>
+      {/* Template in index.css so the phone can collapse it -- see
+          .pp-findings-grid. */}
+      <div className="pp-findings-grid" style={{ display: "grid", gap: 22 }}>
 
         <div className="pp-findings-rail">
           <div style={LABEL}>League</div>

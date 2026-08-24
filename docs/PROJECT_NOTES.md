@@ -441,3 +441,45 @@ Posted slots render filled, projected ones outlined, and a batter with fewer
 than five logged games gets `#—` and sorts last. That last case is not a bug and
 was reported as one: Corey Julks had three games and six plate appearances all
 season.
+
+## Adding a nav tab breaks the phone row — 2026-08-24
+
+`.pp-nav-tabs > button` used `flex: 1 1 0`, dividing the row equally. That was
+right for the four tabs the mobile handoff drew and broke the moment Findings
+and Injuries joined them: six tabs at 54px each on a 375px screen, with "THE
+BOARD" needing 63, so the labels ran into one another — Alex's phone showed
+`THE BOARDINDINGSPROP FEED`.
+
+The row scrolls now (`flex: 0 0 auto` + `overflow-x: auto` + a mask fade), so
+tab count no longer has an upper bound. **If you add a seventh, nothing needs
+to change.**
+
+## A fixed window cannot meet a minimum larger than itself
+
+`feedWindowFloor(minGames, window)` clamps the sample floor to the window's own
+length: L10 can never hold more than ten games, so requiring fifteen made every
+row in that column read "too few" forever.
+
+The code already knew this and applied it to L5 alone, with the note "without
+that exemption the L5 column would read 'too few' on every row in the feed". It
+was never generalised, and at MLB's default of 15 the same thing had quietly
+become true of L10 — invisible on desktop, where L20 and Season still print
+rates, and total on the phone card, which shows only the active window's rate.
+Alex's screenshot was a feed where every card said `TOO FEW · 10 games`.
+
+Season is the window with no cap, so it is where the minimum applies in full.
+That is the honest place for it: "I don't trust a rate under fifteen games" is a
+claim about a season record, not about a ten-game window that announces its own
+length in its title.
+
+## Inline grid templates cannot be made responsive
+
+Three research grids — `.board-layout`, `.pp-findings-grid` and the player
+page's — declared `grid-template-columns` inline. A media query cannot override
+an inline style, so on a 375px screen the board's `196px minmax(0,1fr) 196px`
+computed to **196 / 0 / 196**: both rails landed on top of each other with the
+games crushed to nothing between them.
+
+The templates live in `index.css` now. **When adding a new multi-column page,
+put the template in the stylesheet from the start** — the inline version looks
+fine on the machine you build it on and is unfixable from CSS later.

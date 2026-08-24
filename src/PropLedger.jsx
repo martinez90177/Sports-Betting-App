@@ -18441,7 +18441,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
     // Matches FeedPctCell's `minSample` exactly, so the phone card and the
     // desktop cell for one row can never disagree about whether its sample is
     // big enough to state a rate over.
-    const thinSample = gamesCounted != null && gamesCounted < (sampleWindow === "l5" ? Math.min(minGames, 5) : minGames);
+    const thinSample = gamesCounted != null && gamesCounted < feedWindowFloor(minGames, sampleWindow);
     return (
       <div
         className="feed-row"
@@ -18593,9 +18593,9 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           stay as built rather than being recomputed off a shorter sample
           than they claim. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }}>
-        <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={Math.min(minGames, 5)} active={sampleWindow === "l5"} />
-        <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={minGames} active={sampleWindow === "l10"} />
-        <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={minGames} active={sampleWindow === "l20"} />
+        <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={feedWindowFloor(minGames, "l5")} active={sampleWindow === "l5"} />
+        <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={feedWindowFloor(minGames, "l10")} active={sampleWindow === "l10"} />
+        <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={feedWindowFloor(minGames, "l20")} active={sampleWindow === "l20"} />
         {/* Five meetings, not the page's minimum sample. That minimum is set
              against a season -- 17 on the NFL -- and two teams meet twice a
              year, so applying it here would blank the column on every row in
@@ -18937,6 +18937,30 @@ function feedStreak(values, line, isBinary, direction) {
 // side of the line, and sign-flipped for Unders so positive always means
 // "the sample is on this bet's side". Meaningless for binary markets, which
 // have no distance-to-line to measure.
+// The sample floor a given window can actually satisfy.
+//
+// The minimum sample says how much evidence a rate has to stand on. A column
+// labelled "last 10" offers exactly ten games, so demanding fifteen of it asks
+// for something the column cannot express -- and every row in it reads "too
+// few" forever, on every player, whatever their log looks like.
+//
+// The code already knew this and applied it to L5 only, with the note "without
+// that exemption the L5 column would read 'too few' on every row in the feed".
+// The same is true of L10 and L20 the moment the minimum passes 10 or 20, and
+// on MLB at fifteen games it already was: Alex's phone showed a feed where
+// every single card said "TOO FEW · 10 games", because the mobile card has one
+// rate rather than four and that rate is the active window's.
+//
+// Season is the window with no cap, so it is where the minimum bites in full.
+// That is the honest place for it: "I do not trust a rate under fifteen games"
+// is a claim about a season record, not about a ten-game form window that
+// announces its own length in its title.
+function feedWindowFloor(minGames, window) {
+  if (window === "all") return minGames;
+  const cap = Number(String(window).replace("l", ""));
+  return Number.isFinite(cap) ? Math.min(minGames, cap) : minGames;
+}
+
 function feedCushion(values, line, isBinary, window, direction) {
   if (isBinary || !values || !values.length) return null;
   const n = window === "all" ? values.length : Math.min(values.length, Number(window.slice(1)) || values.length);
@@ -21127,7 +21151,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     const games = new Set();
     const key = sampleWindow;
     const nKey = key === "l5" ? "n5" : key === "l20" ? "n20" : key === "all" ? "nAll" : "n10";
-    const floor = key === "l5" ? Math.min(minGames, 5) : minGames;
+    const floor = feedWindowFloor(minGames, key);
     filteredRows.forEach((r) => {
       if (r.gameId) games.add(r.gameId);
       else if (r.opp) games.add([r.team, r.opp].sort().join("-"));
@@ -21312,7 +21336,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         <div style={FEED_CELL_SUB}>
           {minGames === MIN_SAMPLE_ALL
             ? "no minimum set — every row states a rate"
-            : `under ${minGames} games, so no rate is stated`}
+            : `under ${feedWindowFloor(minGames, sampleWindow)} games, so no rate is stated`}
         </div>
       </div>
       <div style={{ flex: "1 1 170px", minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>

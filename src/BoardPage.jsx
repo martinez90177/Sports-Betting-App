@@ -554,7 +554,12 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         </div>
       </div>
 
-      <div className="board-layout" style={{ display: "grid", gridTemplateColumns: "196px minmax(0, 1fr) 196px", gap: 20, alignItems: "start", paddingTop: 20 }}>
+      {/* The template lives in index.css, not here. Inline it could not be
+          overridden by a media query -- which is why this stayed three columns
+          on a phone, computed 196px / 0px / 196px, and stacked the legend rail
+          on top of the filter rail with the games squeezed to nothing between
+          them. */}
+      <div className="board-layout" style={{ display: "grid", gap: 20, alignItems: "start", paddingTop: 20 }}>
         {/* ---- Filter rail ---- */}
         <div>
           {/* League leads the rail, which is where the mock puts it -- it was
