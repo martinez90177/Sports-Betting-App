@@ -242,6 +242,11 @@ export default function FeedFormStrip({
                   style={{
                     fontSize: 9.5, letterSpacing: "0.08em", color: "var(--dim)",
                     whiteSpace: "nowrap", textAlign: "center", padding: "0 2px",
+                    // Below the feed table's minimum width the wrapper
+                    // scrolls, but a row narrower than this region still cuts
+                    // the label. An ellipsis makes that read as truncation
+                    // rather than as "no games y", which looks like a typo.
+                    overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
                   }}
                 >
                   no games yet

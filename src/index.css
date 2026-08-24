@@ -693,13 +693,46 @@ input.pp-search:focus, input.pp-search:focus-visible {
      (122px at 11px, 117px at 10px), and ODDS says "Coming soon" until a real
      feed exists (75px). At 88/80 the two overflowed their tracks and collided
      in the 14px gap between them. */
+  /* Five tracks, not six: ODDS is gone (see FeedRow). Its 72px and one
+     14px gap went to the rate group, which now holds five cells instead of
+     four -- L5, L10, L20, H2H, SEASON.
+
+     Measured, not guessed. At a 1400px viewport the v2 shell's two 196px
+     rails leave the card 879px inside, and the old minima summed to 962 --
+     so this table was overflowing and horizontally scrolling before H2H was
+     added; the fifth cell only made it visible. The minima below sum to
+     34+218+210+380 = 842, plus 42 of gaps and 32 of padding = 916. That is a
+     real minimum, not a target: the card is 880 wide at a 1400px window, so
+     the wrapper scrolls there and the table fits outright from about 1440 up.
+     Dropping ODDS and LINE bought 198px of it; without them the same six
+     columns would need 1114.
+
+     Every figure here was checked by measuring scrollWidth against
+     clientWidth in the browser, not by trusting the arithmetic.
+
+     FORM needs 170, not the 58px its bar strip measures. The strip reserves
+     54px on its right for the line tag, and a row with only four games spans
+     the remaining six of its ten columns with a "no games yet" marker. 210 is
+     the width at which that marker stops being clipped -- found by stepping
+     the track and reading scrollWidth, not by looking at it.
+
+     PROPOSITION keeps its old 218 floor and FORM gives up the 42px instead.
+     Taking it from PROPOSITION first was tried and truncated the names --
+     "Shakira Aus..." -- which is the one thing on the row that must never be
+     abbreviated: it is the subject. FORM can afford it; its strip measures
+     58px and its caption ("9 of 10") about 44.
+
+     380 for the rate group is six cells at 58px plus five 6px gaps. 58 is
+     what the widest label in a cell needs -- "meetings", eight monospace
+     characters at 10px, plus 4px of side padding either side. Six columns,
+     because the last two are this season and last (mock 3d, item 5) rather
+     than one blended "Season" figure. 55 is what "16 of 20" needs at 10.5px
+     Space Mono with 4px of side padding. */
   grid-template-columns:
     34px
     minmax(218px, 262px)
-    minmax(180px, 250px)
-    minmax(96px, 124px)
-    minmax(72px, 88px)
-    minmax(260px, 1fr);
+    minmax(210px, 250px)
+    minmax(380px, 1fr);
   column-gap: 14px;
   padding-left: 16px;
   padding-right: 16px;

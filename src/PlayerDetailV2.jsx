@@ -4,6 +4,11 @@ import TeamLogo from "./TeamLogo.jsx";
 import { venueAbbr } from "./lib/venue.js";
 import { mutedTeamColor, matchupTones } from "./lib/teamColors.js";
 import MatchupCardModal, { straightRunOf } from "./MatchupCardModal.jsx";
+// Named PlayerGameLog, not GameLogTable: MatchupPlayerBlocks already
+// exports a GameLogTable, and it is a different thing -- a generic
+// arbitrary-column table for the matchup view, with no notion of a split
+// excluding a game.
+import PlayerGameLog, { SeasonSplit } from "./PlayerGameLog.jsx";
 
 // A transcription of `design_handoff_proppalace_v2/Player Detail <SPORT> v2.dc.html`.
 //
@@ -151,6 +156,10 @@ function BandHalf({ sport, team, side, align, tone }) {
 }
 
 export default function PlayerDetailV2({
+  // Competitive brief item 1 (mock 3a). { rows, upcoming, unit } -- rows is
+  // the WHOLE log, each carrying an `excluded` flag, which is what lets the
+  // table keep a filtered-out game visible instead of dropping it.
+  log = null,
   sport,
   // `crumbSelect` is the game switcher, rendered in place of the plain
   // fixture text. The mock prints the fixture as static type because it has
@@ -183,6 +192,9 @@ export default function PlayerDetailV2({
     : { away: "var(--dim)", home: "var(--dim)" };
 
   const [cardOpen, setCardOpen] = React.useState(false);
+  // Open by default: the table is the answer to "where are the games",
+  // and a collapsed answer is the state the page was already in.
+  const [logOpen, setLogOpen] = React.useState(true);
 
   return (
     <div style={{ width: "100%", maxWidth: 1600, margin: "0 auto", background: "var(--bg)", color: "var(--text)" }}>
@@ -452,6 +464,22 @@ export default function PlayerDetailV2({
           <GameByGame sport={sport} {...chart} />
 
           {filtersOpen && filtersPanel}
+
+          {log && log.seasons && <SeasonSplit seasons={log.seasons} />}
+
+          {log && log.rows && log.rows.length > 0 && (
+            <PlayerGameLog
+              sport={sport}
+              rows={log.rows}
+              upcoming={log.upcoming}
+              unit={log.unit}
+              line={chart.line}
+              isBinary={chart.isBinary}
+              direction={chart.direction}
+              open={logOpen}
+              onToggle={() => setLogOpen((v) => !v)}
+            />
+          )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
             <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)", lineHeight: 1.6 }}>

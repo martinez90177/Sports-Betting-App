@@ -37,7 +37,7 @@ import { fetchLeagueRosters } from "./lib/rosters.js";
 import {
   LOG_SCOPE_DEFAULT, LogScopeControl, PlayoffTag,
   scopeGames, scopeFilterCount, isPlayoffGame, hasLogScopeChoices,
-  usePriorSeasonLog, mergeSeasonLogs,
+  usePriorSeasonLog, mergeSeasonLogs, seasonLabel, newestSeason,
 } from "./LogScope.jsx";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
 import {
@@ -2733,6 +2733,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         marginColor: v2Edge >= 0 ? "var(--pos)" : "var(--neg)",
         odds: null,
         sampleVerdict: `${values.length} games`,
+      }}
+      log={{
+        rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
+        upcoming: nbaNextGameForTeam(player?.team),
+        seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba"),
       }}
       chart={{
         games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
@@ -6188,6 +6193,74 @@ function useGameRange(resetKey) {
   return { range, setRange, applyRange };
 }
 
+// This season and last, as two separate records. Item 5 of the competitive
+// brief (mock 3d).
+//
+// Nothing is fetched for this. All four player pages already merge the prior
+// season into their log (see usePriorSeasonLog / mergeSeasonLogs) and then
+// scope the page down to the current one, so the second season has been in
+// memory all along with no way to see it whole.
+//
+// Reads the MERGED log, not the scoped one -- `allGames` is the current season
+// by definition, so building this from it would always produce one cell.
+//
+// Deliberately not on the prop feed, where the mock puts it. The feed builds
+// thousands of rows from single-season logs, and last season loads per player
+// on request: a column there would be one network request per row, or three
+// thousand dashes. The feed states that instead of leaving it as a gap.
+function seasonSplits(logGames, valueOf, hit, sport) {
+  const bySeason = new Map();
+  (logGames || []).forEach((g) => {
+    if (g == null || g.season == null) return;
+    const k = Number(g.season);
+    if (!Number.isFinite(k)) return;
+    if (!bySeason.has(k)) bySeason.set(k, []);
+    bySeason.get(k).push(valueOf(g));
+  });
+  const years = [...bySeason.keys()].sort((a, b) => b - a).slice(0, 2);
+  if (years.length < 2) return null;
+  return years.map((k, i) => {
+    const vals = bySeason.get(k);
+    const hits = vals.filter(hit).length;
+    return {
+      label: seasonLabel(k, sport),
+      rate: vals.length ? hits / vals.length : null,
+      hits, n: vals.length, current: i === 0,
+    };
+  });
+}
+
+// The whole log, each game marked with whether the active filters counted it.
+// Competitive brief item 1 (mock 3a) -- see src/GameLogTable.jsx for what it
+// draws and why an excluded game stays on screen.
+//
+// Membership is tested by identity, not by a date-and-opponent key: `filtered`
+// is normally `allGames` run through .filter(), so the same objects are in
+// both, and identity is the only test that keeps an MLB doubleheader as two
+// rows instead of collapsing it into one.
+//
+// One filter breaks that assumption. Picking a specific opponent swaps the
+// source out for the three-year head-to-head history, whose games are not
+// `allGames`' objects -- so nothing would intersect and the table would mark
+// every row excluded, which is a lie in the loudest possible form. Detected
+// rather than assumed: with no overlap the table lists the counted games
+// themselves and marks nothing, because there is no season log it can honestly
+// speak for.
+function buildLogRows(allGames, filtered, valueOf) {
+  if (!allGames || !allGames.length) return [];
+  const kept = new Set(filtered || []);
+  const overlaps = allGames.some((g) => kept.has(g));
+  const src = overlaps ? allGames : (filtered || []);
+  return src.map((g) => ({
+    v: valueOf(g),
+    opp: g.opp,
+    home: g.home,
+    date: axisDateShort(g.date),
+    po: isPlayoffGame(g),
+    excluded: overlaps ? !kept.has(g) : false,
+  }));
+}
+
 // Roster-rail season stat, in the market currently selected.
 //
 // The design's rail rows read "WR · 6.1 REC" -- position plus that player's
@@ -8231,6 +8304,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         // renders an em dash rather than a hit rate re-expressed as a price.
         odds: null,
         sampleVerdict: `${values.length} games`,
+      }}
+      log={{
+        rows: buildLogRows(allGames, filtered, (g) => statValueNFL(g, market)),
+        upcoming: nflNextGameForTeam(player?.team),
+        seasons: seasonSplits(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl"),
       }}
       chart={{
         games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
@@ -10804,6 +10882,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
         marginColor: v2Edge >= 0 ? "var(--pos)" : "var(--neg)",
         odds: null,
         sampleVerdict: `${values.length} games`,
+      }}
+      log={{
+        rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
+        upcoming: wnbaNextGameForTeam(player?.team),
+        seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba"),
       }}
       chart={{
         games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
@@ -15935,6 +16018,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
         odds: null,
         sampleVerdict: `${values.length} games`,
       }}
+      log={{
+        rows: buildLogRows(allGames, filtered, statValueFn),
+        upcoming: nextGame,
+        unit: isPitcher ? "starts" : "games",
+        seasons: seasonSplits(logGames, statValueFn, (v) => v > liveLine, "mlb"),
+      }}
       chart={{
         games: chartData.map((d) => ({ v: d.value, opp: d.opp, home: d.home, iso: d.date, date: axisDateShort(d.date), po: d.playoff })),
         onZoomRange: (from, to) => setRange({ from, to }),
@@ -16301,6 +16390,7 @@ async function fetchWNBATeamDefense() {
 // tonight/tomorrow rosters and its own curated market list.
 function buildWNBAFeedRows() {
   const rows = [];
+  resetFeedSkips("wnba");
   // Live rosters when they have loaded, the hand-written arrays otherwise, and
   // de-duped by espnId so a player who appears in both is only built once.
   // Players without a game log are skipped -- the same wnbaPlayerHasData
@@ -16319,7 +16409,7 @@ function buildWNBAFeedRows() {
 
   pool.forEach((player, pi) => {
     const games = getWNBAGames(player, pi);
-    if (!games || !games.length) return;
+    if (!games || !games.length) { noteFeedSkip("wnba", player, "no game log"); return; }
     // The scheduled opponent, not the last one played -- see
     // wnbaNextGameForTeam. Null until the slate loads, and the row then carries
     // no opponent rather than the wrong one.
@@ -16362,6 +16452,14 @@ function buildWNBAFeedRows() {
         n10: hitRateCount(values, 10),
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
+        // Tonight's opponent, every meeting of them this log holds.
+        ...h2hSplit(games, values, nextOpp, hit),
+        // Who to ask for last season, and which season "last" means. Both
+        // read off the log in hand rather than the calendar -- a player whose
+        // current log is already last season (see
+        // fetchNFLPlayerGameLogForDisplay's fallback) must not be asked for
+        // the year before the one he is actually showing.
+        logId: player.espnId || null, logSeason: newestSeason(games),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -17103,7 +17201,7 @@ const FEED_LABEL = {
   fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
 };
 
-function FeedTableHeader({ columnSort, onSort }) {
+function FeedTableHeader({ columnSort, onSort, seasonLabels }) {
   // The four rate columns are a nested `repeat(4, 1fr)` inside the last
   // track, exactly as the rows are -- that's what keeps L5/L10/L20/SEASON
   // sitting over their own cells at every width without a seventh, eighth,
@@ -17140,19 +17238,39 @@ function FeedTableHeader({ columnSort, onSort }) {
            states the window and what the bars are measured against, which is
            the one thing the chart itself can't say. */}
       <span className="pp-mono" style={FEED_LABEL}>Form vs. line</span>
-      {/* Line and Odds are left-aligned, like the values under them. They
-           used to be centered along with the four rate columns; the design
-           reads them as fields, not figures in a matrix. */}
-      {/* Plain labels. The mock gives a sort control to the four rate
-           columns and to nothing else -- and ODDS in particular has no value
-           behind it to sort by until a real feed lands. */}
-      <span className="pp-mono" style={FEED_LABEL}>Line</span>
-      <span className="pp-mono" style={FEED_LABEL}>Odds</span>
-      <span style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+      {/* LINE and ODDS both used to have a track here. Both are gone --
+           2026-08-24, making room for H2H and last season.
+
+           ODDS printed "Coming soon" on every row. LINE printed a number the
+           row already states twice: once in the proposition ("OVER 21.5 PASS
+           YDS") and again on the chart's own draggable tag. What it added was
+           the average-vs-line cushion and, while the line is dragged, the way
+           back to the posted one -- and those two moved under the proposition,
+           where they read as notes on it rather than as a column. */}
+      {/* Five, not four. H2H is item 4 of the competitive brief and the one
+           column both benchmarks carry that this table did not -- the older
+           comment above called it unbuildable, which was true only of the
+           implied-probability column beside it in the same sentence. Every
+           meeting is in the log this row is already built from. */}
+      {/* Six. The last two are named by year rather than "Season" and
+           "Prior", because which years they are is the point -- and because a
+           column headed 2025 next to one headed 2024 is unambiguous in a way
+           that "Season" beside "Last" is not. The labels come from the rows
+           themselves (see seasonLabels), so a sport whose current log is
+           already last season is headed honestly rather than by the calendar.
+
+           The prior column is not sortable: it fills in as rows scroll into
+           view, so sorting on it would reorder the table under the reader as
+           each request lands. */}
+      <span style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }}>
         {col("L5", "l5")}
         {col("L10", "l10")}
         {col("L20", "l20")}
-        {col("Season", "all")}
+        {col("H2H", "h2h")}
+        {col(seasonLabels?.current || "Season", "all")}
+        <span className="pp-mono" style={{ ...FEED_LABEL, textAlign: "center" }}>
+          {seasonLabels?.prior || "Last"}
+        </span>
       </span>
     </div>
   );
@@ -17270,16 +17388,70 @@ function feedMatchupRead(rank, sport, direction) {
 // the design fills exactly that one with --surface-2 and a --line border and
 // leaves the other three transparent, so the column the reader chose is
 // obvious without a second label saying so.
-function FeedPctCell({ v, n, label, active, minSample = 10 }) {
+// One row's prior season. Separate from FeedPctCell because its empty states
+// are different in kind: FeedPctCell's dash means "no games in this window",
+// which is settled, while this column's blank can mean "we have not asked
+// yet" -- and rendering those two the same way would be the feed quietly
+// claiming an answer it does not have.
+function PriorSeasonCell({ prior, minSample = 10 }) {
+  const shell = { borderRadius: 4, padding: "8px 4px", textAlign: "center", boxSizing: "border-box" };
+  if (!prior || prior.state === "loading") {
+    return (
+      <div style={shell}>
+        <div className="pp-mono" title="Fetching last season for this player" style={{ fontSize: 13, color: "var(--line)" }}>···</div>
+      </div>
+    );
+  }
+  if (prior.state !== "ready") {
+    return (
+      <div style={shell}>
+        <div className="pp-mono" title="No prior season on file for this player" style={{ fontSize: 15, color: "var(--dim)" }}>—</div>
+      </div>
+    );
+  }
+  const tooFew = prior.n < minSample;
+  return (
+    <div style={shell}>
+      <div
+        className="pp-mono"
+        title={tooFew
+          ? `Only ${prior.n} games last season — fewer than the ${minSample} this app will state a rate over`
+          : `Cleared tonight's line in ${Math.round(prior.rate * prior.n)} of ${prior.n} games last season`}
+        style={{ fontSize: tooFew ? 11 : 15, color: tooFew ? "var(--dim)" : feedRateColor(prior.rate), lineHeight: 1.25 }}
+      >
+        {tooFew ? "too few" : `${Math.round(prior.rate * 100)}%`}
+      </div>
+      {/* Dimmer track than the current season's beside it. Same device, less
+           ink: the standing rule is that this season outranks last, and the
+           column should look like the junior of the two without needing a
+           caption to say so. */}
+      <div style={{ height: 3, borderRadius: 2, margin: "7px 6px 0", background: "var(--line)" }}>
+        <div style={{
+          height: 3, borderRadius: 2,
+          width: tooFew ? 0 : `${Math.round(prior.rate * 100)}%`,
+          background: "var(--amber-dim, var(--line))",
+        }} />
+      </div>
+      <div className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", marginTop: 6, lineHeight: 1.3 }}>
+        {Math.round(prior.rate * prior.n)} of {prior.n}
+      </div>
+    </div>
+  );
+}
+
+function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", emptyTitle = "No games in this window" }) {
+  const one = unit === "meetings" ? "meeting" : "game";
   const shell = {
-    borderRadius: 4, padding: "8px 6px", textAlign: "center", boxSizing: "border-box",
+    // 4px of side padding, not 6: five cells now share the track four used to,
+    // and the sample line ("16 of 20") is what sets the floor.
+    borderRadius: 4, padding: "8px 4px", textAlign: "center", boxSizing: "border-box",
     background: active ? "var(--surface-2)" : "transparent",
     border: `1px solid ${active ? "var(--line)" : "transparent"}`,
   };
   if (v == null) {
     return (
       <div style={shell}>
-        <div className="pp-mono" title="No games in this window" style={{ fontSize: 15, color: "var(--dim)" }}>—</div>
+        <div className="pp-mono" title={emptyTitle} style={{ fontSize: 15, color: "var(--dim)" }}>—</div>
       </div>
     );
   }
@@ -17299,10 +17471,14 @@ function FeedPctCell({ v, n, label, active, minSample = 10 }) {
     <div style={shell}>
       <div
         className="pp-mono"
-        title={tooFew ? `Only ${n} games — fewer than the ten this app will state a rate over` : undefined}
-        style={{ fontSize: tooFew ? 11.5 : 15, color: pctColor, whiteSpace: "nowrap" }}
+        title={tooFew ? `Only ${n} ${n === 1 ? one : unit} — fewer than the ${minSample} this app will state a rate over` : undefined}
+        // Wraps rather than clips. Six cells share the track four used to,
+        // and at 55px "too few" is two pixels wider than the cell -- nowrap
+        // truncated it to "too fe". A verdict that wraps to two short lines is
+        // legible; one that is cut off mid-word is not.
+        style={{ fontSize: tooFew ? 11 : 15, color: pctColor, lineHeight: 1.25 }}
       >
-        {tooFew ? "too few" : `${Math.round(v * 100)}%`}
+        {tooFew ? (unit === "meetings" ? "—" : "too few") : `${Math.round(v * 100)}%`}
       </div>
       <div style={{ height: 3, borderRadius: 2, margin: "7px 6px 0", background: "var(--line)" }}>
         <div style={{
@@ -17318,10 +17494,14 @@ function FeedPctCell({ v, n, label, active, minSample = 10 }) {
       {n != null && (
         <div
           className="pp-mono"
-          title={label && n < label ? `Only ${n} games available — fewer than the ${label} this column asks for` : `${n} games counted`}
-          style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 6, whiteSpace: "nowrap" }}
+          title={label && n < label ? `Only ${n} ${n === 1 ? one : unit} available — fewer than the ${label} this column asks for` : `${n} ${n === 1 ? one : unit} counted`}
+          style={{ fontSize: 10, color: "var(--dim)", marginTop: 6, lineHeight: 1.3 }}
         >
-          {Math.round(v * n)} of {n}
+          {/* Under the band, the count IS the statement -- "2 meetings",
+              not "2 of 2", which reads as a rate written out longhand and
+              is the exact impression the suppressed percentage above it
+              exists to avoid. Mock 3d writes the cell this way. */}
+          {tooFew && unit === "meetings" ? `${n} ${n === 1 ? one : unit}` : `${Math.round(v * n)} of ${n}`}
         </div>
       )}
     </div>
@@ -17498,7 +17678,7 @@ function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status })
   };
 }
 
-const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder }) {
+const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder, prior = null }) {
   // Read from context rather than passed down: this component is memo'd, and
   // a context read still re-renders it when the format changes (memo only
   // short-circuits prop changes), so the whole feed reformats without adding
@@ -17584,6 +17764,30 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   };
+  // The two things the LINE column said that nothing else on the row does:
+  // while the line is dragged, that it is off-market and how to put it back;
+  // otherwise, how far the average clears it. Rendered under the proposition,
+  // in --dim, because both are notes ON the line rather than the line itself.
+  const lineNote = adjusted ? (
+    <span
+      role="button"
+      onClick={(e) => { e.stopPropagation(); resetLine(e); }}
+      title={`The posted line is ${Number(r.line).toFixed(1)} — click to put it back`}
+      className="pp-mono"
+      style={{ fontSize: 10, color: "var(--amber-ink, var(--amber))", cursor: "pointer", whiteSpace: "nowrap" }}
+    >
+      line {Number(lineVal).toFixed(1)} · market {Number(r.line).toFixed(1)} · reset
+    </span>
+  ) : cushion !== null ? (
+    <span
+      className="pp-mono"
+      title={`Averages ${cushion >= 0 ? "clear" : "short of"} the line by ${Math.abs(cushion).toFixed(1)} over the ${sampleWindow.toUpperCase()} sample`}
+      style={{ fontSize: 11, color: "var(--dim)", whiteSpace: "nowrap" }}
+    >
+      {cushion >= 0 ? "+" : "−"}{Math.abs(cushion).toFixed(1)} avg
+    </span>
+  ) : null;
+
   const resetLine = (e) => {
     if (e) e.stopPropagation();
     setDragLine(null);
@@ -18028,6 +18232,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               reference information, not part of the proposition, and including
               it would make the click target sprawl over most of the row. */}
           <div style={{ marginTop: 3 }}>{oppRankLine}</div>
+          {/* What the LINE column used to carry, now that it has none. Not
+              the line value itself -- the proposition above already names it,
+              and a third copy was what made the middle of the row feel
+              crammed -- but the two things only that cell said. */}
+          {lineNote && <div style={{ marginTop: 3 }}>{lineNote}</div>}
           {/* The ladder toggle has no column of its own any more. It sits
               here, under the prop it opens alt lines for, and only when the
               Lines control is asking for them. */}
@@ -18035,53 +18244,35 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         </div>
       </div>
       {formCell || <div />}
-      {/* Line and Odds read left-aligned, like fields, which is how the
-           design sets them -- only the four rate cells are a centered matrix. */}
-      <div>
-        <div className="pp-mono" style={{ fontSize: 15, color: adjusted ? "var(--amber-ink, var(--amber))" : "var(--text)" }}>
-          {Number(lineVal).toFixed(1)}
-        </div>
-        {/* While the line is dragged off-market this says so and offers the
-            way back, so an adjusted row is never mistaken for the posted
-            number. Otherwise it's the usual average-vs-line cushion, in
-            --dim: it's context for the line above it, not a verdict, and
-            colouring it green/red made it compete with the rate cells. */}
-        {adjusted ? (
-          <div
-            role="button"
-            onClick={resetLine}
-            title={`The posted line is ${Number(r.line).toFixed(1)} — click to put it back`}
-            className="pp-mono"
-            style={{ fontSize: 10, marginTop: 4, color: "var(--amber-ink, var(--amber))", cursor: "pointer", whiteSpace: "nowrap" }}
-          >
-            {/* 10px, which is the size the handoff sets on this note -- and
-                the size that keeps the longest form of it ("market 12.5 ·
-                reset", 117px) inside the LINE track rather than spilling into
-                the ODDS cell beside it. */}
-            market {Number(r.line).toFixed(1)} · reset
-          </div>
-        ) : cushion !== null && (
-          <div
-            className="pp-mono"
-            title={`Averages ${cushion >= 0 ? "clear" : "short of"} the line by ${Math.abs(cushion).toFixed(1)} over the ${sampleWindow.toUpperCase()} sample`}
-            style={{ fontSize: 11, marginTop: 4, color: "var(--dim)", whiteSpace: "nowrap" }}
-          >
-            {cushion >= 0 ? "+" : "−"}{Math.abs(cushion).toFixed(1)} avg
-          </div>
-        )}
-      </div>
-      {/* The column keeps its grid track, header and width so wiring a real
-          feed later is a value swap with no layout change. */}
-      <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--dim)", whiteSpace: "nowrap" }}>Coming soon</div>
+      {/* LINE and ODDS both used to have a track between the form strip and
+          the rate cells. Both are gone -- 2026-08-24 -- and their combined
+          198px went to the six rate columns, which have real numbers in them.
+          ODDS said "Coming soon" on every row of every sport; LINE said a
+          number the row states twice already. What LINE alone carried is now
+          `lineNote`, under the proposition. Player Detail's verdict block
+          still keeps an Odds slot, which is where a real feed lands first. */}
       {/* L5/L10 restate against a dragged line from the same log the bars
           draw; L20/Season cover a wider window than that log holds, so they
           stay as built rather than being recomputed off a shorter sample
           than they claim. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }}>
         <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={Math.min(minGames, 5)} active={sampleWindow === "l5"} />
         <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={minGames} active={sampleWindow === "l10"} />
         <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={minGames} active={sampleWindow === "l20"} />
+        {/* Five meetings, not the page's minimum sample. That minimum is set
+             against a season -- 17 on the NFL -- and two teams meet twice a
+             year, so applying it here would blank the column on every row in
+             the league forever. Five is the support band this app already
+             uses as the floor below which a rate is not stated at all. */}
+        <FeedPctCell
+          v={r.h2h} n={r.nH2h} minSample={5} unit="meetings" active={false}
+          emptyTitle={r.opp ? `No meetings with ${r.opp} in this log` : "No opponent scheduled yet"}
+        />
         <FeedPctCell v={r.all} n={r.nAll} minSample={minGames} active={sampleWindow === "all"} />
+        {/* Last season, graded against tonight's line. Three states, and none
+             of them is a silent blank: still being fetched, fetched and there
+             is none, or a real record. */}
+        <PriorSeasonCell prior={prior} minSample={minGames} />
       </div>
     </div>
   );
@@ -18169,6 +18360,187 @@ function getMLBDefRank(market, opp) {
 // the player cleared the line in none of N games -- and using it to mean "we
 // have no games" makes absence indistinguishable from a total miss. Every
 // consumer below treats null as "no data" and renders an em dash.
+// Last season, for the rows currently on screen. Item 5 of the competitive
+// brief (mock 3d) -- the second season column, beside this one.
+//
+// Lazy on purpose, and this is the whole design constraint. Prior seasons are
+// not in any feed builder: each sport fetches one player's log at a time (see
+// the four usePriorSeasonLog call sites, which is how the player pages get
+// theirs), and the NFL feed alone carries about 3,000 rows. Fetching the
+// column eagerly would be a request per player for a number most sessions
+// never scroll to.
+//
+// So it fills what is visible. The feed paginates at FEED_PAGE_SIZE, and a
+// page of rows is a much smaller set of distinct PLAYERS than it is of rows --
+// one player carries every market. Paging down fetches the next page's players
+// and nothing else.
+//
+// Keyed by sport + player + season so a player reached from two markets, or
+// from two sports pages in one session, is fetched once.
+const PRIOR_SEASON_CACHE = new Map();
+const PRIOR_SEASON_INFLIGHT = new Map();
+
+function priorSeasonKey(sport, row) {
+  if (!row || !row.logId || row.logSeason == null) return null;
+  // A pitcher and a batter with the same mlbId would be the same person, but
+  // they are fetched from different endpoints and must not share a cache slot.
+  const side = sport === "mlb" ? (String(row.marketId).startsWith("p_") ? "p" : "b") : "";
+  return `${sport}:${row.logId}:${row.logSeason - 1}${side ? ":" + side : ""}`;
+}
+
+// The stat function for one sport, so a cached prior log can be measured in
+// whichever market the row is about. Dispatched here rather than carried on
+// the row: a function on a row would defeat the memoisation the feed's sort
+// and filter passes depend on.
+function feedStatValue(sport, game, marketId) {
+  if (sport === "nfl") return statValueNFL(game, marketId);
+  if (sport === "mlb") {
+    return String(marketId).startsWith("p_") ? statValueMLBPitcher(game, marketId) : statValueMLB(game, marketId);
+  }
+  return statValue(game, marketId);
+}
+
+async function fetchPriorSeasonLog(sport, row) {
+  const season = row.logSeason - 1;
+  switch (sport) {
+    case "nfl": {
+      const raw = await fetchNFLPlayerGameLog(row.logId, season);
+      // The NFL fetcher returns ESPN's shape; every other NFL surface reads a
+      // normalised game. Without this the stat lookup finds undefined on every
+      // field and the column would read 0% for everyone.
+      return raw && raw.length ? raw.map((g) => normalizeNFLGame(g, { team: row.team })) : null;
+    }
+    case "nba": return await fetchNBAPlayerGameLog(row.logId, season);
+    case "wnba": return await fetchWNBAPlayerGameLog(row.logId, season);
+    case "mlb": return String(row.marketId).startsWith("p_")
+      ? await fetchMLBPitcherGameLog(row.logId, season)
+      : await fetchMLBGameLog(row.logId, season);
+    default: return null;
+  }
+}
+
+// Fills the prior-season cache for the rows on screen, and re-renders as each
+// one lands. Returns a getter rather than a map so the caller reads through
+// the cache and a row shared with an earlier page is answered instantly.
+function usePriorSeasonColumn(sport, visibleRows) {
+  const [, bump] = React.useReducer((n) => n + 1, 0);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    // Distinct players, not rows: one player carries every market on the page.
+    const wanted = new Map();
+    (visibleRows || []).forEach((r) => {
+      const k = priorSeasonKey(sport, r);
+      if (!k || PRIOR_SEASON_CACHE.has(k) || PRIOR_SEASON_INFLIGHT.has(k) || wanted.has(k)) return;
+      wanted.set(k, r);
+    });
+    if (!wanted.size) return undefined;
+
+    wanted.forEach((row, k) => {
+      const run = fetchPriorSeasonLog(sport, row)
+        .then((log) => {
+          // An empty result is cached as null, not left absent: "we asked and
+          // he has no prior season" is an answer, and re-asking it on every
+          // scroll would be a request per row per render.
+          PRIOR_SEASON_CACHE.set(k, log && log.length ? log : null);
+        })
+        .catch(() => { PRIOR_SEASON_CACHE.set(k, null); })
+        .finally(() => {
+          PRIOR_SEASON_INFLIGHT.delete(k);
+          if (!cancelled) bump();
+        });
+      PRIOR_SEASON_INFLIGHT.set(k, run);
+    });
+
+    return () => { cancelled = true; };
+    // visibleRows is a fresh array every render; its length and the sport are
+    // what actually decide the work. Keys are re-derived inside either way, and
+    // anything already cached or in flight is skipped.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sport, visibleRows.length, visibleRows[0] && visibleRows[0].key, visibleRows[visibleRows.length - 1] && visibleRows[visibleRows.length - 1].key]);
+
+  return React.useCallback((row) => {
+    const k = priorSeasonKey(sport, row);
+    if (!k) return { state: "none" };
+    if (!PRIOR_SEASON_CACHE.has(k)) return { state: "loading" };
+    const log = PRIOR_SEASON_CACHE.get(k);
+    if (!log) return { state: "none" };
+    const vals = log.map((g) => feedStatValue(sport, g, row.marketId)).filter((v) => v != null && Number.isFinite(v));
+    if (!vals.length) return { state: "none" };
+    // Graded against THIS row's line, not last season's own fair line. The
+    // column answers "how often did he clear tonight's number last year",
+    // which is the only question that makes it comparable to the cell beside
+    // it.
+    const hits = row.isBinary ? vals.filter((v) => v === 1).length : vals.filter((v) => v > row.line).length;
+    return { state: "ready", rate: hits / vals.length, n: vals.length, label: seasonLabel(row.logSeason - 1, sport) };
+  }, [sport]);
+}
+
+// Who the feed built nothing for, and why. Item 8 of the competitive brief
+// (mock 3g), and CLAUDE.md rule 4 in its most literal form: a player who
+// cannot produce a row becomes a stated fact with a reason attached, instead
+// of a name that is simply not there.
+//
+// Recorded by the builders as they run, because they are the only code that
+// knows why someone was passed over. Reconstructing the list afterwards would
+// mean a second copy of every skip condition, free to drift from the first --
+// and a wrong reason here is worse than no list, since it would assert that a
+// healthy starter has no log.
+//
+// Keyed by sport then team abbreviation. Rebuilt from scratch on every build
+// (the builders call resetFeedSkips first), so a player who gains a log stops
+// being listed on the next pass rather than lingering.
+const FEED_SKIPS = { nfl: new Map(), mlb: new Map(), nba: new Map(), wnba: new Map() };
+
+function resetFeedSkips(sport) {
+  if (FEED_SKIPS[sport]) FEED_SKIPS[sport].clear();
+}
+
+function noteFeedSkip(sport, player, reason) {
+  const bucket = FEED_SKIPS[sport];
+  const team = player && player.team;
+  if (!bucket || !team || !player.name) return;
+  if (!bucket.has(team)) bucket.set(team, []);
+  const list = bucket.get(team);
+  if (list.some((x) => x.name === player.name)) return;
+  list.push({ name: player.name, reason, pos: player.pos || null, espnId: player.espnId || null, mlbId: player.mlbId || null });
+}
+
+// The list for one team, alphabetical so the order does not shuffle between
+// renders. Returns [] rather than null for an unknown team: "we have no
+// record of anyone missing" and "this team does not exist" both correctly
+// render as nothing to show.
+function playersWithoutProps(sport, team) {
+  const bucket = FEED_SKIPS[sport];
+  const list = (bucket && bucket.get(team)) || [];
+  return [...list].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Every game in this log against one opponent, as a rate and a count.
+//
+// Item 4 of the competitive brief, mock 3d. It was always computable -- the
+// log carries `opp` on every game and the row already knows tonight's
+// opponent -- and until now it was reachable only by opening the player page
+// and setting the opponent filter, which is three screens past the one that
+// ranks props. Outlier and PropsMadness both name it as a column.
+//
+// Returns the count alongside the rate and never suppresses the rate itself:
+// FeedPctCell decides what a three-meeting sample is allowed to say. One rule
+// about thin samples, in one place, instead of two that can disagree.
+//
+// Same-season only, because that is all the feed's logs hold. A row that has
+// never met tonight's opponent gets null, which the cell draws as an em dash
+// -- not 0%, which would read as "faced them and never cleared it".
+function h2hSplit(games, values, oppAbbr, hit) {
+  if (!oppAbbr || !games || !games.length) return { h2h: null, nH2h: 0 };
+  const vs = [];
+  for (let i = 0; i < values.length; i++) {
+    if (games[i] && games[i].opp === oppAbbr) vs.push(values[i]);
+  }
+  if (!vs.length) return { h2h: null, nH2h: 0 };
+  return { h2h: vs.filter(hit).length / vs.length, nH2h: vs.length };
+}
+
 function hitRateWindow(values, n, hit) {
   const w = n === "all" ? values : values.slice(-n);
   if (!w.length) return null;
@@ -18663,12 +19035,14 @@ function oddsSliderProb(x) {
 // game logs and statValue/statValueNFL math as the single-player pages so
 // the numbers stay consistent between the two views.
 function buildNBAFeedRows() {
+  resetFeedSkips("nba");
   const rows = [];
   nbaPlayerPool().forEach((player, pi) => {
     const games = getNBAGames(player, pi);
     // A live-roster player whose real log hasn't loaded has no games at all.
     // Skipped, exactly as the NFL builder skips one -- never generated for.
-    if (!games.length) return;
+    // Recorded on the way past, so the board can name him (mock 3g).
+    if (!games.length) { noteFeedSkip("nba", player, "no game log"); return; }
     // The scheduled opponent, not the last one played. This used to read
     // games[games.length - 1].opp, which is who this player faced most
     // recently -- so the feed's opponent column and its defensive rank were
@@ -18716,6 +19090,9 @@ function buildNBAFeedRows() {
         n10: hitRateCount(values, 10),
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
+        // Tonight's opponent, every meeting of them this log holds.
+        ...h2hSplit(games, values, nextOpp, hit),
+        logId: player.espnId || null, logSeason: newestSeason(games),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -18738,10 +19115,14 @@ function buildNBAFeedRows() {
 
 
 function buildNFLFeedRows() {
+  resetFeedSkips("nfl");
   const rows = [];
   nflPlayerPool().forEach((player) => {
     const games = getNFLGames(player);
-    if (!games.length) return;
+    // `liveOnly` is the honest half of this: the live roster named him and
+    // no log exists yet. Kept distinct from a plain empty log so the chip
+    // can say which, rather than implying he has been dropped (mock 3g).
+    if (!games.length) { noteFeedSkip("nfl", player, player.liveOnly ? "no game log yet" : "no game log"); return; }
     // The scheduled opponent, not the last one played -- see
     // nflNextGameForTeam. Looked up by team rather than by player id, which
     // is what makes it work for a live-roster player: NFL_MATCHUPS holds
@@ -18786,6 +19167,9 @@ function buildNFLFeedRows() {
         n10: hitRateCount(values, 10),
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
+        // Tonight's opponent, every meeting of them this log holds.
+        ...h2hSplit(games, values, nextOpp, hit),
+        logId: NFL_ESPN_ID[player.id] || player.espnId || null, logSeason: newestSeason(games),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -18820,6 +19204,7 @@ function mlbGameLabelFull(teamAbbr, nextGame) {
 }
 
 function buildMLBFeedRows(teamsData) {
+  resetFeedSkips("mlb");
   const rows = [];
   teamsData.forEach(({ teamAbbr, players, gameLogsById, gameId, nextGame, lineupConfirmed }) => {
     if (!nextGame) return;
@@ -18831,7 +19216,7 @@ function buildMLBFeedRows(teamsData) {
     const gameLabel = nextGame.gameNumber ? `Gm ${nextGame.gameNumber}` : null;
     players.forEach((player) => {
       const games = gameLogsById[player.id] || [];
-      if (!games.length) return;
+      if (!games.length) { noteFeedSkip("mlb", player, "no game log"); return; }
       MLB_MARKETS.forEach((m) => {
         const def = getMLBDefRank(m.id, nextGame.opp);
         const rank = def ? def.rank : null;
@@ -18871,6 +19256,9 @@ function buildMLBFeedRows(teamsData) {
           n10: hitRateCount(values, 10),
           n20: hitRateCount(values, 20),
           nAll: hitRateCount(values, "all"),
+          // Tonight's opponent, every meeting of them this log holds.
+          ...h2hSplit(games, values, nextGame.opp, hit),
+          logId: player.mlbId || null, logSeason: newestSeason(games),
           values, line, isBinary: false, variance,
           // Plate appearances per game: a leadoff bat sees ~4.5, a No. 9 ~3.9,
           // so this reads the order without needing the order to be posted.
@@ -18932,6 +19320,11 @@ function buildMLBPitcherFeedRows(teamsData) {
   const rows = [];
   teamsData.forEach(({ teamAbbr, pitcherGames, gameId, nextGame }) => {
     const pitcher = nextGame?.probablePitcher;
+    // A named starter with no log is a different fact from no named starter,
+    // and only the first one is a player the board can list (mock 3g).
+    if (pitcher && (!pitcherGames || !pitcherGames.length)) {
+      noteFeedSkip("mlb", { team: teamAbbr, name: pitcher.name, pos: "SP", mlbId: pitcher.mlbId }, "no game log");
+    }
     if (!pitcher || !pitcherGames || !pitcherGames.length) return;
     // A doubleheader's two halves normally have different starters, so these
     // keys wouldn't collide on mlbId alone -- but they do before MLB names
@@ -18982,6 +19375,11 @@ function buildMLBPitcherFeedRows(teamsData) {
         n10: hitRateCount(values, 10),
         n20: hitRateCount(values, 20),
         nAll: hitRateCount(values, "all"),
+        // Tonight's opponent, every meeting of them this log holds.
+        ...h2hSplit(pitcherGames, values, nextGame.opp, hit),
+        // `pitcher`, not `player`: this builder loops over teams and reads the
+        // probable starter off the schedule, so there is no player in scope.
+        logId: pitcher.mlbId || null, logSeason: newestSeason(pitcherGames),
         values, line, isBinary: false, variance,
         role: roleValue({ sport: "mlb", games: pitcherGames, isPitcher: true }),
         direction: "over", matchupScore: rank,
@@ -20118,6 +20516,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       const { key, dir } = columnSort;
       const val = (r) => (key === "line" ? r.line
         : key === "odds" ? (r[sampleWindow] == null ? null : probToAmericanOdds(r[sampleWindow]))
+        // H2H sorts only over meetings the column is willing to state a rate
+        // for. Without this, one meeting cleared is 100% and outranks every
+        // real record in the league -- the same overclaiming-at-the-weak-end
+        // bug the board's verdict was rebuilt to remove, arriving through a
+        // different door. A thin row sorts as null and parks at the bottom,
+        // which is where "we do not know" belongs.
+        : key === "h2h" ? (r.nH2h >= 5 ? r.h2h : null)
         : r[key]);
       copy.sort((a, b) => {
         const av = val(a), bv = val(b);
@@ -20174,6 +20579,29 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setVisibleCount(FEED_PAGE_SIZE);
   }, [sport, selectedMarkets, sampleWindow, direction, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
   const visibleRows = sortedRows.slice(0, visibleCount);
+
+  // Last season, filled in for the rows on screen only -- see
+  // usePriorSeasonColumn for why it cannot be eager.
+  const priorFor = usePriorSeasonColumn(sport, visibleRows);
+
+  // What to head the last two columns with. Taken from the rows rather than
+  // from the calendar: the NFL log falls back to last season when the new
+  // one has no games yet, so "2026" would be a wrong label on a real 2025
+  // log. The most common season across the visible rows wins, because a
+  // handful of players whose logs lag should not rename the column for
+  // everyone else.
+  const seasonLabels = useMemo(() => {
+    const counts = new Map();
+    visibleRows.forEach((r) => {
+      if (r.logSeason == null) return;
+      counts.set(r.logSeason, (counts.get(r.logSeason) || 0) + 1);
+    });
+    if (!counts.size) return null;
+    let best = null, bestN = -1;
+    counts.forEach((n, season) => { if (n > bestN) { bestN = n; best = season; } });
+    return { current: seasonLabel(best, sport), prior: seasonLabel(best - 1, sport) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sport, visibleRows.length, visibleRows[0] && visibleRows[0].key]);
 
   // Phone-only: the legend and the "+ adds a prop" explainer are one-time
   // reading, but they were sitting between the controls and the data on every
@@ -21218,7 +21646,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           the viewport (it decides whether the sticky header below can pin
           to the viewport at all). */}
       <div className="feed-table-wrap">
-        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} />}
+        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} seasonLabels={seasonLabels} />}
         {sortedRows.length === 0 && (
           <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
             {/* "No props match these filters" is the wrong sentence when the
@@ -21258,6 +21686,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             onTogglePick={onTogglePick}
             onOpenProp={onOpenProp}
             isLast={i === visibleRows.length - 1}
+            // Read through the cache, so a row whose player was already
+            // fetched on an earlier page is answered without a request.
+            prior={priorFor(r)}
             showLadder={linesMode === "alt"}
             expanded={expanded}
             onToggleLadder={() => setExpandedKey((k) => (k === r.key ? null : r.key))}
@@ -21308,6 +21739,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           )}
           <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
             {feedDataDisclaimer} Rates under 10 games read &ldquo;too few&rdquo;, not a percentage.
+            {" "}H2H counts every meeting this log holds and states a rate from five.
+            {/* Item 5 of the competitive brief asks for last season as a
+                second column here. It is built, on the player page, where the
+                prior season is actually loaded -- see seasonSplits. Stated
+                rather than left as a gap: a column that is not here for a
+                reason is a fact, an absent one is a hole. */}
+            {" "}Last season is on the player page, not here — it loads per player.
           </span>
         </div>
       )}
