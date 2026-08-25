@@ -34,6 +34,7 @@ import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters, fetchEspnJersey, jerseyFor } from "./lib/rosters.js";
+import { WatchMenu } from "./WatchList.jsx";
 import { NFL_STADIUMS, fetchNFLKickoffWeather } from "./lib/weather.js";
 import OpposingLineup from "./OpposingLineup.jsx";
 import PercentilePair from "./PercentilePair.jsx";
@@ -25153,6 +25154,18 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
+          // The watch list, on every page that has a nav -- which is every
+          // page except player detail, and that one carries its own control.
+          // Until now the only way to read the list was to already be on a
+          // player page, which is the wrong way round: the list is what tells
+          // you which player page to open.
+          extraRight={(
+            <WatchMenu
+              watched={watched}
+              onRemoveWatch={removeWatch}
+              onOpenWatched={(w) => goToProp(w.sport, w.playerId, w.marketId)}
+            />
+          )}
         />
       )}
 

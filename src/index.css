@@ -1320,6 +1320,23 @@ select.select-sm:focus, select.select-sm:focus-visible {
     letter-spacing: 0.1em !important;
   }
   .pp-nav-signin { display: none; }
+  /* Same trade the SIGN IN mark makes above: at 390px the top row cannot hold
+     the wordmark, the watch control, the cog and the 21+ mark. The word goes
+     and the count stays, because the count is the half that says anything. */
+  .pp-nav-watchword { display: none; }
+  .pp-nav-watch button { padding: 0 10px !important; }
+  /* ...which leaves a 30px button, and a 330px panel right-aligned to a 30px
+     button 178px from the left edge starts at x:-121 -- off the screen, with
+     no scrollbar to say so because negative overflow just clips.
+
+     So on a phone the panel anchors to the nav bar rather than to the button:
+     .pp-nav becomes the positioning context and the wrapper steps out of the
+     way. No magic offsets -- the panel is inset from the nav edge, whatever
+     the row above it does. Both overrides need !important; the inline styles
+     they replace are on the elements themselves. */
+  .pp-nav { position: relative; }
+  .pp-nav-watch { position: static !important; }
+  .pp-nav-watch .pp-watch-panel { right: 12px !important; }
   .pp-nav > span:first-child .pp-mono { font-size: 12px; }
 }
 

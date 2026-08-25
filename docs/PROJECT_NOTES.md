@@ -551,5 +551,21 @@ next to a betslip's market column and badly as the only line naming a prop.
 now; a day-old `"active"` redrawn as a green dot is exactly what rule 2 exists
 to stop. The list draws the avatar (rule 1) with no dot.
 
-Known gap: the only way to the watch list is the control on a player page.
-There is no entry point from the Prop Feed, the Board or the nav.
+**Two surfaces, one panel** (`src/WatchList.jsx`). The toggle has to be about
+some particular prop, so it only exists where one is on screen; the list does
+not, so it also hangs off the nav bar:
+
+| | where | does |
+|---|---|---|
+| `WatchControl` | player detail breadcrumb | toggles this prop, opens the list |
+| `WatchMenu` | nav bar (`extraRight`) | opens the list |
+
+Player detail has no nav (see `NAV_PAGES`), so the two never appear together.
+Settings renders its own `NavBar` and spends `extraRight` on its Done button,
+so it has no watch menu; Landing draws its own nav for the same reason.
+
+Phone gotcha: `.pp-nav-watchword` hides the word at 560px, leaving a 30px
+button — and a 330px panel right-aligned to a 30px button 178px from the left
+edge starts at **x:-121**, off screen, with no scrollbar to say so because
+negative overflow only clips. Under 560 the panel anchors to `.pp-nav` instead
+of to the button.
