@@ -3,6 +3,14 @@
 # commit from that machine shows thousands of changed lines with no real diff.
 * text=auto eol=lf
 
+# The two launchers, each pinned to its own platform. dev.cmd is read by
+# cmd.exe, which wants CRLF; dev-mac.command is read by bash, which wants LF and
+# would choke on the stray carriage returns. Left to "eol=lf" above, the Windows
+# one was being checked out with Unix endings -- harmless for four simple lines,
+# but not something to leave to luck in a file that may grow a label or a goto.
+*.cmd     text eol=crlf
+*.command text eol=lf
+
 # Binary/asset types Git must never try to normalise.
 *.png  binary
 *.jpg  binary

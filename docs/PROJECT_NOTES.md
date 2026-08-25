@@ -331,7 +331,8 @@ Design decisions worth not re-deriving:
   StrictMode's dev double-invoke means nothing ever grades.
 
 **Still uncommitted in the working tree (not mine, left alone):** a one-line
-`src/GamesPage.jsx` change removing the `gm-tab` class, and an untracked `dev-mac.sh`.
+`src/GamesPage.jsx` change removing the `gm-tab` class, and an untracked `dev-mac.sh`
+(since committed, and since renamed — see "The Mac launcher is .command" below).
 
 Related: [[free-data-only-no-fake-edge]]
 
@@ -613,3 +614,34 @@ drop-shadows instead of putting a container round it. It flips with the theme
 and is imperceptible on an already-bright crest. `BandHalf` and `BoardPage`
 still carry their own hand-written copies of the same filter — they predate the
 prop and could move onto it.
+
+## The Mac launcher is `.command`, and must stay that way — 2026-08-25
+
+Uploading this folder failed with:
+
+> Couldn't upload Sports Betting App/dev-mac.sh (.sh files aren't supported).
+
+The upload filter keys on the **extension**, so the script itself was fine and
+nothing in the repo ever invoked it — `package.json`, `vercel.json`,
+`vite.config.js` and `.claude/launch.json` all ignore both launchers.
+`dev-mac.sh` is now **`dev-mac.command`**. Do not rename it back: `.sh` blocks
+the upload, and `.command` is the better macOS idiom anyway — Finder runs a
+`.command` in Terminal on double-click and merely *opens* a `.sh` in an editor.
+
+Two things fixed in passing:
+
+- **It was never executable.** Git had it at `100644`, so a fresh clone on the
+  Mac could not run it at all — double-clicking would have done nothing. Now
+  `100755`, set with `git update-index --chmod=+x` (the way to do it from
+  Windows, where the filesystem has no exec bit to copy).
+- **Line endings are pinned per launcher** in `.gitattributes`: `*.cmd` to CRLF
+  for `cmd.exe`, `*.command` to LF for bash. The blanket `* text=auto eol=lf`
+  was checking `dev.cmd` out with Unix endings, which four simple lines survive
+  but a `goto` or a label would not.
+
+Both launchers exist only to put node on `PATH` for a double-click launch.
+That is why an npm script cannot replace them: without node on `PATH` there is
+no `npm` to run one.
+
+If another `.sh` ever appears in the folder it will block uploads again — the
+filter looks at the working tree, not at git, so `.gitignore` is no defence.
