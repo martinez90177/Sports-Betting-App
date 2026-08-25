@@ -1523,7 +1523,7 @@ function PlayerPropContextBlocks({
   );
 }
 
-function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
+function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
   const [showContext, setShowContext] = useState(false);
 
   // The real schedule, over the invented pairings. NBA_MATCHUPS stays as the
@@ -2298,6 +2298,30 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     line != null ? pageMainLine : null,
   );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  // Same id, different list. Watching and picking are now independent:
+  // either, both or neither.
+  const isPageWatched = watchIds ? watchIds.has(pagePickId) : false;
+  // A watch item is the pick payload plus what it takes to draw the player.
+  // These come back out of localStorage days later and are rendered from a
+  // list that has none of this page's state, so the headshot URL travels
+  // with the item rather than being looked up again.
+  //
+  // No status is stored. Availability is a fact about right now, and a
+  // day-old "active" redrawn as a green dot is what CLAUDE.md rule 2 exists
+  // to stop. Unknown means no dot.
+  const buildPageWatch = () => {
+    const base = buildPagePick();
+    return {
+    ...base,
+    // The slip stores the raw market id ("Over 1.5 h"), which reads fine on a
+    // betslip row that also has a market column. In the watch list the
+    // subtitle is the only thing naming the prop, so it uses the page label
+    // -- the same words as the market tab that is currently underlined.
+    subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
+    headshotSrc: player ? espnHeadshot(player.espnId) : null,
+    };
+  };
+
   const buildPagePick = () => ({
     id: pagePickId,
     sport: "nba",
@@ -2464,8 +2488,8 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           backLabel="Games"
           matchupLabel={`${(matchup.teamA.label || "").toUpperCase()} AT ${(matchup.teamB.label || "").toUpperCase()}`}
           playerName={player.name.toUpperCase()}
-          watching={isPagePickAdded}
-          onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+          watching={isPageWatched}
+          onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
         />
         <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1.25fr 1fr" }}>
           <div style={{ borderRight: isNarrow ? "none" : "1px solid var(--line)" }}>
@@ -2647,8 +2671,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       }
       marketLabel={marketLabel}
       onBack={onBack || (() => {})}
-      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
-      watching={isPagePickAdded}
+      onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
+      watched={watched}
+      onRemoveWatch={onRemoveWatch}
+      onOpenWatched={(w) => onOpenProp && onOpenProp(w.sport, w.playerId, w.marketId)}
+      watching={isPageWatched}
       card={{
         positionShort: player.pos,
         teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
@@ -2794,8 +2821,8 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     <PlayerDetailBreadcrumb
       onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={isPagePickAdded}
-      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPageWatched}
+      onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       extraAction={
         <button
           type="button"
@@ -7328,7 +7355,7 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
   );
 }
 
-function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
+function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
@@ -8032,6 +8059,30 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     line != null ? pageMainLine : null,
   );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  // Same id, different list. Watching and picking are now independent:
+  // either, both or neither.
+  const isPageWatched = watchIds ? watchIds.has(pagePickId) : false;
+  // A watch item is the pick payload plus what it takes to draw the player.
+  // These come back out of localStorage days later and are rendered from a
+  // list that has none of this page's state, so the headshot URL travels
+  // with the item rather than being looked up again.
+  //
+  // No status is stored. Availability is a fact about right now, and a
+  // day-old "active" redrawn as a green dot is what CLAUDE.md rule 2 exists
+  // to stop. Unknown means no dot.
+  const buildPageWatch = () => {
+    const base = buildPagePick();
+    return {
+    ...base,
+    // The slip stores the raw market id ("Over 1.5 h"), which reads fine on a
+    // betslip row that also has a market column. In the watch list the
+    // subtitle is the only thing naming the prop, so it uses the page label
+    // -- the same words as the market tab that is currently underlined.
+    subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
+    headshotSrc: player ? nflHeadshot(player) : null,
+    };
+  };
+
   const buildPagePick = () => ({
     id: pagePickId,
     sport: "nfl",
@@ -8196,8 +8247,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           backLabel="Games"
           matchupLabel={`${(teamRoster.full || teamRoster.label || "").toUpperCase()} AT ${(oppRoster.full || oppRoster.label || "").toUpperCase()}`}
           playerName={player.name.toUpperCase()}
-          watching={isPagePickAdded}
-          onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+          watching={isPageWatched}
+          onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
         />
         <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1.25fr 1fr" }}>
           <div style={{ borderRight: isNarrow ? "none" : "1px solid var(--line)" }}>
@@ -8361,8 +8412,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       }
       marketLabel={marketLabel}
       onBack={onBack || (() => {})}
-      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
-      watching={isPagePickAdded}
+      onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
+      watched={watched}
+      onRemoveWatch={onRemoveWatch}
+      onOpenWatched={(w) => onOpenProp && onOpenProp(w.sport, w.playerId, w.marketId)}
+      watching={isPageWatched}
       card={{
         positionShort: player.pos,
         teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
@@ -8510,8 +8564,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     <PlayerDetailBreadcrumb
       onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={isPagePickAdded}
-      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPageWatched}
+      onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       extraAction={
         <button
           type="button"
@@ -9700,7 +9754,7 @@ function wnbaPlayerMarkets(player) {
   return [...WNBA_MARKETS_CORE, ...extra];
 }
 
-function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
+function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
   // Same volume stat as the NBA page -- minutes are the input almost every
   // basketball prop scales with, so the two pages share NBA_CONTEXT_STAT.
   const [showContext, setShowContext] = useState(false);
@@ -10598,6 +10652,30 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     line != null ? pageMainLine : null,
   );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  // Same id, different list. Watching and picking are now independent:
+  // either, both or neither.
+  const isPageWatched = watchIds ? watchIds.has(pagePickId) : false;
+  // A watch item is the pick payload plus what it takes to draw the player.
+  // These come back out of localStorage days later and are rendered from a
+  // list that has none of this page's state, so the headshot URL travels
+  // with the item rather than being looked up again.
+  //
+  // No status is stored. Availability is a fact about right now, and a
+  // day-old "active" redrawn as a green dot is what CLAUDE.md rule 2 exists
+  // to stop. Unknown means no dot.
+  const buildPageWatch = () => {
+    const base = buildPagePick();
+    return {
+    ...base,
+    // The slip stores the raw market id ("Over 1.5 h"), which reads fine on a
+    // betslip row that also has a market column. In the watch list the
+    // subtitle is the only thing naming the prop, so it uses the page label
+    // -- the same words as the market tab that is currently underlined.
+    subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
+    headshotSrc: player ? wnbaHeadshot(player.espnId) : null,
+    };
+  };
+
   const buildPagePick = () => ({
     id: pagePickId,
     sport: "wnba",
@@ -10758,8 +10836,8 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
           backLabel="Games"
           matchupLabel={`${(matchup.teamA.label || "").toUpperCase()} AT ${(matchup.teamB.label || "").toUpperCase()}`}
           playerName={player.name.toUpperCase()}
-          watching={isPagePickAdded}
-          onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+          watching={isPageWatched}
+          onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
         />
         <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1.25fr 1fr" }}>
           <div style={{ borderRight: isNarrow ? "none" : "1px solid var(--line)" }}>
@@ -10967,8 +11045,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
       }
       marketLabel={marketLabel}
       onBack={onBack || (() => {})}
-      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
-      watching={isPagePickAdded}
+      onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
+      watched={watched}
+      onRemoveWatch={onRemoveWatch}
+      onOpenWatched={(w) => onOpenProp && onOpenProp(w.sport, w.playerId, w.marketId)}
+      watching={isPageWatched}
       card={{
         positionShort: player.pos,
         teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
@@ -11117,8 +11198,8 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, onBack }) {
     <PlayerDetailBreadcrumb
       onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={isPagePickAdded}
-      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPageWatched}
+      onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       extraAction={
         <button
           type="button"
@@ -14098,7 +14179,7 @@ class MLBPageErrorBoundary extends React.Component {
   }
 }
 
-function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
+function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
   const [showContext, setShowContext] = useState(false);
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -15857,6 +15938,31 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     line != null ? pageMainLine : null,
   );
   const isPagePickAdded = pickIds ? pickIds.has(pagePickId) : false;
+  // Same id, different list. Watching and picking are now independent:
+  // either, both or neither.
+  const isPageWatched = watchIds ? watchIds.has(pagePickId) : false;
+  // A watch item is the pick payload plus what it takes to draw the player.
+  // These come back out of localStorage days later and are rendered from a
+  // list that has none of this page's state, so the headshot URL travels
+  // with the item rather than being looked up again.
+  //
+  // No status is stored. Availability is a fact about right now, and a
+  // day-old "active" redrawn as a green dot is what CLAUDE.md rule 2 exists
+  // to stop. Unknown means no dot.
+  const buildPageWatch = () => {
+    const base = buildPagePick();
+    return {
+    ...base,
+    // The slip stores the raw market id ("Over 1.5 h"), which reads fine on a
+    // betslip row that also has a market column. In the watch list the
+    // subtitle is the only thing naming the prop, so it uses the page label
+    // -- the same words as the market tab that is currently underlined.
+    subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
+    headshotSrc: player ? mlbHeadshot(player.mlbId) : null,
+    fallbackSrc: player ? mlbEspnHeadshot(player.id) : null,
+    };
+  };
+
   const buildPagePick = () => ({
     id: pagePickId,
     sport: "mlb",
@@ -15994,8 +16100,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
           backLabel="Games"
           matchupLabel={`${(teamAbbr || "").toUpperCase()} AT ${((liveOppRoster && liveOppRoster.label) || "").toUpperCase()}`}
           playerName={(player?.name || "Player").toUpperCase()}
-          watching={isPagePickAdded}
-          onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+          watching={isPageWatched}
+          onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
         />
         <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1.25fr 1fr" }}>
           <div style={{ borderRight: isNarrow ? "none" : "1px solid var(--line)" }}>
@@ -16302,8 +16408,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
       }
       marketLabel={marketLabel}
       onBack={onBack || (() => {})}
-      onWatch={() => onTogglePick && onTogglePick(buildPagePick())}
-      watching={isPagePickAdded}
+      onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
+      watched={watched}
+      onRemoveWatch={onRemoveWatch}
+      onOpenWatched={(w) => onOpenProp && onOpenProp(w.sport, w.playerId, w.marketId)}
+      watching={isPageWatched}
       card={{
         positionShort: player.pos,
         teamAbbr,
@@ -16459,8 +16568,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, onBack }) {
     <PlayerDetailBreadcrumb
       onBack={onBack || (() => {})}
       centerLabel={centerBreadcrumbLabel}
-      watching={isPagePickAdded}
-      onToggleWatch={() => onTogglePick && onTogglePick(buildPagePick())}
+      watching={isPageWatched}
+      onToggleWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       extraAction={
         <button
           type="button"
@@ -24426,6 +24535,19 @@ export default function PropLedger() {
     try { return JSON.parse(localStorage.getItem("propLedgerPicks") || "[]"); } catch { return []; }
   });
   const [picksOpen, setPicksOpen] = useState(false);
+
+  // Watching, which until now was My Picks wearing a second name: the
+  // breadcrumb's "+ Watch" and the page's "+ Add to my picks" were both
+  // onTogglePick(buildPagePick()) reading the same isPagePickAdded, so
+  // watching a prop silently put a leg on the betslip. Alex asked for the
+  // real thing.
+  //
+  // Separate list, separate localStorage key. A prop can be on both -- they
+  // answer different questions ("I have money on this" vs "tell me about
+  // this") -- and the shared id is what lets each page ask about either.
+  const [watched, setWatched] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("propPalaceWatch") || "[]"); } catch { return []; }
+  });
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Where "All settings" was opened from. The Settings page is reached from
   // the cog, which is on every screen, so "back" is not a fixed destination --
@@ -24446,6 +24568,16 @@ export default function PropLedger() {
   React.useEffect(() => {
     localStorage.setItem("propLedgerPicks", JSON.stringify(myPicks));
   }, [myPicks]);
+
+  React.useEffect(() => {
+    localStorage.setItem("propPalaceWatch", JSON.stringify(watched));
+  }, [watched]);
+
+  const watchIds = useMemo(() => new Set(watched.map((w) => w.id)), [watched]);
+  const toggleWatch = (item) => {
+    setWatched((cur) => (cur.some((w) => w.id === item.id) ? cur.filter((w) => w.id !== item.id) : [...cur, item]));
+  };
+  const removeWatch = (id) => setWatched((cur) => cur.filter((w) => w.id !== id));
 
   const pickIds = useMemo(() => new Set(myPicks.map((p) => p.id)), [myPicks]);
   const togglePick = (pick) => {
@@ -25044,6 +25176,11 @@ export default function PropLedger() {
           jumpTo={jumpTo && jumpTo.sport === "nba" ? jumpTo : null}
           pickIds={pickIds}
           onTogglePick={togglePick}
+          watchIds={watchIds}
+          onToggleWatch={toggleWatch}
+          watched={watched}
+          onRemoveWatch={removeWatch}
+          onOpenProp={goToProp}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25054,6 +25191,11 @@ export default function PropLedger() {
           dataVersion={wnbaDataVersion}
           pickIds={pickIds}
           onTogglePick={togglePick}
+          watchIds={watchIds}
+          onToggleWatch={toggleWatch}
+          watched={watched}
+          onRemoveWatch={removeWatch}
+          onOpenProp={goToProp}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25064,6 +25206,11 @@ export default function PropLedger() {
           dataVersion={nflDataVersion}
           pickIds={pickIds}
           onTogglePick={togglePick}
+          watchIds={watchIds}
+          onToggleWatch={toggleWatch}
+          watched={watched}
+          onRemoveWatch={removeWatch}
+          onOpenProp={goToProp}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25074,6 +25221,11 @@ export default function PropLedger() {
             jumpTo={jumpTo && jumpTo.sport === "mlb" ? jumpTo : null}
             pickIds={pickIds}
             onTogglePick={togglePick}
+            watchIds={watchIds}
+            onToggleWatch={toggleWatch}
+            watched={watched}
+            onRemoveWatch={removeWatch}
+            onOpenProp={goToProp}
             onBack={() => setPage("feed")}
           />
         </MLBPageErrorBoundary>

@@ -511,3 +511,45 @@ showed an overlap.
 
 **Measure the inner element, not the box.** And if a portrait needs to be
 smaller, change the `size` prop, not the CSS.
+
+## Watching and My Picks are two lists, not one
+
+Until 2026-08-24 they were the same thing wearing two names. Every player page
+wired both controls to the same handler and read the same state:
+
+```jsx
+watching={isPagePickAdded}
+onToggleWatch={() => onTogglePick(buildPagePick())}   // "+ Watch"
+onAddPick={() => onTogglePick(buildPagePick())}       // "+ Add to my picks"
+```
+
+So pressing "+ Watch" silently put a leg on the betslip, pressing "Add to my
+picks" silently flipped the breadcrumb to "✓ Watching", and nothing anywhere
+answered *"what am I watching?"*. It only became visible once the pick button
+moved up into the chart header (`7599bb4`) and the two sat inches apart.
+
+They are now independent:
+
+| | list | localStorage key | means |
+|---|---|---|---|
+| My Picks | `myPicks` | `propLedgerPicks` | I have money on this |
+| Watching | `watched` | `propPalaceWatch` | tell me about this |
+
+Both are keyed by the same `pagePickId`, so a prop can be on either, both or
+neither, and every page can ask about each independently (`isPagePickAdded`,
+`isPageWatched`).
+
+**A watch item is not a pick item.** `buildPageWatch()` spreads
+`buildPagePick()` and then adds what it takes to *draw* the prop somewhere else:
+a `headshotSrc` (and `fallbackSrc` for MLB), because the watch list renders from
+localStorage on a different page days later, with none of the originating
+page's state in reach. It also rewrites `subtitle` to use the page's display
+label — the slip stores the raw market id (`"Over 1.5 h"`), which reads fine
+next to a betslip's market column and badly as the only line naming a prop.
+
+**No status is stored on a watch item.** Availability is a fact about right
+now; a day-old `"active"` redrawn as a green dot is exactly what rule 2 exists
+to stop. The list draws the avatar (rule 1) with no dot.
+
+Known gap: the only way to the watch list is the control on a player page.
+There is no entry point from the Prop Feed, the Board or the nav.

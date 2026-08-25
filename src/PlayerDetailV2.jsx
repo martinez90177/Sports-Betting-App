@@ -10,6 +10,7 @@ import MatchupCardModal, { straightRunOf } from "./MatchupCardModal.jsx";
 // excluding a game.
 import PlayerGameLog, { SeasonSplit } from "./PlayerGameLog.jsx";
 import GameConditions from "./GameConditions.jsx";
+import PlayerAvatar from "./PlayerAvatar.jsx";
 
 // A transcription of `design_handoff_proppalace_v2/Player Detail <SPORT> v2.dc.html`.
 //
@@ -143,6 +144,158 @@ function RosterRow({ p, sport, onSelect }) {
   );
 }
 
+// The watch control: a toggle for this prop, and the list of everything
+// else being watched hanging off it.
+//
+// Watching used to be My Picks under another name -- the same handler, the
+// same state -- so "+ Watch" quietly added a leg to the betslip and there
+// was nothing anywhere that answered "what am I watching?". The list is the
+// half that was missing: a follow-list is only useful if you can read it
+// back, and the button you press to join it is where you would look.
+//
+// Two segments rather than a menu on the whole control, because the common
+// action is the toggle and it must stay one click. The count segment is
+// always rendered, empty list included: a control that appears only once it
+// has contents cannot teach anyone that it exists.
+function WatchControl({ crumb, watching, onWatch, watched = [], onOpenWatched, onRemoveWatch }) {
+  const [open, setOpen] = React.useState(false);
+  const wrapRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const seg = {
+    ...crumb,
+    display: "flex", alignItems: "center", gap: 6,
+    padding: "6px 10px", whiteSpace: "nowrap", lineHeight: 1,
+  };
+
+  return (
+    <span ref={wrapRef} className="pp-watch" style={{ justifySelf: "end", position: "relative", display: "inline-flex", alignItems: "stretch" }}>
+      <span
+        role="button" tabIndex={0} aria-pressed={!!watching}
+        title={watching ? "Stop watching this prop" : "Watch this prop — this does not add it to My Picks"}
+        onClick={onWatch}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onWatch && onWatch(); } }}
+        style={{
+          ...seg,
+          color: "var(--amber-ink)", cursor: onWatch ? "pointer" : "default",
+          border: "1px solid var(--line)", borderRight: "none",
+          borderRadius: "4px 0 0 4px",
+          background: watching ? "var(--surface-sunken)" : "transparent",
+        }}
+      >
+        {watching ? "✓ Watching" : "+ Watch"}
+      </span>
+      <span
+        role="button" tabIndex={0} aria-expanded={open} aria-haspopup="true"
+        title={watched.length ? "See everything you are watching" : "Your watch list — nothing on it yet"}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((v) => !v); } }}
+        style={{
+          ...seg,
+          cursor: "pointer", gap: 5,
+          color: watched.length ? "var(--text)" : "var(--dim)",
+          border: "1px solid var(--line)", borderRadius: "0 4px 4px 0",
+          background: open ? "var(--surface-sunken)" : "transparent",
+        }}
+      >
+        {watched.length}
+        <span style={{ fontSize: 8, color: "var(--dim)" }}>{open ? "▲" : "▼"}</span>
+      </span>
+
+      {open && (
+        <div
+          className="pp-watch-panel"
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 60,
+            width: 330, maxWidth: "calc(100vw - 32px)",
+            background: "var(--surface-1)", border: "1px solid var(--line)",
+            borderRadius: 6, boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
+            overflow: "hidden", textAlign: "left",
+          }}
+        >
+          <div style={{ ...crumb, display: "flex", alignItems: "center", gap: 8, padding: "11px 13px", borderBottom: "1px solid var(--line)", color: "var(--dim)" }}>
+            <span>Watching</span>
+            <span style={{ marginLeft: "auto", color: "var(--text)" }}>{watched.length}</span>
+          </div>
+
+          {watched.length === 0 ? (
+            // Not a bare "empty". The whole point of this change is that
+            // watching and picking are different things, and this is the one
+            // surface where saying so costs nothing.
+            <div style={{ padding: "16px 14px", fontFamily: MONO, fontSize: 11, lineHeight: 1.65, color: "var(--dim)" }}>
+              Nothing watched yet.
+              <div style={{ marginTop: 7 }}>
+                Watching a prop keeps it here to check on. It does not put it on
+                your My Picks slip — that is the button under the chart.
+              </div>
+            </div>
+          ) : (
+            <div className="pp-watch-list" style={{ maxHeight: 340, overflowY: "auto" }}>
+              {watched.map((w) => (
+                <div
+                  key={w.id}
+                  style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderBottom: "1px solid var(--line)" }}
+                >
+                  {/* CLAUDE.md rule 1: a named player gets an avatar. No dot
+                      on it -- see buildPageWatch in PropLedger for why a
+                      stored availability is not availability. */}
+                  <PlayerAvatar
+                    name={w.name} alt={w.name} sport={w.sport} team={w.team}
+                    headshotSrc={w.headshotSrc} fallbackSrc={w.fallbackSrc}
+                    surface="var(--surface-1)" size={28} inset={2}
+                  />
+                  <div
+                    role="button" tabIndex={0}
+                    title={`Open ${w.name} — ${w.subtitle || ""}`.trim()}
+                    onClick={() => { setOpen(false); onOpenWatched && onOpenWatched(w); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(false); onOpenWatched && onOpenWatched(w); } }}
+                    style={{ minWidth: 0, flex: 1, cursor: onOpenWatched ? "pointer" : "default" }}
+                  >
+                    <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {w.name}
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--dim)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {[w.team, w.subtitle].filter(Boolean).join(" · ")}
+                    </div>
+                  </div>
+                  {/* The rate it was watched at. Not recomputed -- this list
+                      is a bookmark, and the page it opens is where the live
+                      number lives. */}
+                  {w.hitRate != null && (
+                    <span style={{ flex: "none", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>
+                      {Math.round(w.hitRate * 100)}%
+                    </span>
+                  )}
+                  <span
+                    role="button" tabIndex={0}
+                    title={`Stop watching ${w.name}`}
+                    onClick={() => onRemoveWatch && onRemoveWatch(w.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRemoveWatch && onRemoveWatch(w.id); } }}
+                    style={{ flex: "none", cursor: "pointer", fontFamily: MONO, fontSize: 13, color: "var(--dim)", padding: "0 2px" }}
+                  >
+                    ×
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function BandHalf({ sport, team, side, align, tone }) {
   const text = (
     <div style={{ textAlign: align === "right" ? "right" : "left" }}>
@@ -220,6 +373,9 @@ export default function PlayerDetailV2({
   // it becomes the trigger rather than the page growing a region the mock
   // does not have. Falls back to the text when a page has no slate to offer.
   crumbFixture, crumbSelect, marketLabel, onBack, onWatch, watching,
+  // The watch list itself, so the control can show it rather than only
+  // toggle membership of it. See WatchControl.
+  watched = [], onOpenWatched, onRemoveWatch,
   // The extra facts the Matchup Card needs and the page's other props cannot
   // supply: a 72px avatar and the availability word. Everything else on the
   // card is derived from `player`/`band`/`context`/`verdict`/`chart`, so it
@@ -317,13 +473,14 @@ export default function PlayerDetailV2({
         <span style={{ ...crumb, color: "var(--dim)", justifySelf: "center", textAlign: "center" }}>
           {crumbSelect || crumbFixture} · <span style={{ color: "var(--text)" }}>{marketLabel}</span>
         </span>
-        <span
-          role="button" tabIndex={0} onClick={onWatch}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onWatch && onWatch(); } }}
-          style={{ ...crumb, color: "var(--amber-ink)", cursor: onWatch ? "pointer" : "default", justifySelf: "end", whiteSpace: "nowrap" }}
-        >
-          {watching ? "✓ Watching" : "+ Watch"}
-        </span>
+        <WatchControl
+          crumb={crumb}
+          watching={watching}
+          onWatch={onWatch}
+          watched={watched}
+          onOpenWatched={onOpenWatched}
+          onRemoveWatch={onRemoveWatch}
+        />
       </div>
 
       <div className="pp-pd-grid">
