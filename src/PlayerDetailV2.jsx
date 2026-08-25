@@ -319,7 +319,12 @@ export default function PlayerDetailV2({
           </span>
         </div>
         <span style={{ ...crumb, color: "var(--dim)", justifySelf: "center", textAlign: "center" }}>
-          {crumbSelect || crumbFixture} · <span style={{ color: "var(--text)" }}>{marketLabel}</span>
+          {/* The fixture only. The market used to be appended here (" · HITS")
+              and it was saying the same thing as the underlined market tab a
+              few rows down, on the one line that has to survive a 375px
+              screen. Alex asked for it gone. marketLabel is still a prop --
+              the Matchup Card below uses it, where there are no tabs. */}
+          {crumbSelect || crumbFixture}
         </span>
         <WatchControl
           crumb={crumb}
