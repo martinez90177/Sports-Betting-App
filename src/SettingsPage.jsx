@@ -22,7 +22,7 @@ import {
 // to go; a real page is reached from wherever the cog was clicked, so it
 // names that page instead. Both the rail link and the nav's Done do it.
 
-const MONO = "'Space Mono', monospace";
+const MONO = "'PP At', 'Space Mono', monospace";
 const DISPLAY = "'Bricolage Grotesque', sans-serif";
 
 export default function SettingsPage({ returnLabel = "Prop Feed", onLeave, onNavigate, onHome, sportsbooks, isNarrow }) {

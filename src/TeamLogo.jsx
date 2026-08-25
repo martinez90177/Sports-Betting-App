@@ -17,7 +17,21 @@ import { teamLogo } from "./lib/gamesData.js";
 // Source is the same teamLogo(sport, abbr) the Games slate, gamecast and
 // matchup pages already call -- abbreviations collide across leagues, so the
 // sport is always part of the lookup.
-export default function TeamLogo({ sport, abbr, size = 24, title, style }) {
+//
+// `lift` is for the cases where that last claim is wrong. The Padres' brown
+// and the Yankees' navy on a #131519 ground are all but invisible, and a 15%
+// tint behind them is not enough contrast to rescue them -- on the game-by-game
+// axis the San Diego column read as an empty grey disc. Alex: "the SD is almost
+// impossible to see".
+//
+// The fix traces the mark's own edge instead of putting a container round it:
+// a tight 1px light shadow does the separating and a wider soft one lifts it
+// off the surface. It flips with the theme, so a pale crest on the light theme
+// gets a dark trace, and on an already-bright crest it is imperceptible.
+const LIFT = "drop-shadow(0 0 1px color-mix(in srgb, var(--text) 70%, transparent))"
+  + " drop-shadow(0 0 2px color-mix(in srgb, var(--text) 28%, transparent))";
+
+export default function TeamLogo({ sport, abbr, size = 24, title, style, lift = false }) {
   const [failed, setFailed] = useState(false);
   // A new team in the same slot has to try its own asset rather than inherit
   // the previous one's failure -- these sit in rails and rows that recycle.
@@ -50,7 +64,11 @@ export default function TeamLogo({ sport, abbr, size = 24, title, style }) {
       height={size}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
-      style={{ display: "block", width: size, height: size, objectFit: "contain", flexShrink: 0, ...style }}
+      style={{
+        display: "block", width: size, height: size, objectFit: "contain", flexShrink: 0,
+        ...(lift ? { filter: LIFT } : null),
+        ...style,
+      }}
     />
   );
 }

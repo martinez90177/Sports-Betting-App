@@ -47,8 +47,8 @@ const LABEL = { fontSize: 11.5, letterSpacing: "0.12em", textTransform: "upperca
 
 // The summary strip's two type styles, off `PropPalace Board v2.dc.html` --
 // the same pair the Prop Feed and Player Detail strips use.
-const BOARD_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
-const BOARD_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+const BOARD_CELL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const BOARD_CELL_VALUE = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 
 // The splits the rail offers. Each is a predicate over a row's own game log,
 // so a split recomputes the rate AND its sample together -- the README calls

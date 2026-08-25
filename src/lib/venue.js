@@ -27,3 +27,18 @@ export function venueWord(home) {
 export function venueAbbr(home, abbr) {
   return home === false ? `@${abbr}` : abbr;
 }
+
+// The marker on its own, for callers that can style it apart from the
+// abbreviation.
+//
+// venueAbbr glues the two together, which is right for a title attribute or a
+// tooltip where there is no styling to be had. On screen at 11px they must NOT
+// be glued: Space Mono's "@" closes up at that size into a bowl and a tail and
+// is read as a lowercase "a", so the game-by-game axis was printing "aSD",
+// "aSTL", "aMIN" down the whole strip. Alex: "the @'s are horrific".
+//
+// Separating them lets the caller give the marker its own size and colour,
+// which is what stops it being read as a letter of the word beside it.
+export function venueMark(home) {
+  return home === false ? "@" : "";
+}

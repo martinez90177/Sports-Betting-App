@@ -272,12 +272,36 @@ a:focus-visible, div[role="button"]:focus-visible, button:focus-visible,
    (table cells, axis ticks, stat rails) -- default proportional
    figures elsewhere, per the type scale above. */
 .tnum { font-variant-numeric: tabular-nums; }
+/* ---------- the "@" ----------
+   Space Mono's "@" stops working below about 12px. The ring closes up and what
+   survives is a bowl and a tail, which reads as a lowercase "a" -- so every
+   road fixture in the app was wrong at small sizes: "@SD" as "aSD" down a
+   whole game-by-game axis, "PHI @ SEA" as "PHI a SEA" under the venue. Alex:
+   "the @'s are horrific".
+
+   Rather than rewriting every string that contains one -- and there are dozens,
+   in the board's card titles, the slate, the breadcrumb, the feed -- the glyph
+   is taken off Space Mono. `unicode-range` limits this face to U+0040, so it
+   substitutes for the "@" and for nothing else.
+
+   The sources are all `local()`: no download, and if a machine has none of
+   them the browser falls straight through to Space Mono and the app renders
+   exactly as it did before. The failure mode is the status quo.
+
+   It has to be FIRST in every mono stack -- a later family is only consulted
+   for characters the earlier ones do not have, and Space Mono has an "@". */
+@font-face {
+  font-family: 'PP At';
+  src: local('Segoe UI'), local('Helvetica Neue'), local('Arial'), local('Liberation Sans'), local('DejaVu Sans');
+  unicode-range: U+0040;
+}
+
 /* Stat numbers: Space Mono with tabular figures, like every other number in
    the product. This was Space Grotesk, a proportional face -- a number in a
    proportional face is a bug, and it meant a card's headline value and the
    stat rail beside it never lined up. */
 .stat-value {
-  font-family: 'Space Mono', ui-monospace, monospace;
+  font-family: 'PP At', 'Space Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   font-weight: 700;
@@ -467,7 +491,7 @@ img { max-width: 100%; }
    faces are gone. Display is Bricolage 600, numbers are Space Mono with
    tabular figures -- any number in a proportional face is a bug. */
 .oswald { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; }
-.mono { font-family: 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.mono { font-family: 'PP At', 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 
 /* ---------- shared surfaces ----------
    .panel is the background/border/radius trio that was inlined at ~40
@@ -804,7 +828,7 @@ input.pp-search:focus, input.pp-search:focus-visible {
 .market-bar .tab {
   flex: 0 0 auto;
   width: auto;
-  font-family: 'Space Mono', ui-monospace, monospace;
+  font-family: 'PP At', 'Space Mono', ui-monospace, monospace;
   font-size: 12.5px;
   font-weight: 400;
   letter-spacing: 0.04em;
@@ -933,7 +957,7 @@ input.pp-search:focus, input.pp-search:focus-visible {
   margin-bottom: var(--fp-header-gap);
 }
 .fp-section-title {
-  font-family: 'Space Mono', ui-monospace, monospace;
+  font-family: 'PP At', 'Space Mono', ui-monospace, monospace;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.10em;
@@ -1416,7 +1440,7 @@ select.select-sm:focus, select.select-sm:focus-visible {
    defined because .oswald, .mono and .stat-value are still used across the
    existing screens. */
 .pp-display { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; }
-.pp-mono    { font-family: 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.pp-mono    { font-family: 'PP At', 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 body        { font-family: 'Archivo', system-ui, sans-serif; }
 
 /* The handoff components read --accent / --accent-text. This app's accent is

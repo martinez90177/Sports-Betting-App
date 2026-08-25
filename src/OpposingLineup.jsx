@@ -3,7 +3,7 @@ import PlayerAvatar from "./PlayerAvatar.jsx";
 import { MLB_TEAM_COLORS } from "./lib/teamColors.js";
 import { statcastFor } from "./lib/statcast.js";
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 // The lineup he is facing, joined to Savant. Competitive brief item 2, mock 3b.

@@ -20109,7 +20109,7 @@ const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["ALL", "all
 // The Filters panel's own furniture: one pill and one section label, so the
 // six rows of controls in there cannot drift apart from each other.
 const FEED_PILL = (on) => ({
-  fontFamily: "'Space Mono', monospace",
+  fontFamily: "'PP At', 'Space Mono', monospace",
   fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px",
   cursor: "pointer", whiteSpace: "nowrap",
   background: on ? "var(--amber)" : "transparent",
@@ -20118,12 +20118,12 @@ const FEED_PILL = (on) => ({
 });
 const FEED_SECTION_LABEL = { fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
 
-const FEED_RAIL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
-const FEED_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
-const FEED_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+const FEED_RAIL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+const FEED_CELL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const FEED_CELL_VALUE = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
 // The line under each figure. Every cell in the result strip now carries one,
 // which is what turns four numbers into four statements.
-const FEED_CELL_SUB = { fontFamily: "'Space Mono', monospace", fontSize: 9.5, marginTop: 5, color: "var(--dim)", lineHeight: 1.45 };
+const FEED_CELL_SUB = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 9.5, marginTop: 5, color: "var(--dim)", lineHeight: 1.45 };
 const FEED_KEY_ROW = { display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" };
 
 // One global segmented control for the L5/L10/L20 sample-size window --

@@ -4,7 +4,7 @@ import { TEAM_COLORS_BY_SPORT } from "./lib/teamColors.js";
 import { buildFindings, filterFindings, FINDING_SPLITS, FINDING_SIDES, FINDING_SORTS } from "./lib/findings.js";
 import useIsNarrow from "./lib/useIsNarrow.js";
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 // Findings. Competitive brief item 6, mock 3e.

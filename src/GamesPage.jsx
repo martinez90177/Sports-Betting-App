@@ -218,9 +218,9 @@ function GamesSearchBar({ value, onChange, isMobile }) {
 
 // Strip and rail type, off `PropPalace Games v2.dc.html` -- the same pair the
 // Board and Prop Feed strips use.
-const GM_CELL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
-const GM_CELL_VALUE = { fontFamily: "'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
-const GM_RAIL_LABEL = { fontFamily: "'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+const GM_CELL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const GM_CELL_VALUE = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+const GM_RAIL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
 const LEGEND_ROW = { display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" };
 
 // How many cards the slate opens with, the rest behind one button.

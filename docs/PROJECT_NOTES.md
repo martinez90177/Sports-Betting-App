@@ -569,3 +569,47 @@ button — and a 330px panel right-aligned to a 30px button 178px from the left
 edge starts at **x:-121**, off screen, with no scrollbar to say so because
 negative overflow only clips. Under 560 the panel anchors to `.pp-nav` instead
 of to the button.
+
+## Space Mono's "@" is unreadable small — there is a font-level fix
+
+Below about 12px the ring closes up and what is left reads as a lowercase "a".
+Every road fixture in the app was affected: the game-by-game axis printed
+`aSD  aSTL  aMIN` down the whole strip, the venue line said `PHI a SEA`. Alex,
+2026-08-24: *"the @'s are horrific"*.
+
+The fix is **not** in any string. `src/index.css` declares a face that exists
+only to supply that one character:
+
+```css
+@font-face {
+  font-family: 'PP At';
+  src: local('Segoe UI'), local('Helvetica Neue'), local('Arial'), …;
+  unicode-range: U+0040;
+}
+```
+
+**Every mono stack in the app lists `'PP At'` first** — all 27 of them, in
+`index.css` and in the inline `MONO` constants. A later family is only
+consulted for characters the earlier ones lack, and Space Mono *has* an "@", so
+a stack that forgets the prefix silently goes back to the broken glyph. If you
+add a mono stack, add the prefix.
+
+Sources are all `local()`: no download, and a machine with none of them falls
+through to Space Mono and renders as before. The failure mode is the status quo.
+
+Separately, on the axis and in the game-log table the marker is its own span —
+dim where the abbreviation is the team's colour, a size larger, with a real gap.
+That is about *meaning* (a marker is not a letter of the word beside it) and
+still holds now the glyph is legible.
+
+## Dark crests need `lift`, not a bigger tint
+
+`TeamLogo` assumed "a dark crest on near-black still reads because it sits on
+the tinted disc the caller already draws". It does not. San Diego's brown
+behind a 15% tint was an empty grey circle on the game-by-game axis.
+
+`<TeamLogo … lift />` traces the mark's own edge with two stacked light
+drop-shadows instead of putting a container round it. It flips with the theme
+and is imperceptible on an already-bright crest. `BandHalf` and `BoardPage`
+still carry their own hand-written copies of the same filter — they predate the
+prop and could move onto it.

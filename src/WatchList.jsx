@@ -22,7 +22,7 @@ import PlayerAvatar from "./PlayerAvatar.jsx";
 // Both render WatchPanel, so there is one description of what a watched prop
 // looks like rather than two that drift apart.
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 const LABEL = { fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.12em", textTransform: "uppercase" };
 

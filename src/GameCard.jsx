@@ -266,7 +266,7 @@ function Diamond({ situation }) {
   if (situation.first) on.push("1st");
   if (situation.second) on.push("2nd");
   if (situation.third) on.push("3rd");
-  const label = { fontFamily: "'Space Mono', monospace", fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+  const label = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
   const count = situation.balls == null || situation.strikes == null
     ? null : `${situation.balls}–${situation.strikes}`;
   return (

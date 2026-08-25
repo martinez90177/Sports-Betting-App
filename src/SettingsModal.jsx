@@ -31,7 +31,7 @@ import {
 const Z_BACKDROP = 3590;
 const Z_DIALOG = 3600;
 
-const MONO = "'Space Mono', monospace";
+const MONO = "'PP At', 'Space Mono', monospace";
 
 const TABS = [
   { id: "display", label: "Display" },

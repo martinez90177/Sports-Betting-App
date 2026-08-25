@@ -1,7 +1,7 @@
 import React from "react";
 import { feedFormScale } from "./FormGraph.jsx";
 import TeamLogo from "./TeamLogo.jsx";
-import { venueAbbr } from "./lib/venue.js";
+import { venueAbbr, venueMark } from "./lib/venue.js";
 import { mutedTeamColor, matchupTones } from "./lib/teamColors.js";
 import MatchupCardModal, { straightRunOf } from "./MatchupCardModal.jsx";
 // Named PlayerGameLog, not GameLogTable: MatchupPlayerBlocks already
@@ -30,7 +30,7 @@ import { WatchControl } from "./WatchList.jsx";
 // 196/1fr/196 grid, same seven centre blocks, same two rails -- so this is one
 // component the four pages feed, which is also why a fix here reaches all four.
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 // Repeated exactly as the file writes them.
@@ -1056,14 +1056,27 @@ function GameByGame({
                       {/* The crest needs room to be a crest. Under that the
                            disc is the mark -- it is already the opponent's
                            colour, which is the half that still reads at 12px. */}
-                      {discSize >= 18 && <TeamLogo sport={sport} abbr={g.opp} size={Math.round(discSize * 0.62)} />}
+                      {discSize >= 18 && <TeamLogo sport={sport} abbr={g.opp} size={Math.round(discSize * 0.62)} lift />}
                     </span>
                   )}
-                  {/* "@GB" for a road game, a bare "GB" at home -- see
+                  {/* "@ GB" for a road game, a bare "GB" at home -- see
                        lib/venue.js for why only one side is marked, and why a
-                       log that never recorded a venue gets no marker at all. */}
+                       log that never recorded a venue gets no marker at all.
+
+                       The marker is its own span, and deliberately LARGER than
+                       the capitals beside it rather than smaller. Set solid at
+                       11px in the same ink it merged into the abbreviation and
+                       the strip read "aSD  aSTL  aMIN". Three things pull it
+                       apart: it is dim where the abbreviation is the team's
+                       colour, it is a size bigger so it cannot pass for a
+                       lowercase letter, and there is a real gap after it. */}
                   {showAbbr && (
-                    <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>{venueAbbr(g.home, g.opp)}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>
+                      {venueMark(g.home) && (
+                        <span style={{ fontSize: 13, color: "var(--dim)", letterSpacing: 0, marginRight: 2.5 }}>@</span>
+                      )}
+                      {g.opp}
+                    </span>
                   )}
                   {showDate && (
                     <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{g.date}</span>

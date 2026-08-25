@@ -4,7 +4,7 @@ import TeamLogo from "./TeamLogo.jsx";
 import { TEAM_COLORS_BY_SPORT, STATUS } from "./lib/teamColors.js";
 import useIsNarrow from "./lib/useIsNarrow.js";
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 // The injury wire, given room to be read.

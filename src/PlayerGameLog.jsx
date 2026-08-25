@@ -1,9 +1,39 @@
 import React from "react";
 import TeamLogo from "./TeamLogo.jsx";
-import { venueAbbr } from "./lib/venue.js";
+import { venueMark } from "./lib/venue.js";
+
+// The opponent cell: crest, road marker, abbreviation.
+//
+// Shared by the logged rows and the upcoming one so the two cannot drift,
+// and split out of venueAbbr's single string for the reason that function
+// now documents -- "@" set solid at 11px merges into the abbreviation and
+// the column reads "aSD". Dim, a size larger, and a real gap after it.
+//
+// `lift` on the crest for the same column's other half: San Diego's brown
+// on this ground was an empty disc. See TeamLogo.
+function OpponentCell({ sport, opp, home, ink, strike }) {
+  return (
+    <span style={{
+      display: "flex", alignItems: "center", gap: 7, minWidth: 0,
+      textDecoration: strike ? "line-through" : "none",
+    }}>
+      {opp && <TeamLogo sport={sport} abbr={opp} size={16} lift />}
+      <span style={{ fontFamily: MONO, fontSize: 11, color: ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {opp ? (
+          <>
+            {venueMark(home) && (
+              <span style={{ fontSize: 13, color: "var(--dim)", marginRight: 2.5 }}>@</span>
+            )}
+            {opp}
+          </>
+        ) : "\u2014"}
+      </span>
+    </span>
+  );
+}
 import { mutedTeamColor } from "./lib/teamColors.js";
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 
 // The games, listed. Competitive brief item 1, mock 3a.
 //
@@ -167,15 +197,7 @@ export default function PlayerGameLog({
                 <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim-strong)", fontVariantNumeric: "tabular-nums" }}>
                   {r.date}{r.po ? " · PO" : ""}
                 </span>
-                <span style={{
-                  display: "flex", alignItems: "center", gap: 7, minWidth: 0,
-                  textDecoration: r.excluded ? "line-through" : "none",
-                }}>
-                  {r.opp && <TeamLogo sport={sport} abbr={r.opp} size={16} />}
-                  <span style={{ fontFamily: MONO, fontSize: 11, color: ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {r.opp ? venueAbbr(r.home, r.opp) : "—"}
-                  </span>
-                </span>
+                <OpponentCell sport={sport} opp={r.opp} home={r.home} ink={ink} strike={r.excluded} />
                 <span style={{
                   fontFamily: MONO, fontSize: 12, textAlign: "right", fontVariantNumeric: "tabular-nums",
                   color: cleared ? "var(--pos)" : "var(--neg)",
@@ -204,12 +226,7 @@ export default function PlayerGameLog({
               padding: "9px 2px", borderBottom: "1px solid var(--line)",
             }}>
               <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim-strong)", fontVariantNumeric: "tabular-nums" }}>{shortDate(upcoming.date)}</span>
-              <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                {upcoming.opp && <TeamLogo sport={sport} abbr={upcoming.opp} size={16} />}
-                <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>
-                  {upcoming.opp ? venueAbbr(upcoming.home, upcoming.opp) : "—"}
-                </span>
-              </span>
+              <OpponentCell sport={sport} opp={upcoming.opp} home={upcoming.home} ink="var(--text)" />
               <span style={{ fontFamily: MONO, fontSize: 12, textAlign: "right", color: "var(--dim)" }}>{"—"}</span>
               <span style={{ fontFamily: MONO, fontSize: 11, textAlign: "right", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
                 {isBinary ? "—" : Number(line).toFixed(1)}

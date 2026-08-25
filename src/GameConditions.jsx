@@ -1,6 +1,6 @@
 import React from "react";
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 // Where the game is played, and what that is worth. Competitive brief item 7,

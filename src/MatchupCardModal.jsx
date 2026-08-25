@@ -14,7 +14,7 @@ import { feedFormScale } from "./FormGraph.jsx";
 // passed in are the ones with no equivalent in the page's own props -- a 72px
 // avatar and the availability word.
 
-const MONO = "'Space Mono', monospace";
+const MONO = "'PP At', 'Space Mono', monospace";
 const DISPLAY = "'Bricolage Grotesque', sans-serif";
 
 const label = {

@@ -1,7 +1,7 @@
 import React from "react";
 import { statcastFor, statcastPercentile, statcastMean, ordinal } from "./lib/statcast.js";
 
-const MONO = "'Space Mono', ui-monospace, monospace";
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 
 // Two sides of one matchup, measure by measure. Competitive brief item 3,
 // mock 3c.
