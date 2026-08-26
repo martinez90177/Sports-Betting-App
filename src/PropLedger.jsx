@@ -11991,9 +11991,13 @@ const REDS_PLAYERS = [
 const CARDINALS_PLAYERS = [
   { id: "ppages", name: "Pedro Pagés", team: "STL", pos: "C", mlbId: 686780 },
   { id: "burleson", name: "Alec Burleson", team: "STL", pos: "1B", mlbId: 676475 },
-  { id: "wetherholt", name: "JJ Wetherholt", team: "STL", pos: "2B", mlbId: 802139 },
+  // Wetherholt slid over to shortstop when Winn went on the IL (below);
+  // Fermín gets the everyday look at second in his place.
+  { id: "fermin", name: "José Fermín", team: "STL", pos: "2B", mlbId: 665877 },
   { id: "bjordan", name: "Blaze Jordan", team: "STL", pos: "3B", mlbId: 691458 },
-  { id: "winn", name: "Masyn Winn", team: "STL", pos: "SS", mlbId: 691026 },
+  // Winn (broken thumb) went on the 10-day IL on 2026-08-25; Wetherholt is
+  // the everyday shortstop replacement while he's out.
+  { id: "wetherholt", name: "JJ Wetherholt", team: "STL", pos: "SS", mlbId: 802139 },
   { id: "nootbaar", name: "Lars Nootbaar", team: "STL", pos: "LF", mlbId: 663457 },
   { id: "nchurch", name: "Nathan Church", team: "STL", pos: "CF", mlbId: 701675 },
   { id: "jwalker", name: "Jordan Walker", team: "STL", pos: "RF", mlbId: 691023 },
