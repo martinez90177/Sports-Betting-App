@@ -24823,7 +24823,7 @@ const NAV_PAGES = new Set(NAV_TABS.map((t) => t.id));
 const PLAYER_PAGES = new Set(["nfl", "mlb", "nba", "wnba"]);
 // Nav pages whose phone body has been transcribed from the v3 mocks, and so
 // take the v3 chassis instead of NavBar. Grows one batch at a time.
-const V3_PHONE_PAGES = new Set(["feed", "board"]);
+const V3_PHONE_PAGES = new Set(["feed", "board", "games", "findings", "news"]);
 // Which pages build the availability wire. The Board joined News and Injuries
 // when its v3 tiers started counting "N OUT" as a reason -- without it that
 // reason can never fire, and a game silently sits one tier lower than the
@@ -25702,6 +25702,14 @@ export default function PropLedger() {
       {/* Findings runs off the same rows the board does, so it costs one more
           pass over a list already in memory rather than a second build. */}
       {page === "findings" && (
+        <MaybeV3Shell
+          on={isPhoneShell}
+          page="findings"
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+        >
         <LazyPane minHeight={400}>
           <FindingsPage
             rows={boardRows}
@@ -25712,6 +25720,7 @@ export default function PropLedger() {
             loading={boardSport === "mlb" && mlb.mlbLoading}
           />
         </LazyPane>
+        </MaybeV3Shell>
       )}
       {/* The full wire, not the rail's first handful. NEWS_WIRE_LIMIT exists
           to keep a rail short; this page has no such problem. */}
@@ -25727,9 +25736,28 @@ export default function PropLedger() {
           />
         </LazyPane>
       )}
-      {page === "games" && <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} /></LazyPane>}
+      {page === "games" && (
+        <MaybeV3Shell
+          on={isPhoneShell}
+          page="games"
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+        >
+          <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} /></LazyPane>
+        </MaybeV3Shell>
+      )}
 
       {page === "news" && (
+        <MaybeV3Shell
+          on={isPhoneShell}
+          page="news"
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+        >
         <LazyPane minHeight={400}>
           <NewsPageRedesign
             query="NFL OR MLB OR WNBA OR NBA"
@@ -25741,6 +25769,7 @@ export default function PropLedger() {
             footnote="Headlines cache for ~45 minutes to stay within Newsdata's free-tier request limit."
           />
         </LazyPane>
+        </MaybeV3Shell>
       )}
 
       </div>{/* /max-width container -- the overlays below are fixed-position

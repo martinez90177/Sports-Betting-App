@@ -464,10 +464,16 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
   // rather than approximated: the tier is a count of reasons, so a made-up
   // one would promote a game.
   const v3Tiers = useMemo(() => {
+    // Keyed by sport AND team, never by the abbreviation alone. DAL, WAS, PHX,
+    // CLE, BOS and MIN all exist in more than one league, and keying on the
+    // slug put the Dallas Wings' five absences on an NFL card headed DAL @ NYG
+    // -- promoting that game a whole tier on a fact from another sport. Same
+    // rule as CLAUDE.md's for crests, and it bites the same way.
     const outByTeam = new Map();
     (injuryRows || []).forEach((p) => {
-      if (p.status !== "out" || !p.team) return;
-      outByTeam.set(p.team, (outByTeam.get(p.team) || 0) + 1);
+      if (p.status !== "out" || !p.team || !p.sport) return;
+      const k = `${p.sport}:${p.team}`;
+      outByTeam.set(k, (outByTeam.get(k) || 0) + 1);
     });
 
     const withReasons = visible.map((g) => {
@@ -495,7 +501,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       // 2. The availability feed, both sides. Only MLB and the WNBA publish
       //    one; the other two leagues simply never fire this reason rather
       //    than reporting zero, which would read as "nobody is hurt".
-      const outCount = (outByTeam.get(teamA) || 0) + (outByTeam.get(teamB) || 0);
+      const outCount = (outByTeam.get(`${sport}:${teamA}`) || 0) + (outByTeam.get(`${sport}:${teamB}`) || 0);
       if (outCount > 0) reasons.push({ kind: "out", label: `${outCount} OUT` });
 
       // 3. The softest opposing defence any prop on this card faces, in that

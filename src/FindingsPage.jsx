@@ -2,7 +2,8 @@ import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { TEAM_COLORS_BY_SPORT } from "./lib/teamColors.js";
 import { buildFindings, filterFindings, FINDING_SPLITS, FINDING_SIDES, FINDING_SORTS } from "./lib/findings.js";
-import useIsNarrow from "./lib/useIsNarrow.js";
+import useIsNarrow, { useIsPhone } from "./lib/useIsNarrow.js";
+import FindingsMobile from "./v3/FindingsMobile.jsx";
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -105,6 +106,7 @@ export default function FindingsPage({
   // component that folded at a different width from the stylesheet would
   // collapse its rail while the grid was still two columns.
   const narrow = useIsNarrow(900);
+  const isPhone = useIsPhone();
   const [railOpen, setRailOpen] = useState(false);
 
   const all = useMemo(() => buildFindings(rows, sport), [rows, sport]);
@@ -116,6 +118,42 @@ export default function FindingsPage({
   const visible = list.slice(0, shown);
 
   const countFor = (s) => (s === "All splits" ? all.length : all.filter((f) => f.split === s).length);
+
+  // Same findings, same filters, same counts -- the phone's own layout for
+  // them. See src/v3/FindingsMobile.jsx.
+  if (isPhone) {
+    return (
+      <FindingsMobile
+        splits={FINDING_SPLITS}
+        split={split}
+        onSetSplit={(s) => { setSplit(s); setShown(20); }}
+        sides={FINDING_SIDES}
+        side={side}
+        onSetSide={(s) => { setSide(s); setShown(20); }}
+        sorts={FINDING_SORTS}
+        sort={sort}
+        onSetSort={(s) => { setSort(s); setShown(20); }}
+        hideStructural={hideStructural}
+        onToggleStructural={() => { setHideStructural((v) => !v); setShown(20); }}
+        structuralHeld={structuralCount}
+        findings={visible}
+        total={list.length}
+        hasMore={list.length > shown}
+        moreCount={list.length - shown}
+        onShowMore={() => setShown((n) => n + 20)}
+        loading={loading}
+        onOpenProp={onOpenProp}
+        renderAvatar={(fd, size) => (
+          <PlayerAvatar
+            name={fd.name} alt={fd.name} sport={fd.sport || sport} team={fd.team}
+            headshotSrc={fd.avatar} espnId={fd.espnId}
+            status={statusFor ? statusFor(fd) : fd.status} size={size} inset={2}
+            surface="var(--surface-1)"
+          />
+        )}
+      />
+    );
+  }
 
   return (
     <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", padding: "20px 22px 40px", boxSizing: "border-box" }}>

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { fetchNews } from "./lib/newsdata.js";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
+import { useIsPhone } from "./lib/useIsNarrow.js";
+import NewsMobile from "./v3/NewsMobile.jsx";
 
 // Redesigned News page. Replaces the card list in the current NewsPage.jsx with
 // a two-column layout: a feed where every item can name the props it moves, and
@@ -171,6 +173,7 @@ export default function NewsPageRedesign({
   footnote,
 }) {
   const wide = useIsWide();
+  const isPhone = useIsPhone();
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -208,6 +211,33 @@ export default function NewsPageRedesign({
   const filterCounts = Object.fromEntries(
     FILTERS.map((f) => [f, withPlayers.filter(({ player }) => matchesFilter(player, f)).length])
   );
+
+  // Same wire, same attribution, same counts -- the phone's own layout.
+  // See src/v3/NewsMobile.jsx.
+  if (isPhone) {
+    return (
+      <NewsMobile
+        // The mock drops Injuries from this row: it has its own nav tab, and a
+        // filter that duplicates a destination is a second way to ask one
+        // question.
+        filters={FILTERS.filter((f) => f !== "Injuries")}
+        filter={filter === "Injuries" ? "All" : filter}
+        counts={filterCounts}
+        onSetFilter={setFilter}
+        items={shown.map(({ article, player }) => ({
+          key: article.link || article.title,
+          headline: article.title,
+          source: article.sourceName,
+          age: article.pubDate ? timeAgo(article.pubDate) : "",
+          player,
+        }))}
+        loading={loading}
+        error={error}
+        footnote={footnote}
+        onOpenLadder={onOpenLadder}
+      />
+    );
+  }
 
   // ---- The v2 shell (PropPalace News v2.dc.html) ---------------------------
   //

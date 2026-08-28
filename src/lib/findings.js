@@ -112,6 +112,10 @@ function findingsForRow(row, sport) {
     const structural = isStructural(f.pool || values, line, isBinary, rate);
     out.push({
       key: `${row.key}:${f.id}`,
+      // The finding type, as its own field rather than only inside the key.
+      // The v3 Findings card prints it as a chip beside the split, and
+      // re-deriving it from the sentence would be reading a string back.
+      id: f.id,
       rowKey: row.key,
       sport,
       name,

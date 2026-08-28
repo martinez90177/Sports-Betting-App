@@ -1714,3 +1714,36 @@ and the availability wire is now built on the Board too (`NEEDS_INJURY_WIRE`)
 *opposing* probable starter inside the player's own roster rail (Skubal under
 "Los Angeles Dodgers"). Present on the untouched desktop page as well; see
 `liveTeamRoster` / `fetchMLBTeamNextGame`.
+
+## Batch 2 — mobile Games, Findings, News
+
+New: `src/v3/GamesMobile.jsx`, `FindingsMobile.jsx`, `NewsMobile.jsx`. Each
+page keeps its own data, polling, filters and counts and gains a phone branch
+on `useIsPhone()`; `V3_PHONE_PAGES` now covers five of the six nav screens.
+
+- **Findings has no league row on the phone.** The mock's sticky bar is
+  split / side / sort / structural and nothing else. One was built and then
+  removed — "do not add anything that is not in the mocks". The league on that
+  screen is the Board's own (`boardSport` feeds both), so it is changed there.
+- **`lib/findings.js` now exposes `id`** on each finding. The key already
+  encoded it; the card prints it as a chip (RUN / SPLIT / H2H) beside the
+  split, and re-deriving it from the sentence would be reading a string back.
+- **News drops the Injuries filter on the phone**, per the mock: it has its own
+  nav tab, and a filter that duplicates a destination is a second way to ask
+  one question.
+
+**Three bugs found by driving it, all mine, all invisible to a clean build:**
+
+1. `g.venue` is an object (`{ name, city, indoor }`), not a string — reading it
+   as text put a React child error over the whole Games screen.
+2. `getPropsCount` is positional `(sport, away, home)`, not `(game)` — every
+   card read "0 PROPS".
+3. **`outByTeam` on the Board was keyed by team abbreviation alone**, so the
+   Dallas Wings' five absences were credited to an NFL card headed DAL @ NYG
+   and promoted that game a whole tier. Keyed by `sport:team` now. This is
+   CLAUDE.md's crest rule biting somewhere it was not being applied: DAL, WAS,
+   PHX, CLE, BOS and MIN all exist in more than one league.
+
+**Worth knowing:** `getPropsCountForGame` reads the static `MLB_TEAM_ROSTERS`
+snapshot, so every MLB game reports the same count (172 today). That is the
+helper's own behaviour on both layouts, not a phone bug.
