@@ -11978,7 +11978,10 @@ const BREWERS_PLAYERS = [
 ];
 const REDS_PLAYERS = [
   { id: "stephenson", name: "Tyler Stephenson", team: "CIN", pos: "C", mlbId: 663886 },
-  { id: "steer", name: "Spencer Steer", team: "CIN", pos: "1B", mlbId: 668715 },
+  // Steer (wrist tendon sheath tear) is out for the rest of the season. His
+  // fill-in, Michael Toglia, then needed season-ending shoulder surgery of
+  // his own -- Stewart, more natural at 3B, has taken over everyday 1B duty.
+  { id: "sstewart", name: "Sal Stewart", team: "CIN", pos: "1B", mlbId: 5080771 },
   { id: "earroyo", name: "Edwin Arroyo", team: "CIN", pos: "2B", mlbId: 695490 },
   { id: "khayes", name: "Ke'Bryan Hayes", team: "CIN", pos: "3B", mlbId: 663647 },
   { id: "edelacruz", name: "Elly De La Cruz", team: "CIN", pos: "SS", mlbId: 682829 },
