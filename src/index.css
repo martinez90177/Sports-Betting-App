@@ -1720,3 +1720,11 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
     box-sizing: border-box;
   }
 }
+
+/* ---------- v3 ----------
+   The mocks' own utility, defined in every `.dc.html` file's style block: a
+   scroller with no visible scrollbar. Used on every horizontal chip row, tab
+   row and roster strip the v3 screens draw -- those are swiped, and a track
+   under them eats 8px of a 430px row and reads as a divider. */
+.nsb { scrollbar-width: none; -ms-overflow-style: none; }
+.nsb::-webkit-scrollbar { display: none; }

@@ -6,6 +6,21 @@ import { wilsonLower, supportBand, SUPPORT_BANDS } from "./lib/support.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { teamInfo } from "./lib/gamesData.js";
 import { matchupTones as boardTones } from "./lib/teamColors.js";
+import BoardMobile from "./v3/BoardMobile.jsx";
+
+// The three bands `PropPalace Board v4 part 2.dc.html` names, with its own
+// subtitles. A tier is a count of the reasons on the card -- nothing is
+// weighted, and no tier is a prediction.
+// League sizes, for the "soft matchup" cut. feedTeamCount lives in
+// PropLedger.jsx and is not exported; these are the same four numbers and
+// they change on a relocation, not on a transaction.
+const BOARD_TEAM_COUNT = { nfl: 32, mlb: 30, nba: 30, wnba: 15 };
+
+const TIER_TITLES = [
+  { title: "Worth ten minutes", sub: "three or more counted reasons", tone: "var(--pos)" },
+  { title: "One thing each", sub: "a single reason, named on the card", tone: "var(--amber-ink)" },
+  { title: "Quiet", sub: "nothing cleared a bar — shown so the slate is complete", tone: "var(--dim)" },
+];
 
 // --------------------------------------------------------------------------
 // The board (item 17)
@@ -279,7 +294,7 @@ function rateFor(row, activeSplits) {
 // while for the synchronous leagues it means the builders really found nothing.
 // Reading the difference off rows.length alone is what makes a slow fetch look
 // like an empty slate.
-export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, loading = false, slateByTeam = null, timeLabel = null, playersWithoutProps = null }) {
+export default function BoardPage({ rows = [], groups = [], sport, sports = [], onSetSport, onOpenProp, onOpenGameProps, marketGroups = [], disclaimer, loading = false, slateByTeam = null, timeLabel = null, playersWithoutProps = null, injuryRows = null, isPhone = false }) {
   const [selectedMarkets, setSelectedMarkets] = useState([]);
   // See the note in PropLedger: the scale is the sport's, not a fixed 10.
   // The value each sport was last left on, remembered per sport.
@@ -434,6 +449,135 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
   const shown = visible.slice(0, visibleGames);
   const propCount = visible.reduce((t, g) => t + g.rows.length, 0);
 
+  // ---- the v3 tiers (see src/v3/BoardMobile.jsx) --------------------------
+  //
+  // `PropPalace Board v4 part 2.dc.html` bands games by how many reasons the
+  // card can cite, not by a rank. Every reason below is a counted fact this
+  // app already holds; a kind with nothing behind it does not fire, which is
+  // why a card can sit in a lower tier than the mock's own example does.
+  //
+  // The mock's fourth kind, `lineup` -- "RICE BATTING SECOND", cited as a
+  // logged role change naming both the player and the absence -- has no
+  // source here. `lib/findings.js` produces season/home/away/vs-opponent
+  // splits and no role-change finding, and `lineupStateFor` says only whether
+  // a batting order is posted, which is a different claim. Left unfired
+  // rather than approximated: the tier is a count of reasons, so a made-up
+  // one would promote a game.
+  const v3Tiers = useMemo(() => {
+    const outByTeam = new Map();
+    (injuryRows || []).forEach((p) => {
+      if (p.status !== "out" || !p.team) return;
+      outByTeam.set(p.team, (outByTeam.get(p.team) || 0) + 1);
+    });
+
+    const withReasons = visible.map((g) => {
+      const teamA = g.rows[0]?.team;
+      const teamB = g.rows[0]?.opp;
+      const reasons = [];
+
+      // 1. How many props clear 70% on a sample deep enough to say so.
+      //
+      //    "Deep enough" is the sample-weighted lower bound, not the raw
+      //    count -- the same wilsonLower this page already ranks a card's own
+      //    rows on. That matters here more than anywhere: the mock's example
+      //    game carries a handful of props and reads "4 PROPS AT 70%+", while
+      //    an NFL slate here carries ~190 props per game, so counting every
+      //    row whose raw rate touches 70% fires on all sixteen games and the
+      //    tiers collapse into one. 7-of-10 is 70% and establishes nothing;
+      //    the bound is what separates it from 35-of-50.
+      const strong = g.rows.filter((r) => {
+        const s = rateFor(r, activeSplits);
+        if (!s || s.rate == null || s.n < minGames) return false;
+        return wilsonLower(s.over, s.n) >= 0.7;
+      }).length;
+      if (strong > 0) reasons.push({ kind: "rate", label: `${strong} PROP${strong === 1 ? "" : "S"} AT 70%+` });
+
+      // 2. The availability feed, both sides. Only MLB and the WNBA publish
+      //    one; the other two leagues simply never fire this reason rather
+      //    than reporting zero, which would read as "nobody is hurt".
+      const outCount = (outByTeam.get(teamA) || 0) + (outByTeam.get(teamB) || 0);
+      if (outCount > 0) reasons.push({ kind: "out", label: `${outCount} OUT` });
+
+      // 3. The softest opposing defence any prop on this card faces, in that
+      //    prop's own market. A rank is only a reason when it is genuinely
+      //    soft -- the last third of the league, which is where defTier cuts.
+      // The card holds both teams' players, so the softest rank on it does
+      // not necessarily belong to `rows[0]`'s opponent -- the defence being
+      // named has to come off the row that carries the rank, or the chip
+      // credits the wrong team.
+      const softest = g.rows.reduce((best, r) => (r.rank != null && (!best || r.rank > best.rank) ? r : best), null);
+      const teamCount = BOARD_TEAM_COUNT[sport] || null;
+      // The last third of the league -- the same cut defTier makes, so the
+      // chip and the word printed on a row cannot disagree about "soft".
+      const softCut = teamCount ? Math.floor(teamCount - teamCount / 3) + 1 : null;
+      if (softest && softCut && softest.rank >= softCut) {
+        reasons.push({ kind: "matchup", label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}` });
+      }
+
+      return { g, reasons };
+    });
+
+    const bandOf = (n) => (n >= 3 ? 0 : n >= 1 ? 1 : 2);
+    const ranked = withReasons.slice().sort((a, b) => b.reasons.length - a.reasons.length);
+    const byBand = [0, 1, 2].map((i) => ranked.filter((x) => bandOf(x.reasons.length) === i));
+
+    const cardOf = ({ g, reasons }, hero) => {
+      const away = g.rows[0]?.homeGame ? g.rows[0]?.opp : g.rows[0]?.team;
+      const home = g.rows[0]?.homeGame ? g.rows[0]?.team : g.rows[0]?.opp;
+      const props = hero
+        ? g.rows.slice(0, 3).map((r) => {
+          const s = rateFor(r, activeSplits);
+          return {
+            key: r.key,
+            playerId: r.playerId,
+            marketId: r.marketId,
+            name: r.name,
+            prop: `${r.direction === "under" ? "UNDER" : "OVER"} ${r.line} ${String(r.marketLabel || "").toUpperCase()}`,
+            // Rate, hits and the bars all come off the same filtered array.
+            rate: s && s.rate != null ? s.rate : 0,
+            hits: s ? s.over : 0,
+            n: s ? s.n : 0,
+            bars: s ? s.games : [],
+            line: r.line,
+            isBinary: r.isBinary,
+            direction: r.direction,
+            avatarNode: (
+              <PlayerAvatar
+                name={r.name} alt={r.name} sport={sport} team={r.team}
+                headshotSrc={r.avatar} fallbackSrc={r.avatarFallback}
+                size={32} inset={2} surface="var(--surface-1)"
+              />
+            ),
+          };
+        })
+        : [];
+      return {
+        key: g.key,
+        away: away || "", home: home || "",
+        time: g.time || "",
+        reasons,
+        hero,
+        quiet: reasons.length === 0,
+        // What the card was missing, named rather than left blank.
+        quietWhy: reasons.length === 0
+          ? `Nothing on this card cleared a bar: no prop at 70% on ${minGames}+ games, no soft matchup, and nothing on either availability report.`
+          : "",
+        props,
+        rest: `${Math.max(0, g.rows.length - props.length)} more props in this game`,
+        rows: g.rows,
+      };
+    };
+
+    return [0, 1, 2].filter((i) => byBand[i].length).map((i) => ({
+      key: TIER_TITLES[i].title,
+      title: TIER_TITLES[i].title,
+      sub: TIER_TITLES[i].sub,
+      tone: TIER_TITLES[i].tone,
+      count: `${byBand[i].length} game${byBand[i].length === 1 ? "" : "s"}`,
+      games: byBand[i].map((x, k) => cardOf(x, i === 0 && k === 0)),
+    }));
+  }, [visible, activeSplits, minGames, injuryRows, sport]);
+
   const toggleSplit = (id) => {
     setActiveSplits((prev) => {
       if (id === "season") return ["season"];
@@ -533,6 +677,25 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       </div>
     </div>
   );
+
+  // Same rows, same splits, same minimum sample -- banded instead of ranked.
+  if (isPhone) {
+    return (
+      <BoardMobile
+        sport={sport}
+        sports={sports.filter((s) => s.available !== false).map((s) => (typeof s === "string" ? s : s.id))}
+        onSetSport={onSetSport}
+        tiers={v3Tiers}
+        summary={`${visible.length - (v3Tiers.find((t) => t.title === "Quiet")?.games.length || 0)} of ${visible.length} games have something counted`}
+        slateLabel={timeLabel || ""}
+        footNote="A tier is a count of the reasons on the card — nothing is weighted, and no tier is a prediction. A quiet game is shown rather than dropped, and says what it was missing."
+        loading={loading}
+        emptyNote={loading ? null : "No games on this slate yet."}
+        onOpenProp={onOpenProp}
+        onOpenGameProps={(g) => onOpenGameProps && onOpenGameProps(g)}
+      />
+    );
+  }
 
   return (
     <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", boxSizing: "border-box" }}>

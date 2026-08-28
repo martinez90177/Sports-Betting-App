@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #07080a; color: #e8ecf2; font-family: 'Archivo', system-ui, sans-serif; }
+  a { color: #8fa4f0; text-decoration: none; }
+  a:hover { color: #b3c1f7; }
+  .nsb { scrollbar-width: none; -ms-overflow-style: none; }
+  .nsb::-webkit-scrollbar { display: none; }
+</style>
+</helmet>
+
+<section style="display: flex; flex-direction: column; gap: 24px; padding: 44px 48px 80px">
+  <div style="display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap">
+    <span style="font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.14em; color: #8fa4f0; border: 1px solid #3b5bdb; border-radius: 999px; padding: 5px 12px">TURN 1</span>
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 700; font-size: 30px; letter-spacing: -0.01em">Board v4, part 2 — tiers instead of a ranking, and the app's own graph</h1>
+    <span style="font-family: 'Space Mono', monospace; font-size: 12px; color: #8b98ab; letter-spacing: 0.06em">separate file · keep or discard</span>
+  </div>
+
+  <div style="width: 980px; border: 1px solid #2b2f36; border-radius: 14px; background: #0d0f12; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+    <span style="font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: #8fa4f0">WHAT CHANGED FROM V4</span>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px 32px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 15px; font-weight: 600">A numbered rank implied precision it does not have.</span>
+        <span style="font-size: 13.5px; line-height: 1.55; color: #aab2c0; text-wrap: pretty">Nothing counted makes game #2 better than game #3. Tiers say the true thing instead: this one is worth ten minutes, these have one thing each, these have nothing.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 15px; font-weight: 600">The top game now looks like the top game.</span>
+        <span style="font-size: 13.5px; line-height: 1.55; color: #aab2c0; text-wrap: pretty">One hero card with its props and their form strips, rather than five cards of identical weight that make you read to find the difference.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 15px; font-weight: 600">The page carries the app's signature.</span>
+        <span style="font-size: 13.5px; line-height: 1.55; color: #aab2c0; text-wrap: pretty">Every prop shows the same bar strip the feed and player pages draw — green cleared, red outline missed, dashed line at the number — so the Board is recognisably part of the app rather than a list of chips.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 15px; font-weight: 600">A reason bar you can scan without reading.</span>
+        <span style="font-size: 13.5px; line-height: 1.55; color: #aab2c0; text-wrap: pretty">Each game's reasons are also a small stacked bar, so the shape of a slate is legible at a glance and the words are there when you want them.</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 34px; align-items: flex-start">
+
+    <div id="1a" style="display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span style="font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.14em; color: #8fa4f0; border: 1px solid #3b5bdb; border-radius: 999px; padding: 5px 12px">1a</span>
+        <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 17px">Mobile</span>
+        <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #8b98ab">tiers · hero card · form strips</span>
+      </div>
+
+      <div style="position: relative; width: 430px; height: 932px; border-radius: 44px; border: 1px solid #2b2f36; background: #0a0b0d; overflow: hidden; box-shadow: 0 14px 34px rgba(0,0,0,0.55)">
+        <div style="position: absolute; top: 0; left: 0; right: 0; z-index: 30; background: #0a0b0d; border-bottom: 1px solid #2b2f36">
+          <div style="height: 46px; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 22px 4px">
+            <span style="font-family: 'Space Mono', monospace; font-size: 14px; font-weight: 700">9:41</span>
+            <span style="font-family: 'Space Mono', monospace; font-size: 12px; color: #aab2c0; letter-spacing: 0.08em; white-space: nowrap">▮▮▮ ᯤ 82%</span>
+          </div>
+          <div style="height: 46px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px">
+            <div style="display: flex; align-items: center; gap: 9px">
+              <span style="position: relative; display: flex; align-items: flex-end; gap: 2px; flex-shrink: 0">
+                <span style="width: 4px; height: 9px; border: 1.5px solid #ef5b5b; border-bottom: none; border-radius: 2px 2px 0 0; box-sizing: border-box"></span>
+                <span style="width: 4px; height: 16px; background: #3ecf8e; border-radius: 2px 2px 0 0"></span>
+                <span style="position: relative; width: 4px; height: 23px; background: #3ecf8e; border-radius: 2px 2px 0 0">
+                  <span style="position: absolute; left: 1px; bottom: 23px; width: 2px; height: 9px; background: #3ecf8e; border-radius: 1px 1px 0 0"></span>
+                  <span style="position: absolute; left: 3px; bottom: 26px; width: 9px; height: 6px; background: #3ecf8e; clip-path: polygon(0 0, 100% 50%, 0 100%)"></span>
+                </span>
+                <span style="width: 4px; height: 16px; background: #3ecf8e; border-radius: 2px 2px 0 0"></span>
+                <span style="width: 4px; height: 9px; border: 1.5px solid #ef5b5b; border-bottom: none; border-radius: 2px 2px 0 0; box-sizing: border-box"></span>
+                <span style="position: absolute; left: -3px; right: -3px; bottom: 11px; border-top: 1.5px dashed #e8ecf2"></span>
+              </span>
+              <span style="font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase">Prop Palace</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #2b2f36; background: #191c21; color: #8b98ab; font-size: 16px">⚙</span>
+              <span style="font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.12em; color: #8fa4f0; border: 1px solid #3b5bdb; border-radius: 7px; padding: 6px 11px">21+</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 4px; padding: 0 12px">
+            <sc-for list="{{ nav }}" as="t" hint-placeholder-count="6">
+              <span style="{{ t.style }}">{{ t.label }}</span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="nsb" style="position: absolute; top: 136px; left: 0; right: 0; bottom: 82px; overflow-y: auto">
+          <div style="position: sticky; top: 0; z-index: 20; background: #0a0b0d; border-bottom: 1px solid #2b2f36; display: flex; flex-direction: column; gap: 9px; padding: 11px 0 12px">
+            <div class="nsb" style="display: flex; gap: 8px; padding: 0 16px; overflow-x: auto">
+              <sc-for list="{{ leagues }}" as="l" hint-placeholder-count="4">
+                <div onClick="{{ l.pick }}" style="{{ l.style }}">{{ l.label }}</div>
+              </sc-for>
+            </div>
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 0 16px">
+              <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #aab2c0">{{ summary }}</span>
+              <span style="font-family: 'Space Mono', monospace; font-size: 10px; color: #8b98ab">{{ slateLabel }}</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 20px; padding: 16px 16px 26px">
+            <sc-if value="{{ opened }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid #3b5bdb; border-radius: 10px; background: rgba(59,91,219,0.16)">
+                <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8fa4f0">OPENING</span>
+                <span style="font-size: 12.5px; color: #e8ecf2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ openedLabel }}</span>
+                <span onClick="{{ clearOpened }}" style="margin-left: auto; color: #8b98ab; font-size: 14px; cursor: pointer">×</span>
+              </div>
+            </sc-if>
+            <sc-for list="{{ tiers }}" as="tr" hint-placeholder-count="3">
+              <div style="display: flex; flex-direction: column; gap: 11px">
+                <div style="display: flex; align-items: baseline; gap: 10px">
+                  <span style="{{ tr.markStyle }}"></span>
+                  <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 16px">{{ tr.title }}</span>
+                  <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; color: #8b98ab">{{ tr.count }}</span>
+                </div>
+                <span style="{{ tr.subStyle }}">{{ tr.sub }}</span>
+
+                <sc-for list="{{ tr.games }}" as="g" hint-placeholder-count="2">
+                  <div style="{{ g.cardStyle }}">
+                    <div style="display: flex; align-items: center; gap: 10px; padding: 13px 14px 11px">
+                      <span style="display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1 1 auto">
+                        <span role="img" style="{{ g.awayCrest }}"></span>
+                        <span style="{{ g.teamStyle }}">{{ g.away }}</span>
+                        <span style="{{ g.atStyle }}">@</span>
+                        <span style="{{ g.teamStyle }}">{{ g.home }}</span>
+                        <span role="img" style="{{ g.homeCrest }}"></span>
+                      </span>
+                      <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; color: #8b98ab; white-space: nowrap">{{ g.time }}</span>
+                    </div>
+
+                    <div style="padding: 0 14px 11px; display: flex; flex-direction: column; gap: 8px">
+                      <span style="{{ g.barWrap }}">
+                        <sc-for list="{{ g.segments }}" as="sg" hint-placeholder-count="3">
+                          <span style="{{ sg.style }}"></span>
+                        </sc-for>
+                      </span>
+                      <div style="display: flex; flex-wrap: wrap; gap: 7px">
+                        <sc-for list="{{ g.reasons }}" as="r" hint-placeholder-count="3">
+                          <span style="{{ r.style }}">{{ r.label }}</span>
+                        </sc-for>
+                      </div>
+                    </div>
+
+                    <sc-if value="{{ g.hero }}" hint-placeholder-val="{{ false }}">
+                      <div style="border-top: 1px solid #20242b; display: flex; flex-direction: column">
+                        <sc-for list="{{ g.props }}" as="p" hint-placeholder-count="3">
+                          <div style="display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; border-bottom: 1px solid #191c21">
+                            <div style="display: flex; align-items: center; gap: 11px">
+                              <span style="position: relative; flex: 0 0 auto">
+                                <span style="width: 32px; height: 32px; border-radius: 999px; background: #20242b; display: flex; align-items: center; justify-content: center; font-family: 'Space Mono', monospace; font-size: 11px; color: #aab2c0">{{ p.initials }}</span>
+                                <span style="{{ p.dot }}"></span>
+                              </span>
+                              <span onClick="{{ p.open }}" style="{{ p.idStyle }}" title="{{ p.openHint }}">
+                                <span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ p.name }}</span>
+                                <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #aab2c0; white-space: nowrap">{{ p.prop }}</span>
+                              </span>
+                              <span style="display: flex; align-items: baseline; gap: 7px; flex: 0 0 auto">
+                                <span style="{{ p.rateStyle }}">{{ p.rate }}</span>
+                                <span style="font-family: 'Space Mono', monospace; font-size: 10px; color: #8b98ab">{{ p.sample }}</span>
+                              </span>
+                            </div>
+                            <span style="{{ p.stripWrapWide }}">
+                              <span style="{{ p.stripGrid }}">
+                                <sc-for list="{{ p.bars }}" as="b" hint-placeholder-count="10">
+                                  <span style="{{ p.colStyle }}"><span style="{{ b.zeroStyle }}">{{ b.zero }}</span><span style="{{ b.style }}"><span style="{{ b.valStyle }}">{{ b.val }}</span></span></span>
+                                </sc-for>
+                              </span>
+                              <span style="{{ p.rule }}"></span>
+                            </span>
+                          </div>
+                        </sc-for>
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; min-height: 44px">
+                          <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; color: #8b98ab">{{ g.rest }}</span>
+                          <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #8fa4f0">OPEN IN FEED →</span>
+                        </div>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ g.quiet }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding: 0 14px 13px">
+                        <span style="font-size: 12.5px; line-height: 1.5; color: #8b98ab; text-wrap: pretty">{{ g.quietWhy }}</span>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+
+            <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; line-height: 1.7; color: #8b98ab">{{ footNote }}</span>
+          </div>
+        </div>
+
+        <div style="position: absolute; bottom: 0; left: 0; right: 0; height: 82px; z-index: 26; background: #0a0b0d; border-top: 1px solid #2b2f36; padding: 14px 16px 20px; display: flex; justify-content: center; box-sizing: border-box">
+          <div style="min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; border-radius: 12px; border: 1px solid #3b5bdb; background: rgba(59,91,219,0.16); color: #8fa4f0; font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: 0.1em">MY PICKS · 7</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="1b" style="display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span style="font-family: 'Space Mono', monospace; font-size: 12px; letter-spacing: 0.14em; color: #8fa4f0; border: 1px solid #3b5bdb; border-radius: 999px; padding: 5px 12px">1b</span>
+        <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 17px">Desktop</span>
+        <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #8b98ab">the hero across the top, the rest as tiers below</span>
+      </div>
+
+      <div style="position: relative; width: 1440px; height: 900px; border: 1px solid #2b2f36; border-radius: 12px; background: #0a0b0d; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 14px 34px rgba(0,0,0,0.55)">
+        <div style="display: flex; align-items: center; gap: 32px; padding: 16px 32px; border-bottom: 1px solid #2b2f36; flex: 0 0 auto">
+          <span style="display: flex; align-items: center; gap: 10px">
+            <span style="position: relative; display: flex; align-items: flex-end; gap: 2px; flex-shrink: 0">
+              <span style="width: 4px; height: 9px; border: 1.5px solid #ef5b5b; border-bottom: none; border-radius: 2px 2px 0 0; box-sizing: border-box"></span>
+              <span style="width: 4px; height: 16px; background: #3ecf8e; border-radius: 2px 2px 0 0"></span>
+              <span style="position: relative; width: 4px; height: 23px; background: #3ecf8e; border-radius: 2px 2px 0 0">
+                <span style="position: absolute; left: 1px; bottom: 23px; width: 2px; height: 9px; background: #3ecf8e; border-radius: 1px 1px 0 0"></span>
+                <span style="position: absolute; left: 3px; bottom: 26px; width: 9px; height: 6px; background: #3ecf8e; clip-path: polygon(0 0, 100% 50%, 0 100%)"></span>
+              </span>
+              <span style="width: 4px; height: 16px; background: #3ecf8e; border-radius: 2px 2px 0 0"></span>
+              <span style="width: 4px; height: 9px; border: 1.5px solid #ef5b5b; border-bottom: none; border-radius: 2px 2px 0 0; box-sizing: border-box"></span>
+              <span style="position: absolute; left: -3px; right: -3px; bottom: 11px; border-top: 1.5px dashed #e8ecf2"></span>
+            </span>
+            <span style="font-family: 'Space Mono', monospace; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase">Prop Palace</span>
+          </span>
+          <span style="display: flex; align-items: center; gap: 26px">
+            <sc-for list="{{ navD }}" as="t" hint-placeholder-count="6">
+              <span style="{{ t.style }}">{{ t.label }}</span>
+            </sc-for>
+          </span>
+          <span style="margin-left: auto; display: flex; align-items: center; gap: 16px">
+            <span style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #2b2f36; background: #191c21; color: #8b98ab; font-size: 15px">⚙</span>
+            <span style="font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.12em; color: #8fa4f0; border: 1px solid #3b5bdb; border-radius: 7px; padding: 5px 12px">21+</span>
+          </span>
+        </div>
+
+        <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 16px; padding: 14px 32px; border-bottom: 1px solid #2b2f36">
+          <div style="display: flex; gap: 7px">
+            <sc-for list="{{ leaguesD }}" as="l" hint-placeholder-count="4">
+              <div onClick="{{ l.pick }}" style="{{ l.style }}">{{ l.label }}</div>
+            </sc-for>
+          </div>
+          <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #aab2c0">{{ summary }}</span>
+          <span style="margin-left: auto; font-family: 'Space Mono', monospace; font-size: 10px; color: #8b98ab">{{ slateLabel }}</span>
+        </div>
+
+        <div class="nsb" style="flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 22px 32px 30px; display: flex; flex-direction: column; gap: 22px">
+          <sc-if value="{{ opened }}" hint-placeholder-val="{{ false }}">
+            <div style="flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 13px 16px; border: 1px solid #3b5bdb; border-radius: 10px; background: rgba(59,91,219,0.16)">
+              <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #8fa4f0">OPENING</span>
+              <span style="font-size: 13px; color: #e8ecf2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ openedLabel }}</span>
+              <span onClick="{{ clearOpened }}" style="margin-left: auto; color: #8b98ab; font-size: 15px; cursor: pointer">×</span>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ hasHero }}" hint-placeholder-val="{{ true }}">
+            <div style="flex: 0 0 auto; border: 1px solid #3b5bdb; border-radius: 14px; background: #131519; overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 14px; padding: 18px 20px; background: rgba(59,91,219,0.10); border-bottom: 1px solid #2b2f36">
+                <span style="{{ heroMark }}"></span>
+                <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #8fa4f0">{{ heroTier }}</span>
+                <span role="img" style="{{ heroAwayCrest }}"></span>
+                <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.01em">{{ heroAway }}</span>
+                <span style="{{ heroAtStyle }}">@</span>
+                <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 700; font-size: 24px; letter-spacing: -0.01em">{{ heroHome }}</span>
+                <span role="img" style="{{ heroHomeCrest }}"></span>
+                <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #8b98ab">{{ heroMeta }}</span>
+                <span style="margin-left: auto; font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #8fa4f0">OPEN MATCHUP →</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: 420px minmax(0, 1fr)">
+                <div style="border-right: 1px solid #2b2f36; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+                  <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #8b98ab">WHY IT LEADS</span>
+                  <sc-for list="{{ heroWhy }}" as="w" hint-placeholder-count="4">
+                    <div style="display: flex; align-items: flex-start; gap: 11px">
+                      <span style="{{ w.markStyle }}"></span>
+                      <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+                        <span style="font-size: 13.5px; font-weight: 600">{{ w.title }}</span>
+                        <span style="font-size: 12px; line-height: 1.5; color: #8b98ab; text-wrap: pretty">{{ w.cite }}</span>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="display: flex; flex-direction: column">
+                  <sc-for list="{{ heroProps }}" as="p" hint-placeholder-count="4">
+                    <div style="display: flex; align-items: center; gap: 14px; padding: 13px 20px; border-bottom: 1px solid #20242b; min-height: 44px">
+                      <span style="position: relative; flex: 0 0 auto">
+                        <span style="width: 34px; height: 34px; border-radius: 999px; background: #20242b; display: flex; align-items: center; justify-content: center; font-family: 'Space Mono', monospace; font-size: 11px; color: #aab2c0">{{ p.initials }}</span>
+                        <span style="{{ p.dot }}"></span>
+                      </span>
+                      <span onClick="{{ p.open }}" style="{{ p.idStyleWide }}" title="{{ p.openHint }}">
+                        <span style="font-size: 14.5px; font-weight: 600; white-space: nowrap">{{ p.name }}</span>
+                        <span style="font-family: 'Space Mono', monospace; font-size: 11px; color: #aab2c0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ p.prop }}</span>
+                      </span>
+                      <span style="{{ p.stripWrapWide }}">
+                        <span style="{{ p.stripGrid }}">
+                          <sc-for list="{{ p.bars }}" as="b" hint-placeholder-count="10">
+                            <span style="{{ p.colStyle }}"><span style="{{ b.zeroStyle }}">{{ b.zero }}</span><span style="{{ b.style }}"><span style="{{ b.valStyle }}">{{ b.val }}</span></span></span>
+                          </sc-for>
+                        </span>
+                        <span style="{{ p.rule }}"></span>
+                      </span>
+                      <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto">
+                        <span style="{{ p.rateStyle }}">{{ p.rate }}</span>
+                        <span style="font-family: 'Space Mono', monospace; font-size: 10px; color: #8b98ab">{{ p.sample }}</span>
+                      </span>
+                      <span style="{{ p.addStyle }}">+</span>
+                    </div>
+                  </sc-for>
+                  <div style="display: flex; align-items: center; justify-content: space-between; padding: 13px 20px">
+                    <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; color: #8b98ab">{{ heroRest }}</span>
+                    <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #8fa4f0">OPEN IN FEED →</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-for list="{{ tiersD }}" as="tr" hint-placeholder-count="2">
+            <div style="flex: 0 0 auto; display: flex; flex-direction: column; gap: 12px">
+              <div style="display: flex; align-items: baseline; gap: 11px">
+                <span style="{{ tr.markStyle }}"></span>
+                <span style="font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; font-size: 17px">{{ tr.title }}</span>
+                <span style="font-family: 'Space Mono', monospace; font-size: 10.5px; color: #8b98ab">{{ tr.count }}</span>
+                <span style="{{ tr.subStyle }}">{{ tr.sub }}</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+                <sc-for list="{{ tr.games }}" as="g" hint-placeholder-count="3">
+                  <div style="{{ g.cardStyle }}">
+                    <div style="display: flex; align-items: center; gap: 9px; padding: 14px 15px 11px">
+                      <span role="img" style="{{ g.awayCrest }}"></span>
+                      <span style="{{ g.teamStyle }}">{{ g.away }}</span>
+                      <span style="{{ g.atStyle }}">@</span>
+                      <span style="{{ g.teamStyle }}">{{ g.home }}</span>
+                      <span role="img" style="{{ g.homeCrest }}"></span>
+                      <span style="margin-left: auto; font-family: 'Space Mono', monospace; font-size: 10.5px; color: #8b98ab; white-space: nowrap">{{ g.time }}</span>
+                    </div>
+                    <div style="padding: 0 15px 14px; display: flex; flex-direction: column; gap: 9px">
+                      <span style="{{ g.barWrap }}">
+                        <sc-for list="{{ g.segments }}" as="sg" hint-placeholder-count="3">
+                          <span style="{{ sg.style }}"></span>
+                        </sc-for>
+                      </span>
+                      <div style="display: flex; flex-wrap: wrap; gap: 7px">
+                        <sc-for list="{{ g.reasons }}" as="r" hint-placeholder-count="3">
+                          <span style="{{ r.style }}">{{ r.label }}</span>
+                        </sc-for>
+                      </div>
+                      <span style="{{ g.quietStyle }}">{{ g.quietWhy }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+
+          <span style="flex: 0 0 auto; font-family: 'Space Mono', monospace; font-size: 10.5px; line-height: 1.7; color: #8b98ab">{{ footNote }}</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:2000,&quot;height&quot;:1200}}">
+const A = "#3b5bdb", AI = "#8fa4f0", ADIM = "rgba(59,91,219,0.16)";
+const LINE = "#2b2f36", S1 = "#131519", S2 = "#191c21", T = "#e8ecf2", T2 = "#aab2c0", DIM = "#8b98ab";
+const MONO = "'Space Mono', ui-monospace, monospace";
+
+function crest(slug, sport, size) {
+  if (!slug || !sport) return { display: "none" };
+  const px = (size || 20) + "px";
+  return {
+    display: "block", flex: "0 0 auto", width: px, height: px,
+    backgroundImage: "url(https://a.espncdn.com/i/teamlogos/" + sport + "/500/" + slug + ".png)",
+    backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center",
+  };
+}
+function dot(color) {
+  return {
+    position: "absolute", right: "-1px", bottom: "-1px", width: "11px", height: "11px",
+    borderRadius: "999px", background: color, border: "2px solid " + S1, display: "block",
+  };
+}
+const AT = { fontFamily: "'Archivo', system-ui, sans-serif", fontWeight: 700, color: AI, padding: "0 5px" };
+
+const TONE = {
+  rate: { bg: "rgba(62,207,142,0.14)", fg: "#3ecf8e" },
+  matchup: { bg: "rgba(59,91,219,0.16)", fg: AI },
+  lineup: { bg: "rgba(232,177,58,0.16)", fg: "#e8b13a" },
+  out: { bg: "rgba(239,91,91,0.14)", fg: "#ef5b5b" },
+  none: { bg: "rgba(139,152,171,0.12)", fg: DIM },
+};
+
+class Component extends DCLogic {
+  state = { league: "MLB" };
+  set(k, v) { this.setState({ [k]: v }); }
+
+  // FormGraph's rule, at strip size: height is margin over and under the line,
+  // a miss is a closed red outline, and a zero draws nothing.
+  strip(vals, line, w, h, wide) {
+    const lo = Math.min.apply(null, [line].concat(vals));
+    const hi = Math.max.apply(null, [line].concat(vals));
+    const pad = Math.max((hi - lo) * 0.18, 0.6);
+    const axisMin = lo - pad, span = (hi + pad) - axisMin;
+    const floor = wide ? 20 : 15;
+    const y = (v) => floor + Math.round(((v - axisMin) / span) * (h - floor));
+    return {
+      bars: vals.map((v, i) => {
+        const hit = v >= line;
+        return {
+          key: i,
+          val: v === 0 ? "" : String(v),
+          valStyle: v === 0
+            ? { display: "none" }
+            : {
+                fontFamily: MONO, fontSize: wide ? "12px" : "10px", fontWeight: 700,
+                lineHeight: wide ? "12px" : "10px", textAlign: "center", paddingBottom: "3px",
+                color: hit ? "#07120c" : "#ef5b5b",
+              },
+          zero: v === 0 ? "0" : "",
+          zeroStyle: v === 0
+            ? {
+                fontFamily: MONO, fontSize: wide ? "12px" : "10px", fontWeight: 700, color: "#ef5b5b",
+                lineHeight: wide ? "12px" : "10px", textAlign: "center",
+              }
+            : { display: "none" },
+          style: v === 0
+            ? { display: "none" }
+            : {
+                display: "flex", alignItems: "flex-end", justifyContent: "center",
+                width: "100%", height: y(v) + "px", borderRadius: "2px",
+                boxSizing: "border-box", alignSelf: "end", overflow: "hidden",
+                background: hit ? "#3ecf8e" : "transparent",
+                border: hit ? "none" : "1.5px solid #ef5b5b",
+              },
+        };
+      }),
+      grid: {
+        display: "grid", gridTemplateColumns: "repeat(" + vals.length + ", minmax(0, 1fr))",
+        gap: wide ? "4px" : "3px", alignItems: "end", height: h + "px", width: "100%",
+      },
+      colStyle: { display: "flex", flexDirection: "column", justifyContent: "flex-end", minWidth: 0 },
+      rule: {
+        position: "absolute", left: 0, right: 0, bottom: y(line) + "px",
+        borderTop: "1px dashed #e8ecf2", opacity: 0.75, pointerEvents: "none",
+      },
+      wrap: { position: "relative", width: w + "px", flex: "0 0 auto" },
+      wrapWide: { position: "relative", flex: "1 1 auto", minWidth: 0 },
+    };
+  }
+
+  data() {
+    return {
+      MLB: [
+        {
+          a: "nyy", h: "bal", time: "7:05 PM", venue: "Camden Yards", rest: 308,
+          reasons: [
+            { kind: "rate", label: "4 PROPS AT 70%+" },
+            { kind: "lineup", label: "RICE BATTING SECOND" },
+            { kind: "out", label: "3 OUT" },
+            { kind: "matchup", label: "BAL PEN #28 OF 30" },
+          ],
+          why: [
+            { title: "Four props clear 70% on ten games or more", cite: "Judge 74%, Henderson 80%, Rice 71%, Volpe 62% — each stated with its sample.", tone: "rate" },
+            { title: "A logged role change, not a rumour", cite: "Findings: Rice batting second with Goldschmidt out. Seven games in that slot, five cleared.", tone: "lineup" },
+            { title: "Three players out across both sides", cite: "Availability feed: Goldschmidt, Stroman, Rodriguez.", tone: "out" },
+            { title: "The softest bullpen on the slate for hits", cite: "Defence rank #28 of 30 over the last 30 days.", tone: "matchup" },
+          ],
+          props: [
+            { n: "Gunnar Henderson", i: "GH", p: "OVER 0.5 HITS", r: 0.80, s: "8 of 10", av: "#3ecf8e", v: [1, 2, 1, 0, 2, 1, 1, 3, 0, 2], line: 0.5 },
+            { n: "Aaron Judge", i: "AJ", p: "OVER 1.5 TOTAL BASES", r: 0.74, s: "8 of 10", av: "#3ecf8e", v: [3, 1, 2, 4, 0, 2, 3, 2, 1, 4], line: 1.5 },
+            { n: "Ben Rice", i: "BR", p: "OVER 0.5 RUNS", r: 0.71, s: "5 of 7", av: "#3ecf8e", v: [1, 0, 1, 1, 0, 1, 1], line: 0.5 },
+            { n: "Anthony Volpe", i: "AV", p: "OVER 0.5 RUNS", r: 0.62, s: "6 of 10", av: "#3ecf8e", v: [1, 1, 0, 1, 0, 1, 1, 0, 1, 1], line: 0.5 },
+          ],
+        },
+        {
+          a: "cle", h: "min", time: "7:40 PM", venue: "Target Field", rest: 271,
+          reasons: [
+            { kind: "rate", label: "1 PROP AT 70%+" },
+            { kind: "matchup", label: "MIN PEN #26 OF 30" },
+          ],
+          why: [], props: [
+            { n: "Steven Kwan", i: "SK", p: "OVER 0.5 HITS", r: 0.71, s: "14 of 20", av: "#3ecf8e", v: [1, 1, 0, 2, 1, 1, 0, 1, 2, 1], line: 0.5 },
+          ],
+        },
+        {
+          a: "ari", h: "sf", time: "9:45 PM", venue: "Oracle Park", rest: 262,
+          reasons: [
+            { kind: "rate", label: "1 PROP AT 70%+" },
+            { kind: "lineup", label: "CARROLL QUESTIONABLE" },
+          ],
+          why: [], props: [
+            { n: "Corbin Carroll", i: "CC", p: "OVER 0.5 HITS", r: 0.77, s: "7 of 9", av: "#e8b13a", v: [2, 0, 1, 1, 2, 0, 1, 1, 2], line: 0.5 },
+          ],
+        },
+        {
+          a: "nym", h: "atl", time: "7:20 PM", venue: "Truist Park", rest: 297,
+          reasons: [{ kind: "rate", label: "1 PROP AT 70%+" }],
+          why: [], props: [
+            { n: "Juan Soto", i: "JS", p: "OVER 0.5 RUNS", r: 0.68, s: "7 of 10", av: "#3ecf8e", v: [1, 0, 2, 1, 1, 0, 1, 2, 0, 1], line: 0.5 },
+          ],
+        },
+        {
+          a: "hou", h: "sea", time: "9:40 PM", venue: "T-Mobile Park", rest: 288, quiet: true,
+          reasons: [{ kind: "none", label: "NOTHING COUNTED" }],
+          quietWhy: "288 props counted, none at 70% over ten games or more. No lineup change logged, and neither bullpen ranks in the softest ten.",
+          why: [], props: [],
+        },
+        {
+          a: "kc", h: "det", time: "6:40 PM", venue: "Comerica Park", rest: 266, quiet: true,
+          reasons: [{ kind: "none", label: "NOTHING COUNTED" }],
+          quietWhy: "266 props counted, none clearing the bar on a sample of ten or more.",
+          why: [], props: [],
+        },
+      ],
+      WNBA: [
+        {
+          a: "chi", h: "min", time: "8:00 PM", venue: "Target Center", rest: 182,
+          reasons: [
+            { kind: "out", label: "C. WILLIAMS OUT" },
+            { kind: "rate", label: "2 PROPS AT 70%+" },
+            { kind: "matchup", label: "MIN #10 OF 13" },
+          ],
+          why: [
+            { title: "A starter ruled out this morning", cite: "Availability feed: Courtney Williams, left knee contusion.", tone: "out" },
+            { title: "Two props clear 70%", cite: "Collier 83% over 12 and McBride 71% over 14.", tone: "rate" },
+            { title: "Minnesota defends this market poorly", cite: "Defence rank #10 of 13 for points over the last 30 days.", tone: "matchup" },
+          ],
+          props: [
+            { n: "Napheesa Collier", i: "NC", p: "OVER 19.5 POINTS", r: 0.83, s: "10 of 12", av: "#3ecf8e", v: [24, 18, 27, 21, 16, 29, 22, 25, 19, 31], line: 19.5 },
+            { n: "Kayla McBride", i: "KM", p: "OVER 12.5 POINTS", r: 0.71, s: "10 of 14", av: "#3ecf8e", v: [15, 11, 18, 13, 9, 17, 14, 12, 20, 16], line: 12.5 },
+          ],
+        },
+        {
+          a: "sea", h: "lv", time: "10:00 PM", venue: "Michelob Ultra Arena", rest: 176, quiet: true,
+          reasons: [{ kind: "none", label: "NOTHING COUNTED" }],
+          quietWhy: "176 props counted, none at 70% over ten games or more. Both rotations are full.",
+          why: [], props: [],
+        },
+      ],
+    };
+  }
+
+  navOf(active, wide) {
+    const SHORT = { "The Board": "Board", "Prop Feed": "Feed" };
+    return ["Games", "The Board", "Findings", "Prop Feed", "News", "Injuries"].map((label) => ({
+      key: label, label: wide ? label : (SHORT[label] || label),
+      style: wide
+        ? {
+            fontFamily: MONO, fontSize: "12px", letterSpacing: "0.12em", textTransform: "uppercase",
+            paddingBottom: "4px", whiteSpace: "nowrap",
+            color: label === active ? AI : DIM,
+            borderBottom: "2px solid " + (label === active ? A : "transparent"),
+          }
+        : {
+            flex: "1 1 auto", display: "flex", justifyContent: "center",
+            fontFamily: MONO, fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase",
+            padding: label === active ? "10px 0" : "10px 0 12px", whiteSpace: "nowrap",
+            color: label === active ? AI : DIM,
+            borderBottom: label === active ? "2px solid " + A : "none",
+          },
+    }));
+  }
+
+  chip(label, sel, onPick, small) {
+    return {
+      key: label, label,
+      style: {
+        minHeight: small ? "34px" : "40px", display: "flex", alignItems: "center",
+        padding: small ? "0 12px" : "0 14px", borderRadius: "8px",
+        fontFamily: MONO, fontSize: small ? "11.5px" : "12px", whiteSpace: "nowrap",
+        cursor: "pointer", flex: "0 0 auto",
+        border: "1px solid " + (sel ? A : LINE),
+        background: sel ? ADIM : S1, color: sel ? AI : T2,
+      },
+      pick: onPick,
+    };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const sportOf = { MLB: "mlb", WNBA: "wnba", NFL: "nfl", NBA: "nba" };
+    const sport = sportOf[st.league] || "mlb";
+    const all = this.data()[st.league] || [];
+
+    const live = (g) => g.reasons.filter((r) => r.kind !== "none").length;
+    const ranked = all.slice().sort((x, y) => live(y) - live(x));
+
+    // Named bands rather than a numbered rank: nothing counted makes game two
+    // better than game three, but "four reasons" and "one" are different kinds
+    // of night.
+    const band = (g) => (live(g) >= 3 ? 0 : live(g) >= 1 ? 1 : 2);
+    const TIERS = [
+      { title: "Worth ten minutes", sub: "three or more counted reasons", tone: "#3ecf8e" },
+      { title: "One thing each", sub: "a single reason, named on the card", tone: AI },
+      { title: "Quiet", sub: "nothing cleared a bar — shown so the slate is complete", tone: DIM },
+    ];
+
+    const reasonChip = (r) => {
+      const tone = TONE[r.kind] || TONE.none;
+      return {
+        key: r.label, label: r.label,
+        style: {
+          fontFamily: MONO, fontSize: "10px", letterSpacing: "0.08em", padding: "4px 9px",
+          borderRadius: "5px", whiteSpace: "nowrap", background: tone.bg, color: tone.fg,
+        },
+      };
+    };
+
+    // The same reasons as a bar, so a slate's shape is legible without reading.
+    const segments = (g) => {
+      const rs = g.reasons.filter((r) => r.kind !== "none");
+      if (!rs.length) return [{ key: "none", style: { flex: "1 1 auto", background: "#20242b", display: "block" } }];
+      return rs.map((r, i) => ({
+        key: r.label + i,
+        style: { flex: "1 1 0", background: (TONE[r.kind] || TONE.none).fg, display: "block" },
+      }));
+    };
+
+    const propRow = (p, stripW, stripH, wide) => {
+      const s = this.strip(p.v, p.line, stripW, stripH || 34, wide);
+      // Counted from the same array the strip draws, never authored beside it.
+      const hits = p.v.filter((x) => x >= p.line).length;
+      const rate = hits / p.v.length;
+      return {
+        key: p.n, name: p.n, initials: p.i, prop: p.p,
+        rate: Math.round(rate * 100) + "%", sample: hits + "/L" + p.v.length,
+        dot: dot(p.av),
+        bars: s.bars, stripGrid: s.grid, rule: s.rule, colStyle: s.colStyle,
+        // Player Detail is where this prop gets researched, so the identity
+        // block routes there with the market already selected.
+        open: () => this.setState({ opened: p.n + " · " + p.p }),
+        openHint: "Open " + p.n + " — " + p.p.toLowerCase() + ", on Player Detail",
+        idStyle: {
+          display: "flex", flexDirection: "column", gap: "3px", minWidth: 0, flex: "1 1 auto",
+          cursor: "pointer", borderRadius: "6px", margin: "-4px -6px", padding: "4px 6px",
+        },
+        idStyleWide: {
+          display: "flex", flexDirection: "column", gap: "3px", minWidth: 0, flex: "0 0 190px",
+          cursor: "pointer", borderRadius: "6px", margin: "-4px -6px", padding: "4px 6px",
+        },
+        stripWrap: s.wrap, stripWrapWide: s.wrapWide,
+        rateStyle: {
+          fontFamily: MONO, fontSize: "16px", fontWeight: 700,
+          color: rate >= 0.7 ? "#3ecf8e" : rate >= 0.6 ? "#e8b13a" : T2,
+        },
+        addStyle: {
+          width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: "7px", border: "1px solid " + LINE, background: S2, color: T2,
+          fontSize: "14px", flex: "0 0 auto", cursor: "pointer",
+        },
+      };
+    };
+
+    const cardOf = (g, hero, wide) => ({
+      key: g.a + g.h,
+      away: g.a.toUpperCase(), home: g.h.toUpperCase(), time: g.time,
+      awayCrest: crest(g.a, sport, wide ? 20 : 20),
+      homeCrest: crest(g.h, sport, wide ? 20 : 20),
+      teamStyle: { fontFamily: MONO, fontSize: "13px", color: T },
+      atStyle: Object.assign({ fontSize: "12px" }, AT),
+      reasons: g.reasons.map(reasonChip),
+      segments: segments(g),
+      barWrap: {
+        display: "flex", gap: "3px", height: "5px", borderRadius: "3px", overflow: "hidden",
+        background: "#191c21",
+      },
+      hero: !!hero,
+      quiet: !!g.quiet,
+      quietWhy: g.quietWhy || "",
+      quietStyle: g.quiet
+        ? { fontSize: "12px", lineHeight: 1.5, color: DIM, textWrap: "pretty" }
+        : { display: "none" },
+      props: g.props.map((p) => propRow(p, 128, 54, true)),
+      rest: g.rest + " more props in this game",
+      cardStyle: {
+        border: "1px solid " + (hero ? A : LINE), borderRadius: "12px",
+        background: g.quiet ? "#0d0f12" : S1, overflow: "hidden",
+        opacity: g.quiet ? 0.8 : 1,
+      },
+    });
+
+    const tierOf = (i, games, wide) => ({
+      key: TIERS[i].title,
+      title: TIERS[i].title,
+      sub: TIERS[i].sub,
+      count: games.length + (games.length === 1 ? " game" : " games"),
+      markStyle: {
+        width: "8px", height: "8px", borderRadius: "2px", background: TIERS[i].tone,
+        display: "block", flex: "0 0 auto",
+      },
+      subStyle: { fontSize: "12.5px", color: DIM, lineHeight: 1.5 },
+      games: games.map((g, k) => cardOf(g, !wide && i === 0 && k === 0, wide)),
+    });
+
+    const byBand = [0, 1, 2].map((i) => ranked.filter((g) => band(g) === i));
+    const hero = byBand[0][0] || null;
+
+    return {
+      nav: this.navOf("The Board", false),
+      navD: this.navOf("The Board", true),
+      leagues: ["MLB", "NFL", "NBA", "WNBA"].map((l) => this.chip(l, st.league === l, () => this.set("league", l))),
+      leaguesD: ["MLB", "NFL", "NBA", "WNBA"].map((l) => this.chip(l, st.league === l, () => this.set("league", l), true)),
+      summary: (all.length - byBand[2].length) + " of " + all.length + " games have something counted",
+      slateLabel: "MON, AUG 24",
+      footNote: "A tier is a count of the reasons on the card — nothing is weighted, and no tier is a prediction. A quiet game is shown rather than dropped, and says what it was missing.",
+
+      tiers: [0, 1, 2].filter((i) => byBand[i].length).map((i) => tierOf(i, byBand[i], false)),
+      tiersD: [1, 2].filter((i) => byBand[i].length).map((i) => tierOf(i, byBand[i], true)),
+
+      opened: !!st.opened,
+      openedLabel: st.opened ? st.opened + " → Player Detail" : "",
+      clearOpened: () => this.set("opened", null),
+      hasHero: !!hero,
+      heroTier: "WORTH TEN MINUTES",
+      heroMark: { width: "9px", height: "9px", borderRadius: "999px", background: "#3ecf8e", display: "block", flex: "0 0 auto" },
+      heroAway: hero ? hero.a.toUpperCase() : "",
+      heroHome: hero ? hero.h.toUpperCase() : "",
+      heroAwayCrest: hero ? crest(hero.a, sport, 28) : { display: "none" },
+      heroHomeCrest: hero ? crest(hero.h, sport, 28) : { display: "none" },
+      heroAtStyle: Object.assign({ fontSize: "19px" }, AT),
+      heroMeta: hero ? hero.time + " · " + hero.venue : "",
+      heroRest: hero
+        ? (hero.props.length > 3 ? (hero.props.length - 3) + " more clearing the bar · " : "") + hero.rest + " in this game"
+        : "",
+      heroWhy: (hero ? hero.why : []).map((w) => ({
+        key: w.title, title: w.title, cite: w.cite,
+        markStyle: {
+          width: "3px", alignSelf: "stretch", borderRadius: "2px",
+          background: (TONE[w.tone] || TONE.none).fg, display: "block", flex: "0 0 auto",
+        },
+      })),
+      heroProps: (hero ? hero.props.slice(0, 3) : []).map((p) => propRow(p, 150, 66, true)),
+    };
+  }
+}
+</script>
+</body>
+</html>

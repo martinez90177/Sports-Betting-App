@@ -23,7 +23,14 @@ import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./prese
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 import PalaceMark from "./PalaceMark.jsx";
 import NavBar, { NAV_TABS } from "./NavBar.jsx";
-import PlayerDetailV2 from "./PlayerDetailV2.jsx";
+// The v3 router: below 900px this is the mobile mock, above it still the v2
+// desktop transcription. See src/v3/PlayerDetail.jsx.
+import PlayerDetailV2 from "./v3/PlayerDetail.jsx";
+import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW } from "./v3/playerDetailProps.js";
+import useCustomWindow from "./v3/useCustomWindow.js";
+import PropFeedMobile from "./v3/PropFeedMobile.jsx";
+import V3Shell, { SlipDock } from "./v3/Shell.jsx";
+import { useIsPhone } from "./lib/useIsNarrow.js";
 import { venueWord } from "./lib/venue.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { usagePills, roleSentence } from "./lib/usagePills.js";
@@ -1524,7 +1531,7 @@ function PlayerPropContextBlocks({
   );
 }
 
-function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
+function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
   const [showContext, setShowContext] = useState(false);
 
   // The real schedule, over the invented pairings. NBA_MATCHUPS stays as the
@@ -1569,9 +1576,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [viewMode, setViewMode] = useState("feed");
   const [rebSplit, setRebSplit] = useState("total");
   const [side, setSide] = useState("all");
-  // L20 by default, per the handoff's per-league table -- long enough to
-  // mean something in a 82-game season.
-  const [lastN, setLastN] = useState(20);
+  // L10, per the v3 handoff's per-league window table
+  // (`v3 Mocks/player-detail-handoff.md` section 4), which supersedes the v2
+  // handoff's L20 for basketball.
+  const [lastN, setLastN] = useState(DEFAULT_WINDOW.nba);
+  const v3Custom = useCustomWindow("nba");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
   const [oppView, setOppView] = useState("season");
@@ -2597,6 +2606,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v2Rail = (roster) => ((roster || {}).players || []).map((pl) => ({
     id: pl.id,
     name: pl.name,
+    // Carried through so the v3 mobile dock can render its own 40px avatar
+    // rather than reusing the 32px element built for the desktop rail --
+    // sizing an avatar's wrapper does nothing, PlayerAvatar renders at the
+    // size it is given (see docs/PROJECT_NOTES.md).
+    team: pl.team,
+    espnId: pl.espnId,
     meta: railMeta ? railMeta(pl) : pl.pos,
     active: pl.id === playerId,
     // No NBA availability feed here, so no dot -- see the NFL block.
@@ -2650,9 +2665,47 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     return days === 0 ? "Back-to-back" : `${days} day${days === 1 ? "" : "s"}`;
   })();
 
+  // ---- v3 mobile props (see src/v3/PlayerDetailMobile.jsx) ------------------
+  // The mock's sheet draws Season, Window and Splits as their own controls.
+  // Each is the state this page already holds, offered through the shape the
+  // sheet renders -- not a second copy of it.
+  const v3Windows = buildWindows({
+    sport: "nba", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    custom: v3Custom.custom, setCustom: v3Custom.setCustom,
+    onReset: () => { setLastN(DEFAULT_WINDOW.nba); setSide("all"); setOpponent("all"); },
+  });
+  const v3Splits = buildSplits({
+    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.nba,
+    h2h: opponent !== "all",
+    setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
+    starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
+  });
+  const v3RenderAvatar = (p, size) => (
+    <PlayerAvatar
+      key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nba" team={p.team}
+      colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(p.espnId)}
+      surface="var(--bg)" size={size} inset={size >= 56 ? 4 : 2} fadeIn
+    />
+  );
+
   const v2Page = (
     <PlayerDetailV2
       sport="nba"
+      slate={buildSlate({
+        groups: matchupsByDate, value: matchupId, timeOf: (m) => matchupTimeLabel(m.date),
+        onChange: (next) => {
+          setMatchupId(next.id);
+          setPlayerId(next.teamA.players[0].id);
+          setLine(null);
+          setOpponent("all");
+        },
+      })}
+      slipCount={pickIds ? pickIds.size : null}
+      onOpenSlip={onOpenSlip}
+      renderAvatar={v3RenderAvatar}
+      seasons={buildSeasons({ games: logGames, sport: "nba", scope: logScope, onChange: setLogScope })}
+      windows={v3Windows}
+      splits={v3Splits}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -2723,6 +2776,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         name: player.name,
         jersey: jerseyNumber,
         team: player.team,
+        // Ids, so the v3 mobile hero can build its own 56px avatar. The
+        // 104px one below is a prebuilt element and PlayerAvatar renders at
+        // whatever size it was given, so it cannot be reused at another.
+        id: player.id,
+        espnId: player.espnId,
+        mlbId: player.mlbId,
         teamLabel: v2OwnRoster.label,
         identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
           matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
@@ -7356,7 +7415,7 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
   );
 }
 
-function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
+function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
@@ -7399,9 +7458,17 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
-  // Season by default: an NFL season is 17 games, so the whole of it is a
-  // smaller sample than L20 would have implied on any other sport.
-  const [lastN, setLastN] = useState("all");
+  // L5, per the v3 handoff's per-league window table
+  // (`v3 Mocks/player-detail-handoff.md` section 4).
+  //
+  // This reverses a documented decision, deliberately and with the reason
+  // recorded: the previous default was Season, on the grounds that a 17-game
+  // NFL season is already a smaller sample than L20 means anywhere else. The
+  // v3 handoff names L5 for the NFL explicitly, and where the app and the
+  // design disagree the design wins. Raised with Alex rather than swapped in
+  // quietly -- see the batch 1 notes.
+  const [lastN, setLastN] = useState(DEFAULT_WINDOW.nfl);
+  const v3Custom = useCustomWindow("nfl");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
   // 1 (not 0) is this control's neutral value -- the slider bottoms out at 1
@@ -8357,6 +8424,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v2Rail = (roster) => ((roster || {}).players || []).map((pl) => ({
     id: pl.id,
     name: pl.name,
+    // Carried through so the v3 mobile dock can render its own 40px avatar
+    // rather than reusing the 32px element built for the desktop rail --
+    // sizing an avatar's wrapper does nothing, PlayerAvatar renders at the
+    // size it is given (see docs/PROJECT_NOTES.md).
+    team: pl.team,
+    espnId: pl.espnId,
     meta: railMeta ? railMeta(pl) : pl.pos,
     active: pl.id === playerId,
     dotFill: null,
@@ -8391,9 +8464,44 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     (v2Cells.band && v2Cells.band.start) || (matchup.date ? matchupTimeLabel(matchup.date) : null),
   ].filter(Boolean).join(" \u00b7 ");
 
+  // ---- v3 mobile props (see src/v3/PlayerDetailMobile.jsx) ------------------
+  const v3Windows = buildWindows({
+    sport: "nfl", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    custom: v3Custom.custom, setCustom: v3Custom.setCustom,
+    onReset: () => { setLastN(DEFAULT_WINDOW.nfl); setSide("all"); setOpponent("all"); },
+  });
+  const v3Splits = buildSplits({
+    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.nfl,
+    h2h: opponent !== "all",
+    setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
+    starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
+  });
+  const v3RenderAvatar = (p, size) => (
+    <PlayerAvatar
+      key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nfl" team={p.team}
+      colorMap={NFL_TEAM_COLORS} headshotSrc={espnHeadshot(p.espnId)}
+      surface="var(--bg)" size={size} inset={size >= 56 ? 4 : 2} fadeIn
+    />
+  );
+
   const v2Page = (
     <PlayerDetailV2
       sport="nfl"
+      slate={buildSlate({
+        groups: NFL_MATCHUPS_BY_DATE, value: matchupId, timeOf: (m) => matchupTimeLabel(m.date),
+        onChange: (next) => {
+          setMatchupId(next.id);
+          setPlayerId(next.teamA.players[0].id);
+          setLine(null);
+          setOpponent("all");
+        },
+      })}
+      slipCount={pickIds ? pickIds.size : null}
+      onOpenSlip={onOpenSlip}
+      renderAvatar={v3RenderAvatar}
+      seasons={buildSeasons({ games: logGames, sport: "nfl", scope: logScope, onChange: setLogScope })}
+      windows={v3Windows}
+      splits={v3Splits}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -8469,6 +8577,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         name: player.name,
         jersey: jerseyNumber,
         team: player.team,
+        // Ids, so the v3 mobile hero can build its own 56px avatar. The
+        // 104px one below is a prebuilt element and PlayerAvatar renders at
+        // whatever size it was given, so it cannot be reused at another.
+        id: player.id,
+        espnId: player.espnId,
+        mlbId: player.mlbId,
         teamLabel: v2OwnRoster.label,
         identity: [v2OwnRoster.label, NFL_POSITION_WORD[player.pos] || player.pos,
           matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
@@ -9755,7 +9869,7 @@ function wnbaPlayerMarkets(player) {
   return [...WNBA_MARKETS_CORE, ...extra];
 }
 
-function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
+function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
   // Same volume stat as the NBA page -- minutes are the input almost every
   // basketball prop scales with, so the two pages share NBA_CONTEXT_STAT.
   const [showContext, setShowContext] = useState(false);
@@ -9922,9 +10036,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
-  // L20 by default, per the handoff's per-league table -- long enough to
-  // mean something in a 44-game season.
-  const [lastN, setLastN] = useState(20);
+  // L10, per the v3 handoff's per-league window table
+  // (`v3 Mocks/player-detail-handoff.md` section 4), which supersedes the v2
+  // handoff's L20.
+  const [lastN, setLastN] = useState(DEFAULT_WINDOW.wnba);
+  const v3Custom = useCustomWindow("wnba");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
   const [minMinutes, setMinMinutes] = useState(0);
@@ -10941,6 +11057,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const v2RailRow = (pl) => ({
     id: pl.id,
     name: pl.name,
+    // Carried through for the v3 mobile dock's own 40px avatar -- see the
+    // note on the NBA page's v2Rail.
+    team: pl.team,
+    espnId: pl.espnId,
+    status: statusOf(pl) || null,
     meta: railMeta ? railMeta(pl) : pl.pos,
     active: pl.id === playerId,
     dotFill: (STATUS[statusOf(pl)] || {}).dot || null,
@@ -11023,9 +11144,60 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     ? `Top five started ${starters.fromThisGame ? "this game" : "the last game"}; the rest are bench. `
     : "";
 
+  // ---- v3 mobile props (see src/v3/PlayerDetailMobile.jsx) ------------------
+  const v3Windows = buildWindows({
+    sport: "wnba", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    custom: v3Custom.custom, setCustom: v3Custom.setCustom,
+    onReset: () => { setLastN(DEFAULT_WINDOW.wnba); setSide("all"); setOpponent("all"); },
+  });
+  const v3Splits = buildSplits({
+    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.wnba,
+    h2h: opponent !== "all",
+    setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
+    starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
+  });
+  const v3RenderAvatar = (p, size) => (
+    <PlayerAvatar
+      key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="wnba" team={p.team}
+      colorMap={WNBA_TEAM_COLORS} headshotSrc={wnbaHeadshot(p.espnId)}
+      status={p.status || undefined} surface="var(--bg)" size={size} inset={size >= 56 ? 4 : 2} fadeIn
+    />
+  );
+  // Both teams' reports. The WNBA publishes a status feed (see statusOf), so
+  // an empty list here means nobody is listed -- not that the league is
+  // uncovered. The two are different sentences on screen.
+  const v3InjuryTeams = [v2AwayRoster, v2HomeRoster]
+    .map((roster) => {
+      const players = ((roster || {}).players || [])
+        .filter((p) => { const s = statusOf(p); return s === "out" || s === "questionable"; })
+        .map((p) => ({ id: p.id, name: p.name, team: p.team, espnId: p.espnId, status: statusOf(p), note: railMeta ? railMeta(p) : p.pos }));
+      if (!players.length || !roster) return null;
+      const abbr = ((roster.players || [])[0] || {}).team;
+      return abbr ? { abbr, slug: abbr, sport: "wnba", players } : null;
+    })
+    .filter(Boolean);
+
   const v2Page = (
     <PlayerDetailV2
       sport="wnba"
+      slate={buildSlate({
+        groups: matchupsByDate, value: matchupId, timeOf: (m) => matchupTimeLabel(m.date),
+        onChange: (next) => {
+          setMatchupId(next.id);
+          setPlayerId(next.teamA.players[0].id);
+          setLine(null);
+          setOpponent("all");
+        },
+      })}
+      slipCount={pickIds ? pickIds.size : null}
+      onOpenSlip={onOpenSlip}
+      availability={statusOf(player) || null}
+      availabilityCovered
+      injuryTeams={v3InjuryTeams}
+      renderAvatar={v3RenderAvatar}
+      seasons={buildSeasons({ games: logGames, sport: "wnba", scope: logScope, onChange: setLogScope })}
+      windows={v3Windows}
+      splits={v3Splits}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -11099,6 +11271,12 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         name: player.name,
         jersey: jerseyNumber,
         team: player.team,
+        // Ids, so the v3 mobile hero can build its own 56px avatar. The
+        // 104px one below is a prebuilt element and PlayerAvatar renders at
+        // whatever size it was given, so it cannot be reused at another.
+        id: player.id,
+        espnId: player.espnId,
+        mlbId: player.mlbId,
         teamLabel: v2OwnRoster.label,
         identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
           matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
@@ -14180,7 +14358,7 @@ class MLBPageErrorBoundary extends React.Component {
   }
 }
 
-function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack }) {
+function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
   const [showContext, setShowContext] = useState(false);
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -14393,9 +14571,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
   const [side, setSide] = useState("all");
-  // L20 by default, per the handoff's per-league table -- long enough to
-  // mean something in a 162-game season.
-  const [lastN, setLastN] = useState(20);
+  // L10, per the v3 handoff's per-league window table
+  // (`v3 Mocks/player-detail-handoff.md` section 4), which supersedes the v2
+  // handoff's L20.
+  const [lastN, setLastN] = useState(DEFAULT_WINDOW.mlb);
+  const v3Custom = useCustomWindow("mlb");
   const { range, setRange, applyRange } = useGameRange(playerId);
   // Replaces the old "Any opponent" dropdown -- restricts the sample to
   // games against the selected team's actual next scheduled opponent
@@ -16208,6 +16388,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   const railPlayer = (p, side) => ({
     id: p.id,
     name: p.name,
+    // Carried through for the v3 mobile dock's own 40px avatar -- see the
+    // note on the NBA page's v2Rail.
+    team: p.team,
+    mlbId: p.mlbId,
+    status: mlbStatusOf(p) || null,
     meta: railMeta ? railMeta(p) : p.pos,
     active: p.id === playerId,
     dotFill: (STATUS[mlbStatusOf(p)] || {}).dot || null,
@@ -16391,9 +16576,55 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     (slateCells.band && slateCells.band.start) || (nextGame && nextGame.date ? matchupTimeLabel(nextGame.date) : null),
   ].filter(Boolean).join(" · ");
 
+  // ---- v3 mobile props (see src/v3/PlayerDetailMobile.jsx) ------------------
+  // MLB's "vs this opponent" control is `h2h`, not the opponent dropdown the
+  // other three carry -- it restricts the sample to the team actually next on
+  // the schedule rather than to any team in history.
+  const v3Windows = buildWindows({
+    sport: "mlb", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    custom: v3Custom.custom, setCustom: v3Custom.setCustom,
+    onReset: () => { setLastN(DEFAULT_WINDOW.mlb); setSide("all"); setH2h(false); },
+  });
+  const v3Splits = buildSplits({
+    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.mlb,
+    h2h, setH2h,
+    starterLabel: nextGame && nextGame.opp ? `vs ${nextGame.opp}` : null,
+  });
+  const v3RenderAvatar = (p, size) => (
+    <PlayerAvatar
+      key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="mlb" team={p.team}
+      colorMap={MLB_TEAM_COLORS} headshotSrc={mlbHeadshot(p.mlbId)} fallbackSrc={mlbEspnHeadshot(p.id)}
+      status={p.status || undefined} surface="var(--bg)" size={size} inset={size >= 56 ? 4 : 2} fadeIn
+    />
+  );
+  // Both teams' reports, which is what the mock's Injuries tab draws: anyone
+  // on a report appears, whether or not they have a prop tonight.
+  const v3InjuryTeams = [v2AwayRoster, v2HomeRoster]
+    .map((roster) => {
+      const players = ((roster || {}).players || [])
+        .filter((p) => { const s = mlbStatusOf(p); return s === "out" || s === "questionable"; })
+        .map((p) => ({ id: p.id, name: p.name, team: p.team, mlbId: p.mlbId, status: mlbStatusOf(p), note: railMeta ? railMeta(p) : p.pos }));
+      if (!players.length || !roster) return null;
+      const abbr = (roster.players[0] || {}).team;
+      return abbr ? { abbr, slug: abbr, sport: "mlb", players } : null;
+    })
+    .filter(Boolean);
+
   const v2Page = (
     <PlayerDetailV2
       sport="mlb"
+      slate={buildSlate({
+        groups: matchupGroups, value: activeMatchupId, onChange: pickMatchup,
+      })}
+      slipCount={pickIds ? pickIds.size : null}
+      onOpenSlip={onOpenSlip}
+      availability={mlbStatusOf(player) || null}
+      availabilityCovered
+      renderAvatar={v3RenderAvatar}
+      seasons={buildSeasons({ games: logGames, sport: "mlb", scope: logScope, onChange: setLogScope })}
+      windows={v3Windows}
+      splits={v3Splits}
+      injuryTeams={v3InjuryTeams}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -16463,6 +16694,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
         name: player.name,
         jersey: jerseyNumber,
         team: player.team,
+        // Ids, so the v3 mobile hero can build its own 56px avatar. The
+        // 104px one below is a prebuilt element and PlayerAvatar renders at
+        // whatever size it was given, so it cannot be reused at another.
+        id: player.id,
+        espnId: player.espnId,
+        mlbId: player.mlbId,
         teamLabel: (liveTeamRoster || {}).label,
         identity: [(liveTeamRoster || {}).label, MLB_POSITION_WORD[player.pos] || player.pos,
           nextGame && nextGame.date ? new Date(nextGame.date).getFullYear() : null].filter(Boolean).join(" · "),
@@ -20400,6 +20637,7 @@ function useMlbFeedData(active) {
 function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport, mlb, searchSlot }) {
   const { mlbSlate, mlbLoading, mlbRows, mlbStatusVersion } = mlb;
   const isNarrow = useIsNarrow(560);
+  const isPhone = useIsPhone();
   // Settings > Betting seeds the two controls below. Read once as an initial
   // value, for the same reason feedSport is: changing a default should decide
   // where the next visit starts, not move the controls under someone who is
@@ -20475,6 +20713,16 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // not stay on screen labelled L5.
   const [expandedKey, setExpandedKey] = useState(null);
   React.useEffect(() => { setExpandedKey(null); }, [sport, selectedMarkets, sampleWindow, direction, linesMode]);
+  // "HIT RATE AT LEAST", drawn in the v3 mobile mock's REFINE sheet (frame
+  // 1b). New: the app had no rate floor.
+  //
+  // `null` -- no floor -- rather than the mock's own default of 60. The mock
+  // shows one configured state (its REFINE badge reads 3, and its count reads
+  // "126 of 1,566"), not the state the feed opens in, and opening on a 60%
+  // floor would answer "there is nothing here" when it means "I hid it" --
+  // the exact reason roleTier defaults to "all" a few lines above. Raised
+  // with Alex rather than assumed.
+  const [hitFloor, setHitFloor] = useState(null);
   const [sortMode, setSortMode] = useState("matchup");
   // The Role floor. "all" always, until asked: a filter that hides rows by
   // default would make the feed answer "there is nothing here" when what it
@@ -20853,6 +21101,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     setOddsMinX(4);
     setOddsMaxX(96);
     setPostedLineupsOnly(false);
+    setHitFloor(null);
   }, [maxRank]);
 
   const feedFilters = useMemo(
@@ -21037,6 +21286,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // than being cut: "we did not measure it" and "he barely plays" are
     // different claims, and only the second is ours to make. See lib/role.js.
     if (!clearsRole(r, roleTier, sport)) return false;
+    // The rate floor, on the same figure the row displays in the window
+    // currently selected -- so a row that disappears is one whose printed
+    // number missed the bar, not one measured on something else.
+    if (hitFloor != null && p < hitFloor - 1e-9) return false;
     if (p < oddsLoProb - 1e-9 || p > oddsHiProb + 1e-9) return false;
     // A row with no opponent rank is only excluded once the user has actually
     // narrowed the Defense Rank filter -- an untouched filter must still show
@@ -21068,7 +21321,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // there and must let it through rather than wipe pitcher markets whole.
     if (postedLineupsOnly && sport === "mlb" && r.lineupConfirmed === false) return false;
     return true;
-  }), [marketRows, sampleWindow, slateScope, regularsOnly, teamGames, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
+  }), [marketRows, sampleWindow, slateScope, regularsOnly, teamGames, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, hitFloor, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
 
   // Badge shown on the Filters trigger -- counts only the controls tucked
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
@@ -21087,6 +21340,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     (rankLo !== 1 || rankHi !== maxRank ? 1 : 0) +
     (sport === "mlb" && postedLineupsOnly ? 1 : 0) +
     (sampleWindow !== bettingDefaults.sampleWindow ? 1 : 0) +
+    (hitFloor != null ? 1 : 0) +
     (direction !== bettingDefaults.lean ? 1 : 0);
 
   // Removable readout of what's actually narrowing the feed right now --
@@ -21138,6 +21392,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       key: "rank",
       label: `RANK #${rankLo}–#${rankHi}`,
       onRemove: () => { setRankLo(1); setRankHi(maxRank); },
+    });
+  }
+  // A rate floor genuinely removes rows, so it gets a chip like every other
+  // filter that does -- an empty feed has to be able to name it.
+  if (hitFloor != null) {
+    activeFilterChips.push({
+      key: "hitFloor",
+      label: `HIT RATE ${Math.round(hitFloor * 100)}%+`,
+      onRemove: () => setHitFloor(null),
     });
   }
 
@@ -21783,7 +22046,139 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   );
 
 
+  // The sentence an empty feed shows, built once. The phone renders the
+  // same list through PropFeedMobile, and two copies of this would be two
+  // chances for one of them to blame the wrong thing.
+  const feedEmptyNote = (
+    <>sport === "mlb" && mlbLoading
+              ? "Loading live MLB matchup data…"
+              /* The window, not the filters. This is the out-of-season case:
+                 3,089 NFL props exist and every one of them is for a game
+                 weeks away. Naming the next kickoff and offering it is the
+                 difference between a screen that looks broken and one that
+                 has told you what the schedule says. */
+              : slateScope === "near" && rows.length > 0 && nextKickoff != null
+              ? (
+                <span>
+                  No {sport.toUpperCase()} games today or tomorrow, so there are no props to read yet.
+                  {" "}Next kickoff is{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {new Date(nextKickoff).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                  </b>.
+                  <span
+                    role="button" tabIndex={0}
+                    onClick={() => setSlateScope("all")}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSlateScope("all"); } }}
+                    className="pp-mono"
+                    style={{
+                      display: "inline-block", marginLeft: 10, cursor: "pointer",
+                      fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
+                      color: "var(--amber-ink, var(--amber))", border: "1px solid var(--amber)",
+                      borderRadius: 4, padding: "7px 12px",
+                    }}
+                  >
+                    Show that slate
+                  </span>
+                </span>
+              )
+              : rows.length === 0 && finishedTeams.size > 0
+              ? "Every game on today's slate has finished. Tomorrow's board arrives once the new slate is posted."
+              : emptyStateNames.length
+              ? `No props match ${emptyStateNames.length === 1 ? "this filter" : "these filters"}: ${emptyStateNames.join(" · ")}. Remove one to widen the feed.`
+              : feedActiveFilterCount > 0
+              ? `No props match the current filters. ${feedActiveFilterCount} ${feedActiveFilterCount === 1 ? "control is" : "controls are"} away from your defaults inside the Filters panel.`
+              : "No props match these filters yet."</>
+  );
+
   const refineSummary = `${refineMarketLabel} · ${direction === "under" ? "Under" : "Over"} · ${refineWindowLabel}`;
+
+  // ---- the phone (see src/v3/PropFeedMobile.jsx) ---------------------------
+  //
+  // Everything above stays: the same rows, the same filters, the same sort,
+  // the same counts. Only the layout below the control bar changes, from a
+  // ten-column table folded onto 430px to the mock's stack of touch cards.
+  if (isPhone) {
+    return (
+      <PropFeedMobile
+        sport={sport}
+        sports={FEED_SPORTS.filter((s) => s.available).map((s) => s.id)}
+        onSetSport={setSport}
+        rows={visibleRows.map((r) => ({
+          ...r,
+          // The row's own avatar, built here because this is where the sport's
+          // colour map and headshot chain live. 36px, per the mock.
+          avatarNode: (
+            <PlayerAvatar
+              name={r.name} alt={r.name} sport={sport} team={r.team}
+              colorMap={FEED_TEAM_COLORS[sport]} headshotSrc={r.avatar} fallbackSrc={r.avatarFallback}
+              size={36} inset={2} status={resolveRowStatus(r)} surface="var(--bg)"
+            />
+          ),
+        }))}
+        totalRows={sortedRows.length}
+        loadedCount={visibleRows.length}
+        hasMore={visibleRows.length < sortedRows.length}
+        onLoadMore={() => setVisibleCount((n) => n + FEED_PAGE_SIZE)}
+        marketLabel={activeMarketLabel || "All markets"}
+        onOpenMarkets={() => setFeedFiltersOpen(true)}
+        direction={direction}
+        onToggleDirection={() => setDirection((d) => (d === "under" ? "over" : "under"))}
+        sampleWindow={sampleWindow}
+        windows={FEED_WINDOWS.map(([label, id]) => ({ id, label: id === "all" ? "Season" : label }))}
+        onSetWindow={setSampleWindow}
+        sortLabel={(FEED_SORT_MODES.find((mo) => mo.id === sortMode) || {}).label || "Hit rate"}
+        onCycleSort={() => {
+          const i = FEED_SORT_MODES.findIndex((mo) => mo.id === sortMode);
+          setSortMode(FEED_SORT_MODES[(i + 1) % FEED_SORT_MODES.length].id);
+        }}
+        refineCount={feedActiveFilterCount}
+        minSample={minGames}
+        minSampleOptions={sampleScale(sport).presets.map((v) => ({ id: String(v), value: v, label: `${v}+` }))
+          .concat([{ id: "all", value: MIN_SAMPLE_ALL, label: "All" }])}
+        onSetMinSample={changeMinGames}
+        hitFloor={hitFloor}
+        hitFloorOptions={[50, 60, 70, 80]}
+        onSetHitFloor={setHitFloor}
+        // The mock lists seven of these as inert chips. Each is a real control
+        // this page owns, so each opens the panel that owns it rather than
+        // being a chip that does nothing.
+        advanced={[
+          { id: "lines", label: "Main vs alt", active: linesMode !== "main", onOpen: () => setFeedFiltersOpen(true) },
+          { id: "def", label: "Defence tier", active: rankLo !== 1 || rankHi !== maxRank, onOpen: () => setFeedFiltersOpen(true) },
+          { id: "role", label: "Role", active: roleTier !== "all", onOpen: () => setFeedFiltersOpen(true) },
+          { id: "lineups", label: "Lineups", active: sport === "mlb" && postedLineupsOnly, onOpen: () => setFeedFiltersOpen(true) },
+          { id: "odds", label: "Odds range", active: oddsMinX !== 4 || oddsMaxX !== 96, onOpen: () => setFeedFiltersOpen(true) },
+          { id: "screens", label: "Screens", active: false, onOpen: () => setPresetsOpen(true) },
+          { id: "books", label: "Books", active: false, onOpen: () => setFeedFiltersOpen(true) },
+        ]}
+        onReset={resetFeedFilters}
+        rateColor={feedRateColor}
+        rowsEmptyNote={feedEmptyNote}
+        loading={sport === "mlb" && mlbLoading}
+        expandedKey={expandedKey}
+        onToggleExpanded={(k) => setExpandedKey((cur) => (cur === k ? null : k))}
+        // The hit count behind a row's percentage, counted off the same array
+        // through the same predicate the desktop cells use. Passed rather than
+        // reimplemented so the two can never state the sample differently.
+        hitsIn={(r, win, line) =>
+          windowValues(r.values, win).filter((v) => feedIsHit(v, line, r.isBinary, r.direction)).length}
+        onOpenProp={onOpenProp}
+        onTogglePick={(r, line) => {
+          // Through the same builder the desktop row uses, so a prop saved
+          // from the phone and from the table is one pick, not two.
+          const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction: r.direction, window: sampleWindow });
+          const rung = rungs.find((x) => x.line === line) || rungs.find((x) => x.line === r.line) || null;
+          onTogglePick(pickFromRung(sport, r, rung, {
+            streak: feedStreak(r.values, line, r.isBinary, r.direction),
+            cushion: feedCushion(r.values, line, r.isBinary, sampleWindow, r.direction),
+            sampleWindow,
+            status: resolveRowStatus(r),
+          }));
+        }}
+        isAdded={(r) => pickIds.has(feedPickId(sport, r))}
+      />
+    );
+  }
 
   return (
     // 900px left ~270px of dead gutter either side of a 1440px window while
@@ -22431,44 +22826,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 been played -- it sends the reader off loosening controls that
                 were never the problem. Only claim it when some live prop
                 actually exists to be filtered. */}
-            {sport === "mlb" && mlbLoading
-              ? "Loading live MLB matchup data…"
-              /* The window, not the filters. This is the out-of-season case:
-                 3,089 NFL props exist and every one of them is for a game
-                 weeks away. Naming the next kickoff and offering it is the
-                 difference between a screen that looks broken and one that
-                 has told you what the schedule says. */
-              : slateScope === "near" && rows.length > 0 && nextKickoff != null
-              ? (
-                <span>
-                  No {sport.toUpperCase()} games today or tomorrow, so there are no props to read yet.
-                  {" "}Next kickoff is{" "}
-                  <b style={{ color: "var(--text)" }}>
-                    {new Date(nextKickoff).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
-                  </b>.
-                  <span
-                    role="button" tabIndex={0}
-                    onClick={() => setSlateScope("all")}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSlateScope("all"); } }}
-                    className="pp-mono"
-                    style={{
-                      display: "inline-block", marginLeft: 10, cursor: "pointer",
-                      fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
-                      color: "var(--amber-ink, var(--amber))", border: "1px solid var(--amber)",
-                      borderRadius: 4, padding: "7px 12px",
-                    }}
-                  >
-                    Show that slate
-                  </span>
-                </span>
-              )
-              : rows.length === 0 && finishedTeams.size > 0
-              ? "Every game on today's slate has finished. Tomorrow's board arrives once the new slate is posted."
-              : emptyStateNames.length
-              ? `No props match ${emptyStateNames.length === 1 ? "this filter" : "these filters"}: ${emptyStateNames.join(" · ")}. Remove one to widen the feed.`
-              : feedActiveFilterCount > 0
-              ? `No props match the current filters. ${feedActiveFilterCount} ${feedActiveFilterCount === 1 ? "control is" : "controls are"} away from your defaults inside the Filters panel.`
-              : "No props match these filters yet."}
+            {feedEmptyNote}
           </div>
         )}
         {/* Per-row rather than only at the app root: these rows are built from
@@ -23694,7 +24052,7 @@ function SaferRungsBlock({ picks, onChangeLine, onRemove }) {
   );
 }
 
-function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, onChangeLine, sportsbook, onOpenSettings, isNarrow }) {
+function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSettled, onChangeLine, sportsbook, onOpenSettings, isNarrow, hideTrigger = false }) {
   const [tab, setTab] = useState("slip");
   const oddsFormat = useOddsFormat();
   const dollarsPerUnit = useUnitValue();
@@ -23804,7 +24162,12 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
 
   return (
     <>
-      {trigger}
+      {/* The v3 mobile Player Detail carries its own PICKS chip in the header
+          and a 132px roster dock along the bottom, so both triggers above
+          would sit on top of that dock rather than beside it. `hideTrigger`
+          is that page saying it already has the control -- the drawer itself
+          is unchanged and still opens from the chip. */}
+      {!hideTrigger && trigger}
 
       {open && (
         <div
@@ -24455,8 +24818,26 @@ const PAGE_IDS = new Set(PAGES.filter((p) => p.id !== "landing").map((p) => p.id
 const NAV_PAGES = new Set(NAV_TABS.map((t) => t.id));
 // The four player-detail pages the shell can actually render. goToProp checks
 // against this so a caller with a bad sport lands on the feed rather than on a
-// page value nothing matches.
+// page value nothing matches. They also get no nav row (their mock opens on a
+// breadcrumb instead) and, on a phone, no floating slip pill.
 const PLAYER_PAGES = new Set(["nfl", "mlb", "nba", "wnba"]);
+// Nav pages whose phone body has been transcribed from the v3 mocks, and so
+// take the v3 chassis instead of NavBar. Grows one batch at a time.
+const V3_PHONE_PAGES = new Set(["feed", "board"]);
+// Which pages build the availability wire. The Board joined News and Injuries
+// when its v3 tiers started counting "N OUT" as a reason -- without it that
+// reason can never fire, and a game silently sits one tier lower than the
+// slate says it should.
+const NEEDS_INJURY_WIRE = new Set(["news", "injuries", "board"]);
+
+// Wraps a page in the v3 mobile chassis, or renders it bare. A component
+// rather than a ternary at each call site so a page keeps ONE element
+// identity across the breakpoint -- switching between two different trees
+// would remount the page and throw away its state on every resize.
+function MaybeV3Shell({ on, children, ...shell }) {
+  if (!on) return children;
+  return <V3Shell {...shell}>{children}</V3Shell>;
+}
 
 export default function PropLedger() {
   // Read before the page state below, which seeds off it. Safe: PropLedger is
@@ -24565,6 +24946,7 @@ export default function PropLedger() {
   // Drives the Settings dialog's centered-vs-bottom-sheet placement. 560 is
   // the same breakpoint the header tagline drops at (.hide-narrow).
   const isNarrowShell = useIsNarrow(560);
+  const isPhoneShell = useIsPhone();
 
   React.useEffect(() => {
     localStorage.setItem("propLedgerPicks", JSON.stringify(myPicks));
@@ -25031,11 +25413,11 @@ export default function PropLedger() {
   // nflDataVersion/wnbaDataVersion bump as the real game logs and rosters
   // resolve, and a rate built before them is the fallback data, not the feed's.
   const newsPlayerPool = useMemo(
-    () => (page === "news" || page === "injuries" ? buildNewsPlayerPool() : []),
+    () => (NEEDS_INJURY_WIRE.has(page) ? buildNewsPlayerPool() : []),
     [page, wnbaDataVersion]
   );
   const newsAffects = useMemo(
-    () => (page === "news" || page === "injuries" ? buildNewsAffects() : new Map()),
+    () => (NEEDS_INJURY_WIRE.has(page) ? buildNewsAffects() : new Map()),
     [page, nflDataVersion, wnbaDataVersion]
   );
   // "Watching" is the app's own slip: a saved, still-unsettled pick on that
@@ -25062,7 +25444,7 @@ export default function PropLedger() {
   // The rail only has room for so many, and on a day with a long injury report
   // the rest are still counted rather than quietly cut (see NEWS_WIRE_LIMIT).
   const newsInjuryWireAll = useMemo(
-    () => (page === "news" || page === "injuries" ? buildNewsInjuryWire(newsPlayerPool, newsAffects, newsWatching) : []),
+    () => (NEEDS_INJURY_WIRE.has(page) ? buildNewsInjuryWire(newsPlayerPool, newsAffects, newsWatching) : []),
     [page, newsPlayerPool, newsAffects, newsWatching]
   );
   const newsInjuryWire = useMemo(() => newsInjuryWireAll.slice(0, NEWS_WIRE_LIMIT), [newsInjuryWireAll]);
@@ -25148,7 +25530,13 @@ export default function PropLedger() {
           Player Detail gets no nav. Its mock opens on a breadcrumb because it
           is a drill-down reached from the feed, and the four sport pages
           already render one. Landing draws its own (screen 5 rebuilds it). */}
-      {NAV_PAGES.has(page) && (
+      {/* The v3 mobile chassis (src/v3/Shell.jsx) replaces the nav row on the
+          phone, but only for the screens whose *body* has been transcribed.
+          A v3 header over a v2 body is the exact trap docs/REDESIGN_PLAN.md
+          records from the Games screen -- "a screen can have the mock's
+          chassis and still be the old screen" -- so this set grows one batch
+          at a time rather than being switched on for all six at once. */}
+      {NAV_PAGES.has(page) && !(isPhoneShell && V3_PHONE_PAGES.has(page)) && (
         <NavBar
           page={page}
           onNavigate={setPage}
@@ -25194,6 +25582,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
+          onOpenSlip={() => setPicksOpen(true)}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25209,6 +25598,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
+          onOpenSlip={() => setPicksOpen(true)}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25224,6 +25614,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
+          onOpenSlip={() => setPicksOpen(true)}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25239,13 +25630,26 @@ export default function PropLedger() {
             watched={watched}
             onRemoveWatch={removeWatch}
             onOpenProp={goToProp}
+            onOpenSlip={() => setPicksOpen(true)}
             onBack={() => setPage("feed")}
           />
         </MLBPageErrorBoundary>
       )}
 
       {page === "feed" && (
-        <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
+        isPhoneShell ? (
+          <V3Shell
+            page="feed"
+            onNavigate={setPage}
+            onHome={goHome}
+            onOpenSettings={() => setSettingsOpen((v) => !v)}
+            slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+          >
+            <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={null} />
+          </V3Shell>
+        ) : (
+          <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
+        )
       )}
 
       {page === "landing" && (
@@ -25267,8 +25671,18 @@ export default function PropLedger() {
         </LazyPane>
       )}
       {page === "board" && (
+        <MaybeV3Shell
+          on={isPhoneShell}
+          page="board"
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+        >
         <LazyPane minHeight={400}>
           <BoardPage
+            isPhone={isPhoneShell}
+            injuryRows={newsInjuryWireAll}
             rows={boardRows}
             sport={boardSport}
             sports={FEED_SPORTS}
@@ -25283,6 +25697,7 @@ export default function PropLedger() {
             playersWithoutProps={playersWithoutProps}
           />
         </LazyPane>
+        </MaybeV3Shell>
       )}
       {/* Findings runs off the same rows the board does, so it costs one more
           pass over a list already in memory rather than a second build. */}
@@ -25342,6 +25757,11 @@ export default function PropLedger() {
         sportsbook={sportsbook}
         onOpenSettings={() => { setPicksOpen(false); setSettingsOpen(true); }}
         isNarrow={isNarrowShell}
+        // The four player-detail routes, on a phone. That page is the v3
+        // mobile mock, which draws its own PICKS chip in the header and fills
+        // the bottom 132px with the roster dock -- see MyPicksPanel's own
+        // note on hideTrigger.
+        hideTrigger={isPhoneShell && (PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page))}
       />
       {/* Reads and writes every preference through the settings context, so
           the only thing it needs from here is the sportsbook list (which

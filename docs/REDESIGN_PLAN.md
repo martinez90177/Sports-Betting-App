@@ -1619,3 +1619,98 @@ into "blowing out to right" needs 32 stadium bearings entered by hand.
 - **Indoor sports render no conditions block when the slate row has no venue.**
   There is genuinely nothing to say about conditions for an indoor game, but
   the venue name would still be worth showing when it is known.
+
+---
+
+# The v3 transcription — started 2026-08-28
+
+`v3 Mocks/` is a complete redesign of every screen: **25 framed screens** in
+three files, plus four handoff documents. It supersedes
+`design_handoff_proppalace_v2/` and `NEW CLAUDE MOCKS V3/` for every screen it
+draws.
+
+| File | Frames |
+|---|---|
+| `PropPalace Mobile v3.dc.html` | 11 — 1b Prop Feed, 1c Player Detail, 2a Games, 2b Findings, 2c News, 2d Injuries, 3a My Picks, 3b Gamecast, 3c Matchup, 3d Settings, 3e Landing |
+| `PropPalace Desktop v3.dc.html` | 11 — 1a Player Detail, 1c Prop Feed, 2a My Picks, 2b Games, 2c Findings, 2d News, 2e Injuries, 2f Matchup, 2g Gamecast, 2h Settings, 2i Landing |
+| `PropPalace Board v4 part 2.dc.html` | 2 — mobile and desktop Board. **The only Board.** The v3 files contain none. |
+
+Read `v3 Mocks/IMPLEMENTATION-README.md` before touching any of it. Each file
+is markup **plus** a `<script type="text/x-dc">` that computes the style
+objects — most exact values live in the script, not the template, so both
+halves have to be read.
+
+## Decisions taken
+
+- **One breakpoint: 900px.** `PHONE_BP` / `useIsPhone()` in
+  `src/lib/useIsNarrow.js`. Below it the mobile mock, above it the desktop
+  mock. Replaces the eight breakpoints the app had accumulated; each screen
+  adopts it as it is rebuilt rather than in one sweep.
+- **Teammate / opposing-lineup filters get a real participation record in all
+  four sports** (Alex, 2026-08-28). MLB already has one; NBA/WNBA/NFL need the
+  ESPN parsers to keep `eventId` and a per-game boxscore fetch. Lands before
+  batch 5 — desktop Player Detail is its only consumer.
+- **Build order is the bundle README's**, three screens per commit.
+- The iOS status bar in every mobile frame is the phone the frame is drawn
+  inside, not the app. Not built.
+- The mock's `BOOK_MARKS` / price formatter is dead scaffolding — every leg
+  carries `books: null`, so the em-dash and "no book priced this" paths are
+  what render. Checked, not assumed.
+
+## Batch 1 — mobile Player Detail, Prop Feed, Board
+
+New files under `src/v3/`: `PlayerDetail.jsx` (the 900px router),
+`PlayerDetailMobile.jsx`, `PropFeedMobile.jsx`, `BoardMobile.jsx`,
+`Shell.jsx` (the mobile chassis), `FormPlot.jsx` (one graph for the player
+page and the feed), `playerDetailProps.js`, `useCustomWindow.js`.
+
+**Deviations applied, each with a reason:**
+
+- **Default windows now follow `player-detail-handoff.md` §4** — MLB/NBA/WNBA
+  L20 → L10, NFL Season → L5. The NFL change reverses a documented decision
+  (the code argued a 17-game season is already a small sample). Affects the
+  desktop page too.
+- **A hit-rate floor was added to the feed** (`HIT RATE AT LEAST`, 50/60/70/80)
+  — the mock draws it and the app had none. It defaults to **no floor**, not
+  the mock's 60: the mock shows a configured state (REFINE badge 3), and
+  opening on a 60% floor would answer "there is nothing here" when it means "I
+  hid it". Tapping the active chip clears it, because the mock offers four
+  floors and no way back off them.
+- **The MATCHUP cell is amber at every tier.** The mock draws only the mid
+  state, in amber; the app's `rankColor` would paint soft green and tough red,
+  and green/red mean cleared and missed on that page. The tier word carries
+  the tier.
+- **The floating My Picks pill is hidden on phone v3 screens** — the mock
+  gives each its own PICKS control and fills the bottom band with a dock.
+
+**Gaps, stated rather than approximated:**
+
+- **The Board's fourth reason kind, `lineup`, does not fire.** The mock cites
+  "RICE BATTING SECOND" as a logged role change naming both the player and the
+  absence. `lib/findings.js` produces season/home/away/vs-opponent splits and
+  no role-change finding; `lineupStateFor` says only whether an order is
+  posted, which is a different claim. **Consequence: the top tier ("Worth ten
+  minutes", three or more reasons) is only reachable where all three built
+  kinds fire.** Today that is the WNBA. The NFL and NBA have no availability
+  feed, and MLB's per-market defence ranks are not arriving, so both cap at
+  two reasons and every game lands in "One thing each".
+- **The Board's `rate` reason counts on the Wilson lower bound, not the raw
+  rate.** The mock's example game holds a handful of props and reads "4 PROPS
+  AT 70%+"; an NFL slate here holds ~190 props per game, so counting raw 70%
+  fired on all sixteen games and the tiers collapsed into one band.
+- The mock uses `#5c6b7a` for several 10px sub-labels, which
+  `player-detail-handoff.md` §7 explicitly calls too dark to read. Implemented
+  as drawn.
+- `V3_PHONE_PAGES` in `PropLedger.jsx` gates which nav pages get the v3
+  chassis. It grows one batch at a time: a v3 header over a v2 body is the
+  exact trap the Games screen fell into on the v2 pass.
+
+**Also changed while here:** the feed's empty-state sentence was extracted to
+one `feedEmptyNote` so the phone and the table cannot blame different things,
+and the availability wire is now built on the Board too (`NEEDS_INJURY_WIRE`)
+— without it the "N OUT" reason could never fire.
+
+**Known pre-existing bug, not from this work:** the MLB player page lists the
+*opposing* probable starter inside the player's own roster rail (Skubal under
+"Los Angeles Dodgers"). Present on the untouched desktop page as well; see
+`liveTeamRoster` / `fetchMLBTeamNextGame`.

@@ -25,3 +25,17 @@ export default function useIsNarrow(breakpoint = 900) {
   }, [breakpoint]);
   return narrow;
 }
+
+// The v3 redesign draws exactly two widths -- 430 and 1440 -- so it needs one
+// switch rather than the eight the app accumulated (480/560/640/720/900/980/
+// 1100/1280, each page picking its own). Below this the mobile mock renders;
+// at and above it the desktop mock does, with its rails collapsing per the
+// desktop handoff rather than the layout changing shape again.
+//
+// 900 rather than 1100: at 1100 an iPad in landscape and a 13" laptop get the
+// phone design, which is the exact failure `e84eac9` fixed once already.
+export const PHONE_BP = 900;
+
+export function useIsPhone() {
+  return useIsNarrow(PHONE_BP);
+}

@@ -11,3 +11,9 @@ VIDEOS FOR CLAUDE/
 # Scratch space for rendering design mocks against the dev server.
 public/__mockcheck/
 public/__vid/
+
+# The design tool's upload cache. `v3 Mocks/uploads/` is a 17MB duplicate of
+# this whole repo (src, docs, package.json and all) that the canvas made when
+# the mocks were built -- it is not a design source. The mock files, their
+# handoffs and support.js beside them are committed; this is not.
+v3 Mocks/uploads/
