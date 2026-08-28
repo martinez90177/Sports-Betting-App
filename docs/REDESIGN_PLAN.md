@@ -1747,3 +1747,52 @@ on `useIsPhone()`; `V3_PHONE_PAGES` now covers five of the six nav screens.
 **Worth knowing:** `getPropsCountForGame` reads the static `MLB_TEAM_ROSTERS`
 snapshot, so every MLB game reports the same count (172 today). That is the
 helper's own behaviour on both layouts, not a phone bug.
+
+## Batch 3 — mobile Injuries, My Picks, Gamecast
+
+New: `src/v3/InjuriesMobile.jsx`, `MyPicksMobile.jsx`, `GamecastMobile.jsx`,
+and `src/v3/intentRead.js` — the read engine, pure and separate from the
+screen so the desktop frame (2a) can render the same judgements in batch 6.
+
+**My Picks stops being a drawer.** It is a route (`page === "picks"`), phone
+only, reached from the dock every other v3 screen carries. Above 900 the
+drawer is unchanged. Three tabs: SLIP, LEDGER, READ.
+
+**The READ tab is the new logic.** The reader states what they are building
+(Safe / Risky / Straight parlay / Alt-leg parlay / Matchup alts) and a target
+price, and every leg is judged against *that* objective. The rule the engine
+exists to keep, from `desktop-handoff.md` §4: **no objection without a counted
+fact** — every branch cites a sample, a split, a defence rank, an availability
+row or a logged finding, and a leg with nothing counted against it reads FITS.
+
+Two deliberate departures from the mock's own engine, both in the same
+direction:
+
+- **The rule cuts both ways.** The mock's FITS branch tells a `Matchup alts`
+  build "Soft matchup behind it" whether or not a defence rank exists. On an
+  MLB row with no per-market rank that is a positive claim on no evidence, so
+  it says instead that the app holds no rank for this market and cannot call
+  the matchup soft either.
+- **"Check the two legs in one game" only fires when there are two.** The mock
+  prints it unconditionally; stating a correlation that does not exist is an
+  objection with nothing behind it. Same reason "drag two lines" becomes "drag
+  the line" on a one-leg slip.
+
+**The role-change branch is present but never fires.** It is the same gap
+batch 1 recorded on the Board: `lib/findings.js` produces no finding that
+names a player *and* an absence, so `roleNote` is always null. The branch is
+written and cited so the day that finding exists it lights up; it is not
+approximated from an injury row, because a teammate on the report is not
+evidence about someone else's market.
+
+**Gamecast reads the slip, not the board.** `getTopProps` supplies the board's
+suggestions for a matchup; labelling those "YOUR N LEGS IN THIS GAME" was a
+false statement, so the real slip is threaded through `GamesPage` and filtered
+to the game on **both** team abbreviations. Rule 9 holds: the dock, the slip,
+the Player Detail chip and this panel all read one array.
+
+**Worth knowing for the next batch:** Vite's HMR served stale modules twice in
+this batch, each time producing a `ReferenceError` for an identifier that was
+plainly in the source. `rm -rf node_modules/.vite` and a dev-server restart
+cleared it both times. If a symbol "is not defined" but you can see it
+declared, restart before debugging.

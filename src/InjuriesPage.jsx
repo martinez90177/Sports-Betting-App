@@ -2,7 +2,8 @@ import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import TeamLogo from "./TeamLogo.jsx";
 import { TEAM_COLORS_BY_SPORT, STATUS } from "./lib/teamColors.js";
-import useIsNarrow from "./lib/useIsNarrow.js";
+import useIsNarrow, { useIsPhone } from "./lib/useIsNarrow.js";
+import InjuriesMobile from "./v3/InjuriesMobile.jsx";
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -73,6 +74,7 @@ export default function InjuriesPage({
   // component that folded at a different width from the stylesheet would
   // collapse its rail while the grid was still two columns.
   const narrow = useIsNarrow(900);
+  const isPhone = useIsPhone();
   const [railOpen, setRailOpen] = useState(false);
 
   const now = Date.now();
@@ -114,6 +116,48 @@ export default function InjuriesPage({
     const inSport = rows.filter((r) => sport === "all" || r.sport === sport);
     return id === "all" ? inSport.length : inSport.filter((r) => r.status === id).length;
   };
+
+  // Same wire, same coverage rules, same sorts -- the phone's own layout.
+  // See src/v3/InjuriesMobile.jsx.
+  if (isPhone) {
+    const kickoffLabel = (r) => {
+      if (r.kickoff == null) return "No game on this slate";
+      const d = new Date(r.kickoff);
+      return d.toLocaleDateString([], { weekday: "short" }) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    };
+    return (
+      <InjuriesMobile
+        query={q}
+        onSetQuery={setQ}
+        leagues={[{ id: "all", label: "All", count: countBySport("all") }]
+          .concat(coveredSports.map((s) => ({ id: s.id, label: s.label, count: countBySport(s.id) })))}
+        league={sport}
+        onSetLeague={setSport}
+        statuses={[
+          { id: "all", label: "All", count: countByStatus("all") },
+          { id: "questionable", label: "Questionable", count: countByStatus("questionable") },
+          { id: "out", label: "Out", count: countByStatus("out") },
+          { id: "active", label: "Active · watched", count: countByStatus("active") },
+        ]}
+        status={status}
+        onSetStatus={setStatus}
+        sorts={(kickoffFor ? [{ id: "kickoff", label: "Playing next" }] : []).concat([{ id: "name", label: "By status" }])}
+        sort={sort}
+        onSetSort={setSort}
+        playingSoon={playingSoon}
+        rows={list}
+        scopeLabel={[sport === "all" ? "All leagues" : sport.toUpperCase(), status === "all" ? "All statuses" : status].join(" · ")}
+        coverageNote={
+          uncoveredSports.length
+            ? `${coveredSports.map((s) => s.label).join(" and ")} publish an availability feed this app can read. ${uncoveredSports.map((s) => s.label).join(" and ")} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
+            : ""
+        }
+        loading={loading}
+        onOpenProp={onOpenProp ? (r) => onOpenProp(r) : null}
+        kickoffLabelFor={kickoffLabel}
+      />
+    );
+  }
 
   return (
     <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", padding: "20px 22px 40px", boxSizing: "border-box" }}>

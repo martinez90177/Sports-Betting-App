@@ -246,7 +246,7 @@ const STATE_LEGEND = [
   ["Final", GAME_STATUS.FINAL],
 ];
 
-export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onOpenProp, onOpenBoard }) {
+export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onOpenProp, onOpenBoard, slipLegs = [] }) {
   const isMobile = useIsNarrow(720);
   const isPhone = useIsPhone();
   const [sport, setSport] = useState("mlb");
@@ -795,6 +795,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       onViewProps,
       getTopProps,
       onOpenProp,
+      slipLegs,
     });
   }
 

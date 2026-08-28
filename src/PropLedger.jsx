@@ -29,6 +29,7 @@ import PlayerDetailV2 from "./v3/PlayerDetail.jsx";
 import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW } from "./v3/playerDetailProps.js";
 import useCustomWindow from "./v3/useCustomWindow.js";
 import PropFeedMobile from "./v3/PropFeedMobile.jsx";
+import MyPicksMobile from "./v3/MyPicksMobile.jsx";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import { venueWord } from "./lib/venue.js";
@@ -24823,7 +24824,7 @@ const NAV_PAGES = new Set(NAV_TABS.map((t) => t.id));
 const PLAYER_PAGES = new Set(["nfl", "mlb", "nba", "wnba"]);
 // Nav pages whose phone body has been transcribed from the v3 mocks, and so
 // take the v3 chassis instead of NavBar. Grows one batch at a time.
-const V3_PHONE_PAGES = new Set(["feed", "board", "games", "findings", "news"]);
+const V3_PHONE_PAGES = new Set(["feed", "board", "games", "findings", "news", "injuries"]);
 // Which pages build the availability wire. The Board joined News and Injuries
 // when its v3 tiers started counting "N OUT" as a reason -- without it that
 // reason can never fire, and a game silently sits one tier lower than the
@@ -25582,7 +25583,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
-          onOpenSlip={() => setPicksOpen(true)}
+          onOpenSlip={() => setPage("picks")}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25598,7 +25599,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
-          onOpenSlip={() => setPicksOpen(true)}
+          onOpenSlip={() => setPage("picks")}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25614,7 +25615,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
-          onOpenSlip={() => setPicksOpen(true)}
+          onOpenSlip={() => setPage("picks")}
           onBack={() => setPage("feed")}
         />
       )}
@@ -25630,7 +25631,7 @@ export default function PropLedger() {
             watched={watched}
             onRemoveWatch={removeWatch}
             onOpenProp={goToProp}
-            onOpenSlip={() => setPicksOpen(true)}
+            onOpenSlip={() => setPage("picks")}
             onBack={() => setPage("feed")}
           />
         </MLBPageErrorBoundary>
@@ -25643,7 +25644,7 @@ export default function PropLedger() {
             onNavigate={setPage}
             onHome={goHome}
             onOpenSettings={() => setSettingsOpen((v) => !v)}
-            slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+            slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
           >
             <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={null} />
           </V3Shell>
@@ -25677,7 +25678,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
           <BoardPage
@@ -25708,7 +25709,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
           <FindingsPage
@@ -25722,9 +25723,47 @@ export default function PropLedger() {
         </LazyPane>
         </MaybeV3Shell>
       )}
+      {/* My Picks stops being a drawer on the phone: the v3 mock draws it as a
+          screen with SLIP / LEDGER / READ, reached from the dock every other
+          v3 screen carries. Above 900 the drawer is unchanged. */}
+      {page === "picks" && isPhoneShell && (
+        <V3Shell
+          page={null}
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+        >
+          <MyPicksMobile
+            legs={myPicks.filter((x) => !x.result)}
+            settled={myPicks.filter((x) => x.result)}
+            summary={ledgerSummary(myPicks)}
+            calibration={ledgerCalibration(myPicks)}
+            correlationGroups={parlayCorrelationGroups(myPicks.filter((x) => !x.result))}
+            bookLabel={(SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0]).label}
+            bookHref={(SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0]).url}
+            onRemove={removePick}
+            onClear={clearPicks}
+            onOpenProp={goToProp}
+            combinedOdds={(() => {
+              const open = myPicks.filter((x) => !x.result);
+              return open.length ? combineParlayOdds(open.map((x) => x.odds)) : null;
+            })()}
+            formatOdds={formatOdds}
+          />
+        </V3Shell>
+      )}
+
       {/* The full wire, not the rail's first handful. NEWS_WIRE_LIMIT exists
           to keep a rail short; this page has no such problem. */}
       {page === "injuries" && (
+        <MaybeV3Shell
+          on={isPhoneShell}
+          page="injuries"
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
+        >
         <LazyPane minHeight={400}>
           <InjuriesPage
             rows={newsInjuryWireAll}
@@ -25735,6 +25774,7 @@ export default function PropLedger() {
             loading={newsInjuryWireAll.length === 0}
           />
         </LazyPane>
+        </MaybeV3Shell>
       )}
       {page === "games" && (
         <MaybeV3Shell
@@ -25743,9 +25783,9 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
-          <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} /></LazyPane>
+          <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} slipLegs={myPicks.filter((p) => !p.result)} /></LazyPane>
         </MaybeV3Shell>
       )}
 
@@ -25756,7 +25796,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPicksOpen(true)} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
           <NewsPageRedesign
@@ -25790,7 +25830,7 @@ export default function PropLedger() {
         // mobile mock, which draws its own PICKS chip in the header and fills
         // the bottom 132px with the roster dock -- see MyPicksPanel's own
         // note on hideTrigger.
-        hideTrigger={isPhoneShell && (PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page))}
+        hideTrigger={isPhoneShell && (page === "picks" || PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page))}
       />
       {/* Reads and writes every preference through the settings context, so
           the only thing it needs from here is the sportsbook list (which
