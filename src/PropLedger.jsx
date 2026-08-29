@@ -11638,7 +11638,10 @@ const DODGERS_PLAYERS = [
   { id: "tucker", name: "Kyle Tucker", team: "LAD", pos: "RF", mlbId: 663656 },
   { id: "hernandez", name: "Teoscar Hernández", team: "LAD", pos: "LF", mlbId: 606192 },
   { id: "muncy", name: "Max Muncy", team: "LAD", pos: "3B", mlbId: 571970 },
-  { id: "pages", name: "Andy Pages", team: "LAD", pos: "CF", mlbId: 681624 },
+  // Pages fractured his left hand on a HBP (2026-08-22), had surgery, and is
+  // out roughly 4-5 weeks; Alek Thomas was recalled 2026-08-23 and is the
+  // primary CF option vs. RHP in his absence.
+  { id: "alekthomas", name: "Alek Thomas", team: "LAD", pos: "CF", mlbId: 677950 },
   { id: "rushing", name: "Dalton Rushing", team: "LAD", pos: "C", mlbId: 687221 },
   { id: "rojas", name: "Miguel Rojas", team: "LAD", pos: "2B", mlbId: 500743 },
   { id: "sheehan", name: "Emmet Sheehan", team: "LAD", pos: "SP", mlbId: 686218 },
@@ -11947,7 +11950,9 @@ const TWINS_PLAYERS = [
   { id: "rlewis", name: "Royce Lewis", team: "MIN", pos: "3B", mlbId: 668904 },
   { id: "kreidler", name: "Ryan Kreidler", team: "MIN", pos: "SS", mlbId: 668952 },
   { id: "larnach", name: "Trevor Larnach", team: "MIN", pos: "LF", mlbId: 663616 },
-  { id: "buxton", name: "Byron Buxton", team: "MIN", pos: "CF", mlbId: 621439 },
+  // Buxton re-aggravated his chronic right hip issue and went on the IL
+  // 2026-08-27; top prospect Walker Jenkins was called up the same day.
+  { id: "wjenkins", name: "Walker Jenkins", team: "MIN", pos: "CF", mlbId: 805805 },
   { id: "amartin", name: "Austin Martin", team: "MIN", pos: "RF", mlbId: 668885 },
   { id: "bell", name: "Josh Bell", team: "MIN", pos: "DH", mlbId: 605137 },
   { id: "prielipp", name: "Connor Prielipp", team: "MIN", pos: "SP", mlbId: 687570 },
