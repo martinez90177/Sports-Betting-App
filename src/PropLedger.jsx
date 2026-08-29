@@ -42,6 +42,7 @@ import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters, fetchEspnJersey, jerseyFor } from "./lib/rosters.js";
+import { useParticipation, playedIn } from "./lib/participation.js";
 import { WatchMenu } from "./WatchList.jsx";
 import { NFL_STADIUMS, fetchNFLKickoffWeather } from "./lib/weather.js";
 import OpposingLineup from "./OpposingLineup.jsx";
@@ -488,6 +489,12 @@ function espnSeasonType(displayName) {
 const NBA_REAL_GAME_LOGS = {};
 let NBA_LIVE_PLAYERS = [];
 let NBA_ROSTER_COVERAGE = null;
+// espnId -> "out" | "questionable" | "active", from the same roster fetch that
+// fills NBA_LIVE_PLAYERS. It always came back in `res.byId` (fetchTeamRoster
+// reads `athlete.injuries` for every league) and was being thrown away at the
+// call site, which is why four pages said the NBA publishes no availability
+// feed while the app was fetching one thirty times on mount.
+let NBA_ROSTER_STATUS = {};
 
 const NBA_SLUG_BY_ESPN_ID = Object.fromEntries(
   ALL_NBA_PLAYERS.filter((p) => p.espnId).map((p) => [String(p.espnId), p.id])
@@ -509,7 +516,7 @@ function parseNBAGameLogResponse(data, season) {
       (cat.events || []).forEach((ev) => {
         const meta = events[ev.eventId];
         if (!meta) return;
-        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType };
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType, eventId: ev.eventId };
         (ev.stats || []).forEach((val, idx) => {
           const key = names[idx];
           if (key) byEvent[ev.eventId].stats[key] = val;
@@ -524,7 +531,7 @@ function parseNBAGameLogResponse(data, season) {
     // those abbreviations aren't in TEAM_DEF at all -- dropped here rather
     // than left to break every downstream defence lookup.
     .filter(({ meta }) => known.has(nbaTeamAbbr(meta.opponent?.abbreviation)))
-    .map(({ meta, stats, seasonType }) => {
+    .map(({ meta, stats, seasonType, eventId }) => {
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
       const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
@@ -538,6 +545,10 @@ function parseNBAGameLogResponse(data, season) {
         team: meta.team?.abbreviation ? nbaTeamAbbr(meta.team.abbreviation) : undefined,
         seasonType,
         season,
+        // The ESPN event id, kept so lib/participation.js can ask who else
+        // played in this game. Dropping it here is what left the With/Without
+        // teammate filter unbuildable outside MLB.
+        eventId,
         home: meta.atVs !== "@",
         minutes: num(stats.minutes),
         pts: num(stats.points),
@@ -577,7 +588,7 @@ async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
   // and `season`. A leftover v1 payload has neither, so the log-scoping
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
-  const cacheKey = `nba_gamelog_v2_${key}`;
+  const cacheKey = `nba_gamelog_v3_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -1339,6 +1350,148 @@ function absenceEffectCopy(split, line, personName) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The teammate filter, for the three ESPN leagues
+// ---------------------------------------------------------------------------
+// MLB has had With/Without teammate splits since the boxscore-lineup fetcher
+// went in; NBA, NFL and WNBA had nothing, because their game-log parsers threw
+// away the event id that would let a teammate's participation be joined against
+// a player's log. They keep it now (see parseNBAGameLogResponse), and
+// lib/participation.js turns it into a set of ids per game.
+//
+// This hook is the rest of it, written once rather than three times. It hands
+// back what a player page needs to run the chips:
+//
+//   apply    narrow a list of games to the chips currently set
+//   diffs    what each teammate is worth to this market, for the tile faces
+//   ready    whether every in-scope game has been answered for yet
+//
+// The block under the chart that explains who is out is `espnAbsenceRows`
+// below, which needs the effective line and so cannot live in here.
+//
+// The honesty rules are the ones absenceSplit already encodes and are the whole
+// reason this is worth building rather than approximating: a game whose record
+// failed to load is dropped from *both* halves and counted as unchecked, and a
+// without-side under ABSENCE_MIN_GAMES gets a labelled thin state instead of a
+// percentage. A number here is a count of real games or it is not shown.
+function useEspnTeammateSplits({
+  sport,
+  // Everyone eligible to be a chip, each carrying `pid` (their ESPN athlete id
+  // as a string) and `name`.
+  candidates = [],
+  // The full scoped log. The absence split answers over every game the page
+  // holds, not just the window on screen -- a teammate who missed three games
+  // this season and three last is the whole point, and an L10 window would
+  // find one of them.
+  allGames = [],
+  // The games the chart is considering before the window is applied. Chips
+  // filter these, so these are what must be answered exactly.
+  inScopeGames = [],
+  chips = [],
+  valueOf,
+  // The panel is open, or somebody is listed out and the block below the chart
+  // wants to explain it -- either way the record is worth loading even though
+  // nothing is filtering yet. Same demand-driven two tiers as MLB's.
+  wanted = false,
+}) {
+  const chipsActive = chips.length > 0;
+  // Whether this player's log can be joined against a game roster at all.
+  // A generated fallback log carries no event ids, and without one there is no
+  // game to look up. That is a different fact from "nobody played" and must not
+  // collapse into it: applying the chips anyway drops every game and leaves an
+  // empty chart that looks like a real, devastating split.
+  const supported = (inScopeGames || []).some((g) => g && g.eventId);
+  const { byEvent, ready, loading } = useParticipation(
+    sport,
+    chipsActive ? inScopeGames : allGames,
+    { enabled: supported && (wanted || chipsActive), exact: chipsActive }
+  );
+
+  // Held back until every in-scope game has an answer. Filtering against a
+  // half-loaded record drops the not-yet-fetched games, so the chart visibly
+  // collapses to a few bars and grows back as requests land -- which reads as
+  // data rather than as loading. Learned on the MLB page.
+  const apply = React.useCallback((games) => {
+    if (!chipsActive || !supported || !ready) return games;
+    return games.filter((game) => {
+      for (const chip of chips) {
+        const played = playedIn(byEvent, game, chip.pid);
+        // Unknown is not "did not play". A game we could not check cannot
+        // satisfy either side of a chip.
+        if (played === null) return false;
+        if (chip.mode === "with" && !played) return false;
+        if (chip.mode === "without" && played) return false;
+      }
+      return true;
+    });
+  }, [chips, chipsActive, supported, ready, byEvent]);
+
+  // pid -> this player's average in the market with that teammate minus his
+  // average without. Withheld entirely under three games a side: a
+  // differential off a one-game split is noise wearing a decimal point.
+  const diffs = useMemo(() => {
+    const out = {};
+    const known = (inScopeGames || []).filter((g) => g.eventId && byEvent[String(g.eventId)]);
+    if (known.length < 6) return out;
+    (candidates || []).forEach((c) => {
+      if (!c.pid) return;
+      let onSum = 0, onN = 0, offSum = 0, offN = 0;
+      known.forEach((g) => {
+        const v = valueOf(g);
+        if (playedIn(byEvent, g, c.pid)) { onSum += v; onN++; }
+        else { offSum += v; offN++; }
+      });
+      if (onN < 3 || offN < 3) return;
+      out[c.pid] = onSum / onN - offSum / offN;
+    });
+    return out;
+  }, [inScopeGames, byEvent, candidates, valueOf]);
+
+  return { byEvent, ready, loading, apply, diffs, supported };
+}
+
+// The rows MissingAround draws, for a league whose participation record comes
+// from lib/participation.js. Separate from the hook above because it needs the
+// effective line, which every page settles only after the chart's own filters
+// have run -- so this is called from a useMemo further down the page.
+//
+// Three states are distinguished on purpose, and none of them is a number:
+// no id for the teammate at all, the record still loading, and a without-side
+// too thin to split on. Each says which; absenceEffectCopy writes the sentence.
+function espnAbsenceRows({ absent = [], allGames = [], byEvent, valueOf, line, headshotFor, noteFor }) {
+  const withIds = (allGames || []).filter((g) => g.eventId);
+  const answered = withIds.filter((g) => byEvent[String(g.eventId)] !== undefined);
+  return absent.map((p) => {
+    let split;
+    if (!p.pid) {
+      split = { state: "unsupported", reason: `This app holds no player id for ${p.name}, so the games they missed can't be counted.` };
+    } else if (!withIds.length) {
+      split = { state: "unsupported", reason: "This player's game log carries no game ids, so who else played in those games can't be looked up." };
+    } else if (!answered.length) {
+      split = { state: "pending" };
+    } else {
+      split = absenceSplit({
+        games: withIds,
+        valueOf,
+        line,
+        playedIn: (g) => playedIn(byEvent, g, p.pid),
+      });
+    }
+    const { effect, count } = absenceEffectCopy(split, line, p.name);
+    return {
+      name: p.name,
+      team: p.team,
+      position: p.pos,
+      espnId: p.pid,
+      headshotSrc: headshotFor ? headshotFor(p) : null,
+      status: p.status,
+      note: noteFor ? noteFor(p.status) : null,
+      effect,
+      count,
+    };
+  });
+}
+
 // Recent headlines for one player, shaped into InjuryAndNews's timeline.
 //
 // The `result` field that component supports is deliberately never set: tying a
@@ -1372,16 +1525,15 @@ function usePlayerNewsTimeline(playerName, limit = 3) {
 
 // The two handoff blocks, wired once for all four sport pages.
 //
-// Both sit above the splits block on the player card. What differs per sport is
-// only what real data exists behind them, which is why `absences` and
-// `availabilityNote` are handed in rather than resolved here:
+// NOTE: no page reaches this any more. All four return `v2Page` above their
+// old layout, and the v3 Injuries tab is where a listed player and the split
+// behind them now appear (see each page's v3InjuryTeams). Kept because the
+// desktop v3 frame in batch 5 draws the same two blocks, and because the copy
+// in it was written against the handoff rather than improvised.
 //
-//   WNBA / MLB  a real availability feed, so real absent teammates and, where
-//               the game logs support it, a real with/without split.
-//   NBA / NFL   no player availability feed at all. MissingAround says so once.
-//               InjuryAndNews just omits its status pill and says nothing about
-//               it -- two blocks announcing the same gap on one page reads as
-//               broken, and the news timeline under it still has content.
+// All four leagues now have a real availability feed and a real participation
+// record, so `absences` carries counted with/without splits everywhere rather
+// than only on WNBA and MLB.
 //
 // Neither block carries a data disclaimer. The card already has exactly one, at
 // its foot; a page that disclaims itself three times reads as less trustworthy,
@@ -1593,6 +1745,14 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  // With/Without teammate chips. Each is { pid, name, mode } where pid is the
+  // ESPN athlete id -- the same shape MLB's chips use, so LineupTiles is one
+  // component rather than four.
+  const [teammateChips, setTeammateChips] = useState([]);
+  // Flipped the first time the Filters panel opens and left true, so the
+  // participation record is demand-driven rather than fetched on every page
+  // load, but the tile faces have their numbers before a chip is set.
+  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);
@@ -1673,6 +1833,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setMaxMinutes(40);
     setMinutesRangeEnabled(false);
     setLine(null);
+    setTeammateChips([]);
   };
 
   // Resolved from the merged pool so a player who arrived on the live roster
@@ -1782,6 +1943,66 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     [oppHistory, currentSeasonVsOpp]
   );
 
+  // This player's own side of tonight's game -- the roster the teammate chips
+  // are drawn from. A player in neither roster (a jump the slate cannot
+  // resolve) yields none rather than the opponent's bench.
+  const playerSide = useMemo(() => {
+    if ((matchup?.teamA?.players || []).some((pl) => pl.id === playerId)) return matchup.teamA;
+    if ((matchup?.teamB?.players || []).some((pl) => pl.id === playerId)) return matchup.teamB;
+    return null;
+  }, [matchup, playerId]);
+
+  const nbaStatusOf = React.useCallback(
+    (pl) => (pl && pl.espnId ? NBA_ROSTER_STATUS[String(pl.espnId)] : undefined),
+    [dataVersion]
+  );
+
+  // Only teammates with an ESPN id can be looked up in a game roster, so one
+  // without is left out of the tiles rather than shown as a chip that could
+  // never filter anything.
+  const teammateCandidates = useMemo(
+    () => (playerSide?.players || [])
+      .filter((pl) => pl.id !== playerId && pl.espnId)
+      .map((pl) => ({ ...pl, pid: String(pl.espnId) })),
+    [playerSide, playerId]
+  );
+
+  // Everyone on this player's side currently listed out or questionable, from
+  // the roster fetch on mount. Real designations only -- an empty availability
+  // map yields no absences rather than a guessed list.
+  const absentTeammates = useMemo(
+    () => teammateCandidates.filter((pl) => {
+      const st = nbaStatusOf(pl);
+      return st === "out" || st === "questionable";
+    }).map((pl) => ({ ...pl, status: nbaStatusOf(pl) })),
+    [teammateCandidates, nbaStatusOf]
+  );
+
+  // Opening the page with somebody out is itself a reason to load the record,
+  // exactly as opening the panel is.
+  React.useEffect(() => {
+    if (absentTeammates.length) setTeammateDataWanted(true);
+  }, [absentTeammates.length]);
+
+  const teammateValueOf = React.useCallback((g) => statValue(g, market, rebSplit), [market, rebSplit]);
+
+  // Games the chips are applied to, before the window. Opponent mode swaps the
+  // list out entirely (see the `filtered` memo), so this follows it.
+  const chipScopeGames = useMemo(
+    () => (opponent !== "all" ? h2h3yGames : allGames),
+    [opponent, h2h3yGames, allGames]
+  );
+
+  const teammateSplits = useEspnTeammateSplits({
+    sport: "nba",
+    candidates: teammateCandidates,
+    allGames,
+    inScopeGames: chipScopeGames,
+    chips: teammateChips,
+    valueOf: teammateValueOf,
+    wanted: teammateDataWanted,
+  });
+
   const filtered = useMemo(() => {
     if (opponent !== "all") {
       let g;
@@ -1793,7 +2014,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         case "season":
         default: g = currentSeasonVsOpp; break;
       }
-      return g.filter((game) => game.minutes >= minMinutes && game.minutes <= maxMinutes);
+      return teammateSplits.apply(g.filter((game) => game.minutes >= minMinutes && game.minutes <= maxMinutes));
     }
     let g = allGames.filter((game) => {
       if (side === "home" && !game.home) return false;
@@ -1801,10 +2022,13 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
       return true;
     });
+    // Before the window, so "L10 without Brunson" means the last ten games he
+    // missed rather than whichever of the last ten happened to be them.
+    g = teammateSplits.apply(g);
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp, applyRange]);
+  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp, applyRange, teammateSplits.apply]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -1819,6 +2043,30 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // Binary props (DD/TD) have a fixed 0.5 threshold — achieved (1) counts as a
   // hit, not achieved (0) doesn't. There's nothing to drag for these.
   const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+
+  // What this market did in the games each currently-absent teammate missed.
+  // Counted off the same participation record the chips filter on, so the
+  // block and the chips can never disagree.
+  const nbaAbsences = useMemo(
+    () => espnAbsenceRows({
+      absent: absentTeammates,
+      allGames,
+      byEvent: teammateSplits.byEvent,
+      valueOf: teammateValueOf,
+      line: effectiveLine,
+      headshotFor: (pl) => espnHeadshot(pl.espnId),
+      noteFor: (st) => (st === "out"
+        ? "Listed out on ESPN's availability report"
+        : "Listed questionable on ESPN's availability report"),
+    }),
+    [absentTeammates, allGames, teammateSplits.byEvent, teammateValueOf, effectiveLine]
+  );
+
+  // Said once, whether or not anyone is out: the reader needs to know the
+  // without-side counts games from before a teammate joined as well.
+  const nbaAvailabilityNote = absentTeammates.length
+    ? `Everyone on this player's team currently listed out or questionable on ESPN's report. A rate is shown only where at least ${ABSENCE_MIN_GAMES} finished games were played without that teammate, and each one names the games it came from. ${ABSENCE_WINDOW_CAVEAT}`
+    : "Nobody on this player's team is currently listed out or questionable on ESPN's report.";
   // Axis ceiling + evenly spaced tick marks: pick a "nice" step (1, 2, 5, 10, 20...)
   // so the y-axis always shows regular, evenly spaced whole numbers instead of
   // an uneven jump like 0, 9, 30.
@@ -1862,9 +2110,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       if (lastN !== 10) n += 1;
     }
     if (minMinutes !== 0 || maxMinutes !== 40) n += 1;
+    n += teammateChips.length;
     n += scopeFilterCount(logScope);
     return n;
-  }, [opponent, oppView, side, lastN, minMinutes, maxMinutes, logScope]);
+  }, [opponent, oppView, side, lastN, minMinutes, maxMinutes, logScope, teammateChips.length]);
 
   const splitCells = buildHitRateSplits({
     sport: "nba",
@@ -2022,6 +2271,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     />
   );
 
+  const teammateModeSummary = teammateChips.length
+    ? `${teammateChips.filter((c) => c.mode === "with").length} with · ${teammateChips.filter((c) => c.mode === "without").length} without`
+    : "Tap to cycle";
+
   const filtersBody = (
     <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
       {/* First, because it is the outermost narrowing: it decides which games
@@ -2121,6 +2374,40 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
           onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
         />
       </FilterSection>
+
+      {/* With/Without teammates, off the real game rosters (see
+           lib/participation.js). Last because it is the narrowest cut on
+           the page: it can take a 60-game log down to the six a teammate
+           missed, which is the sample worth looking at and also the one
+           most easily mistaken for the whole season. */}
+      <FilterSection
+        shaded
+        title="Lineup"
+        action={
+          <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>
+            {teammateSplits.loading ? "Loading…" : teammateModeSummary}
+          </span>
+        }
+      >
+        {/* Nothing to cycle when the log carries no game ids. Said plainly
+             rather than offering tiles that would empty the chart. */}
+        {!teammateSplits.supported ? (
+          <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)" }}>
+            This player's log is the generated fallback, so it carries no game ids — who
+            else played in those games can't be looked up, and no with/without split is offered.
+          </div>
+        ) : (
+        <LineupTiles
+          teammates={teammateCandidates}
+          chips={teammateChips}
+          onChange={setTeammateChips}
+          diffs={teammateSplits.diffs}
+          loading={teammateSplits.loading}
+          statusFor={nbaStatusOf}
+          unit={marketLabel}
+        />
+        )}
+      </FilterSection>
     </FilterPanel>
   );
 
@@ -2150,7 +2437,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
            desktop alike. */}
       <FilterPanelLauncher
         open={filtersOpen}
-        onOpenChange={setFiltersOpen}
+        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
         activeCount={activeFilterCount}
         compact={compact}
         anchored
@@ -2530,8 +2817,8 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
               hits={matchupHits}
               total={matchupWindow.length}
               line={effectiveLine}
-              absences={[]}
-              availabilityNote="The NBA publishes no player availability feed this app can read, so there is no list of who is out around them. Nothing has been estimated to fill the gap."
+              absences={nbaAbsences}
+              availabilityNote={nbaAvailabilityNote}
             />
             <MatchupSplits
               rows={matchupSplitRows}
@@ -2615,8 +2902,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     espnId: pl.espnId,
     meta: railMeta ? railMeta(pl) : pl.pos,
     active: pl.id === playerId,
-    // No NBA availability feed here, so no dot -- see the NFL block.
-    dotFill: null,
+    status: nbaStatusOf(pl) || null,
+    dotFill: (STATUS[nbaStatusOf(pl)] || {}).dot || null,
+    // The word beside the dot, for the two states that are a reason not to
+    // open a row. Never on an active player: a badge on every healthy name
+    // makes the two that matter harder to find, not easier.
+    statusWord: nbaStatusOf(pl) === "out" || nbaStatusOf(pl) === "questionable" ? nbaStatusOf(pl) : null,
     dotRing: "var(--surface-1)",
     // The WNBA page has real starter flags off the box score and splits its
     // rail on them; this one has no equivalent, so the rail stays in the
@@ -2625,6 +2916,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     avatar: (
       <PlayerAvatar
         name={pl.name} team={pl.team} sport="nba" colorMap={NBA_TEAM_COLORS}
+        status={nbaStatusOf(pl)}
         headshotSrc={espnHeadshot(pl.espnId)} size={32} inset={2} surface="var(--bg)"
       />
     ),
@@ -2684,10 +2976,43 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v3RenderAvatar = (p, size) => (
     <PlayerAvatar
       key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nba" team={p.team}
-      colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(p.espnId)}
+      colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(p.espnId)} status={nbaStatusOf(p)}
       surface="var(--bg)" size={size} inset={size >= 56 ? 4 : 2} fadeIn
     />
   );
+
+  // Both sides' reports, for the Injuries tab. Built from the same
+  // designations the rails read, so the tab and the dots cannot disagree.
+  // An empty list means nobody is listed -- not that the league is
+  // uncovered. The two are different sentences on screen.
+  // The counted with/without split for each listed player, keyed so the
+  // Injuries tab can print it beside the name. Own side only: this player
+  // never appears in a game *with* an opponent, so there is nothing to split.
+  const absenceEffectById = useMemo(() => {
+    const m = {};
+    (nbaAbsences || []).forEach((r) => { if (r.espnId != null) m[String(r.espnId)] = r; });
+    return m;
+  }, [nbaAbsences]);
+
+  const v3InjuryTeams = [v2AwayRoster, v2HomeRoster]
+    .map((roster) => {
+      const players = ((roster || {}).players || [])
+        .filter((pl) => { const st = nbaStatusOf(pl); return st === "out" || st === "questionable"; })
+        .map((pl) => {
+          const row = absenceEffectById[String(pl.espnId)];
+          return {
+            id: pl.id, name: pl.name, team: pl.team, espnId: pl.espnId,
+            status: nbaStatusOf(pl), note: railMeta ? railMeta(pl) : pl.pos,
+            // Only where a split exists. An opponent, or a teammate whose
+            // games could not be checked, gets no line rather than a blank one.
+            effect: row ? row.effect : null,
+          };
+        });
+      if (!players.length || !roster) return null;
+      const abbr = ((roster.players || [])[0] || {}).team;
+      return abbr ? { abbr, slug: abbr, sport: "nba", players } : null;
+    })
+    .filter(Boolean);
 
   const v2Page = (
     <PlayerDetailV2
@@ -2703,6 +3028,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       })}
       slipCount={pickIds ? pickIds.size : null}
       onOpenSlip={onOpenSlip}
+      availability={nbaStatusOf(player) || null}
+      availabilityCovered
+      injuryTeams={v3InjuryTeams}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "nba", scope: logScope, onChange: setLogScope })}
       windows={v3Windows}
@@ -2734,11 +3062,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       card={{
         positionShort: player.pos,
         teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
-        status: null,
+        status: nbaStatusOf(player) || null,
         avatar: (
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nba" team={player.team}
             colorMap={NBA_TEAM_COLORS} headshotSrc={espnHeadshot(player.espnId)}
+            status={nbaStatusOf(player)}
             surface="var(--surface-sunken)" size={72} inset={3} fadeIn
           />
         ),
@@ -2746,7 +3075,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       ownRail={{
         label: v2AwayRoster.label,
         players: v2Rail(v2AwayRoster),
-        legend: "No availability feed for this league, so no dots — never assumed. No starter flags either, so no starters/bench split.",
+        legend: "Dots are ESPN's availability report. No starter flags for this league, so no starters/bench split.",
       }}
       oppRail={{ label: v2HomeRoster.label, players: v2Rail(v2HomeRoster) }}
       // The band is built from the matchup, which is always there. The slate
@@ -3076,8 +3405,8 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
           hits={hits}
           total={values.length}
           line={effectiveLine}
-          absences={[]}
-          availabilityNote="The NBA publishes no player availability feed this app can read, so there is no list of who is out around them. Nothing has been estimated to fill the gap."
+          absences={nbaAbsences}
+          availabilityNote={nbaAvailabilityNote}
         />
 
         <HitRateSplits
@@ -3782,6 +4111,11 @@ let NFL_LIVE_PLAYERS = [];
 // { teamsLoaded, teamsTotal } once a fetch has answered, so the UI can say
 // "28 of 32 teams" rather than quietly showing a short league.
 let NFL_ROSTER_COVERAGE = null;
+// espnId -> "out" | "questionable" | "active". See NBA_ROSTER_STATUS.
+// Kept for the whole roster, not just NFL_PROP_POSITIONS: a prop player's
+// absent teammate can be anyone, and the availability dot on a roster rail is
+// asked about players this app prices nothing for.
+let NFL_ROSTER_STATUS = {};
 
 // Only the positions this app prices. An ESPN NFL roster is ~96 athletes
 // including the offensive line and the whole defense, none of whom have a prop
@@ -4409,6 +4743,11 @@ function normalizeNFLGame(g, player) {
     // A synthetic or hand-transcribed log has none of them, which is right:
     // undefined means "not known", and logScopeOptions offers no control.
     seasonType: g.seasonType, season: g.season, team: g.team,
+    // And it happened again, to eventId, with the same symptom one layer over:
+    // the With/Without teammate tiles read "generated fallback, no game ids" on
+    // players whose logs were real, because this dropped the id between the
+    // parser and the page. Anything a surface needs must be named here.
+    eventId: g.eventId,
     comp: g.comp || 0, att: g.att || 0, passYds: g.passYds || 0, passTd: g.passTd || 0, int: g.int || 0,
     rushAtt: g.rushAtt || 0, rushYds: g.rushYds || 0, rushTd: g.rushTd || 0,
     rec: g.rec || 0, tgt: g.tgt || 0, recYds: g.recYds || 0, recTd: g.recTd || 0,
@@ -4568,7 +4907,7 @@ function parseNFLGameLogResponse(data, season) {
       (cat.events || []).forEach((ev) => {
         const meta = events[ev.eventId];
         if (!meta) return;
-        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType };
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType, eventId: ev.eventId };
         (ev.stats || []).forEach((val, i) => {
           const key = names[i];
           if (key) byEvent[ev.eventId].stats[key] = val;
@@ -4578,7 +4917,7 @@ function parseNFLGameLogResponse(data, season) {
   });
 
   return Object.values(byEvent)
-    .map(({ meta, stats, seasonType }) => {
+    .map(({ meta, stats, seasonType, eventId }) => {
       const oppAbbr = meta.opponent?.abbreviation;
       const opp = NFL_ESPN_ABBR_FIX[oppAbbr] || oppAbbr || "???";
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
@@ -4589,6 +4928,9 @@ function parseNFLGameLogResponse(data, season) {
         team: teamAbbr ? (NFL_ESPN_ABBR_FIX[teamAbbr] || teamAbbr) : undefined,
         seasonType,
         season,
+        // See the note in parseNBAGameLogResponse -- lib/participation.js
+        // joins a teammate's game roster against this.
+        eventId,
         home: meta.atVs !== "@",
       };
       Object.entries(NFL_STAT_NAME_MAP).forEach(([espnKey, ourKey]) => {
@@ -4642,7 +4984,7 @@ async function fetchNFLPlayerGameLog(espnId, season = currentNFLSeason()) {
   // and `season`. A leftover v2 payload has neither, so the log-scoping
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
-  const cacheKey = `nfl_gamelog_v3_${key}`;
+  const cacheKey = `nfl_gamelog_v4_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -5837,6 +6179,10 @@ function LogScopeSection({ games, sport, scope, onChange }) {
 // use it rather than a bank of switches with no argument behind them.
 const LINEUP_PAGE = 4;
 
+// `pid` is whatever id the calling league identifies a player by -- an mlbId
+// for MLB, an ESPN athlete id for the other three. The tile row never looks
+// at which, and the chips it emits carry the same field back, so one
+// component serves all four sports rather than four near-identical copies.
 function LineupTiles({ teammates = [], opponents = [], chips, onChange, diffs = {}, loading, statusFor, unit }) {
   const [page, setPage] = useState(0);
 
@@ -5852,17 +6198,17 @@ function LineupTiles({ teammates = [], opponents = [], chips, onChange, diffs = 
   const safePage = Math.min(page, pages - 1);
   const shown = people.slice(safePage * LINEUP_PAGE, safePage * LINEUP_PAGE + LINEUP_PAGE);
 
-  const modeFor = (mlbId) => (chips.find((c) => c.mlbId === mlbId) || {}).mode || "neutral";
+  const modeFor = (pid) => (chips.find((c) => c.pid === pid) || {}).mode || "neutral";
 
   // Derived from `prev` rather than from the render's own read, so two rapid
   // clicks cannot both act on a stale mode -- the same discipline the two
   // controls this replaces already used.
   const cycle = (p) => {
     onChange((prev) => {
-      const current = (prev.find((c) => c.mlbId === p.mlbId) || {}).mode || "neutral";
-      if (current === "neutral") return [...prev, { mlbId: p.mlbId, name: p.name, mode: "with" }];
-      if (current === "with") return prev.map((c) => (c.mlbId === p.mlbId ? { ...c, mode: "without" } : c));
-      return prev.filter((c) => c.mlbId !== p.mlbId);
+      const current = (prev.find((c) => c.pid === p.pid) || {}).mode || "neutral";
+      if (current === "neutral") return [...prev, { pid: p.pid, name: p.name, mode: "with" }];
+      if (current === "with") return prev.map((c) => (c.pid === p.pid ? { ...c, mode: "without" } : c));
+      return prev.filter((c) => c.pid !== p.pid);
     });
   };
 
@@ -5878,17 +6224,17 @@ function LineupTiles({ teammates = [], opponents = [], chips, onChange, diffs = 
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
         {shown.map((p) => {
-          const mode = modeFor(p.mlbId);
+          const mode = modeFor(p.pid);
           const on = mode !== "neutral";
           // WITH is the outcome green and W/O the outcome red, which is the
           // one place those two colours legitimately leave the graph: they
           // mean include and exclude here, and the tile prints the word as
           // well so the colour is never the only carrier.
           const ink = mode === "with" ? "var(--pos)" : mode === "without" ? "var(--neg)" : "var(--line)";
-          const diff = diffs[p.mlbId];
+          const diff = diffs[p.pid];
           return (
             <div
-              key={p.mlbId}
+              key={p.pid}
               role="button"
               tabIndex={0}
               aria-pressed={on}
@@ -7481,6 +7827,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  // With/Without teammate chips, keyed on the ESPN athlete id. See
+  // useEspnTeammateSplits -- the NFL's participation record comes from each
+  // game's dressed roster rather than its boxscore, because a receiver who
+  // played and was never targeted does not appear in an NFL boxscore at all.
+  const [teammateChips, setTeammateChips] = useState([]);
+  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);
@@ -7508,6 +7860,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setMaxSnapPct(100);
     setSnapRangeEnabled(false);
     setLine(null);
+    setTeammateChips([]);
   };
 
   // Resolved from the merged pool, so a player reached from the feed or a
@@ -7620,6 +7973,55 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // filter is inert and games with an unknown share shouldn't be penalised.
   const snapFilterActive = minSnapPct > 1 || maxSnapPct < 100;
 
+  // The hand-written pool keys players by slug and maps the ESPN id
+  // separately -- nflHeadshot has resolved it this way since it was written.
+  // Anything reading an ESPN id here has to do the same, or it reads an empty
+  // roster and quietly offers no teammates at all.
+  const nflEspnId = (pl) => (pl && (pl.espnId || NFL_ESPN_ID[pl.id])) || null;
+  const nflStatusOf = React.useCallback(
+    (pl) => { const id = nflEspnId(pl); return id ? NFL_ROSTER_STATUS[String(id)] : undefined; },
+    [dataVersion]
+  );
+
+  // This player's own side. teamRoster/oppRoster are the two sides of the
+  // selected matchup, so which one he is on decides whose absences matter.
+  const playerSide = useMemo(() => {
+    if ((teamRoster?.players || []).some((pl) => pl.id === playerId)) return teamRoster;
+    if ((oppRoster?.players || []).some((pl) => pl.id === playerId)) return oppRoster;
+    return null;
+  }, [teamRoster, oppRoster, playerId]);
+
+  const teammateCandidates = useMemo(
+    () => (playerSide?.players || [])
+      .filter((pl) => pl.id !== playerId && nflEspnId(pl))
+      .map((pl) => ({ ...pl, pid: String(nflEspnId(pl)) })),
+    [playerSide, playerId]
+  );
+
+  const absentTeammates = useMemo(
+    () => teammateCandidates.filter((pl) => {
+      const st = nflStatusOf(pl);
+      return st === "out" || st === "questionable";
+    }).map((pl) => ({ ...pl, status: nflStatusOf(pl) })),
+    [teammateCandidates, nflStatusOf]
+  );
+
+  React.useEffect(() => {
+    if (absentTeammates.length) setTeammateDataWanted(true);
+  }, [absentTeammates.length]);
+
+  const teammateValueOf = React.useCallback((g) => statValueNFL(g, market), [market]);
+
+  const teammateSplits = useEspnTeammateSplits({
+    sport: "nfl",
+    candidates: teammateCandidates,
+    allGames,
+    inScopeGames: allGames,
+    chips: teammateChips,
+    valueOf: teammateValueOf,
+    wanted: teammateDataWanted,
+  });
+
   const filtered = useMemo(() => {
     let g = allGames.filter((game) => {
       if (side === "home" && !game.home) return false;
@@ -7638,10 +8040,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       }
       return true;
     });
+    // Before the window: "L5 without Nacua" should mean the last five games
+    // he missed, not whichever of the last five happened to be them.
+    g = teammateSplits.apply(g);
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, minSnapPct, maxSnapPct, snapFilterActive, lastN, applyRange]);
+  }, [allGames, side, opponent, minSnapPct, maxSnapPct, snapFilterActive, lastN, applyRange, teammateSplits.apply]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -7656,6 +8061,27 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const values = filtered.map((g) => statValueNFL(g, market));
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+
+  // What this market did in the games each absent teammate missed, counted
+  // off the same record the chips filter on.
+  const nflAbsences = useMemo(
+    () => espnAbsenceRows({
+      absent: absentTeammates,
+      allGames,
+      byEvent: teammateSplits.byEvent,
+      valueOf: teammateValueOf,
+      line: effectiveLine,
+      headshotFor: (pl) => nflHeadshot(pl),
+      noteFor: (st) => (st === "out"
+        ? "Listed out on ESPN's injury report"
+        : "Listed questionable on ESPN's injury report"),
+    }),
+    [absentTeammates, allGames, teammateSplits.byEvent, teammateValueOf, effectiveLine]
+  );
+
+  const nflAvailabilityNote = absentTeammates.length
+    ? `Everyone on this player's team currently listed out or questionable on ESPN's report. A rate is shown only where at least ${ABSENCE_MIN_GAMES} finished games were played without that teammate, and each one names the games it came from. ${ABSENCE_WINDOW_CAVEAT}`
+    : "Nobody on this player's team is currently listed out or questionable on ESPN's report.";
   // Deliberately keyed off `line` (only non-null once the user has actually
   // dragged the handle to a custom value), not `effectiveLine` -- including
   // the live drag position here made the axis grow a step every time the
@@ -7690,9 +8116,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     if (opponent !== 'all') n += 1;
     if (lastN !== 10) n += 1;
     if (snapFilterActive) n += 1;
+    n += teammateChips.length;
     n += scopeFilterCount(logScope);
     return n;
-  }, [side, opponent, lastN, snapFilterActive, logScope]);
+  }, [side, opponent, lastN, snapFilterActive, logScope, teammateChips.length]);
 
   const splitCells = buildHitRateSplits({
     sport: "nfl",
@@ -7861,6 +8288,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     />
   );
 
+  const teammateModeSummary = teammateChips.length
+    ? `${teammateChips.filter((c) => c.mode === "with").length} with · ${teammateChips.filter((c) => c.mode === "without").length} without`
+    : "Tap to cycle";
+
   const filtersBody = (
     <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
       {/* First, because it is the outermost narrowing: it decides which games
@@ -7929,6 +8360,38 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
           ))}
         </div>
       </FilterSection>
+
+      {/* With/Without teammates, off each game's dressed roster (see
+           lib/participation.js). This is the cut that turns a WR2's season
+           line into what he did the weeks the WR1 was inactive. */}
+      <FilterSection
+        shaded
+        title="Lineup"
+        action={
+          <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>
+            {teammateSplits.loading ? "Loading…" : teammateModeSummary}
+          </span>
+        }
+      >
+        {/* Nothing to cycle when the log carries no game ids. Said plainly
+             rather than offering tiles that would empty the chart. */}
+        {!teammateSplits.supported ? (
+          <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)" }}>
+            This player's log is the generated fallback, so it carries no game ids — who
+            else played in those games can't be looked up, and no with/without split is offered.
+          </div>
+        ) : (
+        <LineupTiles
+          teammates={teammateCandidates}
+          chips={teammateChips}
+          onChange={setTeammateChips}
+          diffs={teammateSplits.diffs}
+          loading={teammateSplits.loading}
+          statusFor={nflStatusOf}
+          unit={marketLabel}
+        />
+        )}
+      </FilterSection>
     </FilterPanel>
   );
 
@@ -7958,7 +8421,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
            desktop alike. */}
       <FilterPanelLauncher
         open={filtersOpen}
-        onOpenChange={setFiltersOpen}
+        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
         activeCount={activeFilterCount}
         compact={compact}
         anchored
@@ -8343,8 +8806,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
               hits={matchupHits}
               total={matchupWindow.length}
               line={effectiveLine}
-              absences={[]}
-              availabilityNote="The NFL publishes no player availability feed this app can read, so there is no list of who is out around them. Nothing has been estimated to fill the gap."
+              absences={nflAbsences}
+              availabilityNote={nflAvailabilityNote}
             />
             <MatchupSplits
               rows={matchupSplitRows}
@@ -8419,9 +8882,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
 
   // The rail avatar is the app's standard avatar at 32px -- `inset` reveals the
   // team gradient as the ring, the same way the board and the feed draw it.
-  // No availability dot: the NFL feeds this app reads carry no player-level
-  // status, and a green dot on every row would be decoration standing in for
-  // data (CLAUDE.md rule 2 -- unknown is no dot, never a colour).
+  // The dot is ESPN's injury designation for that athlete, off the same
+  // per-team roster response the pool itself comes from. A player ESPN has no
+  // designation for still draws no dot -- unknown is never a colour.
   const v2Rail = (roster) => ((roster || {}).players || []).map((pl) => ({
     id: pl.id,
     name: pl.name,
@@ -8430,10 +8893,14 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     // sizing an avatar's wrapper does nothing, PlayerAvatar renders at the
     // size it is given (see docs/PROJECT_NOTES.md).
     team: pl.team,
-    espnId: pl.espnId,
+    espnId: nflEspnId(pl),
     meta: railMeta ? railMeta(pl) : pl.pos,
     active: pl.id === playerId,
-    dotFill: null,
+    status: nflStatusOf(pl) || null,
+    dotFill: (STATUS[nflStatusOf(pl)] || {}).dot || null,
+    // The word beside the dot for the two states worth stopping on. Never
+    // on an active player -- see the WNBA rail for why.
+    statusWord: nflStatusOf(pl) === "out" || nflStatusOf(pl) === "questionable" ? nflStatusOf(pl) : null,
     dotRing: "var(--surface-1)",
     // No batting order here, and no starter/depth-chart feed either, so the
     // rail stays in roster order rather than inventing a hierarchy.
@@ -8441,6 +8908,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     avatar: (
       <PlayerAvatar
         name={pl.name} team={pl.team} sport="nfl" colorMap={NFL_TEAM_COLORS}
+        status={nflStatusOf(pl)}
         headshotSrc={nflHeadshot(pl)} size={32} inset={2} surface="var(--bg)"
       />
     ),
@@ -8485,6 +8953,39 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     />
   );
 
+  // Both sides' reports, for the Injuries tab. Built from the same
+  // designations the rails read, so the tab and the dots cannot disagree.
+  // An empty list means nobody is listed -- not that the league is
+  // uncovered. The two are different sentences on screen.
+  // The counted with/without split for each listed player, keyed so the
+  // Injuries tab can print it beside the name. Own side only: this player
+  // never appears in a game *with* an opponent, so there is nothing to split.
+  const absenceEffectById = useMemo(() => {
+    const m = {};
+    (nflAbsences || []).forEach((r) => { if (r.espnId != null) m[String(r.espnId)] = r; });
+    return m;
+  }, [nflAbsences]);
+
+  const v3InjuryTeams = [v2AwayRoster, v2HomeRoster]
+    .map((roster) => {
+      const players = ((roster || {}).players || [])
+        .filter((pl) => { const st = nflStatusOf(pl); return st === "out" || st === "questionable"; })
+        .map((pl) => {
+          const row = absenceEffectById[String(nflEspnId(pl))];
+          return {
+            id: pl.id, name: pl.name, team: pl.team, espnId: nflEspnId(pl),
+            status: nflStatusOf(pl), note: railMeta ? railMeta(pl) : pl.pos,
+            // Only where a split exists. An opponent, or a teammate whose
+            // games could not be checked, gets no line rather than a blank one.
+            effect: row ? row.effect : null,
+          };
+        });
+      if (!players.length || !roster) return null;
+      const abbr = ((roster.players || [])[0] || {}).team;
+      return abbr ? { abbr, slug: abbr, sport: "nfl", players } : null;
+    })
+    .filter(Boolean);
+
   const v2Page = (
     <PlayerDetailV2
       sport="nfl"
@@ -8499,6 +9000,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       })}
       slipCount={pickIds ? pickIds.size : null}
       onOpenSlip={onOpenSlip}
+      availability={nflStatusOf(player) || null}
+      availabilityCovered
+      injuryTeams={v3InjuryTeams}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "nfl", scope: logScope, onChange: setLogScope })}
       windows={v3Windows}
@@ -8530,11 +9034,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       card={{
         positionShort: player.pos,
         teamAbbr: playerOnTeamA ? v2AwayAbbr : v2HomeAbbr,
-        status: null,
+        status: nflStatusOf(player) || null,
         avatar: (
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nfl" team={player.team}
             colorMap={NFL_TEAM_COLORS} headshotSrc={nflHeadshot(player)}
+            status={nflStatusOf(player)}
             surface="var(--surface-sunken)" size={72} inset={3} fadeIn
           />
         ),
@@ -8542,7 +9047,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       ownRail={{
         label: v2AwayRoster.label,
         players: v2Rail(v2AwayRoster),
-        legend: "No availability feed for this league, so no dots — never assumed. Rail order is the roster's, not a depth chart.",
+        legend: "Dots are ESPN's injury report. Rail order is the roster's, not a depth chart.",
       }}
       oppRail={{ label: v2HomeRoster.label, players: v2Rail(v2HomeRoster) }}
       // The band is built from the matchup, which is always there. The slate
@@ -8852,8 +9357,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
           hits={hits}
           total={values.length}
           line={effectiveLine}
-          absences={[]}
-          availabilityNote="The NFL's injury report isn't a feed this app reads, so there is no list of who is out around them. Nothing has been estimated to fill the gap."
+          absences={nflAbsences}
+          availabilityNote={nflAvailabilityNote}
         />
 
         <HitRateSplits
@@ -9686,7 +10191,7 @@ function parseWNBAGameLogResponse(data, season) {
       (cat.events || []).forEach((ev) => {
         const meta = events[ev.eventId];
         if (!meta) return;
-        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType };
+        if (!byEvent[ev.eventId]) byEvent[ev.eventId] = { meta, stats: {}, seasonType, eventId: ev.eventId };
         (ev.stats || []).forEach((val, i) => {
           const key = names[i];
           if (key) byEvent[ev.eventId].stats[key] = val;
@@ -9702,7 +10207,7 @@ function parseWNBAGameLogResponse(data, season) {
     // WNBA_TEAM_DEF/the defense-rank tables at all, so they're dropped here
     // rather than crashing every lookup that expects a real team abbreviation.
     .filter(({ meta }) => knownTeams.has(meta.opponent?.abbreviation))
-    .map(({ meta, stats, seasonType }) => {
+    .map(({ meta, stats, seasonType, eventId }) => {
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
       const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
@@ -9712,6 +10217,10 @@ function parseWNBAGameLogResponse(data, season) {
         team: meta.team?.abbreviation,
         seasonType,
         season,
+        // The ESPN event id, kept so lib/participation.js can ask who else
+        // played in this game. Dropping it here is what left the With/Without
+        // teammate filter unbuildable outside MLB.
+        eventId,
         home: meta.atVs !== "@",
         minutes: num(stats.minutes),
         pts: num(stats.points),
@@ -9742,7 +10251,7 @@ async function fetchWNBAPlayerGameLog(espnId, season = WNBA_LOG_SEASON) {
   // and `season`. A leftover v2 payload has neither, so the log-scoping
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
-  const cacheKey = `wnba_gamelog_v3_${key}`;
+  const cacheKey = `wnba_gamelog_v4_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -9775,14 +10284,6 @@ async function fetchWNBAPlayerGameLog(espnId, season = WNBA_LOG_SEASON) {
 // Null means "we have no games for this player" -- callers exclude them rather
 // than invent a line for them. Keyed on espnId so a live-roster player resolves
 // the same way a hand-written one does.
-// Identifies one game across two players' logs. Date *and* opponent, not date
-// alone: two teammates always share both, while two players on different teams
-// playing the same night share only the date. Matching on the date by itself
-// therefore counts a player traded mid-season as having "played with" someone
-// they were never on the roster with -- and if the two actually faced each
-// other, the opponents differ too (each one's opponent is the other's team), so
-// this excludes that case as well.
-const wnbaGameKey = (g) => `${g.date}|${g.opp}`;
 
 function getWNBAGames(player, seedOffset) {
   if (!player) return [];
@@ -10049,6 +10550,9 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  // With/Without teammate chips, keyed on the ESPN athlete id.
+  const [teammateChips, setTeammateChips] = useState([]);
+  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);
@@ -10076,6 +10580,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     setMaxMinutes(40);
     setMinutesRangeEnabled(false);
     setLine(null);
+    setTeammateChips([]);
   };
 
   // Resolved from the matchup's own rosters first: those are live, so a player
@@ -10210,44 +10715,45 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     if ((matchup?.teamB?.players || []).some((p) => p.id === playerId)) return matchup.teamB;
     return null;
   }, [matchup, playerId]);
-  const absentTeammates = useMemo(
-    () => (playerSide?.players || []).filter(
-      (p) => p.id !== playerId && (statusOf(p) === "out" || statusOf(p) === "questionable")
-    ),
-    [playerSide, playerId, statusOf]
+  // Only teammates with an ESPN id can be found in a game's boxscore, so one
+  // without is left out of the tiles rather than shown as a chip that could
+  // never filter anything.
+  const teammateCandidates = useMemo(
+    () => (playerSide?.players || [])
+      .filter((p) => p.id !== playerId && p.espnId)
+      .map((p) => ({ ...p, pid: String(p.espnId) })),
+    [playerSide, playerId]
   );
 
-  // espnId -> Set of dates that teammate actually appeared in, or null when
-  // their log could not be loaded. Fetched once per absent teammate per player
-  // selection: switching market, line or filters re-counts the same logs
-  // without going back to the network.
-  const [teammateGameDates, setTeammateGameDates] = useState({});
-  const teammateLogsRequested = React.useRef(new Set());
+  const absentTeammates = useMemo(
+    () => teammateCandidates
+      .filter((p) => statusOf(p) === "out" || statusOf(p) === "questionable")
+      .map((p) => ({ ...p, status: statusOf(p) })),
+    [teammateCandidates, statusOf]
+  );
+
+  // Opening the page with somebody out is itself a reason to load the
+  // participation record, exactly as opening the panel is.
   React.useEffect(() => {
-    teammateLogsRequested.current = new Set();
-    setTeammateGameDates({});
-  }, [playerId]);
-  React.useEffect(() => {
-    const todo = absentTeammates.filter((p) => p.espnId && !teammateLogsRequested.current.has(String(p.espnId)));
-    if (!todo.length) return undefined;
-    todo.forEach((p) => teammateLogsRequested.current.add(String(p.espnId)));
-    let cancelled = false;
-    Promise.all(
-      todo.map((p) =>
-        fetchWNBAPlayerGameLog(p.espnId)
-          .then((games) => [String(p.espnId), games && games.length ? new Set(games.map(wnbaGameKey)) : null])
-          .catch(() => [String(p.espnId), null])
-      )
-    ).then((pairs) => {
-      if (!cancelled) setTeammateGameDates((prev) => ({ ...prev, ...Object.fromEntries(pairs) }));
-    });
-    return () => { cancelled = true; };
-  }, [absentTeammates]);
+    if (absentTeammates.length) setTeammateDataWanted(true);
+  }, [absentTeammates.length]);
 
   const opponentsForPlayer = useMemo(
     () => Array.from(new Set(allGames.map((g) => g.opp))).sort(),
     [allGames]
   );
+
+  const teammateValueOf = React.useCallback((g) => statValue(g, market, rebSplit), [market, rebSplit]);
+
+  const teammateSplits = useEspnTeammateSplits({
+    sport: "wnba",
+    candidates: teammateCandidates,
+    allGames,
+    inScopeGames: allGames,
+    chips: teammateChips,
+    valueOf: teammateValueOf,
+    wanted: teammateDataWanted,
+  });
 
   const filtered = useMemo(() => {
     let g = allGames.filter((game) => {
@@ -10257,10 +10763,13 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
       return true;
     });
+    // Before the window, so "L10 without Sabally" means the last ten games
+    // she missed rather than whichever of the last ten happened to be them.
+    g = teammateSplits.apply(g);
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, minMinutes, maxMinutes, lastN, applyRange]);
+  }, [allGames, side, opponent, minMinutes, maxMinutes, lastN, applyRange, teammateSplits.apply]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -10308,9 +10817,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     if (opponent !== 'all') n += 1;
     if (lastN !== 10) n += 1;
     if (minMinutes !== 0 || maxMinutes !== 40) n += 1;
+    n += teammateChips.length;
     n += scopeFilterCount(logScope);
     return n;
-  }, [side, opponent, lastN, minMinutes, maxMinutes, logScope]);
+  }, [side, opponent, lastN, minMinutes, maxMinutes, logScope, teammateChips.length]);
 
   const splitCells = buildHitRateSplits({
     sport: "wnba",
@@ -10342,39 +10852,36 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // id isn't on tonight's slate (the jumpMissed case), and every hook below has
   // to keep running for the guard that renders that state to be reached at all.
   const playerLogIsReal = !!(player?.espnId && WNBA_REAL_GAME_LOGS[String(player.espnId)]);
-  const absences = useMemo(() => absentTeammates.map((p) => {
-    const dates = p.espnId ? teammateGameDates[String(p.espnId)] : null;
-    let split;
+  // Counted off the same participation record the chips filter on, so this
+  // block and a chip can never state the same split two different ways.
+  const absences = useMemo(() => {
     if (!playerLogIsReal) {
-      split = { state: "unsupported", reason: "This player's game log is the generated fallback, not a real one, so there is nothing here worth splitting." };
-    } else if (!p.espnId) {
-      split = { state: "unsupported", reason: `No game log is available for ${p.name}, so the games they missed can't be counted.` };
-    } else if (dates === undefined) {
-      split = { state: "pending" };
-    } else if (dates === null) {
-      split = { state: "unsupported", reason: `Couldn't load ${p.name}'s game log, so the games they missed can't be counted.` };
-    } else {
-      split = absenceSplit({
-        games: allGames,
-        valueOf: (g) => statValue(g, market, rebSplit),
-        line: effectiveLine,
-        playedIn: (g) => dates.has(wnbaGameKey(g)),
+      return absentTeammates.map((p) => {
+        const { effect, count } = absenceEffectCopy(
+          { state: "unsupported", reason: "This player's game log is the generated fallback, not a real one, so there is nothing here worth splitting." },
+          effectiveLine,
+          p.name
+        );
+        return {
+          name: p.name, team: p.team, position: p.pos, espnId: p.espnId,
+          headshotSrc: wnbaHeadshot(p.espnId), status: p.status,
+          note: p.status === "out" ? "Listed out on ESPN's availability report" : "Listed questionable on ESPN's availability report",
+          effect, count,
+        };
       });
     }
-    const { effect, count } = absenceEffectCopy(split, effectiveLine, p.name);
-    const status = statusOf(p);
-    return {
-      name: p.name,
-      team: p.team,
-      position: p.pos,
-      espnId: p.espnId,
-      headshotSrc: wnbaHeadshot(p.espnId),
-      status,
-      note: status === "out" ? "Listed out on ESPN's availability report" : "Listed questionable on ESPN's availability report",
-      effect,
-      count,
-    };
-  }), [absentTeammates, teammateGameDates, playerLogIsReal, allGames, market, rebSplit, effectiveLine, statusOf]);
+    return espnAbsenceRows({
+      absent: absentTeammates,
+      allGames,
+      byEvent: teammateSplits.byEvent,
+      valueOf: teammateValueOf,
+      line: effectiveLine,
+      headshotFor: (p) => wnbaHeadshot(p.espnId),
+      noteFor: (st) => (st === "out"
+        ? "Listed out on ESPN's availability report"
+        : "Listed questionable on ESPN's availability report"),
+    });
+  }, [absentTeammates, playerLogIsReal, allGames, teammateSplits.byEvent, teammateValueOf, effectiveLine]);
 
   // Season-wide average for the *currently selected market*, distinct from
   // `avg` (which is scoped to `filtered`, i.e. whatever the location/opponent/
@@ -10506,6 +11013,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     />
   );
 
+  const teammateModeSummary = teammateChips.length
+    ? `${teammateChips.filter((c) => c.mode === "with").length} with · ${teammateChips.filter((c) => c.mode === "without").length} without`
+    : "Tap to cycle";
+
   const filtersBody = (
     <FilterPanel activeCount={activeFilterCount} onReset={resetFilters}>
       {/* First, because it is the outermost narrowing: it decides which games
@@ -10564,6 +11075,38 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
           onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
         />
       </FilterSection>
+
+      {/* With/Without teammates, off each game's boxscore (see
+           lib/participation.js). The same record the block under the chart
+           counts its absences from. */}
+      <FilterSection
+        shaded
+        title="Lineup"
+        action={
+          <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>
+            {teammateSplits.loading ? "Loading…" : teammateModeSummary}
+          </span>
+        }
+      >
+        {/* Nothing to cycle when the log carries no game ids. Said plainly
+             rather than offering tiles that would empty the chart. */}
+        {!teammateSplits.supported ? (
+          <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)" }}>
+            This player's log is the generated fallback, so it carries no game ids — who
+            else played in those games can't be looked up, and no with/without split is offered.
+          </div>
+        ) : (
+        <LineupTiles
+          teammates={teammateCandidates}
+          chips={teammateChips}
+          onChange={setTeammateChips}
+          diffs={teammateSplits.diffs}
+          loading={teammateSplits.loading}
+          statusFor={statusOf}
+          unit={marketLabel}
+        />
+        )}
+      </FilterSection>
     </FilterPanel>
   );
 
@@ -10593,7 +11136,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
            desktop alike. */}
       <FilterPanelLauncher
         open={filtersOpen}
-        onOpenChange={setFiltersOpen}
+        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
         activeCount={activeFilterCount}
         compact={compact}
         anchored
@@ -11167,11 +11710,29 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // Both teams' reports. The WNBA publishes a status feed (see statusOf), so
   // an empty list here means nobody is listed -- not that the league is
   // uncovered. The two are different sentences on screen.
+  // The counted with/without split for each listed player, keyed so the
+  // Injuries tab can print it beside the name. Own side only: this player
+  // never appears in a game *with* an opponent, so there is nothing to split.
+  const absenceEffectById = useMemo(() => {
+    const m = {};
+    (absences || []).forEach((r) => { if (r.espnId != null) m[String(r.espnId)] = r; });
+    return m;
+  }, [absences]);
+
   const v3InjuryTeams = [v2AwayRoster, v2HomeRoster]
     .map((roster) => {
       const players = ((roster || {}).players || [])
         .filter((p) => { const s = statusOf(p); return s === "out" || s === "questionable"; })
-        .map((p) => ({ id: p.id, name: p.name, team: p.team, espnId: p.espnId, status: statusOf(p), note: railMeta ? railMeta(p) : p.pos }));
+        .map((pl) => {
+          const row = absenceEffectById[String(pl.espnId)];
+          return {
+            id: pl.id, name: pl.name, team: pl.team, espnId: pl.espnId,
+            status: statusOf(pl), note: railMeta ? railMeta(pl) : pl.pos,
+            // Only where a split exists. An opponent, or a teammate whose
+            // games could not be checked, gets no line rather than a blank one.
+            effect: row ? row.effect : null,
+          };
+        });
       if (!players.length || !roster) return null;
       const abbr = ((roster.players || [])[0] || {}).team;
       return abbr ? { abbr, slug: abbr, sport: "wnba", players } : null;
@@ -14949,7 +15510,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       const ids = boxscoreLineups[game.gamePk];
       if (!ids) return false;
       for (const chip of teammateChips) {
-        const played = ids.has(chip.mlbId);
+        const played = ids.has(chip.pid);
         if (chip.mode === "with" && !played) return false;
         if (chip.mode === "without" && played) return false;
       }
@@ -15071,7 +15632,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     const push = (p, available) => {
       if (!p.mlbId || p.mlbId === player.mlbId || p.pos === "SP" || seen.has(p.mlbId)) return;
       seen.add(p.mlbId);
-      out.push({ ...p, available, badge: statusFor(p.mlbId, available), inLineup: lineupIds.has(p.mlbId) });
+      out.push({ ...p, pid: p.mlbId, available, badge: statusFor(p.mlbId, available), inLineup: lineupIds.has(p.mlbId) });
     };
     liveTeamRoster.players.forEach((p) => push(p, true));
     teamRoster.players.forEach((p) => push(p, false));
@@ -15142,6 +15703,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       name: p.name,
       team: p.team,
       position: p.pos,
+      mlbId: p.mlbId,
       headshotSrc: mlbHeadshot(p.mlbId),
       fallbackSrc: mlbEspnHeadshot(p.id),
       status: p.badge.tone === "warn" ? "questionable" : "out",
@@ -15974,7 +16536,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     if (isPitcher || !liveOppRoster) return [];
     return liveOppRoster.players
       .filter((p) => p.mlbId && p.pos !== "SP")
-      .map((p) => ({ ...p, available: true, badge: null }));
+      .map((p) => ({ ...p, pid: p.mlbId, available: true, badge: null }));
   }, [liveOppRoster, isPitcher]);
 
   const teammateModeSummary = teammateChips.length
@@ -16600,11 +17162,29 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   );
   // Both teams' reports, which is what the mock's Injuries tab draws: anyone
   // on a report appears, whether or not they have a prop tonight.
+  // The counted with/without split for each listed player, keyed so the
+  // Injuries tab can print it beside the name. Own side only: this batter
+  // never appears in a game *with* an opponent, so there is nothing to split.
+  const absenceEffectById = useMemo(() => {
+    const m = {};
+    (mlbAbsences || []).forEach((r) => { if (r.mlbId != null) m[String(r.mlbId)] = r; });
+    return m;
+  }, [mlbAbsences]);
+ 
   const v3InjuryTeams = [v2AwayRoster, v2HomeRoster]
     .map((roster) => {
       const players = ((roster || {}).players || [])
         .filter((p) => { const s = mlbStatusOf(p); return s === "out" || s === "questionable"; })
-        .map((p) => ({ id: p.id, name: p.name, team: p.team, mlbId: p.mlbId, status: mlbStatusOf(p), note: railMeta ? railMeta(p) : p.pos }));
+        .map((p) => {
+          const row = absenceEffectById[String(p.mlbId)];
+          return {
+            id: p.id, name: p.name, team: p.team, mlbId: p.mlbId,
+            status: mlbStatusOf(p), note: railMeta ? railMeta(p) : p.pos,
+            // Only where a split exists. An opponent, or a teammate whose
+            // games could not be checked, gets no line rather than a blank one.
+            effect: row ? row.effect : null,
+          };
+        });
       if (!players.length || !roster) return null;
       const abbr = (roster.players[0] || {}).team;
       return abbr ? { abbr, slug: abbr, sport: "mlb", players } : null;
@@ -18294,6 +18874,12 @@ function pickStatus(p) {
     }
     return undefined;
   }
+  // NBA and NFL come off the league-wide roster fetch on mount (see the two
+  // fetchLeagueRosters effects). An espnId the map has never heard of returns
+  // undefined rather than "active": before that fetch lands the map is empty,
+  // and a whole league reading available would be a claim, not a gap.
+  if (p.sport === "nba" && p.espnId) return NBA_ROSTER_STATUS[String(p.espnId)];
+  if (p.sport === "nfl" && p.espnId) return NFL_ROSTER_STATUS[String(p.espnId)];
   return undefined;
 }
 
@@ -24568,7 +25154,7 @@ function newsWirePropLine(status, affects) {
 }
 
 // The rail's injury wire. Everyone the app currently has a designation for --
-// which means the WNBA rosters it fetched on mount, plus MLB once those pages
+// the WNBA, NBA and NFL rosters fetched on mount, plus MLB once those pages
 // have been open. Players reading ACTIVE are only listed when there's a pick of
 // yours riding on them; the rest of a healthy league isn't news.
 // The leagues that publish an availability designation this app can read, and
@@ -24576,16 +25162,20 @@ function newsWirePropLine(status, affects) {
 //
 // The gate lives in buildNewsInjuryWire below, and these two lists are what the
 // Injuries page uses to say so out loud. Kept beside it deliberately: a filter
-// row offering NFL and returning nothing would read as "nobody in the NFL is
-// hurt", and that is a worse failure than the missing feed itself.
+// row offering a league and returning nothing would read as "nobody in that
+// league is hurt", and that is a worse failure than a missing feed.
+//
+// All four are here now. NFL and NBA sat in the missing list for a year on the
+// strength of a fetch whose status map the caller discarded -- ESPN serves
+// `athlete.injuries` on the same `/teams/{id}/roster` response for every
+// league, and it was already being parsed. Nothing new is requested for this.
 const INJURY_FEED_SPORTS = [
   { id: "wnba", label: "WNBA" },
   { id: "mlb", label: "MLB" },
+  { id: "nfl", label: "NFL" },
+  { id: "nba", label: "NBA" },
 ];
-const INJURY_FEED_MISSING = [
-  { id: "nfl", label: "The NFL" },
-  { id: "nba", label: "the NBA" },
-];
+const INJURY_FEED_MISSING = [];
 
 // How far ahead the prop feed looks, and how far back it keeps a game.
 //
@@ -24625,8 +25215,9 @@ function feedRowIsNear(r, now) {
 
 function buildNewsInjuryWire(pool, affectsByPlayer, watchingKeys) {
   const rows = [];
+  const covered = new Set(INJURY_FEED_SPORTS.map((s) => s.id));
   pool.forEach((entry) => {
-    if (entry.sport !== "wnba" && entry.sport !== "mlb") return;
+    if (!covered.has(entry.sport)) return;
     const status = newsPlayerStatus(entry);
     if (!status) return;
     const key = `${entry.sport}:${entry.playerId}`;
@@ -25102,6 +25693,7 @@ export default function PropLedger() {
           liveOnly: !p.id,
         }));
       NFL_ROSTER_COVERAGE = { teamsLoaded: res.teamsLoaded, teamsTotal: res.teamsTotal };
+      NFL_ROSTER_STATUS = res.byId || {};
       bumpNflRefresh();
       // Their logs, once we know who they are. Keyed by our slug so a player
       // the hand-written pool already had keeps the id his saved picks use.
@@ -25181,6 +25773,7 @@ export default function PropLedger() {
         liveOnly: !p.id,
       }));
       NBA_ROSTER_COVERAGE = { teamsLoaded: res.teamsLoaded, teamsTotal: res.teamsTotal };
+      NBA_ROSTER_STATUS = res.byId || {};
       bumpNbaRefresh();
       runPooled(NBA_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog);
     });

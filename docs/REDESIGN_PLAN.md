@@ -1796,3 +1796,71 @@ this batch, each time producing a `ReferenceError` for an identifier that was
 plainly in the source. `rm -rf node_modules/.vite` and a dev-server restart
 cleared it both times. If a symbol "is not defined" but you can see it
 declared, restart before debugging.
+
+## Interlude — the teammate filter, on all four sports
+
+Not a batch. Alex, after the batch-3 report: *"what I want to make sure is that
+users can filter teammates even on NBA and NFL. If Puka Nacua has been out 3
+games this year and 3 last year, that is very crucial research when looking at a
+guy like Davante Adams to see how he performs when he becomes the #1 target."*
+
+This was the prerequisite this plan already scheduled before batch 5. It was
+brought forward because part of it turned out to be a repair, not a build.
+
+**The mechanics are in `docs/PROJECT_NOTES.md`** — read that first; it records
+the three per-league endpoints, why the NFL cannot use its own boxscore, and
+the two places `eventId` was being dropped between the parser and the page.
+
+What shipped:
+
+- `src/lib/participation.js` — `fetchGameParticipants(sport, eventId, teamAbbr)`
+  and the `useParticipation` hook, with MLB's existing boxscore fetcher left
+  where it is.
+- `useEspnTeammateSplits` + `espnAbsenceRows` in `PropLedger.jsx` — the rest,
+  written once rather than three times.
+- `LineupTiles` is league-neutral. It keyed on `p.mlbId` throughout; it now
+  keys on `p.pid`, whatever id the calling league identifies a player by. MLB's
+  chips moved to the same field.
+- A **Lineup** section on the NBA, NFL and WNBA filter panels, matching the one
+  MLB has had. The WNBA's absence block moved off its old per-teammate
+  game-log-dates fetch onto the shared record, so the chips and the block below
+  the chart cannot state the same split two different ways (rule 9).
+- Availability dots, status words and a populated Injuries tab on the NBA and
+  NFL player pages — see PROJECT_NOTES for why those leagues had none.
+
+### Verified, not assumed
+
+Driven in the browser, all four sports, each cycling one teammate tile through
+neutral → WITH → W/O and reading the game count back:
+
+| Player | Teammate | neutral | with | without |
+|---|---|---|---|---|
+| Jalen Brunson (NBA) | Josh Hart | 84 | 72 | 12 |
+| Jayden Daniels (NFL) | Terry McLaurin | 7 | 6 | 1 |
+| Sabrina Ionescu (WNBA) | Satou Sabally | — | — | chip live, −9.2 pts differential |
+| Mookie Betts (MLB) | Shohei Ohtani | 98 | 93 | 5 |
+
+72 + 12 = 84 on the NBA row: the two sides partition the sample exactly, which
+is the check that the record is real rather than plausible.
+
+### Departures and gaps, stated
+
+- **The Injuries tab now prints the split under a listed player's name, which
+  the mock does not draw.** The v3 mobile frame has a note slot on that row and
+  nothing else; the counted "N of M over the line without him" is the reason to
+  care that someone is on the report at all, and the app now holds it for every
+  league. Easy to remove if the transcription rule should win here.
+- **The `MissingAround` block is dead code and has been for a while.** All four
+  pages `return v2Page` above their old layout, and the `setViewMode("matchup")`
+  trigger sits below that return, so the matchup branch is unreachable too. Its
+  copy is kept because the desktop v3 frame in batch 5 draws the same blocks.
+- **A generated fallback log has no event ids**, so no split can be offered for
+  that player. The Lineup section says so in place of the tiles rather than
+  showing chips that would empty the chart — an empty chart reads as a real and
+  devastating split, which is the worst available failure.
+- **The teammate control is desktop-only**, which is where the mocks put it:
+  the v3 mobile Player Detail frame has no lineup filter, and nothing was added
+  to it. Batch 5 rebuilds the desktop panel on this same record.
+- **Not verified on the phone layout.** The split data was proven on the
+  desktop surface; the mobile Injuries row renders it through the same props,
+  but the browser pane hung repeatedly at 375px before that could be driven.

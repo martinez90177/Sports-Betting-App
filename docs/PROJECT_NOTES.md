@@ -645,3 +645,75 @@ no `npm` to run one.
 
 If another `.sh` ever appears in the folder it will block uploads again — the
 filter looks at the working tree, not at git, so `.gitignore` is no defence.
+
+## Who played in a past game — the participation record — 2026-08-28
+
+`src/lib/participation.js` answers one narrow question: *did this specific
+player appear in this specific finished game?* It is what turns "Davante Adams
+averages 5.1 catches" into "Adams in the six games Puka Nacua missed", and it
+backs both the With/Without teammate tiles and the absence split under the
+chart.
+
+**Three mechanisms, one per league family**, because the sources genuinely
+differ:
+
+| League | Source | Why |
+|---|---|---|
+| MLB | statsapi `game/{gamePk}/boxscore` → `batters` + `pitchers` | Already existed as `fetchMLBGameBoxscoreLineupIds`. The `players` dict is the whole active roster including the bench; those two arrays are who actually appeared. |
+| NBA / WNBA | `site.api.espn.com/.../summary?event={id}` → `boxscore.players[].statistics[].athletes[]`, skipping `didNotPlay === true` | A basketball boxscore lists the entire active list, flagging DNPs with a reason. One request answers for both teams exactly. |
+| NFL | `sports.core.api.espn.com/v2/.../events/{id}/competitions/{id}/competitors/{teamId}/roster` → `entries`, skipping `didNotPlay === true` | **The NFL summary boxscore cannot be used.** It lists only players who recorded a statistic — 71 names in a game where 128 dressed. A receiver who played thirty snaps and was never targeted is simply absent from it, and would be counted as a game he missed, which corrupts exactly the number the feature exists to produce. The core game roster is the dressed list with a per-player flag. Verified CORS-open (`access-control-allow-origin: *`) and serving 2024 games. It answers one team per request, which is the team we want anyway. |
+
+The competition id equals the event id for every NFL game ESPN serves, and
+`TEAM_ESPN_IDS` in `lib/rosters.js` supplies the competitor. Our `WAS` is
+ESPN's `WSH`; `TO_ESPN_ABBR` handles it, the same pair `nflOurAbbr` converts the
+other way.
+
+A finished game's participation cannot change, so everything is cached with no
+TTL (in-memory Map + sessionStorage, `pp_part_v1_*`). **A failed request is not
+cached** — the next visit retries rather than inheriting a network blip as a
+permanent hole.
+
+Three states, never two: a Set (played / did not play), `null` (the request
+failed — the game is *unchecked* and is dropped from both sides of a split),
+and absent from the map (not asked yet).
+
+### What had to be repaired to make it possible
+
+- **The three ESPN game-log parsers grouped stats by `ev.eventId` and then threw
+  the id away** in the `.map()`. Without it there is no key to join a
+  teammate's participation against a player's log, which is the whole reason
+  NBA/NFL/WNBA had no teammate filter while MLB had one. All three now keep it,
+  and their payload cache keys were bumped (`nba_gamelog_v3_`, `nfl_gamelog_v4_`,
+  `wnba_gamelog_v4_`) — a stored payload without the field makes the control
+  quietly not appear, which is the failure those version bumps exist for.
+- **`normalizeNFLGame` rebuilds a game from a named field list rather than
+  spreading it**, so it dropped `eventId` again one layer further down. The
+  symptom was every NFL player reading "generated fallback, no game ids" with a
+  perfectly real log behind him. Its own comment already warned about this,
+  from the time it did the same to `seasonType`/`season`/`team`. Anything a
+  surface needs must be named in that object.
+
+## Availability: all four leagues, from a fetch that was already happening — 2026-08-28
+
+`lib/rosters.js` `fetchTeamRoster` has always parsed `athlete.injuries` into
+`out` / `questionable` / `active` for **every** league — it is one ESPN
+`/teams/{id}/roster` response and the status map comes back in `res.byId`.
+
+The NBA and NFL call sites kept `res.players` and **discarded `res.byId`**. So
+four surfaces said "this league publishes no player availability feed this app
+can read" while the app was fetching that league's injuries thirty-two times on
+mount. On 2026-08-28 the endpoint was serving 16 designations for the Chiefs,
+20 for the Eagles and 1 for the Celtics.
+
+Now stored in `NBA_ROSTER_STATUS` / `NFL_ROSTER_STATUS` and read by
+`pickStatus`, which had only `wnba` and `mlb` branches. `INJURY_FEED_MISSING`
+is empty and `INJURY_FEED_SPORTS` lists all four.
+
+An id the map has never heard of returns `undefined`, not `"active"` — before
+the fetch lands the map is empty, and a whole league reading available would be
+a claim rather than a gap (CLAUDE.md rule 2: unknown draws no dot).
+
+The hand-written NFL pool has **no `espnId` field** — its ids are slugs and
+`NFL_ESPN_ID` maps them. `nflHeadshot` has resolved it that way since it was
+written; anything else reading an ESPN id on that page must do the same or it
+silently sees an empty roster.

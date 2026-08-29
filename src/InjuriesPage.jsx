@@ -53,6 +53,15 @@ function Pill({ label, count, on, onPick, style }) {
   );
 }
 
+// "A, B and C" rather than "A and B and C". Four leagues joined with `and`
+// read as a list someone forgot to punctuate.
+function andList(items) {
+  const list = (items || []).filter(Boolean);
+  if (list.length <= 1) return list[0] || "";
+  if (list.length === 2) return `${list[0]} and ${list[1]}`;
+  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
 export default function InjuriesPage({
   rows = [],
   // Which leagues have an availability feed at all, so the page can name the
@@ -149,8 +158,8 @@ export default function InjuriesPage({
         scopeLabel={[sport === "all" ? "All leagues" : sport.toUpperCase(), status === "all" ? "All statuses" : status].join(" · ")}
         coverageNote={
           uncoveredSports.length
-            ? `${coveredSports.map((s) => s.label).join(" and ")} publish an availability feed this app can read. ${uncoveredSports.map((s) => s.label).join(" and ")} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
-            : ""
+            ? `${andList(coveredSports.map((s) => s.label))} publish an availability feed this app can read. ${andList(uncoveredSports.map((s) => s.label))} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
+            : `${andList(coveredSports.map((s) => s.label))} all publish an availability designation this app reads. A league showing nobody here has nobody designated, not nobody checked.`
         }
         loading={loading}
         onOpenProp={onOpenProp ? (r) => onOpenProp(r) : null}
@@ -222,7 +231,7 @@ export default function InjuriesPage({
               background: "var(--surface-sunken)", fontFamily: MONO, fontSize: 9.5,
               color: "var(--dim)", lineHeight: 1.65,
             }}>
-              {uncoveredSports.map((s) => s.label).join(" and ")} publish no availability designation this app can read,
+              {andList(uncoveredSports.map((s) => s.label))} publish no availability designation this app can read,
               so {uncoveredSports.length === 1 ? "it is" : "they are"} not listed here at all rather than listed as healthy.
             </div>
           )}

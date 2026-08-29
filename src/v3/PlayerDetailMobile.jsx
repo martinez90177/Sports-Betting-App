@@ -119,10 +119,11 @@ export default function PlayerDetailMobile({
   seasons = null,        // [{ id, label, active, onPick }]
   windows = null,        // { options: [{ id, label, active, onPick }], custom, onCustom }
   splits = null,         // [{ id, label, active, onPick }]
-  injuryTeams = null,    // [{ abbr, slug, sport, players: [{ id, name, note, status }] }]
-  // Does this league publish an availability feed at all? MLB and the WNBA do;
-  // the NBA and NFL feeds this app reads carry no player-level status. The two
-  // empty states say different things and must not be confused.
+  injuryTeams = null,    // [{ abbr, slug, sport, players: [{ id, name, note, status, effect }] }]
+  // Does this league publish an availability feed at all? All four do, off
+  // ESPN's per-team roster response -- but the flag stays, because "this
+  // league is not covered" and "nobody is listed tonight" are different
+  // sentences and a page that confuses them says something untrue.
   availabilityCovered = false,
   news = null,           // [{ id, when, headline }]
 }) {
@@ -853,6 +854,15 @@ export default function PlayerDetailMobile({
                   <span style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                   {p.note && (
                     <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.note}</span>
+                  )}
+                  {/* Beyond the mock, and deliberately: what this player's
+                      market did in the games that teammate missed is the
+                      reason to care that they are on the report at all, and
+                      the app now counts it for every league. Wraps rather
+                      than truncating -- it is a sentence, not a label. Absent
+                      where there is no counted split, never blank. */}
+                  {p.effect && (
+                    <span style={{ fontFamily: MONO, fontSize: 10.5, lineHeight: 1.55, color: "var(--text-2)" }}>{p.effect}</span>
                   )}
                 </div>
                 {ps && (
