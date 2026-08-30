@@ -15191,6 +15191,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // gamePk -> { home, away } starter ids, and a counter that re-renders once
   // the batched hand lookup has answered (the cache itself is module state).
   const [boxscoreStarters, setBoxscoreStarters] = useState({});
+  // Opposing-starter handedness as a filter, not just as a block. "all" |
+  // "R" | "L". Batters only: a pitcher does not face a pitcher.
+  const [handFilter, setHandFilter] = useState("all");
   const [pitchHandVersion, setPitchHandVersion] = useState(0);
   const [boxscoresLoading, setBoxscoresLoading] = useState(false);
   // Boxscores used to be fetched only once a chip was already active, which
@@ -15448,7 +15451,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
 
   const teammateScopeGamePks = useMemo(() => {
     if (isPitcher) return [];
-    if (!teammateChips.length && !teammateDataWanted) return [];
+    // The handedness filter reads the same boxscores: it needs the starter
+    // each side used, which is on the same response as the lineup ids.
+    if (!teammateChips.length && !teammateDataWanted && handFilter === "all") return [];
     const pks = Array.from(new Set(inScopeGames.map((g) => g.gamePk).filter(Boolean)));
     // Two tiers. With nothing committed yet these boxscores exist only to
     // compute the differentials printed on the chips, so the most recent 40
@@ -15458,8 +15463,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     // of them. (Capping both tiers at 40 was a bug: the gate could never be
     // satisfied for a player with a longer log, so the filter silently never
     // applied.) Each response is sessionStorage-cached per gamePk.
-    return teammateChips.length ? pks : pks.slice(-40);
-  }, [inScopeGames, teammateChips.length, teammateDataWanted, isPitcher]);
+    // A committed chip or a committed hand both need the sample to be
+    // exact, so both take every in-scope game rather than the recent 40.
+    return (teammateChips.length || handFilter !== "all") ? pks : pks.slice(-40);
+  }, [inScopeGames, teammateChips.length, teammateDataWanted, handFilter, isPitcher]);
 
   React.useEffect(() => {
     if (!teammateScopeGamePks.length) return;
@@ -15495,6 +15502,48 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     return () => { cancelled = true; };
   }, [teammateScopeGamePks, nextGame]);
 
+  // The opposing starter's hand for one game, or null when it cannot be
+  // established. Null is not "neither" -- see handMatches.
+  const oppStarterHand = React.useCallback((game) => {
+    const st = game && game.gamePk ? boxscoreStarters[game.gamePk] : null;
+    if (!st) return null;
+    // The starter on the other side from this batter.
+    const oppId = game.home ? st.away : st.home;
+    if (oppId == null) return null;
+    return mlbPitchHandCache.get(oppId) || null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boxscoreStarters, pitchHandVersion]);
+
+  // A game whose starter we could not resolve satisfies neither hand. It is
+  // dropped from the sample rather than counted as the other one -- the same
+  // rule the teammate filter follows, and for the same reason: "we could not
+  // check" and "it was the other hand" are different claims.
+  const handMatches = React.useCallback(
+    (game) => handFilter === "all" || oppStarterHand(game) === handFilter,
+    [handFilter, oppStarterHand]
+  );
+
+  // How many in-scope games each side can actually account for, so the
+  // control states its own reach instead of implying the whole log.
+  const handCounts = useMemo(() => {
+    let R = 0, L = 0, unknown = 0;
+    inScopeGames.forEach((g) => {
+      const h = oppStarterHand(g);
+      if (h === "R") R += 1;
+      else if (h === "L") L += 1;
+      else unknown += 1;
+    });
+    return { all: inScopeGames.length, R, L, unknown };
+  }, [inScopeGames, oppStarterHand]);
+
+  // True once every in-scope game has a starter resolved. Until then the
+  // hand predicate can only produce a partial answer, exactly like the
+  // teammate one.
+  const handDataReady = useMemo(
+    () => handFilter === "all" || inScopeGames.every((g) => !g.gamePk || boxscoreStarters[g.gamePk]),
+    [handFilter, inScopeGames, boxscoreStarters]
+  );
+
   // True once every in-scope game has a boxscore to check chips against.
   // Until then the teammate predicate can only produce a partial answer.
   const teammateDataReady = useMemo(
@@ -15510,7 +15559,12 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     // shows its own loading state meanwhile, so nothing is misrepresented as
     // a finished sample.
     const applyTeammates = !isPitcher && teammateChips.length > 0 && teammateDataReady;
+    // Same hold as the teammate filter: applying the predicate against a
+    // half-loaded starter map would collapse the chart and then grow it
+    // back as requests landed, which reads as a finished sample twice.
+    const applyHand = !isPitcher && handFilter !== "all" && handDataReady;
     let g = inScopeGames.filter((game) => {
+      if (applyHand && !handMatches(game)) return false;
       if (!applyTeammates) return true;
       if (!game.gamePk) return false;
       const ids = boxscoreLineups[game.gamePk];
@@ -15525,7 +15579,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [inScopeGames, lastN, isPitcher, teammateChips, boxscoreLineups, teammateDataReady, applyRange]);
+  }, [inScopeGames, lastN, isPitcher, teammateChips, boxscoreLineups, teammateDataReady, applyRange, handFilter, handDataReady, handMatches]);
 
   // Batter rate-stat card (PA/Hits/AVG/OBP/BABIP/K%) -- the top value is the
   // rate over whatever the filters above have narrowed "filtered" down to,
@@ -17256,6 +17310,40 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     });
   }, [isPitcher, teammateChips, mlbSplitGames, boxscoreLineups, teammateCandidates, opponentCandidates, mlbStatusOf]);
 
+  // The opposing-starter handedness filter.
+  //
+  // No mock draws this. Alex asked for it directly -- "add an option to
+  // filter between either RHP, LHP, or just all in general" -- and the data
+  // was already here: frame 1c's VS RHP block states the rate against
+  // tonight's starter's hand, off the same boxscore starters and the same
+  // pitcher lookup. This makes the whole page follow that split rather than
+  // one cell of it.
+  //
+  // Batters only. A pitcher does not face a pitcher, and the group is null
+  // rather than disabled so no dead control is drawn.
+  const v3Hands = useMemo(() => {
+    if (isPitcher) return null;
+    const opt = (id, label, count) => ({
+      id, label, count,
+      active: handFilter === id,
+      onPick: () => setHandFilter(id),
+    });
+    const g = (n) => `${n} ${n === 1 ? "game" : "games"}`;
+    return {
+      loading: boxscoresLoading,
+      options: [
+        opt("all", "All", g(handCounts.all)),
+        opt("R", "vs RHP", g(handCounts.R)),
+        opt("L", "vs LHP", g(handCounts.L)),
+      ],
+      // Said rather than left to be inferred from three counts that do not
+      // sum to the first one.
+      note: handCounts.unknown > 0
+        ? `${handCounts.unknown} of ${handCounts.all} games have no starter this app could resolve. They are left out of both hands rather than counted as one.`
+        : null,
+    };
+  }, [isPitcher, handFilter, handCounts, boxscoresLoading]);
+
   // Frame 1c's four blocks: SEASON / VS RHP / PARK / ORDER. The page used to
   // render v2's AVERAGE / MARGIN / LAST MEETING / PARK here -- the mock's grid
   // with the old contents in it, which is the one thing this redesign is not
@@ -17348,6 +17436,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       seasons={buildSeasons({ games: logGames, sport: "mlb", scope: logScope, onChange: setLogScope })}
       windows={v3Windows}
       splits={v3Splits}
+      hands={v3Hands}
       injuryTeams={v3InjuryTeams}
       lineups={v3Lineups}
       blocks={v3Blocks}

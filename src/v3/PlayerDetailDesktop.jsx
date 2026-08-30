@@ -126,6 +126,9 @@ export default function PlayerDetailDesktop({
   seasons = null,
   windows = null,
   splits = null,
+  // Opposing-starter handedness, MLB batters only. Not a mock control --
+  // see the note on the group below.
+  hands = null,
   injuryTeams = null,
   lineups = null,
   renderAvatar = null,
@@ -483,6 +486,36 @@ export default function PlayerDetailDesktop({
         </div>
       )}
 
+      {hands && hands.options && hands.options.length > 0 && (
+        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+            <span style={railLabel}>OPPOSING STARTER</span>
+            {hands.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+            {hands.options.map((h) => (
+              <div
+                key={h.id}
+                role="radio"
+                aria-checked={!!h.active}
+                tabIndex={0}
+                onClick={h.onPick}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); h.onPick(); } }}
+                style={{ ...railPill(h.active), justifyContent: "center", flexDirection: "column", gap: 0, minHeight: 42 }}
+              >
+                <span>{h.label}</span>
+                {/* Each side states the games it can actually account for,
+                    so the control never implies the whole log. */}
+                <span style={{ fontFamily: MONO, fontSize: 9.5, color: "var(--dim)" }}>{h.count}</span>
+              </div>
+            ))}
+          </div>
+          {/* What the filter cannot see. A game whose starter could not be
+              resolved is dropped from both sides rather than counted as the
+              other hand, so the reader is told how many that is. */}
+          {hands.note && <span style={railNote}>{hands.note}</span>}
+        </div>
+      )}
       {splits && splits.length > 0 && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
           <span style={railLabel}>SPLITS</span>

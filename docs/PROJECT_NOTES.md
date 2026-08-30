@@ -856,3 +856,48 @@ the bug. The `AJ` entries are the initials circles that became `PlayerAvatar`s.
 
 They are listed rather than filtered because a placeholder and a real gap look
 identical to a string matcher. **Read the misses; do not read the count.**
+
+## The opposing-starter handedness filter — 2026-08-30
+
+Alex: *"we need to add an option to player detail to be able to view how a
+player performs against x handed pitcher, add an option to filter between either
+RHP, LHP, or just all in general."*
+
+**MLB batters only**, and the group is null rather than disabled elsewhere: a
+pitcher does not face a pitcher, and the other three leagues have no equivalent.
+
+### It reuses what frame 1c's VS RHP block already established
+
+Nothing new is fetched. `fetchMLBBoxscoreRecord` already returns `{ ids,
+starters }` per game, and `src/lib/mlbPitchers.js` already resolves an mlbId to
+a throwing hand. The opposing starter is `game.home ? starters.away :
+starters.home`. The block states the rate against tonight's starter's hand; this
+makes the whole page follow that split instead of one cell of it.
+
+### The rule that matters
+
+**A game whose starter cannot be resolved satisfies neither hand.** It is
+dropped from the sample rather than counted as the other one — the same rule the
+teammate filter follows, for the same reason: "we could not check" and "it was
+the other hand" are different claims. The control says how many those are, in a
+sentence, because three counts that do not sum to the first one would otherwise
+be a puzzle.
+
+### Two tiers, inherited from the teammate filter
+
+Opening the page fetches the most recent 40 boxscores; committing a hand fetches
+every in-scope game. So the counts start honest-but-partial and resolve:
+
+- on open — All 129, vs RHP 22, vs LHP 18, and *89 of 129 unresolved*
+- after committing — All 129, vs RHP 80, vs LHP 49, **note gone**
+
+The predicate is held until every in-scope game has a starter (`handDataReady`),
+exactly as `teammateDataReady` does, or the chart would collapse to a few bars
+and grow back as requests landed — which reads as a finished sample twice.
+
+### It composes
+
+Applied **before** the window, so "L10 vs LHP" is the last ten games against
+left-handers, not whichever of the last ten happened to be. Verified on one
+batter at L10: All +150, vs RHP −100, vs LHP +400, each from its own ten games,
+and the alt-line ladder recounts with it.

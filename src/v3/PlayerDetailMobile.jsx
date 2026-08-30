@@ -186,6 +186,9 @@ export default function PlayerDetailMobile({
   seasons = null,        // [{ id, label, active, onPick }]
   windows = null,        // { options: [{ id, label, active, onPick }], custom, onCustom }
   splits = null,         // [{ id, label, active, onPick }]
+  // Opposing-starter handedness, MLB batters only. Alex asked for it; no mock
+  // draws it. Same control and same wording as the desktop rail.
+  hands = null,
   injuryTeams = null,    // [{ abbr, slug, sport, players: [{ id, name, note, status, effect }] }]
   // Does this league publish an availability feed at all? All four do, off
   // ESPN's per-team roster response -- but the flag stays, because "this
@@ -1155,6 +1158,27 @@ export default function PlayerDetailMobile({
               ) : null
             ))}
             <span style={{ fontSize: 12.5, lineHeight: 1.5, color: lineups.noteTone || "var(--dim)" }}>{lineups.note}</span>
+          </div>
+        )}
+
+        {showSplits && hands && hands.options && hands.options.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+              <span style={sectionLabel}>OPPOSING STARTER</span>
+              {hands.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {hands.options.map((h) => (
+                <div key={h.id} onClick={pickAndClose(h.onPick)} style={{ ...pill(h.active), flexDirection: "column", gap: 0, minHeight: 46 }}>
+                  <span>{h.label}</span>
+                  {/* Each side states the games it can account for. */}
+                  <span style={{ fontFamily: MONO, fontSize: 9.5, color: "var(--dim)" }}>{h.count}</span>
+                </div>
+              ))}
+            </div>
+            {/* A game whose starter could not be resolved is dropped from
+                both sides rather than counted as the other hand. */}
+            {hands.note && <span style={sheetNote}>{hands.note}</span>}
           </div>
         )}
 
