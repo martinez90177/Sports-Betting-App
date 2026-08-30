@@ -207,6 +207,12 @@ export default function PlayerDetailMobile({
   // order names its own four. Without them the grid falls back to what the
   // v2 contract already carried, so an unwired page still renders.
   blocks = null,
+  // Frame 1c's `isH2H` region: every meeting with tonight's opponent, shown
+  // under the Form tab while the H2H window is the one selected. Null on a
+  // page with no opponent to meet.
+  //
+  // { rows: [{ key, date, starter, value, over }], line }
+  h2h = null,
 }) {
   const [tab, setTab] = React.useState("Form");
   const [gameMenu, setGameMenu] = React.useState(false);
@@ -988,6 +994,35 @@ export default function PlayerDetailMobile({
     </div>
   );
 
+  // `isH2H = h2hOn && st.pdTab === "Form"` -- the frame hangs this off Form,
+  // not off a tab of its own, because it is the same sample the graph above
+  // is drawing, listed.
+  const h2hBody = h2h && h2h.rows && h2h.rows.length > 0 && (
+    <div style={{ padding: "0 16px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 13px", borderBottom: "1px solid #20242b" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>EVERY MEETING</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{`LINE ${h2h.line}`}</span>
+        </div>
+        {h2h.rows.map((m) => (
+          <div key={m.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 13px", borderBottom: "1px solid #20242b", minHeight: 44 }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)", flex: "0 0 54px" }}>{m.date}</span>
+            {/* The starter faced that day. Absent where the app holds no
+                boxscore for the game -- an empty cell, never a guess. */}
+            <span style={{ fontSize: 13, color: "var(--text-2)", flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {m.starter || ""}
+            </span>
+            <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, flex: "0 0 auto" }}>{m.value}</span>
+            <span style={resultPill(m.over)}>{m.over ? "OVER" : "UNDER"}</span>
+          </div>
+        ))}
+      </div>
+      <span style={{ fontSize: 12, lineHeight: 1.45, color: "var(--dim)" }}>
+        Counted from finished meetings only, against the line selected on Form.
+      </span>
+    </div>
+  );
+
   // ---- the filter sheet --------------------------------------------------
   const showMarket = sheet === "market" || sheet === "all";
   const showSeason = sheet === "season" || sheet === "all";
@@ -1268,6 +1303,7 @@ export default function PlayerDetailMobile({
         {threeCell}
         {controlBar}
         {tab === "Form" && formBody}
+        {tab === "Form" && h2hBody}
         {tab === "Matchup" && matchupBody}
         {tab === "Log" && logBody}
         {tab === "Injuries" && injuriesBody}

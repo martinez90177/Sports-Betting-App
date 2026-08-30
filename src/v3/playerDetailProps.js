@@ -30,16 +30,26 @@ const windowLabel = (w) => (w === "all" ? "Season" : `L${w}`);
 // The pill row: the sport's own four, then any window the reader saved, then
 // H2H -- which plots the finished meetings with tonight's opponent and ignores
 // the window entirely.
-export function buildWindows({ sport, lastN, setLastN, saved = [], onSave, custom, setCustom, onReset }) {
+// `h2h` is the frame's last window: `WINDOWS.MLB.concat(savedWins).concat(["H2H
+// vs BAL"])`. It is a window rather than a split because it replaces the
+// sample outright -- every meeting with tonight's opponent, however far back --
+// where a split narrows the window already chosen. Omitted when there is no
+// opponent to name.
+export function buildWindows({ sport, lastN, setLastN, saved = [], onSave, custom, setCustom, onReset, h2h = null }) {
   const base = WINDOWS[sport] || WINDOWS.nba;
   const ids = base.concat(saved.filter((w) => !base.includes(w)));
   return {
     options: ids.map((w) => ({
       id: String(w),
       label: windowLabel(w),
-      active: String(lastN) === String(w),
-      onPick: () => setLastN(w),
-    })),
+      active: !(h2h && h2h.active) && String(lastN) === String(w),
+      onPick: () => { if (h2h && h2h.onClear) h2h.onClear(); setLastN(w); },
+    })).concat(h2h && h2h.oppAbbr ? [{
+      id: "h2h",
+      label: `H2H vs ${h2h.oppAbbr}`,
+      active: !!h2h.active,
+      onPick: h2h.onPick,
+    }] : []),
     custom: setCustom
       ? {
           value: custom,

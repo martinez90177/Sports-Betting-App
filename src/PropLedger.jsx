@@ -13089,13 +13089,23 @@ async function fetchMLBGameBoxscoreLineupIds(gamePk) {
 // cached with no TTL and asked in batches: one request answers for every
 // starter in a whole game log, and the same pitcher is never asked twice.
 const mlbPitchHandCache = new Map();
+// The same lookup answers with a name, which is what frame 1c's EVERY MEETING
+// rows print beside the hand. Stored separately so the hand cache keeps its
+// simple id -> "R"/"L" shape.
+const mlbPitcherNameCache = new Map();
+const mlbStarterName = (id) => mlbPitcherNameCache.get(id) || null;
 try {
   const stored = sessionStorage.getItem("mlb_pitchhand_v1");
   if (stored) Object.entries(JSON.parse(stored)).forEach(([k, v]) => mlbPitchHandCache.set(Number(k), v));
+  const names = sessionStorage.getItem("mlb_pitchername_v1");
+  if (names) Object.entries(JSON.parse(names)).forEach(([k, v]) => mlbPitcherNameCache.set(Number(k), v));
 } catch {}
 
 async function fetchMLBPitcherHands(ids) {
-  const want = [...new Set((ids || []).filter((id) => id != null && !mlbPitchHandCache.has(id)))];
+  // Missing from *either* cache. Testing only the hand cache meant a pitcher
+  // whose hand was already known never got a name, so EVERY MEETING printed a
+  // blank starter for every game but the few fetched since.
+  const want = [...new Set((ids || []).filter((id) => id != null && !(mlbPitchHandCache.has(id) && mlbPitcherNameCache.has(id))))];
   if (!want.length) return mlbPitchHandCache;
   // The people route takes a list, so a 60-game log is one request.
   for (let i = 0; i < want.length; i += 60) {
@@ -13106,6 +13116,7 @@ async function fetchMLBPitcherHands(ids) {
       (data?.people || []).forEach((p) => {
         const code = p?.pitchHand?.code;
         if (p?.id != null && (code === "R" || code === "L")) mlbPitchHandCache.set(p.id, code);
+        if (p?.id != null && p.fullName) mlbPitcherNameCache.set(p.id, p.fullName);
       });
     } catch {
       // Left unset rather than guessed: an unknown hand drops the game from
@@ -13114,6 +13125,7 @@ async function fetchMLBPitcherHands(ids) {
   }
   try {
     sessionStorage.setItem("mlb_pitchhand_v1", JSON.stringify(Object.fromEntries(mlbPitchHandCache)));
+    sessionStorage.setItem("mlb_pitchername_v1", JSON.stringify(Object.fromEntries(mlbPitcherNameCache)));
   } catch {}
   return mlbPitchHandCache;
 }
@@ -17239,7 +17251,39 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     sport: "mlb", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
     custom: v3Custom.custom, setCustom: v3Custom.setCustom,
     onReset: () => { setLastN(DEFAULT_WINDOW.mlb); setSide("all"); setH2h(false); },
+    // The frame's last window. `h2h` is the page's own state for "only the
+    // team next on the schedule", so the window is that flag rather than a
+    // second, parallel notion of the same thing.
+    h2h: nextGame && nextGame.opp ? {
+      oppAbbr: nextGame.opp,
+      active: !!h2h,
+      onPick: () => { setH2h(true); setLastN("all"); },
+      onClear: () => setH2h(false),
+    } : null,
   });
+
+  // Frame 1c's EVERY MEETING rows -- the same games the graph is drawing
+  // while the H2H window is on, listed with the starter faced.
+  const v3H2H = useMemo(() => {
+    if (!h2h) return null;
+    const rows = filtered.map((g, i) => {
+      const st = g.gamePk ? boxscoreStarters[g.gamePk] : null;
+      const oppId = st ? (g.home ? st.away : st.home) : null;
+      const hand = oppId != null ? mlbPitchHandCache.get(oppId) : undefined;
+      const name = oppId != null ? mlbStarterName(oppId) : null;
+      return {
+        key: `${g.date}-${i}`,
+        date: axisDateShort(g.date).toUpperCase(),
+        // Name and hand where both resolved, the name alone where only it
+        // did, and nothing at all rather than a placeholder.
+        starter: name ? (hand ? `${name} · ${hand}HP` : name) : null,
+        value: String(statValueFn(g)),
+        over: statValueFn(g) > effectiveLine,
+      };
+    });
+    return { rows, line: effectiveLine };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [h2h, filtered, boxscoreStarters, pitchHandVersion, statValueFn, effectiveLine]);
   const v3Splits = buildSplits({
     side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.mlb,
     h2h, setH2h,
@@ -17395,6 +17439,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       injuryTeams={v3InjuryTeams}
       lineups={v3Lineups}
       blocks={v3Blocks}
+      h2h={v3H2H}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
