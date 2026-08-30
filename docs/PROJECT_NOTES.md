@@ -817,3 +817,42 @@ unreachable as a *displayed* rank.
 Nothing in the player or team data. `mulberry32` survives only for
 `buildDefenseCategoryFor` (now unreachable from the NBA path) and the two
 cold-start rating objects described above.
+
+### And the seed stat lines they were fed from — 2026-08-30
+
+The four generators went in August. The **numbers they read** stayed: seventy
+`base` / `var` pairs on the static player pools in `PropLedger.jsx`, hand-written
+per-game averages under real players' names, under comments that called them
+mock.
+
+Nothing rendered from them. `getNBAGames` and its siblings return real-or-empty,
+and `nbaPlayerHasData` / `wnbaPlayerHasData` drop any player whose real log could
+not be fetched — so a seed line had no path to a screen. They were inert.
+
+Inert is not gone. Alex asked why there was still sample data in the app, and
+the honest answer was that proving there wasn't took tracing four call sites to
+establish a negative. The invariant should be **readable in the file**: the pools
+now carry identity only — name, team, position, and the ids used to fetch the
+real log.
+
+`WNBA_PROJECTIONS_BY_ESPN_ID` survives, without them. What it is actually for is
+the slug: a player arriving from the live roster picks up the hand-written id, so
+feed pick ids — and therefore already-saved picks — still match.
+
+Verified after the cut by walking all four leagues. WNBA read **129 of 2071
+props** before and after, which is the one whose plumbing this touched; MLB and
+NFL moved only because games had finished in between.
+
+### The mock files' own placeholders are not app data
+
+`scripts/mockaudit.cjs` reports strings a frame prints that the transcription
+does not contain, and its output has read as alarming when skimmed: "Aaron
+Judge", "126 of 1,566", "CONDITIONS · CAMDEN YARDS", "MLB · 15 GAMES".
+
+**Those live in `v3 Mocks/*.dc.html`, not in the app.** They are the designer's
+placeholders, and they appear in the audit as *missing* precisely because they
+were replaced with real data — copying them across is the thing that would be
+the bug. The `AJ` entries are the initials circles that became `PlayerAvatar`s.
+
+They are listed rather than filtered because a placeholder and a real gap look
+identical to a string matcher. **Read the misses; do not read the count.**

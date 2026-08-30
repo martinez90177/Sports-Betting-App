@@ -290,39 +290,19 @@ function slateTimeLabel(dateStr) {
 // New York Knicks starting five from the 2026 NBA Finals, so matchups can be
 // researched the way they would have looked during that series.
 const KNICKS_PLAYERS = [
-  { id: "brunson", name: "Jalen Brunson", team: "NYK", pos: "PG", espnId: "3934672", nbaId: "1628973",
-    base: { pts: 26, oreb: 0.5, dreb: 2.9, ast: 7.2, stl: 0.9, blk: 0.2, fg3m: 3.0, fg3a: 7.5, ftm: 5.5, fta: 6.3, tov: 2.5 },
-    var:  { pts: 7,  oreb: 0.5, dreb: 1.5, ast: 2.6, stl: 0.7, blk: 0.3, fg3m: 1.6, fg3a: 2.2, ftm: 2.0, fta: 2.2, tov: 1.2 } },
-  { id: "bridges", name: "Mikal Bridges", team: "NYK", pos: "SG", espnId: "3147657", nbaId: "1628969",
-    base: { pts: 14.6, oreb: 0.6, dreb: 3.6, ast: 3.0, stl: 1.0, blk: 0.4, fg3m: 2.4, fg3a: 6.2, ftm: 1.8, fta: 2.1, tov: 1.3 },
-    var:  { pts: 5,    oreb: 0.5, dreb: 1.4, ast: 1.4, stl: 0.6, blk: 0.4, fg3m: 1.3, fg3a: 1.9, ftm: 1.1, fta: 1.2, tov: 0.8 } },
-  { id: "hart", name: "Josh Hart", team: "NYK", pos: "SF", espnId: "3062679", nbaId: "1628404",
-    base: { pts: 10.2, oreb: 2.4, dreb: 5.9, ast: 4.6, stl: 1.1, blk: 0.3, fg3m: 1.0, fg3a: 2.8, ftm: 1.5, fta: 2.0, tov: 1.6 },
-    var:  { pts: 4,    oreb: 1.2, dreb: 2.0, ast: 1.9, stl: 0.6, blk: 0.3, fg3m: 0.9, fg3a: 1.4, ftm: 1.0, fta: 1.2, tov: 0.9 } },
-  { id: "ogA", name: "OG Anunoby", team: "NYK", pos: "PF", espnId: "3934719", nbaId: "1628384",
-    base: { pts: 19.3, oreb: 0.8, dreb: 3.3, ast: 2.0, stl: 1.3, blk: 0.6, fg3m: 2.6, fg3a: 6.0, ftm: 2.0, fta: 2.3, tov: 1.1 },
-    var:  { pts: 5,    oreb: 0.6, dreb: 1.5, ast: 1.2, stl: 0.7, blk: 0.5, fg3m: 1.3, fg3a: 1.8, ftm: 1.2, fta: 1.3, tov: 0.7 } },
-  { id: "kat", name: "Karl-Anthony Towns", team: "NYK", pos: "C", espnId: "3136195", nbaId: "1626157",
-    base: { pts: 22, oreb: 2.6, dreb: 9.2, ast: 3.1, stl: 0.8, blk: 1.1, fg3m: 2.0, fg3a: 5.0, ftm: 4.5, fta: 5.2, tov: 2.6 },
-    var:  { pts: 6,  oreb: 1.3, dreb: 2.6, ast: 1.6, stl: 0.6, blk: 0.7, fg3m: 1.2, fg3a: 1.7, ftm: 1.8, fta: 2.0, tov: 1.1 } },
+  { id: "brunson", name: "Jalen Brunson", team: "NYK", pos: "PG", espnId: "3934672", nbaId: "1628973" },
+  { id: "bridges", name: "Mikal Bridges", team: "NYK", pos: "SG", espnId: "3147657", nbaId: "1628969" },
+  { id: "hart", name: "Josh Hart", team: "NYK", pos: "SF", espnId: "3062679", nbaId: "1628404" },
+  { id: "ogA", name: "OG Anunoby", team: "NYK", pos: "PF", espnId: "3934719", nbaId: "1628384" },
+  { id: "kat", name: "Karl-Anthony Towns", team: "NYK", pos: "C", espnId: "3136195", nbaId: "1626157" },
 ];
 // San Antonio Spurs starting five from the same 2026 Finals matchup.
 const SPURS_PLAYERS = [
-  { id: "fox", name: "De'Aaron Fox", team: "SAS", pos: "PG", espnId: "4066259", nbaId: "1628368",
-    base: { pts: 22.5, oreb: 0.4, dreb: 3.1, ast: 5.8, stl: 1.3, blk: 0.3, fg3m: 1.8, fg3a: 4.8, ftm: 4.8, fta: 5.8, tov: 2.8 },
-    var:  { pts: 6.5,  oreb: 0.4, dreb: 1.4, ast: 2.2, stl: 0.7, blk: 0.3, fg3m: 1.2, fg3a: 1.7, ftm: 1.8, fta: 2.1, tov: 1.2 } },
-  { id: "castle", name: "Stephon Castle", team: "SAS", pos: "SG", espnId: "4845367", nbaId: "1642264",
-    base: { pts: 15.8, oreb: 0.7, dreb: 4.1, ast: 4.5, stl: 1.1, blk: 0.4, fg3m: 1.5, fg3a: 4.0, ftm: 3.0, fta: 3.6, tov: 2.0 },
-    var:  { pts: 5,    oreb: 0.6, dreb: 1.6, ast: 1.8, stl: 0.6, blk: 0.4, fg3m: 1.0, fg3a: 1.5, ftm: 1.4, fta: 1.6, tov: 0.9 } },
-  { id: "vassell", name: "Devin Vassell", team: "SAS", pos: "SF", espnId: "4395630", nbaId: "1630170",
-    base: { pts: 17.4, oreb: 0.6, dreb: 3.4, ast: 2.4, stl: 1.0, blk: 0.5, fg3m: 2.2, fg3a: 5.5, ftm: 2.0, fta: 2.4, tov: 1.2 },
-    var:  { pts: 5.5,  oreb: 0.5, dreb: 1.4, ast: 1.2, stl: 0.6, blk: 0.4, fg3m: 1.2, fg3a: 1.7, ftm: 1.2, fta: 1.4, tov: 0.7 } },
-  { id: "champagnie", name: "Julian Champagnie", team: "SAS", pos: "PF", espnId: "4592479", nbaId: "1630577",
-    base: { pts: 11.9, oreb: 1.2, dreb: 3.9, ast: 1.5, stl: 0.8, blk: 0.4, fg3m: 1.8, fg3a: 4.5, ftm: 1.5, fta: 1.8, tov: 0.9 },
-    var:  { pts: 4,    oreb: 0.9, dreb: 1.6, ast: 0.9, stl: 0.5, blk: 0.4, fg3m: 1.1, fg3a: 1.5, ftm: 1.0, fta: 1.2, tov: 0.6 } },
-  { id: "wemby", name: "Victor Wembanyama", team: "SAS", pos: "C", espnId: "5104157", nbaId: "1641705",
-    base: { pts: 24.3, oreb: 2.2, dreb: 9.6, ast: 3.7, stl: 1.1, blk: 3.5, fg3m: 2.3, fg3a: 6.0, ftm: 5.5, fta: 7.0, tov: 3.0 },
-    var:  { pts: 6.5,  oreb: 1.2, dreb: 2.8, ast: 1.6, stl: 0.6, blk: 1.4, fg3m: 1.3, fg3a: 1.9, ftm: 2.0, fta: 2.4, tov: 1.3 } },
+  { id: "fox", name: "De'Aaron Fox", team: "SAS", pos: "PG", espnId: "4066259", nbaId: "1628368" },
+  { id: "castle", name: "Stephon Castle", team: "SAS", pos: "SG", espnId: "4845367", nbaId: "1642264" },
+  { id: "vassell", name: "Devin Vassell", team: "SAS", pos: "SF", espnId: "4395630", nbaId: "1630170" },
+  { id: "champagnie", name: "Julian Champagnie", team: "SAS", pos: "PF", espnId: "4592479", nbaId: "1630577" },
+  { id: "wemby", name: "Victor Wembanyama", team: "SAS", pos: "C", espnId: "5104157", nbaId: "1641705" },
 ];
 // Philadelphia 76ers projected 2026-27 starting five, updated for the
 // roster as it actually stands today -- LeBron James and Jaylen Brown both
@@ -330,44 +310,24 @@ const SPURS_PLAYERS = [
 // (base/var) are still mock, not live, since the season doesn't open until
 // October.
 const SIXERS_PLAYERS = [
-  { id: "maxey", name: "Tyrese Maxey", team: "PHI", pos: "PG", espnId: "4431678", nbaId: "1630178",
-    base: { pts: 24, oreb: 0.4, dreb: 3.0, ast: 6.0, stl: 1.0, blk: 0.3, fg3m: 2.8, fg3a: 7.2, ftm: 4.0, fta: 4.6, tov: 2.2 },
-    var:  { pts: 6.5, oreb: 0.4, dreb: 1.4, ast: 2.2, stl: 0.6, blk: 0.3, fg3m: 1.5, fg3a: 2.1, ftm: 1.6, fta: 1.8, tov: 1.1 } },
-  { id: "jbrown", name: "Jaylen Brown", team: "PHI", pos: "SG", espnId: "3917376", nbaId: "1627759",
-    base: { pts: 23, oreb: 0.8, dreb: 5.0, ast: 3.5, stl: 1.1, blk: 0.4, fg3m: 2.4, fg3a: 6.5, ftm: 4.0, fta: 4.8, tov: 2.4 },
-    var:  { pts: 6.5, oreb: 0.6, dreb: 1.8, ast: 1.5, stl: 0.6, blk: 0.4, fg3m: 1.3, fg3a: 1.9, ftm: 1.7, fta: 1.9, tov: 1.1 } },
-  { id: "lebron", name: "LeBron James", team: "PHI", pos: "SF", espnId: "1966", nbaId: "2544",
-    base: { pts: 24, oreb: 0.6, dreb: 6.5, ast: 7.5, stl: 1.0, blk: 0.5, fg3m: 2.0, fg3a: 5.5, ftm: 4.5, fta: 5.8, tov: 3.3 },
-    var:  { pts: 6,   oreb: 0.5, dreb: 2.2, ast: 2.6, stl: 0.6, blk: 0.4, fg3m: 1.1, fg3a: 1.8, ftm: 1.8, fta: 2.0, tov: 1.3 } },
-  { id: "watford", name: "Trendon Watford", team: "PHI", pos: "PF", espnId: "4431675", nbaId: "1630217",
-    base: { pts: 10, oreb: 1.8, dreb: 4.5, ast: 1.8, stl: 0.6, blk: 0.4, fg3m: 0.8, fg3a: 2.2, ftm: 1.4, fta: 1.8, tov: 1.0 },
-    var:  { pts: 4,   oreb: 1.1, dreb: 1.8, ast: 1.0, stl: 0.4, blk: 0.3, fg3m: 0.6, fg3a: 1.1, ftm: 0.9, fta: 1.1, tov: 0.7 } },
-  { id: "embiid", name: "Joel Embiid", team: "PHI", pos: "C", espnId: "3059318", nbaId: "203954",
-    base: { pts: 23, oreb: 1.0, dreb: 7.0, ast: 4.0, stl: 0.8, blk: 1.3, fg3m: 1.0, fg3a: 3.0, ftm: 6.5, fta: 7.5, tov: 3.2 },
-    var:  { pts: 7,   oreb: 0.7, dreb: 2.4, ast: 1.8, stl: 0.5, blk: 0.7, fg3m: 0.8, fg3a: 1.5, ftm: 2.4, fta: 2.6, tov: 1.4 } },
+  { id: "maxey", name: "Tyrese Maxey", team: "PHI", pos: "PG", espnId: "4431678", nbaId: "1630178" },
+  { id: "jbrown", name: "Jaylen Brown", team: "PHI", pos: "SG", espnId: "3917376", nbaId: "1627759" },
+  { id: "lebron", name: "LeBron James", team: "PHI", pos: "SF", espnId: "1966", nbaId: "2544" },
+  { id: "watford", name: "Trendon Watford", team: "PHI", pos: "PF", espnId: "4431675", nbaId: "1630217" },
+  { id: "embiid", name: "Joel Embiid", team: "PHI", pos: "C", espnId: "3059318", nbaId: "203954" },
 ];
 // Miami Heat projected 2026-27 starting five, updated for the roster as it
 // actually stands today -- Giannis Antetokounmpo is now in Miami alongside
 // Bam Adebayo. Same mock-stats scope as SIXERS_PLAYERS above.
 const HEAT_PLAYERS = [
-  { id: "dmitchell", name: "Davion Mitchell", team: "MIA", pos: "PG", espnId: "4278053", nbaId: "1630703",
-    base: { pts: 11, oreb: 0.5, dreb: 2.6, ast: 4.8, stl: 1.3, blk: 0.3, fg3m: 1.0, fg3a: 3.0, ftm: 1.4, fta: 1.8, tov: 1.6 },
-    var:  { pts: 4,   oreb: 0.4, dreb: 1.2, ast: 1.9, stl: 0.7, blk: 0.3, fg3m: 0.8, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 0.9 } },
-  { id: "thardaway", name: "Tim Hardaway Jr.", team: "MIA", pos: "SG", espnId: "2528210", nbaId: "203501",
-    base: { pts: 15, oreb: 0.4, dreb: 2.6, ast: 1.8, stl: 0.7, blk: 0.2, fg3m: 2.8, fg3a: 7.0, ftm: 1.8, fta: 2.1, tov: 1.1 },
-    var:  { pts: 5,   oreb: 0.4, dreb: 1.2, ast: 0.9, stl: 0.5, blk: 0.2, fg3m: 1.5, fg3a: 2.1, ftm: 1.1, fta: 1.3, tov: 0.7 } },
+  { id: "dmitchell", name: "Davion Mitchell", team: "MIA", pos: "PG", espnId: "4278053", nbaId: "1630703" },
+  { id: "thardaway", name: "Tim Hardaway Jr.", team: "MIA", pos: "SG", espnId: "2528210", nbaId: "203501" },
   // espnId was 3064514, which is Julius Randle -- Wiggins' page showed
   // Randle's face. Verified against ESPN's athlete endpoint, along with every
   // other espnId in the NBA, WNBA and NFL pools; this was the only one wrong.
-  { id: "wiggins", name: "Andrew Wiggins", team: "MIA", pos: "SF", espnId: "3059319", nbaId: "203952",
-    base: { pts: 15, oreb: 0.6, dreb: 3.6, ast: 2.0, stl: 0.9, blk: 0.5, fg3m: 1.6, fg3a: 4.2, ftm: 2.0, fta: 2.4, tov: 1.2 },
-    var:  { pts: 5,   oreb: 0.5, dreb: 1.5, ast: 1.1, stl: 0.6, blk: 0.4, fg3m: 1.0, fg3a: 1.6, ftm: 1.2, fta: 1.4, tov: 0.7 } },
-  { id: "giannis", name: "Giannis Antetokounmpo", team: "MIA", pos: "PF", espnId: "3032977", nbaId: "203507",
-    base: { pts: 30, oreb: 2.2, dreb: 9.0, ast: 6.0, stl: 1.1, blk: 1.0, fg3m: 0.5, fg3a: 1.8, ftm: 7.5, fta: 11.0, tov: 3.4 },
-    var:  { pts: 7,   oreb: 1.3, dreb: 2.8, ast: 2.2, stl: 0.7, blk: 0.6, fg3m: 0.4, fg3a: 1.1, ftm: 2.6, fta: 3.4, tov: 1.4 } },
-  { id: "adebayo", name: "Bam Adebayo", team: "MIA", pos: "C", espnId: "4066261", nbaId: "1628389",
-    base: { pts: 19, oreb: 2.2, dreb: 6.8, ast: 4.0, stl: 1.2, blk: 0.9, fg3m: 0.3, fg3a: 1.0, ftm: 3.5, fta: 4.5, tov: 2.6 },
-    var:  { pts: 6,   oreb: 1.3, dreb: 2.4, ast: 1.8, stl: 0.7, blk: 0.6, fg3m: 0.3, fg3a: 0.8, ftm: 1.6, fta: 2.0, tov: 1.3 } },
+  { id: "wiggins", name: "Andrew Wiggins", team: "MIA", pos: "SF", espnId: "3059319", nbaId: "203952" },
+  { id: "giannis", name: "Giannis Antetokounmpo", team: "MIA", pos: "PF", espnId: "3032977", nbaId: "203507" },
+  { id: "adebayo", name: "Bam Adebayo", team: "MIA", pos: "C", espnId: "4066261", nbaId: "1628389" },
 ];
 
 const ALL_NBA_PLAYERS = [...KNICKS_PLAYERS, ...SPURS_PLAYERS, ...SIXERS_PLAYERS, ...HEAT_PLAYERS];
@@ -9618,8 +9578,6 @@ async function fetchWNBATeamRoster(abbr) {
         name: a?.displayName || a?.fullName || "",
         team: abbr,
         pos: a?.position?.abbreviation || a?.position?.name || "",
-        base: proj && proj.base,
-        var: proj && proj.var,
       });
     });
     if (players.length) data = { players, byId };
@@ -9802,176 +9760,76 @@ async function fetchWNBAAvailability(abbrs) {
 // below) -- a handful of rotation players per team rather than a full roster,
 // same "starting lineup" scope the MLB/NFL pages use.
 const DALLAS_WINGS_PLAYERS = [
-  { id: "bueckers", name: "Paige Bueckers", team: "DAL", pos: "G", espnId: "4433730",
-    base: { pts: 18, oreb: 0.6, dreb: 3.8, ast: 5.5, stl: 1.3, blk: 0.4, fg3m: 1.6, fg3a: 4.5, ftm: 3.0, fta: 3.5, tov: 2.6 },
-    var:  { pts: 6,  oreb: 0.6, dreb: 1.8, ast: 2.4, stl: 0.9, blk: 0.4, fg3m: 1.2, fg3a: 1.8, ftm: 1.6, fta: 1.8, tov: 1.3 } },
-  { id: "ogunbowale", name: "Arike Ogunbowale", team: "DAL", pos: "G", espnId: "3904577",
-    base: { pts: 20, oreb: 0.4, dreb: 3.0, ast: 3.8, stl: 1.0, blk: 0.2, fg3m: 2.6, fg3a: 7.0, ftm: 3.5, fta: 4.0, tov: 2.8 },
-    var:  { pts: 7,  oreb: 0.4, dreb: 1.4, ast: 1.8, stl: 0.7, blk: 0.2, fg3m: 1.4, fg3a: 2.2, ftm: 1.8, fta: 2.0, tov: 1.4 } },
-  { id: "asmith", name: "Alanna Smith", team: "DAL", pos: "F", espnId: "3913881",
-    base: { pts: 9, oreb: 1.6, dreb: 4.5, ast: 1.6, stl: 1.0, blk: 1.1, fg3m: 0.9, fg3a: 2.6, ftm: 1.0, fta: 1.3, tov: 1.2 },
-    var:  { pts: 4, oreb: 1.0, dreb: 1.8, ast: 1.0, stl: 0.6, blk: 0.7, fg3m: 0.7, fg3a: 1.2, ftm: 0.8, fta: 1.0, tov: 0.8 } },
-  { id: "liyueru", name: "Li Yueru", team: "DAL", pos: "C", espnId: "4336633",
-    base: { pts: 8, oreb: 1.8, dreb: 4.0, ast: 1.0, stl: 0.5, blk: 0.7, fg3m: 0.3, fg3a: 1.0, ftm: 1.2, fta: 1.6, tov: 1.1 },
-    var:  { pts: 4, oreb: 1.1, dreb: 1.8, ast: 0.7, stl: 0.4, blk: 0.5, fg3m: 0.4, fg3a: 0.7, ftm: 0.8, fta: 1.0, tov: 0.7 } },
-  { id: "ajames", name: "Aziaha James", team: "DAL", pos: "G", espnId: "4433807",
-    base: { pts: 7, oreb: 0.5, dreb: 1.8, ast: 2.2, stl: 0.7, blk: 0.2, fg3m: 0.8, fg3a: 2.4, ftm: 0.8, fta: 1.0, tov: 1.0 },
-    var:  { pts: 3.5, oreb: 0.4, dreb: 1.0, ast: 1.2, stl: 0.5, blk: 0.2, fg3m: 0.7, fg3a: 1.2, ftm: 0.6, fta: 0.8, tov: 0.7 } },
+  { id: "bueckers", name: "Paige Bueckers", team: "DAL", pos: "G", espnId: "4433730" },
+  { id: "ogunbowale", name: "Arike Ogunbowale", team: "DAL", pos: "G", espnId: "3904577" },
+  { id: "asmith", name: "Alanna Smith", team: "DAL", pos: "F", espnId: "3913881" },
+  { id: "liyueru", name: "Li Yueru", team: "DAL", pos: "C", espnId: "4336633" },
+  { id: "ajames", name: "Aziaha James", team: "DAL", pos: "G", espnId: "4433807" },
 ];
 const ATLANTA_DREAM_PLAYERS = [
-  { id: "agray", name: "Allisha Gray", team: "ATL", pos: "G", espnId: "3058901",
-    base: { pts: 17, oreb: 0.7, dreb: 3.5, ast: 3.0, stl: 1.4, blk: 0.4, fg3m: 2.0, fg3a: 5.2, ftm: 2.6, fta: 3.0, tov: 1.8 },
-    var:  { pts: 6, oreb: 0.5, dreb: 1.6, ast: 1.6, blk: 0.3, stl: 0.8, fg3m: 1.2, fg3a: 1.8, ftm: 1.4, fta: 1.6, tov: 1.0 } },
-  { id: "rhowarD", name: "Rhyne Howard", team: "ATL", pos: "G", espnId: "4398674",
-    base: { pts: 16, oreb: 0.5, dreb: 3.2, ast: 2.8, stl: 1.1, blk: 0.3, fg3m: 2.4, fg3a: 6.5, ftm: 2.2, fta: 2.6, tov: 1.9 },
-    var:  { pts: 6, oreb: 0.4, dreb: 1.5, ast: 1.4, stl: 0.7, blk: 0.3, fg3m: 1.3, fg3a: 2.0, ftm: 1.2, fta: 1.4, tov: 1.1 } },
-  { id: "areese", name: "Angel Reese", team: "ATL", pos: "F", espnId: "4433402",
-    base: { pts: 14, oreb: 4.0, dreb: 8.0, ast: 2.0, stl: 1.3, blk: 0.9, fg3m: 0.1, fg3a: 0.4, ftm: 2.0, fta: 3.2, tov: 2.2 },
-    var:  { pts: 5, oreb: 1.8, dreb: 2.6, ast: 1.1, stl: 0.7, blk: 0.6, fg3m: 0.2, fg3a: 0.4, ftm: 1.2, fta: 1.8, tov: 1.2 } },
-  { id: "bjones", name: "Brionna Jones", team: "ATL", pos: "F", espnId: "3058895",
-    base: { pts: 11, oreb: 2.6, dreb: 5.0, ast: 1.4, stl: 0.7, blk: 0.6, fg3m: 0.0, fg3a: 0.1, ftm: 2.4, fta: 3.0, tov: 1.5 },
-    var:  { pts: 4, oreb: 1.4, dreb: 2.0, ast: 0.9, stl: 0.5, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 1.3, fta: 1.6, tov: 0.9 } },
-  { id: "jcanada", name: "Jordin Canada", team: "ATL", pos: "G", espnId: "3142250",
-    base: { pts: 8, oreb: 0.4, dreb: 2.2, ast: 5.0, stl: 1.2, blk: 0.2, fg3m: 0.6, fg3a: 1.8, ftm: 0.8, fta: 1.0, tov: 1.6 },
-    var:  { pts: 3.5, oreb: 0.4, dreb: 1.1, ast: 2.0, stl: 0.7, blk: 0.2, fg3m: 0.6, fg3a: 1.1, ftm: 0.6, fta: 0.8, tov: 1.0 } },
+  { id: "agray", name: "Allisha Gray", team: "ATL", pos: "G", espnId: "3058901" },
+  { id: "rhowarD", name: "Rhyne Howard", team: "ATL", pos: "G", espnId: "4398674" },
+  { id: "areese", name: "Angel Reese", team: "ATL", pos: "F", espnId: "4433402" },
+  { id: "bjones", name: "Brionna Jones", team: "ATL", pos: "F", espnId: "3058895" },
+  { id: "jcanada", name: "Jordin Canada", team: "ATL", pos: "G", espnId: "3142250" },
 ];
 const PHOENIX_MERCURY_PLAYERS = [
-  { id: "kcopper", name: "Kahleah Copper", team: "PHX", pos: "G", espnId: "2998938",
-    base: { pts: 19, oreb: 0.7, dreb: 3.6, ast: 2.6, stl: 1.2, blk: 0.3, fg3m: 1.6, fg3a: 4.5, ftm: 3.8, fta: 4.4, tov: 2.0 },
-    var:  { pts: 6, oreb: 0.5, dreb: 1.6, ast: 1.4, stl: 0.7, blk: 0.3, fg3m: 1.1, fg3a: 1.8, ftm: 1.6, fta: 1.8, tov: 1.1 } },
-  { id: "athomas", name: "Alyssa Thomas", team: "PHX", pos: "F", espnId: "2529140",
-    base: { pts: 13, oreb: 2.0, dreb: 6.5, ast: 7.5, stl: 1.6, blk: 0.5, fg3m: 0.1, fg3a: 0.3, ftm: 2.6, fta: 3.6, tov: 3.2 },
-    var:  { pts: 5, oreb: 1.1, dreb: 2.2, ast: 2.6, stl: 0.8, blk: 0.4, fg3m: 0.2, fg3a: 0.3, ftm: 1.4, fta: 1.8, tov: 1.4 } },
-  { id: "dbonner", name: "DeWanna Bonner", team: "PHX", pos: "F", espnId: "869",
-    base: { pts: 12, oreb: 0.9, dreb: 4.2, ast: 2.0, stl: 0.9, blk: 0.5, fg3m: 1.8, fg3a: 4.8, ftm: 2.0, fta: 2.3, tov: 1.5 },
-    var:  { pts: 5, oreb: 0.6, dreb: 1.7, ast: 1.1, stl: 0.6, blk: 0.4, fg3m: 1.1, fg3a: 1.8, ftm: 1.1, fta: 1.2, tov: 0.9 } },
-  { id: "swhitcomb", name: "Sami Whitcomb", team: "PHX", pos: "G", espnId: "887",
-    base: { pts: 7, oreb: 0.4, dreb: 2.0, ast: 2.2, stl: 0.7, blk: 0.2, fg3m: 1.4, fg3a: 3.6, ftm: 0.5, fta: 0.6, tov: 0.9 },
-    var:  { pts: 3.5, oreb: 0.4, dreb: 1.0, ast: 1.2, stl: 0.5, blk: 0.2, fg3m: 1.0, fg3a: 1.5, ftm: 0.4, fta: 0.5, tov: 0.7 } },
-  { id: "klinskens", name: "Kyara Linskens", team: "PHX", pos: "C", espnId: "4873359",
-    base: { pts: 6, oreb: 1.6, dreb: 3.2, ast: 1.0, stl: 0.5, blk: 0.6, fg3m: 0.0, fg3a: 0.1, ftm: 0.8, fta: 1.1, tov: 0.9 },
-    var:  { pts: 3, oreb: 1.0, dreb: 1.5, ast: 0.7, stl: 0.4, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 0.6, fta: 0.8, tov: 0.6 } },
+  { id: "kcopper", name: "Kahleah Copper", team: "PHX", pos: "G", espnId: "2998938" },
+  { id: "athomas", name: "Alyssa Thomas", team: "PHX", pos: "F", espnId: "2529140" },
+  { id: "dbonner", name: "DeWanna Bonner", team: "PHX", pos: "F", espnId: "869" },
+  { id: "swhitcomb", name: "Sami Whitcomb", team: "PHX", pos: "G", espnId: "887" },
+  { id: "klinskens", name: "Kyara Linskens", team: "PHX", pos: "C", espnId: "4873359" },
 ];
 const GOLDEN_STATE_VALKYRIES_PLAYERS = [
-  { id: "kthornton", name: "Kayla Thornton", team: "GS", pos: "F", espnId: "2529622",
-    base: { pts: 13, oreb: 1.2, dreb: 3.8, ast: 1.6, stl: 1.0, blk: 0.7, fg3m: 1.2, fg3a: 3.2, ftm: 1.8, fta: 2.2, tov: 1.4 },
-    var:  { pts: 5, oreb: 0.8, dreb: 1.6, ast: 1.0, stl: 0.6, blk: 0.5, fg3m: 0.9, fg3a: 1.4, ftm: 1.1, fta: 1.3, tov: 0.9 } },
-  { id: "vburton", name: "Veronica Burton", team: "GS", pos: "G", espnId: "4398935",
-    base: { pts: 9, oreb: 0.4, dreb: 2.4, ast: 4.6, stl: 1.7, blk: 0.2, fg3m: 0.7, fg3a: 2.0, ftm: 1.0, fta: 1.2, tov: 1.6 },
-    var:  { pts: 4, oreb: 0.4, dreb: 1.2, ast: 1.9, stl: 0.9, blk: 0.2, fg3m: 0.6, fg3a: 1.1, ftm: 0.7, fta: 0.8, tov: 1.0 } },
-  { id: "thayes", name: "Tiffany Hayes", team: "GS", pos: "G", espnId: "1054",
-    base: { pts: 12, oreb: 0.6, dreb: 2.6, ast: 2.4, stl: 1.0, blk: 0.3, fg3m: 1.6, fg3a: 4.2, ftm: 1.6, fta: 1.9, tov: 1.3 },
-    var:  { pts: 5, oreb: 0.5, dreb: 1.3, ast: 1.3, stl: 0.6, blk: 0.3, fg3m: 1.0, fg3a: 1.6, ftm: 1.0, fta: 1.1, tov: 0.9 } },
-  { id: "gwilliams", name: "Gabby Williams", team: "GS", pos: "F", espnId: "3142328",
-    base: { pts: 11, oreb: 1.2, dreb: 3.6, ast: 3.2, stl: 1.8, blk: 0.5, fg3m: 0.4, fg3a: 1.4, ftm: 1.4, fta: 1.9, tov: 1.7 },
-    var:  { pts: 4.5, oreb: 0.8, dreb: 1.6, ast: 1.5, stl: 0.9, blk: 0.4, fg3m: 0.4, fg3a: 0.9, ftm: 1.0, fta: 1.2, tov: 1.0 } },
-  { id: "kstokes", name: "Kiah Stokes", team: "GS", pos: "C", espnId: "2590093",
-    base: { pts: 5, oreb: 1.8, dreb: 3.4, ast: 0.6, stl: 0.4, blk: 1.0, fg3m: 0.0, fg3a: 0.0, ftm: 0.6, fta: 0.9, tov: 0.6 },
-    var:  { pts: 2.5, oreb: 1.1, dreb: 1.6, ast: 0.5, stl: 0.3, blk: 0.7, fg3m: 0.0, fg3a: 0.0, ftm: 0.5, fta: 0.7, tov: 0.5 } },
+  { id: "kthornton", name: "Kayla Thornton", team: "GS", pos: "F", espnId: "2529622" },
+  { id: "vburton", name: "Veronica Burton", team: "GS", pos: "G", espnId: "4398935" },
+  { id: "thayes", name: "Tiffany Hayes", team: "GS", pos: "G", espnId: "1054" },
+  { id: "gwilliams", name: "Gabby Williams", team: "GS", pos: "F", espnId: "3142328" },
+  { id: "kstokes", name: "Kiah Stokes", team: "GS", pos: "C", espnId: "2590093" },
 ];
 
 // Tomorrow's slate (see WNBA_MATCHUPS below): 6 more real rosters.
 const MINNESOTA_LYNX_PLAYERS = [
-  { id: "ncollier", name: "Napheesa Collier", team: "MIN", pos: "F", espnId: "3917450",
-    base: { pts: 22, oreb: 1.8, dreb: 6.8, ast: 3.4, stl: 1.8, blk: 1.1, fg3m: 1.2, fg3a: 3.2, ftm: 4.5, fta: 5.2, tov: 2.2 },
-    var:  { pts: 7, oreb: 1.1, dreb: 2.4, ast: 1.8, stl: 1.0, blk: 0.7, fg3m: 0.9, fg3a: 1.6, ftm: 2.0, fta: 2.2, tov: 1.2 } },
-  { id: "kmcbride", name: "Kayla McBride", team: "MIN", pos: "G", espnId: "2529205",
-    base: { pts: 14, oreb: 0.4, dreb: 2.6, ast: 2.4, stl: 0.9, blk: 0.2, fg3m: 2.2, fg3a: 5.5, ftm: 1.6, fta: 1.9, tov: 1.3 },
-    var:  { pts: 5, oreb: 0.4, dreb: 1.2, ast: 1.3, stl: 0.6, blk: 0.2, fg3m: 1.2, fg3a: 1.9, ftm: 1.0, fta: 1.2, tov: 0.8 } },
-  { id: "cwilliams", name: "Courtney Williams", team: "MIN", pos: "G", espnId: "2987891",
-    base: { pts: 12, oreb: 0.8, dreb: 3.4, ast: 4.8, stl: 1.2, blk: 0.3, fg3m: 0.8, fg3a: 2.4, ftm: 1.6, fta: 2.0, tov: 2.0 },
-    var:  { pts: 5, oreb: 0.6, dreb: 1.5, ast: 2.0, stl: 0.7, blk: 0.3, fg3m: 0.7, fg3a: 1.3, ftm: 1.0, fta: 1.2, tov: 1.1 } },
-  { id: "nhoward", name: "Natasha Howard", team: "MIN", pos: "F", espnId: "2529130",
-    base: { pts: 11, oreb: 1.6, dreb: 4.6, ast: 1.6, stl: 1.1, blk: 0.9, fg3m: 0.4, fg3a: 1.2, ftm: 1.6, fta: 2.0, tov: 1.4 },
-    var:  { pts: 4.5, oreb: 1.0, dreb: 1.9, ast: 1.0, stl: 0.7, blk: 0.6, fg3m: 0.4, fg3a: 0.8, ftm: 1.0, fta: 1.2, tov: 0.9 } },
-  { id: "djuhasz", name: "Dorka Juhasz", team: "MIN", pos: "F", espnId: "4398938",
-    base: { pts: 6, oreb: 1.4, dreb: 3.8, ast: 1.4, stl: 0.6, blk: 0.5, fg3m: 0.3, fg3a: 1.0, ftm: 0.6, fta: 0.8, tov: 1.0 },
-    var:  { pts: 3, oreb: 0.9, dreb: 1.7, ast: 0.9, stl: 0.4, blk: 0.4, fg3m: 0.3, fg3a: 0.6, ftm: 0.5, fta: 0.6, tov: 0.7 } },
+  { id: "ncollier", name: "Napheesa Collier", team: "MIN", pos: "F", espnId: "3917450" },
+  { id: "kmcbride", name: "Kayla McBride", team: "MIN", pos: "G", espnId: "2529205" },
+  { id: "cwilliams", name: "Courtney Williams", team: "MIN", pos: "G", espnId: "2987891" },
+  { id: "nhoward", name: "Natasha Howard", team: "MIN", pos: "F", espnId: "2529130" },
+  { id: "djuhasz", name: "Dorka Juhasz", team: "MIN", pos: "F", espnId: "4398938" },
 ];
 const TORONTO_TEMPO_PLAYERS = [
-  { id: "mmabrey", name: "Marina Mabrey", team: "TOR", pos: "G", espnId: "3904576",
-    base: { pts: 15, oreb: 0.4, dreb: 2.6, ast: 3.4, stl: 0.9, blk: 0.2, fg3m: 2.4, fg3a: 6.4, ftm: 2.0, fta: 2.4, tov: 2.0 },
-    var:  { pts: 5.5, oreb: 0.4, dreb: 1.2, ast: 1.6, stl: 0.6, blk: 0.2, fg3m: 1.3, fg3a: 2.0, ftm: 1.2, fta: 1.4, tov: 1.1 } },
-  { id: "bsykes", name: "Brittney Sykes", team: "TOR", pos: "G", espnId: "2988756",
-    base: { pts: 13, oreb: 0.6, dreb: 3.0, ast: 2.6, stl: 1.6, blk: 0.3, fg3m: 1.2, fg3a: 3.4, ftm: 2.0, fta: 2.5, tov: 1.7 },
-    var:  { pts: 5, oreb: 0.5, dreb: 1.4, ast: 1.4, stl: 0.9, blk: 0.3, fg3m: 0.9, fg3a: 1.5, ftm: 1.1, fta: 1.3, tov: 1.0 } },
-  { id: "knurse", name: "Kia Nurse", team: "TOR", pos: "G", espnId: "3142327",
-    base: { pts: 10, oreb: 0.4, dreb: 2.4, ast: 1.8, stl: 0.7, blk: 0.2, fg3m: 1.6, fg3a: 4.2, ftm: 1.2, fta: 1.4, tov: 1.1 },
-    var:  { pts: 4.5, oreb: 0.4, dreb: 1.1, ast: 1.0, stl: 0.5, blk: 0.2, fg3m: 1.0, fg3a: 1.7, ftm: 0.8, fta: 0.9, tov: 0.7 } },
-  { id: "iharrison", name: "Isabelle Harrison", team: "TOR", pos: "F", espnId: "2566453",
-    base: { pts: 8, oreb: 1.8, dreb: 4.4, ast: 1.2, stl: 0.6, blk: 0.6, fg3m: 0.1, fg3a: 0.4, ftm: 1.4, fta: 1.9, tov: 1.1 },
-    var:  { pts: 3.5, oreb: 1.1, dreb: 1.8, ast: 0.8, stl: 0.4, blk: 0.4, fg3m: 0.1, fg3a: 0.3, ftm: 0.9, fta: 1.2, tov: 0.7 } },
-  { id: "nsabally", name: "Nyara Sabally", team: "TOR", pos: "F", espnId: "4398768",
-    base: { pts: 7, oreb: 1.4, dreb: 3.6, ast: 1.0, stl: 0.5, blk: 0.7, fg3m: 0.2, fg3a: 0.7, ftm: 0.8, fta: 1.1, tov: 0.9 },
-    var:  { pts: 3, oreb: 0.9, dreb: 1.6, ast: 0.6, stl: 0.4, blk: 0.5, fg3m: 0.2, fg3a: 0.5, ftm: 0.6, fta: 0.8, tov: 0.6 } },
+  { id: "mmabrey", name: "Marina Mabrey", team: "TOR", pos: "G", espnId: "3904576" },
+  { id: "bsykes", name: "Brittney Sykes", team: "TOR", pos: "G", espnId: "2988756" },
+  { id: "knurse", name: "Kia Nurse", team: "TOR", pos: "G", espnId: "3142327" },
+  { id: "iharrison", name: "Isabelle Harrison", team: "TOR", pos: "F", espnId: "2566453" },
+  { id: "nsabally", name: "Nyara Sabally", team: "TOR", pos: "F", espnId: "4398768" },
 ];
 const CONNECTICUT_SUN_PLAYERS = [
-  { id: "bgriner", name: "Brittney Griner", team: "CON", pos: "C", espnId: "2490553",
-    base: { pts: 16, oreb: 1.6, dreb: 5.4, ast: 1.0, stl: 0.5, blk: 1.8, fg3m: 0.0, fg3a: 0.1, ftm: 3.0, fta: 3.8, tov: 2.0 },
-    var:  { pts: 6, oreb: 1.0, dreb: 2.2, ast: 0.7, stl: 0.4, blk: 1.1, fg3m: 0.0, fg3a: 0.1, ftm: 1.6, fta: 2.0, tov: 1.1 } },
-  { id: "amorrow", name: "Aneesah Morrow", team: "CON", pos: "F", espnId: "4684384",
-    base: { pts: 12, oreb: 3.4, dreb: 6.8, ast: 1.2, stl: 1.0, blk: 0.5, fg3m: 0.1, fg3a: 0.3, ftm: 2.0, fta: 2.8, tov: 1.6 },
-    var:  { pts: 5, oreb: 1.7, dreb: 2.4, ast: 0.8, stl: 0.6, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 1.2, fta: 1.6, tov: 1.0 } },
-  { id: "aedwards", name: "Aaliyah Edwards", team: "CON", pos: "F", espnId: "4433408",
-    base: { pts: 9, oreb: 1.8, dreb: 4.0, ast: 1.0, stl: 0.6, blk: 0.5, fg3m: 0.1, fg3a: 0.3, ftm: 1.2, fta: 1.6, tov: 1.1 },
-    var:  { pts: 4, oreb: 1.1, dreb: 1.7, ast: 0.7, stl: 0.4, blk: 0.4, fg3m: 0.1, fg3a: 0.2, ftm: 0.8, fta: 1.0, tov: 0.7 } },
-  { id: "hvanlith", name: "Hailey Van Lith", team: "CON", pos: "G", espnId: "4433412",
-    base: { pts: 10, oreb: 0.5, dreb: 2.4, ast: 2.8, stl: 1.0, blk: 0.2, fg3m: 1.0, fg3a: 2.8, ftm: 1.4, fta: 1.7, tov: 1.6 },
-    var:  { pts: 4.5, oreb: 0.4, dreb: 1.2, ast: 1.4, stl: 0.6, blk: 0.2, fg3m: 0.8, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 1.0 } },
-  { id: "dmiller", name: "Diamond Miller", team: "CON", pos: "F", espnId: "4433635",
-    base: { pts: 8, oreb: 0.9, dreb: 2.8, ast: 1.6, stl: 0.8, blk: 0.4, fg3m: 0.7, fg3a: 2.0, ftm: 1.0, fta: 1.3, tov: 1.2 },
-    var:  { pts: 3.5, oreb: 0.6, dreb: 1.3, ast: 1.0, stl: 0.5, blk: 0.3, fg3m: 0.6, fg3a: 1.1, ftm: 0.7, fta: 0.9, tov: 0.8 } },
+  { id: "bgriner", name: "Brittney Griner", team: "CON", pos: "C", espnId: "2490553" },
+  { id: "amorrow", name: "Aneesah Morrow", team: "CON", pos: "F", espnId: "4684384" },
+  { id: "aedwards", name: "Aaliyah Edwards", team: "CON", pos: "F", espnId: "4433408" },
+  { id: "hvanlith", name: "Hailey Van Lith", team: "CON", pos: "G", espnId: "4433412" },
+  { id: "dmiller", name: "Diamond Miller", team: "CON", pos: "F", espnId: "4433635" },
 ];
 const CHICAGO_SKY_PLAYERS = [
-  { id: "kcardoso", name: "Kamilla Cardoso", team: "CHI", pos: "C", espnId: "4433405",
-    base: { pts: 13, oreb: 2.6, dreb: 6.4, ast: 1.4, stl: 0.6, blk: 1.2, fg3m: 0.0, fg3a: 0.1, ftm: 2.0, fta: 2.8, tov: 1.8 },
-    var:  { pts: 5, oreb: 1.4, dreb: 2.3, ast: 0.9, stl: 0.4, blk: 0.8, fg3m: 0.0, fg3a: 0.1, ftm: 1.2, fta: 1.6, tov: 1.0 } },
-  { id: "dcarrington", name: "DiJonai Carrington", team: "CHI", pos: "G", espnId: "4066548",
-    base: { pts: 12, oreb: 0.9, dreb: 3.6, ast: 2.8, stl: 1.6, blk: 0.4, fg3m: 0.8, fg3a: 2.4, ftm: 2.4, fta: 3.0, tov: 1.8 },
-    var:  { pts: 5, oreb: 0.6, dreb: 1.6, ast: 1.4, stl: 0.9, blk: 0.3, fg3m: 0.6, fg3a: 1.3, ftm: 1.3, fta: 1.6, tov: 1.0 } },
-  { id: "rjackson", name: "Rickea Jackson", team: "CHI", pos: "F", espnId: "4433630",
-    base: { pts: 13, oreb: 0.6, dreb: 2.8, ast: 1.4, stl: 0.7, blk: 0.3, fg3m: 1.4, fg3a: 3.8, ftm: 1.8, fta: 2.1, tov: 1.3 },
-    var:  { pts: 5, oreb: 0.5, dreb: 1.3, ast: 0.8, stl: 0.5, blk: 0.3, fg3m: 1.0, fg3a: 1.6, ftm: 1.0, fta: 1.2, tov: 0.8 } },
-  { id: "cvandersloot", name: "Courtney Vandersloot", team: "CHI", pos: "G", espnId: "981",
-    base: { pts: 8, oreb: 0.4, dreb: 2.4, ast: 6.5, stl: 1.0, blk: 0.1, fg3m: 0.8, fg3a: 2.2, ftm: 0.8, fta: 1.0, tov: 2.0 },
-    var:  { pts: 3.5, oreb: 0.4, dreb: 1.1, ast: 2.4, stl: 0.6, blk: 0.1, fg3m: 0.6, fg3a: 1.2, ftm: 0.6, fta: 0.8, tov: 1.1 } },
-  { id: "astevens", name: "Azura Stevens", team: "CHI", pos: "F", espnId: "3142010",
-    base: { pts: 9, oreb: 1.2, dreb: 3.8, ast: 1.2, stl: 0.7, blk: 0.9, fg3m: 0.8, fg3a: 2.2, ftm: 1.0, fta: 1.3, tov: 1.0 },
-    var:  { pts: 4, oreb: 0.8, dreb: 1.6, ast: 0.7, stl: 0.5, blk: 0.6, fg3m: 0.6, fg3a: 1.2, ftm: 0.7, fta: 0.9, tov: 0.7 } },
+  { id: "kcardoso", name: "Kamilla Cardoso", team: "CHI", pos: "C", espnId: "4433405" },
+  { id: "dcarrington", name: "DiJonai Carrington", team: "CHI", pos: "G", espnId: "4066548" },
+  { id: "rjackson", name: "Rickea Jackson", team: "CHI", pos: "F", espnId: "4433630" },
+  { id: "cvandersloot", name: "Courtney Vandersloot", team: "CHI", pos: "G", espnId: "981" },
+  { id: "astevens", name: "Azura Stevens", team: "CHI", pos: "F", espnId: "3142010" },
 ];
 const NEW_YORK_LIBERTY_PLAYERS = [
-  { id: "bstewart", name: "Breanna Stewart", team: "NY", pos: "F", espnId: "2998928",
-    base: { pts: 21, oreb: 1.6, dreb: 7.4, ast: 3.6, stl: 1.2, blk: 1.6, fg3m: 2.0, fg3a: 5.4, ftm: 4.6, fta: 5.4, tov: 2.6 },
-    var:  { pts: 7, oreb: 1.0, dreb: 2.5, ast: 1.8, stl: 0.7, blk: 1.0, fg3m: 1.2, fg3a: 2.0, ftm: 2.0, fta: 2.2, tov: 1.3 } },
-  { id: "sionescu", name: "Sabrina Ionescu", team: "NY", pos: "G", espnId: "4066533",
-    base: { pts: 17, oreb: 0.5, dreb: 3.6, ast: 5.0, stl: 1.0, blk: 0.2, fg3m: 3.0, fg3a: 7.6, ftm: 2.4, fta: 2.7, tov: 2.2 },
-    var:  { pts: 6, oreb: 0.4, dreb: 1.5, ast: 2.0, stl: 0.6, blk: 0.2, fg3m: 1.5, fg3a: 2.4, ftm: 1.3, fta: 1.5, tov: 1.1 } },
-  { id: "jjones", name: "Jonquel Jones", team: "NY", pos: "C", espnId: "2999101",
-    base: { pts: 12, oreb: 1.8, dreb: 5.6, ast: 2.4, stl: 0.7, blk: 0.7, fg3m: 1.0, fg3a: 2.8, ftm: 1.4, fta: 1.7, tov: 1.4 },
-    var:  { pts: 5, oreb: 1.1, dreb: 2.1, ast: 1.2, stl: 0.5, blk: 0.5, fg3m: 0.7, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 0.9 } },
-  { id: "ssabally", name: "Satou Sabally", team: "NY", pos: "F", espnId: "4281929",
-    base: { pts: 14, oreb: 1.2, dreb: 4.4, ast: 2.6, stl: 0.9, blk: 0.6, fg3m: 1.2, fg3a: 3.4, ftm: 3.0, fta: 3.6, tov: 2.0 },
-    var:  { pts: 5.5, oreb: 0.8, dreb: 1.8, ast: 1.4, stl: 0.6, blk: 0.4, fg3m: 0.9, fg3a: 1.6, ftm: 1.6, fta: 1.9, tov: 1.1 } },
-  { id: "blaney", name: "Betnijah Laney-Hamilton", team: "NY", pos: "G", espnId: "2593770",
-    base: { pts: 9, oreb: 0.7, dreb: 2.6, ast: 1.6, stl: 1.0, blk: 0.3, fg3m: 1.0, fg3a: 2.8, ftm: 1.4, fta: 1.7, tov: 1.0 },
-    var:  { pts: 4, oreb: 0.5, dreb: 1.2, ast: 0.9, stl: 0.6, blk: 0.3, fg3m: 0.7, fg3a: 1.4, ftm: 0.9, fta: 1.1, tov: 0.7 } },
+  { id: "bstewart", name: "Breanna Stewart", team: "NY", pos: "F", espnId: "2998928" },
+  { id: "sionescu", name: "Sabrina Ionescu", team: "NY", pos: "G", espnId: "4066533" },
+  { id: "jjones", name: "Jonquel Jones", team: "NY", pos: "C", espnId: "2999101" },
+  { id: "ssabally", name: "Satou Sabally", team: "NY", pos: "F", espnId: "4281929" },
+  { id: "blaney", name: "Betnijah Laney-Hamilton", team: "NY", pos: "G", espnId: "2593770" },
 ];
 const LAS_VEGAS_ACES_PLAYERS = [
-  { id: "ajwilson", name: "A'ja Wilson", team: "LV", pos: "C", espnId: "3149391",
-    base: { pts: 24, oreb: 2.4, dreb: 7.4, ast: 2.4, stl: 1.4, blk: 2.2, fg3m: 0.6, fg3a: 1.6, ftm: 5.0, fta: 6.0, tov: 2.4 },
-    var:  { pts: 7, oreb: 1.3, dreb: 2.5, ast: 1.3, stl: 0.8, blk: 1.2, fg3m: 0.5, fg3a: 1.0, ftm: 2.2, fta: 2.5, tov: 1.2 } },
-  { id: "jyoung", name: "Jackie Young", team: "LV", pos: "G", espnId: "4065870",
-    base: { pts: 15, oreb: 0.6, dreb: 3.4, ast: 4.6, stl: 1.1, blk: 0.3, fg3m: 1.4, fg3a: 3.6, ftm: 2.4, fta: 2.8, tov: 1.8 },
-    var:  { pts: 5.5, oreb: 0.5, dreb: 1.5, ast: 2.0, stl: 0.6, blk: 0.3, fg3m: 1.0, fg3a: 1.7, ftm: 1.3, fta: 1.5, tov: 1.0 } },
-  { id: "cgray", name: "Chelsea Gray", team: "LV", pos: "G", espnId: "2529122",
-    base: { pts: 12, oreb: 0.4, dreb: 2.6, ast: 6.8, stl: 0.9, blk: 0.2, fg3m: 1.2, fg3a: 3.0, ftm: 1.4, fta: 1.6, tov: 2.0 },
-    var:  { pts: 5, oreb: 0.4, dreb: 1.2, ast: 2.4, stl: 0.6, blk: 0.2, fg3m: 0.8, fg3a: 1.5, ftm: 0.9, fta: 1.1, tov: 1.1 } },
-  { id: "jloyd", name: "Jewell Loyd", team: "LV", pos: "G", espnId: "2987869",
-    base: { pts: 16, oreb: 0.6, dreb: 2.8, ast: 2.4, stl: 0.9, blk: 0.3, fg3m: 2.4, fg3a: 6.4, ftm: 2.4, fta: 2.8, tov: 1.7 },
-    var:  { pts: 6, oreb: 0.5, dreb: 1.3, ast: 1.3, stl: 0.6, blk: 0.3, fg3m: 1.3, fg3a: 2.1, ftm: 1.3, fta: 1.5, tov: 1.0 } },
-  { id: "nsmith", name: "NaLyssa Smith", team: "LV", pos: "F", espnId: "4398776",
-    base: { pts: 10, oreb: 2.2, dreb: 5.4, ast: 1.2, stl: 0.7, blk: 0.6, fg3m: 0.2, fg3a: 0.6, ftm: 1.4, fta: 1.9, tov: 1.2 },
-    var:  { pts: 4.5, oreb: 1.3, dreb: 2.1, ast: 0.8, stl: 0.5, blk: 0.4, fg3m: 0.2, fg3a: 0.5, ftm: 0.9, fta: 1.2, tov: 0.8 } },
+  { id: "ajwilson", name: "A'ja Wilson", team: "LV", pos: "C", espnId: "3149391" },
+  { id: "jyoung", name: "Jackie Young", team: "LV", pos: "G", espnId: "4065870" },
+  { id: "cgray", name: "Chelsea Gray", team: "LV", pos: "G", espnId: "2529122" },
+  { id: "jloyd", name: "Jewell Loyd", team: "LV", pos: "G", espnId: "2987869" },
+  { id: "nsmith", name: "NaLyssa Smith", team: "LV", pos: "F", espnId: "4398776" },
 ];
 
 const ALL_WNBA_PLAYERS = [
@@ -10060,13 +9918,17 @@ const WNBA_TEAM_FULL_NAME = {
   TOR: "Toronto Tempo", WSH: "Washington Mystics",
 };
 
-// Projections keyed by espnId rather than by our slug, so a player who arrives
-// from the live roster can pick up hand-tuned base/var if we happen to have
-// written them, and simply go without if we haven't. The slug is carried along
-// so an existing player keeps the same feed pick id and saved picks still match.
+// Slugs keyed by espnId rather than by our own, so a player who arrives from
+// the live roster picks up the hand-written id and keeps the same feed pick id
+// -- which is what makes an already-saved pick still match after the switch to
+// live rosters.
+//
+// It carried hand-tuned base/var too, until those came out with the rest of the
+// seed stat lines. Nothing read them: every game log is fetched, and a player
+// whose log cannot be fetched is dropped rather than filled in.
 const WNBA_PROJECTIONS_BY_ESPN_ID = {};
 ALL_WNBA_PLAYERS.forEach((p) => {
-  if (p.espnId) WNBA_PROJECTIONS_BY_ESPN_ID[String(p.espnId)] = { id: p.id, base: p.base, var: p.var };
+  if (p.espnId) WNBA_PROJECTIONS_BY_ESPN_ID[String(p.espnId)] = { id: p.id };
 });
 
 const WNBA_SCHEDULE_TTL_MS = 60 * 60 * 1000;
