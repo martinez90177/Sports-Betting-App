@@ -19,7 +19,6 @@ export default function GamecastMobile({
   state,
   live,
   clock,
-  refreshed,
   sides = [],
   linescore,
   linescoreNote,
@@ -59,9 +58,7 @@ export default function GamecastMobile({
         <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {clock}
         </span>
-        {refreshed && (
-          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{refreshed}</span>
-        )}
+
       </div>
 
       <div style={{ margin: "0 16px 14px", border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", display: "flex", overflow: "hidden" }}>
