@@ -186,11 +186,16 @@ export default function MatchupMobile({
               </div>
               {/* The bar and the log under it are the same rows counted twice,
                   so they can never disagree. No rows means no bar -- an empty
-                  track would read as nought wins from nought games. */}
+                  track would read as nought wins from nought games.
+
+                  Three segments, not the mock's two: the NFL has ties, and a
+                  drawn game is neither the green outcome nor the red one. It
+                  takes the neutral fill rather than being folded into a loss. */}
               {t.games.length > 0 && (
                 <div style={{ display: "flex", height: 8, borderRadius: 2, overflow: "hidden", background: "var(--surface-2)" }}>
                   <span style={{ width: `${t.wonPct}%`, background: "var(--pos)", display: "block" }} />
-                  <span style={{ width: `${100 - t.wonPct}%`, background: "var(--neg)", display: "block" }} />
+                  {t.tiedPct > 0 && <span style={{ width: `${t.tiedPct}%`, background: "var(--dim)", display: "block" }} />}
+                  <span style={{ width: `${100 - t.wonPct - t.tiedPct}%`, background: "var(--neg)", display: "block" }} />
                 </div>
               )}
               <div style={{ display: "flex", flexDirection: "column" }}>
@@ -201,7 +206,12 @@ export default function MatchupMobile({
                 )}
                 {t.games.map((g, i) => (
                   <div key={`${g.date}-${i}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--surface-2)" }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, flex: "0 0 12px", color: g.won ? "var(--pos)" : "var(--neg)" }}>
+                    <span
+                      style={{
+                        fontFamily: MONO, fontSize: 10.5, fontWeight: 700, flex: "0 0 12px",
+                        color: g.res === "W" ? "var(--pos)" : g.res === "L" ? "var(--neg)" : "var(--dim)",
+                      }}
+                    >
                       {g.res}
                     </span>
                     <span style={{ display: "flex", alignItems: "baseline", fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", whiteSpace: "nowrap", flex: "1 1 auto", minWidth: 0 }}>

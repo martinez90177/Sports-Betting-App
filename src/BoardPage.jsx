@@ -463,6 +463,16 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
   // a batting order is posted, which is a different claim. Left unfired
   // rather than approximated: the tier is a count of reasons, so a made-up
   // one would promote a game.
+  // The slate's own day, off the first game that carries a start time.
+  // Empty when nothing on screen has one -- never a guess at today.
+  const slateDateLabel = useMemo(() => {
+    const first = visible.map((g) => g.slate && g.slate.startsAt).find(Boolean);
+    if (!first) return "";
+    const d = new Date(first);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }).toUpperCase();
+  }, [visible]);
+
   const v3Tiers = useMemo(() => {
     // Keyed by sport AND team, never by the abbreviation alone. DAL, WAS, PHX,
     // CLE, BOS and MIN all exist in more than one league, and keying on the
@@ -693,7 +703,12 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         onSetSport={onSetSport}
         tiers={v3Tiers}
         summary={`${visible.length - (v3Tiers.find((t) => t.title === "Quiet")?.games.length || 0)} of ${visible.length} games have something counted`}
-        slateLabel={timeLabel || ""}
+        // The mock puts a date here ("MON, AUG 24"), not a time. This used to
+        // pass `timeLabel` itself -- a *formatter function*, which React
+        // rendered as the "Functions are not valid as a React child" warning
+        // and an empty slot. The date comes off the slate the cards are
+        // already drawn from, so it cannot describe a different day.
+        slateLabel={slateDateLabel}
         footNote="A tier is a count of the reasons on the card — nothing is weighted, and no tier is a prediction. A quiet game is shown rather than dropped, and says what it was missing."
         loading={loading}
         emptyNote={loading ? null : "No games on this slate yet."}

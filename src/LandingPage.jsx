@@ -53,6 +53,9 @@ function pct(v) {
 // PROP PALACE lockup on screen. It used to default to *off* while the shell
 // also skipped it, which left the front door with no wordmark, no nav and no
 // way out but the two buttons in the hero.
+import { useIsPhone } from "./lib/useIsNarrow.js";
+import LandingMobile from "./v3/LandingMobile.jsx";
+
 export default function LandingPage({
   rows = [], showNav = true, firstVisit = false,
   onOpenBoard, onOpenGames, onOpenFeed, onOpenProp, onOpenNews, onOpenSettings, onTakeTour,
@@ -60,6 +63,7 @@ export default function LandingPage({
   // "How we count" is a self-link in the file -- it stays on this page and
   // takes you to the rules. It used to open the Prop Feed, which is not where
   // the counting is explained.
+  const isPhone = useIsPhone();
   const rulesRef = React.useRef(null);
   const flashTimer = React.useRef(null);
   const [rulesFlash, setRulesFlash] = React.useState(false);
@@ -111,6 +115,20 @@ export default function LandingPage({
       {label}
     </span>
   );
+
+  // The phone's own layout -- a transcription of frame 3e. Declared below
+  // every hook, and fed the same hero row this page picked above, so the two
+  // front doors quote the same prop.
+  if (isPhone) {
+    return (
+      <LandingMobile
+        hero={hero}
+        onOpenBoard={onOpenBoard}
+        onOpenSettings={onOpenSettings}
+        onOpenProp={onOpenProp}
+      />
+    );
+  }
 
   return (
     <div style={{ background: "var(--bg, var(--page-bg))", color: "var(--text)" }}>

@@ -3,6 +3,8 @@ import { teamLogo, dayLabel, timeLabel, fetchRecentForm, fetchHeadToHead } from 
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { MLB_TEAM_COLORS } from "./lib/teamColors.js";
 import { MLB_ABBR_TEAM_ID, fetchMLBTeamRosterStatus, mlbAvailability, mlbHeadshot } from "./lib/mlbStatus.js";
+import { useIsPhone } from "./lib/useIsNarrow.js";
+import MatchupMobile from "./v3/MatchupMobile.jsx";
 
 // Matchup Overview -- the page a GameCard opens.
 //
@@ -152,13 +154,15 @@ function FormColumn({ sport, team, rows }) {
   );
 }
 
-function ProbablePitchers({ game }) {
+// Availability for both starters, from the same 40-man feed the prop feed
+// reads (one shared cache -- see lib/mlbStatus.js). Empty until it resolves,
+// and empty forever if it fails, both of which render as no dot rather than a
+// green one.
+//
+// Hoisted out of ProbablePitchers so the phone layout can draw the same two
+// starters with the same dots off one fetch rather than a second copy of it.
+function useProbableStatus(game) {
   const p = game.probables;
-
-  // Availability for both starters, from the same 40-man feed the prop feed
-  // reads (one shared cache -- see lib/mlbStatus.js). Null until it resolves,
-  // and null forever if it fails, both of which render as no dot rather than a
-  // green one.
   const [status, setStatus] = useState({});
   const awayAbbr = game.away.abbr;
   const homeAbbr = game.home.abbr;
@@ -178,7 +182,11 @@ function ProbablePitchers({ game }) {
     });
     return () => { cancelled = true; };
   }, [p, awayAbbr, homeAbbr]);
+  return status;
+}
 
+function ProbablePitchers({ game, status }) {
+  const p = game.probables;
   if (!p || (!p.away && !p.home)) return null;
 
   const cell = (side, team) => {
@@ -228,6 +236,7 @@ function ProbablePitchers({ game }) {
 }
 
 export default function MatchupPage({ game, isMobile, embedded, onBack, onViewProps, getTopProps, onOpenProp }) {
+  const isPhone = useIsPhone();
   const [depth, setDepth] = useState(10);
   const [form, setForm] = useState({ away: [], home: [] });
   const [h2h, setH2h] = useState(null);
@@ -238,6 +247,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
   // back would be circular), so the data arrives the same way onViewProps
   // already does, as a callback.
   const [topProps, setTopProps] = useState(undefined); // undefined = loading, null = unsupported, [] = none
+  const probableStatus = useProbableStatus(game);
 
   useEffect(() => {
     let cancelled = false;
@@ -276,6 +286,110 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
     `linear-gradient(180deg, transparent 42%, ${isMobile ? "var(--bg)" : "var(--surface-sunken)"} 100%)`,
     "linear-gradient(120deg, #0b0d12 0%, #10131a 55%, #0b0d12 100%)",
   ].join(", "), [isMobile]);
+
+  // The phone's own layout -- a transcription of frame 3c. Declared below
+  // every hook above, and fed by the same three fetches, so the two screens
+  // can never be looking at different numbers.
+  if (isPhone) {
+    const sideOf = (t, side) => ({
+      abbr: t.abbr,
+      name: t.name,
+      meta: [t.record || null, side].filter(Boolean).join(" · "),
+    });
+
+    // Won / drawn / lost, counted off the very rows the log lists, so the bar
+    // and the games under it are one count rather than two. `rows` is null
+    // while the fetch is out and [] when it answered with nothing -- two
+    // different sentences, so they are kept apart.
+    const formFor = (t, rows) => {
+      const games = rows || [];
+      const won = games.filter((g) => g.result === "W").length;
+      const tied = games.filter((g) => g.result === "T").length;
+      return {
+        abbr: t.abbr,
+        record: games.length ? `${won}-${games.length - won - tied}${tied ? `-${tied}` : ""}` : "—",
+        wonPct: games.length ? (won / games.length) * 100 : 0,
+        tiedPct: games.length ? (tied / games.length) * 100 : 0,
+        loading: !rows || !rows.length,
+        error: false,
+        games: games.map((g) => ({
+          date: g.date, opp: g.opp, home: g.home, res: g.result,
+          score: `${g.us}–${g.them}`,
+        })),
+      };
+    };
+
+    // MLB alone posts probables, and only where the slate row carries them.
+    const pr = game.probables;
+    const probableCells = game.sport === "mlb" && pr && (pr.away || pr.home)
+      ? [["away", game.away], ["home", game.home]].map(([side, team]) => {
+          const pitcher = pr[side];
+          return {
+            key: side,
+            name: pitcher ? pitcher.name : "Not announced yet",
+            team: team.abbr,
+            headshotSrc: pitcher ? mlbHeadshot(pitcher.id) : null,
+            status: pitcher ? mlbAvailability(probableStatus[pitcher.id]) : undefined,
+            hand: null,
+            line: null,
+          };
+        })
+      : null;
+
+    // Three states, the same three the desktop panel below has: no season
+    // series this app can read at all (drop the section), one it could not
+    // load, and a real one. The mock draws only the third; the other two are
+    // the app being honest about its own data.
+    const h2hBlock = !h2h
+      ? null
+      : h2h.error
+        ? { cells: null, note: "Couldn't load the season series for these two right now." }
+        : h2h.games === 0
+          ? { cells: null, note: `${game.away.name} and ${game.home.name} haven't met yet this season.` }
+          : {
+              cells: [
+                { label: "MEETINGS", value: String(h2h.games) },
+                { label: game.away.abbr, value: String(h2h.awayWins) },
+                { label: game.home.abbr, value: String(h2h.homeWins) },
+              ],
+              note: h2h.games === 1
+                ? "This season's meetings only, and one game is a result rather than a pattern."
+                : "This season's meetings only. Last year's series is a different roster on both sides, so it is not folded in.",
+            };
+
+    return (
+      <MatchupMobile
+        sport={game.sport}
+        onBack={onBack}
+        onOpenBoard={onViewProps ? () => onViewProps(game) : null}
+        state={timeLabel(game.startsAt)}
+        live={!!game.isLive}
+        venue={game.venue ? [game.venue.name, game.venue.indoor ? "INDOORS" : null].filter(Boolean).join(" · ") : null}
+        sides={[sideOf(game.away, "AWAY"), sideOf(game.home, "HOME")]}
+        probables={probableCells}
+        probableNote={probableCells ? "From the day's posted probables. A starter whose availability has not resolved shows no dot rather than a green one." : null}
+        depth={depth}
+        depths={[5, 10, 20]}
+        onSetDepth={setDepth}
+        form={[formFor(game.away, form.away), formFor(game.home, form.home)]}
+        h2h={h2hBlock}
+        reads={topProps === undefined ? undefined : (topProps || []).map((r) => ({
+          key: r.playerId,
+          name: r.name,
+          team: r.team,
+          sport: r.sport,
+          market: r.market,
+          prop: `${r.marketLabel} ${r.line}`,
+          rate: r.hitRate,
+          hits: r.gamesOver,
+          n: r.gamesCounted,
+          thin: r.thin,
+        }))}
+        readScope="FROM TONIGHT'S SLATE"
+        onOpenRead={(r) => onOpenProp && onOpenProp(r.sport, r.key, r.market, { name: r.name, team: r.team })}
+      />
+    );
+  }
 
   return (
     <div style={{
@@ -387,7 +501,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
           ))}
         </div>
 
-        {game.sport === "mlb" && <ProbablePitchers game={game} />}
+        {game.sport === "mlb" && <ProbablePitchers game={game} status={probableStatus} />}
 
         <div style={SECTION}>
           <SectionTitle

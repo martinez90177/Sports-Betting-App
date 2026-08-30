@@ -172,13 +172,31 @@ export function parseNFLComLogs(html, season) {
 }
 
 // A finished season's logs do not change, so this is cached with no TTL, the
-// same shape every other immutable fetch in this app uses. A failure is not
-// cached: the next visit retries rather than inheriting a network blip.
+// same shape every other immutable fetch in this app uses.
 const memory = new Map();
+
+// Slugs NFL.com has no page for. Worth remembering, and not only to save a
+// request: NFL.com serves `access-control-allow-origin: *` on a page that
+// exists and *no CORS header at all* on its 404, so a bad slug is a CORS
+// failure. The browser logs those to the console before any `catch` can see
+// them, so the only way to keep the console clean is not to ask twice.
+//
+// A miss is the slug's fault, not the season's, so one failure rules out every
+// season for that player rather than just the one asked for.
+const unknownSlugs = new Set();
+try {
+  const stored = sessionStorage.getItem("pp_nflcom_unknown_v1");
+  if (stored) JSON.parse(stored).forEach((x) => unknownSlugs.add(x));
+} catch {}
+
+function rememberUnknown(slug) {
+  unknownSlugs.add(slug);
+  try { sessionStorage.setItem("pp_nflcom_unknown_v1", JSON.stringify([...unknownSlugs])); } catch {}
+}
 
 export async function fetchNFLComGameLog(name, season) {
   const slug = nflComSlug(name);
-  if (!slug || !season) return null;
+  if (!slug || !season || unknownSlugs.has(slug)) return null;
   const key = `${slug}:${season}`;
   if (memory.has(key)) return memory.get(key);
 
@@ -195,8 +213,12 @@ export async function fetchNFLComGameLog(name, season) {
   let games = null;
   try {
     const res = await fetch(`https://www.nfl.com/players/${slug}/stats/logs/${season}/`);
-    if (res.ok) games = parseNFLComLogs(await res.text(), season);
+    if (!res.ok) { rememberUnknown(slug); return null; }
+    games = parseNFLComLogs(await res.text(), season);
   } catch {
+    // A throw here is the CORS-less 404 described above, so the slug is wrong
+    // rather than the network being down.
+    rememberUnknown(slug);
     return null;
   }
 

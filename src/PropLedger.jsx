@@ -18,6 +18,7 @@ import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLi
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsModal from "./SettingsModal.jsx";
 import SettingsPage from "./SettingsPage.jsx";
+import SettingsMobile from "./v3/SettingsMobile.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
@@ -25938,6 +25939,20 @@ export default function PropLedger() {
 
   if (page === "settings") {
     const back = PAGES.find((x) => x.id === (settingsReturn || "feed"));
+    // The phone gets frame 3d's chassis around the very same four section
+    // components -- see src/v3/SettingsMobile.jsx for why the controls inside
+    // are not re-drawn.
+    if (isPhoneShell) {
+      return (
+        <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
+          <SettingsMobile
+            returnLabel={(back && back.label) || "Prop Feed"}
+            onLeave={() => setPage(settingsReturn || "feed")}
+            sportsbooks={SPORTSBOOKS}
+          />
+        </div>
+      );
+    }
     return (
       <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
         <SettingsPage
@@ -26267,7 +26282,10 @@ export default function PropLedger() {
         // mobile mock, which draws its own PICKS chip in the header and fills
         // the bottom 132px with the roster dock -- see MyPicksPanel's own
         // note on hideTrigger.
-        hideTrigger={isPhoneShell && (page === "picks" || PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page))}
+        // Landing is on the list too: frame 3e ends in its own fixed footer
+        // (the board CTA and the 21+ line), and the floating slip trigger sat
+        // on top of it.
+        hideTrigger={isPhoneShell && (page === "picks" || page === "landing" || PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page))}
       />
       {/* Reads and writes every preference through the settings context, so
           the only thing it needs from here is the sportsbook list (which

@@ -1864,3 +1864,66 @@ is the check that the record is real rather than plausible.
 - **Not verified on the phone layout.** The split data was proven on the
   desktop surface; the mobile Injuries row renders it through the same props,
   but the browser pane hung repeatedly at 375px before that could be driven.
+
+## Batch 4 — mobile Matchup, Settings, Landing
+
+Completes the twelve mobile screens. New: `src/v3/MatchupMobile.jsx`,
+`SettingsMobile.jsx`, `LandingMobile.jsx`. Each is reached the way the others
+are — the existing page routes to it on `useIsPhone()`, after all its hooks, so
+opening one cannot change the hook order.
+
+**Matchup (3c)** is fed by `MatchupPage`'s own three fetches, so the phone and
+the desktop can never be looking at different numbers. Two sections drop rather
+than render empty, which is what the desktop already does: probable pitchers
+(MLB alone posts them) and head to head (`fetchHeadToHead` answers for MLB
+alone). Where H2H does answer, all three of its outcomes get a line — a real
+record, "they haven't met", "we couldn't check".
+
+Departures from the frame, and why:
+
+- **The form bar has three segments, not two.** The NFL has ties, and a drawn
+  game is neither the green outcome nor the red one, so it takes the neutral
+  fill rather than being folded into a loss.
+- **The mock's probable-pitcher cells carry a hand and a season line**
+  ("LHP · 12-8", "3.41 ERA · 168 K"). statsapi's schedule route returns only
+  `fullName` and `id` for a probable, so those two lines are absent rather
+  than filled from somewhere else. Getting them means a per-pitcher season
+  fetch — worth doing, not done here.
+- The mock's own form rows are seeded arithmetic (`us = 1 + ((i * 5 + seed) %
+  9)`). They come from `fetchRecentForm` here.
+
+**Settings (3d)** is the chassis and nothing else — header, the four section
+pills, the scroller, the storage note — with the *existing* section components
+from `SettingsSections.jsx` inside, exactly as `SettingsPage.jsx` composes them
+for the desktop. This is the one screen whose controls are deliberately not
+re-drawn to the mock, because this plan says of it: "every control from
+SettingsSections.jsx, nothing added, removed or renamed", and re-authoring a
+control bank is how a setting goes missing. Two consequences, both stated
+rather than hidden: the controls keep the app's own chrome, and the mock's
+300px accent bottom sheet is not built — `DisplaySection` already renders the
+same `ColorWheel` inline with its own reset, so the function is present and
+only the sheet presentation is absent.
+
+**Landing (3e)** draws a **real** row. The frame's example card is Aaron Judge
+over 1.5 total bases at 74% with a ten-bar strip of invented numbers; a real
+player's name over invented figures is the one thing this app must not print,
+and `LandingPage` has always refused to — it picks a real row off the board and
+says so plainly when the logs have not loaded. The phone card draws that same
+hero through the same `FormPlot` the feed uses, and keeps the desktop's
+empty-state wording. The frame's closing sentence ("The NFL and NBA do not
+[publish an availability feed]") is now false and says what is true instead.
+
+The global slip trigger is hidden on `landing` — frame 3e ends in its own fixed
+footer and the floating trigger sat on top of it.
+
+### Two defects found while verifying, both fixed
+
+- **`BoardPage` was passing a function as a React child.** `slateLabel={timeLabel || ""}`
+  — `timeLabel` is a *formatter*, called as `timeLabel(startsAt)` forty lines
+  further down. React warned and the slot rendered empty. The mock puts a date
+  there ("MON, AUG 24"), so it now derives one off the first game on the slate
+  that carries a start time, and stays empty when none does.
+- **NFL.com's 404 carries no CORS header**, so a slug it has no page for is a
+  console error the browser logs before any `catch` sees it. Misses are
+  remembered per slug for the session, and a miss rules out every season rather
+  than only the one asked for.
