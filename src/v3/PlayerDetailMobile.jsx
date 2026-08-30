@@ -1079,7 +1079,7 @@ export default function PlayerDetailMobile({
                 <div key={s.id} onClick={pickAndClose(s.onPick)} style={pill(s.active)}>{s.label}</div>
               ))}
             </div>
-            <span style={sheetNote}>A season is a different sample, not a longer one.</span>
+            <span style={sheetNote}>MLB, NBA and the WNBA carry 2025 logs. NFL keeps one season.</span>
           </div>
         )}
 
