@@ -43,6 +43,7 @@ import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters, fetchEspnJersey, jerseyFor } from "./lib/rosters.js";
 import { useParticipation, playedIn } from "./lib/participation.js";
+import { fetchNFLComGameLog } from "./lib/nflcomLog.js";
 import { WatchMenu } from "./WatchList.jsx";
 import { NFL_STADIUMS, fetchNFLKickoffWeather } from "./lib/weather.js";
 import OpposingLineup from "./OpposingLineup.jsx";
@@ -2334,8 +2335,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
              rather than offering tiles that would empty the chart. */}
         {!teammateSplits.supported ? (
           <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)" }}>
-            This player's log is the generated fallback, so it carries no game ids — who
-            else played in those games can't be looked up, and no with/without split is offered.
+            This player's log carries no game ids — who else played in those games
+            can't be looked up, so no with/without split is offered. It happens where
+            the log came from a source that does not publish them (see
+            lib/nflcomLog.js), not because the numbers are made up.
           </div>
         ) : (
         <LineupTiles
@@ -4867,11 +4870,19 @@ async function fetchNFLPlayerGameLog(espnId, season = currentNFLSeason()) {
 // the one before it. That also means the rollover happens on its own: the
 // first week real 2026 games exist, they're what gets used, with no date
 // hardcoded anywhere to go stale.
-async function fetchNFLPlayerGameLogForDisplay(espnId) {
+// The name is only used for the last resort. ESPN answers for 246 of the 256
+// hand-written players; for the rest its gamelog is an empty stub even though
+// the athlete is on a current roster (see lib/nflcomLog.js for the Davante
+// Adams case). NFL.com has those seasons, so it is asked last -- never first,
+// because ESPN carries targets and an event id and NFL.com carries neither.
+async function fetchNFLPlayerGameLogForDisplay(espnId, name) {
   const season = currentNFLSeason();
   const current = await fetchNFLPlayerGameLog(espnId, season);
   if (current && current.length) return current;
-  return fetchNFLPlayerGameLog(espnId, season - 1);
+  const prior = await fetchNFLPlayerGameLog(espnId, season - 1);
+  if (prior && prior.length) return prior;
+  if (!name) return null;
+  return (await fetchNFLComGameLog(name, season)) || (await fetchNFLComGameLog(name, season - 1));
 }
 
 function getNFLGames(player) {
@@ -4938,7 +4949,17 @@ function nflRateAgg(games) {
   const sum = (k) => games.reduce((a, g) => a + (g[k] || 0), 0);
   const att = sum("att"), comp = sum("comp"), passYds = sum("passYds");
   const rushAtt = sum("rushAtt"), rushYds = sum("rushYds");
-  const tgt = sum("tgt"), rec = sum("rec"), recYds = sum("recYds");
+  // Targets is the one field a source can legitimately not carry: NFL.com's
+  // game-log table has no such column (see lib/nflcomLog.js), so those games
+  // hold null rather than 0. Averaging null as nought would print "TGT 0.0"
+  // for a receiver who was targeted all season -- a wrong number where the
+  // honest answer is no number. avgOf returns null when nothing carries it,
+  // and the rate bar renders an em dash.
+  const avgOf = (k) => {
+    const vals = games.map((g) => g[k]).filter((v) => Number.isFinite(v));
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  const rec = sum("rec"), recYds = sum("recYds");
   const fgm = sum("fgm"), fga = sum("fga"), xpm = sum("xpm"), xpa = sum("xpa");
   // Snap share is already a percentage per game, so it averages rather than
   // sums -- and games with no recorded share are left out of the denominator
@@ -4955,7 +4976,7 @@ function nflRateAgg(games) {
     car: rushAtt / n,
     rushYds: rushYds / n,
     ypc: rushAtt ? rushYds / rushAtt : 0,
-    tgt: tgt / n,
+    tgt: avgOf("tgt"),
     rec: rec / n,
     catchPct: tgt ? (rec / tgt) * 100 : 0,
     recYds: recYds / n,
@@ -8048,8 +8069,14 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const rateCards = rateColumns.map((c) => ({
     key: c.key,
     label: c.label,
-    value: `${rateWindow[c.key].toFixed(c.decimals)}${c.suffix || ""}`,
-    delta: fmtStatDelta(rateWindow[c.key] - rateSeason[c.key], c.decimals, c.better, c.suffix || ""),
+    // An em dash where the source carries no such column, never a 0.0 -- see
+    // nflRateAgg on targets.
+    value: rateWindow[c.key] == null
+      ? "—"
+      : `${rateWindow[c.key].toFixed(c.decimals)}${c.suffix || ""}`,
+    delta: rateWindow[c.key] == null || rateSeason[c.key] == null
+      ? null
+      : fmtStatDelta(rateWindow[c.key] - rateSeason[c.key], c.decimals, c.better, c.suffix || ""),
   }));
   const rateGlossary = rateColumns
     .map((c) => ({ key: c.key, ...NFL_RATE_GLOSSARY[c.key] }))
@@ -8226,8 +8253,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
              rather than offering tiles that would empty the chart. */}
         {!teammateSplits.supported ? (
           <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)" }}>
-            This player's log is the generated fallback, so it carries no game ids — who
-            else played in those games can't be looked up, and no with/without split is offered.
+            This player's log carries no game ids — who else played in those games
+            can't be looked up, so no with/without split is offered. It happens where
+            the log came from a source that does not publish them (see
+            lib/nflcomLog.js), not because the numbers are made up.
           </div>
         ) : (
         <LineupTiles
@@ -10899,8 +10928,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
              rather than offering tiles that would empty the chart. */}
         {!teammateSplits.supported ? (
           <div style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)" }}>
-            This player's log is the generated fallback, so it carries no game ids — who
-            else played in those games can't be looked up, and no with/without split is offered.
+            This player's log carries no game ids — who else played in those games
+            can't be looked up, so no with/without split is offered. It happens where
+            the log came from a source that does not publish them (see
+            lib/nflcomLog.js), not because the numbers are made up.
           </div>
         ) : (
         <LineupTiles
@@ -25507,7 +25538,7 @@ export default function PropLedger() {
       // the hand-written pool already had keeps the id his saved picks use.
       runPooled(NFL_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, (player) => {
         if (NFL_REAL_GAME_LOGS[player.id] || !player.espnId) return;
-        return fetchNFLPlayerGameLogForDisplay(player.espnId).then((games) => {
+        return fetchNFLPlayerGameLogForDisplay(player.espnId, player.name).then((games) => {
           if (cancelled || !games) return;
           NFL_REAL_GAME_LOGS[player.id] = games;
           bumpNflRefresh();
@@ -25518,7 +25549,7 @@ export default function PropLedger() {
     runPooled(ALL_NFL_PLAYERS, LOG_FETCH_CONCURRENCY, (player) => {
       const espnId = NFL_ESPN_ID[player.id];
       if (!espnId) return;
-      return fetchNFLPlayerGameLogForDisplay(espnId).then((games) => {
+      return fetchNFLPlayerGameLogForDisplay(espnId, player.name).then((games) => {
         if (cancelled || !games) return;
         NFL_REAL_GAME_LOGS[player.id] = games;
         bumpNflRefresh();
