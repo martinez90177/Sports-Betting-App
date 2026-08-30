@@ -12409,7 +12409,10 @@ const DODGERS_PLAYERS = [
   { id: "tucker", name: "Kyle Tucker", team: "LAD", pos: "RF", mlbId: 663656 },
   { id: "hernandez", name: "Teoscar Hernández", team: "LAD", pos: "LF", mlbId: 606192 },
   { id: "muncy", name: "Max Muncy", team: "LAD", pos: "3B", mlbId: 571970 },
-  { id: "pages", name: "Andy Pages", team: "LAD", pos: "CF", mlbId: 681624 },
+  // Pages fractured his left hand (HBP, 2026-08-21) and is out 4-5 weeks;
+  // Thomas (acquired from Arizona in May) is the primary CF option vs RHP
+  // while Pages is out, with Edman/Hernández covering CF against lefties.
+  { id: "alekthomas", name: "Alek Thomas", team: "LAD", pos: "CF", mlbId: 677950 },
   { id: "rushing", name: "Dalton Rushing", team: "LAD", pos: "C", mlbId: 687221 },
   { id: "rojas", name: "Miguel Rojas", team: "LAD", pos: "2B", mlbId: 500743 },
   { id: "sheehan", name: "Emmet Sheehan", team: "LAD", pos: "SP", mlbId: 686218 },
