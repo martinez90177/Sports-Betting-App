@@ -1996,3 +1996,57 @@ downstream moves with it.
 - **`nflRateAgg` referenced a `tgt` binding that the null-aware targets change
   had removed**, crashing every NFL player page to the error boundary. Catch
   rate now returns null where the source carries no targets, rather than 0%.
+
+## The exact-copy audit
+
+Alex: "have EVERYTHING be an EXACT V3 COPY". Prompted by a fair challenge —
+"previously we tried doing one and you were just applying the concepts to v1,
+just wanna make sure we're not doing that again" — and he was right to ask.
+
+### The harness, which is repeatable
+
+`public/__mockcheck/` (gitignored) serves the mock through the dev server, so a
+frame renders beside the built screen. Two passes:
+
+1. **Rendered label-sequence diff** — the structural words of a frame against
+   the same screen live, with sample data filtered out.
+2. **Literal-text audit** — every string a frame prints, checked against its
+   transcription. `scratchpad/audit.js`; this is the decisive one, and it found
+   what eyeballing had not.
+
+Run pass 2 before calling any screen done.
+
+### What it found, and where each was fixed
+
+| Frame | Deviation | Commit |
+|---|---|---|
+| 2a | extra "All" league chip; no team filter action; long slate heading; "MATCHUP →" | 788fe3e |
+| 2b | sort was "First start", frame names "Sample" | 788fe3e |
+| 2d | search had no `injQueryAction` | 788fe3e |
+| 3a | "READ THE SLIP" in accent, frame draws "TRACK IN LEDGER" neutral | 788fe3e / 8fb25e0 |
+| 1c | the 2×2 blocks were v2's AVERAGE/MARGIN/LAST MEETING/PARK | 8fb25e0 |
+| 1c | no EVERY MEETING block, and no H2H window to open it | 137c557 |
+| 3d | the control bank was the app's chrome in the mock's chassis | this one |
+
+Clean from the start: 1b, 2c, 3b, 3e.
+
+### Two that needed data the app did not hold
+
+- **VS RHP** needed pitcher handedness. The boxscore names each starter but
+  carries no `pitchHand`; `people?personIds=` answers for a list at once. See
+  PROJECT_NOTES.
+- **EVERY MEETING** needed the starter's *name* as well, which the same lookup
+  returns.
+
+### Settings, and why it was the worst of them
+
+This screen had the mock's chassis around `SettingsSections.jsx`'s own
+controls — defensible under "layout only · every control kept", and still the
+exact failure mode being asked about. The frame's `setFields` renders eight
+primitives; those are now built, and the 300px accent bottom sheet with them.
+
+The control *set* is still `SettingsSections.jsx`'s, named and ordered exactly
+as its four sections expose them, and every control reads and writes the same
+store — a value set on the phone is the value the desktop page shows. Account
+and About stay as the app's components: they are the frame's `rows` and `note`
+kinds, and the app already draws exactly those two shapes.
