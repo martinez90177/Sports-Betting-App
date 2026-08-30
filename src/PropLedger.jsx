@@ -12536,7 +12536,9 @@ const RANGERS_PLAYERS = [
   // everyday second base duties, with Jung back at third.
   { id: "duranez", name: "Ezequiel Duran", team: "TEX", pos: "2B", mlbId: 677649 },
   { id: "jung", name: "Josh Jung", team: "TEX", pos: "3B", mlbId: 673962 },
-  { id: "cauley", name: "Cam Cauley", team: "TEX", pos: "SS", mlbId: 695508 },
+  // Cauley was optioned to Triple-A Round Rock on 2026-08-14 now that Seager
+  // (activated off the IL 7/31) has reclaimed the everyday shortstop job.
+  { id: "seager", name: "Corey Seager", team: "TEX", pos: "SS", mlbId: 608369 },
   { id: "langford", name: "Wyatt Langford", team: "TEX", pos: "LF", mlbId: 694671 },
   { id: "carter", name: "Evan Carter", team: "TEX", pos: "CF", mlbId: 694497 },
   { id: "nimmo", name: "Brandon Nimmo", team: "TEX", pos: "RF", mlbId: 607043 },
@@ -12673,7 +12675,10 @@ const NATIONALS_PLAYERS = [
   { id: "jyoung", name: "Jacob Young", team: "WSH", pos: "CF", mlbId: 696285 },
   { id: "wood", name: "James Wood", team: "WSH", pos: "RF", mlbId: 695578 },
   { id: "tena", name: "José Tena", team: "WSH", pos: "DH", mlbId: 677588 },
-  { id: "mikolas", name: "Miles Mikolas", team: "WSH", pos: "SP", mlbId: 571945 },
+  // Mikolas was DFA'd/released on 2026-08-12; Jackson Kent was recalled from
+  // Triple-A Rochester, made his MLB debut as the starter that night, and
+  // joins the rotation alongside Cavalli, Irvin and Alvarez.
+  { id: "kent", name: "Jackson Kent", team: "WSH", pos: "SP", mlbId: 800600 },
 ];
 const PADRES_PLAYERS = [
   { id: "campusano", name: "Luis Campusano", team: "SD", pos: "C", mlbId: 669134 },
