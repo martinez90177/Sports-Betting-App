@@ -26,6 +26,10 @@ export const PLOT = {
   player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261 },
   // A Prop Feed row (frame 1b): 74px box, 52px span, 46px gutter.
   feed: { plotH: 74, span: 52, gutter: 46, handleW: 42, handleH: 28, trackW: 265 },
+  // Desktop Player Detail (`PropPalace Desktop v3.dc.html` frame 1a): a
+  // 268px box in a 1fr centre column, so the track measures far wider than
+  // either phone size and the label thresholds pass at much longer windows.
+  desktop: { plotH: 268, span: 224, gutter: 58, handleW: 52, handleH: 32, trackW: 780 },
 };
 
 export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);
@@ -72,8 +76,20 @@ export default function FormPlot({
   // same strip without them when it has no room. Passing `false` skips the
   // measurement entirely rather than measuring and then discarding.
   labels = true,
+  // Desktop only, and deliberately: both need a hover-capable pointer or a
+  // wide track (`desktop-handoff.md` §3, "Do not attempt them on touch").
+  //
+  // onZoom(from, to) receives an index range into `games`; the caller slices
+  // its own already-windowed, already-filtered series, so the zoom composes
+  // with every other control rather than replacing them.
+  onZoom = null,
+  // (index | null) => node, drawn as a hint that a click opens the detail
+  // card. The card carries the data; this is a hint.
+  tooltipFor = null,
 }) {
   const g = PLOT[size] || PLOT.player;
+  const [hover, setHover] = React.useState(null);
+  const [dragSel, setDragSel] = React.useState(null);
   const [rawLine, setRawLine] = React.useState(null);
   const n = games.length;
 
@@ -139,12 +155,40 @@ export default function FormPlot({
     <div style={{ position: "relative", height: g.plotH }}>
       <div
         ref={trackRef}
+        onPointerDown={onZoom ? (e) => {
+          // Both halves are required. preventDefault stops the browser
+          // starting its own selection; userSelect below stops it painting
+          // one anyway. Either alone still leaves the blue smear.
+          e.preventDefault();
+          const box = e.currentTarget.getBoundingClientRect();
+          const at = (x) => {
+            const frac = (x - box.left) / (box.width || 1);
+            return Math.max(0, Math.min(n - 1, Math.floor(frac * n)));
+          };
+          const start = at(e.clientX);
+          let last = start;
+          const move = (ev) => { last = at(ev.clientX); setDragSel([Math.min(start, last), Math.max(start, last)]); };
+          const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+            setDragSel(null);
+            const lo = Math.min(start, last);
+            const hi = Math.max(start, last);
+            // A drag under two columns is a click, not a zoom -- so a
+            // mis-aimed tap on a bar opens its card instead of collapsing
+            // the graph to one game.
+            if (hi - lo >= 1) onZoom(lo, hi);
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+        } : undefined}
         style={{
           position: "absolute", left: 0, right: g.gutter, top: 0, bottom: 0,
           display: "flex", gap: gapFor(n), alignItems: "flex-end", overflow: "hidden",
           // Without this the browser paints its own text selection over the
           // plot the moment a drag starts -- the blue smear.
           userSelect: "none",
+          cursor: onZoom ? "crosshair" : undefined,
         }}
       >
         {games.map((gm, i) => {
@@ -155,12 +199,17 @@ export default function FormPlot({
             <div
               key={`${gm.iso || gm.date || i}-${i}`}
               onClick={onPickBar ? () => onPickBar(i) : undefined}
+              onPointerEnter={tooltipFor ? () => setHover(i) : undefined}
+              onPointerLeave={tooltipFor ? () => setHover(null) : undefined}
               style={{
                 flex: "1 1 0", minWidth: 0, height: "100%", display: "flex",
                 flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 3,
                 cursor: onPickBar ? "pointer" : "default",
-                background: picked === i ? "rgba(255,255,255,0.05)" : "transparent",
+                background: (dragSel && i >= dragSel[0] && i <= dragSel[1])
+                  ? "rgba(143,164,240,0.16)"
+                  : picked === i || hover === i ? "rgba(255,255,255,0.05)" : "transparent",
                 borderRadius: 3,
+                userSelect: "none",
               }}
             >
               {/* A game with none of the stat gets no bar at all -- an outline
@@ -239,6 +288,25 @@ export default function FormPlot({
       >
         {line}
       </div>
+
+      {/* The hover hint. Date, opponent, value and over/under against the
+          current line -- and it says outright that a click opens the card,
+          because the card is what carries the data. */}
+      {tooltipFor && hover != null && (
+        <div
+          style={{
+            position: "absolute", zIndex: 4, pointerEvents: "none",
+            left: `calc(${((hover + 0.5) / (n || 1)) * 100}% )`,
+            transform: "translateX(-50%)", bottom: g.plotH - 8,
+            display: "flex", flexDirection: "column", gap: 3, whiteSpace: "nowrap",
+            padding: "8px 11px", borderRadius: 8, border: "1px solid var(--line)",
+            background: "var(--surface-2)", boxShadow: "0 10px 26px rgba(0,0,0,0.55)",
+          }}
+        >
+          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text)" }}>{tooltipFor(hover)}</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>click for the full line</span>
+        </div>
+      )}
     </div>
   );
 }
