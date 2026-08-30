@@ -1927,3 +1927,72 @@ footer and the floating trigger sat on top of it.
   console error the browser logs before any `catch` sees it. Misses are
   remembered per slug for the session, and a miss rules out every season rather
   than only the one asked for.
+
+## The mobile teammate filter — frame 1c's Lineups sheet
+
+Alex sent an updated `PropPalace Mobile v3.dc.html` (via Drive, extracted into
+`v3 Mocks/`). Exactly one file changed in the bundle; the diff adds a
+`pdShowLineups` section to the Player Detail filter sheet, a `Lineups ▾` chip
+on the chip row, and a right-alignment fix on the IMPLIED label.
+
+Built as drawn: a two-column grid of cards under TEAMMATES and OPPOSING
+LINEUP, each card cycling neutral → WITH → W/O on tap, with the state word
+printed as well as coloured. `buildLineupSheet` in `PropLedger.jsx` builds it
+once for all four sports; what differs per page is only how a game answers "did
+this player appear", which arrives as `playedInGame`.
+
+Two details from the mock's own script that are easy to get wrong and are kept:
+
+- **The number on a card is that card's own filter**, not the combined one. The
+  mock says it outright — "each card counts its own filter alone, so the number
+  under it answers 'how many games does this one leave'". The combined figure
+  is the sentence under the grids, which is the only place the whole set is
+  counted.
+- **The note goes amber under five games**, which is the thin-sample warning.
+
+The chip writes the same `teammateChips` array the desktop `LineupTiles` does,
+so the two controls cannot disagree about what is set, and opening the sheet is
+what asks for the participation record — the same demand-driven fetch opening
+the desktop filter panel triggers.
+
+Departures, both raised:
+
+- **No pronoun in the note.** The mock writes "His log narrows to…". These
+  grids render on all four sport pages and "his" is wrong on one of them, which
+  is the same reason `absenceEffectCopy` names the player rather than reaching
+  for one. It reads "This log narrows to…".
+- **The idle sentence is sport-aware.** The mock's ("It matters most in the
+  NFL, NBA and WNBA, but it works here too") is written from the MLB frame's
+  point of view and reads oddly on an NFL page. MLB keeps it verbatim; the
+  other three get a sentence about role changes.
+
+**The NFL has no OPPOSING LINEUP grid.** Its participation record is the
+dressed roster of *one competitor* per request — its boxscore cannot be used at
+all, because a receiver who played and was never targeted does not appear in
+one — so the other side would double every fetch. The section drops rather than
+being half-answered. MLB, NBA and WNBA all draw it, because their records
+answer for both teams in the request they already make.
+
+### Verified
+
+Driven on the phone, cycling a card and reading the count back:
+
+| Player | Teammate | ANY | WITH | W/O |
+|---|---|---|---|---|
+| Geraldo Perdomo (MLB) | Nolan Arenado | 132 | 122 | 10 |
+| Tiffany Hayes (WNBA) | Gabby Williams | 37 | 35 | 2 |
+
+Both partition exactly. Setting the chip narrowed Perdomo's chart to "FROM 10
+GAMES" and recomputed the implied price from +150 to +400, so everything
+downstream moves with it.
+
+### Two defects found while verifying, both fixed
+
+- **The NFL feed's empty state was rendering its own source code.** When
+  `feedEmptyNote` was extracted in batch 1 the whole ternary was wrapped in a
+  JSX fragment without braces, so `sport === "mlb" && mlbLoading ? …` and the
+  comment after it became literal text on screen. Now reads "No NFL games today
+  or tomorrow… Next kickoff is Wed, Sep 9."
+- **`nflRateAgg` referenced a `tgt` binding that the null-aware targets change
+  had removed**, crashing every NFL player page to the error boundary. Catch
+  rate now returns null where the source carries no targets, rather than 0%.

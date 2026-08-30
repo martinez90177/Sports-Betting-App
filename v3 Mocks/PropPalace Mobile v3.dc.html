@@ -86,7 +86,7 @@
                 <span style="text-align: right; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8b98ab">YOUR RATE</span>
                 <span></span>
                 <span style="display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; overflow: hidden">
-                  <span>IMPLIED</span>
+                  <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8b98ab; white-space: nowrap; text-align: right">IMPLIED</span>
                 </span>
                 <span></span>
               </div>
@@ -1561,6 +1561,7 @@
               <div onClick="{{ openSeasonSheet }}" style="{{ pdSeasonChip }}">{{ pdSeason }} ▾</div>
               <div onClick="{{ openWindowSheet }}" style="{{ pdWinChip }}">{{ pdWin }} ▾</div>
               <div onClick="{{ openSplitSheet }}" style="{{ pdSplitChip }}">{{ pdSplitLabel }} ▾</div>
+              <div onClick="{{ openLineupSheet }}" style="{{ pdLineupChip }}">{{ pdLineupLabel }} ▾</div>
               <div onClick="{{ openAllSheet }}" style="min-height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-radius: 8px; border: 1px solid #2b2f36; background: #131519; color: #aab2c0; font-family: 'Space Mono', monospace; font-size: 12px; white-space: nowrap; cursor: pointer">ALL FILTERS</div>
             </div>
           </div>
@@ -1831,6 +1832,56 @@
                 </sc-for>
               </div>
               <span style="font-size: 12px; color: #8b98ab">A split recomputes the rate and its sample together.</span>
+            </div>
+            </sc-if>
+
+            <sc-if value="{{ pdShowLineups }}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; flex-direction: column; gap: 16px">
+              <div style="display: flex; flex-direction: column; gap: 10px">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px">
+                  <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #8b98ab">TEAMMATES</span>
+                  <span style="font-family: 'Space Mono', monospace; font-size: 10px; color: #8b98ab">{{ pdMateTeam }}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+                  <sc-for list="{{ pdMates }}" as="p" hint-placeholder-count="6">
+                    <div onClick="{{ p.cycle }}" style="{{ p.cardStyle }}">
+                      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                        <span style="{{ p.avatarStyle }}">{{ p.initials }}</span>
+                        <span style="{{ p.statusStyle }}">{{ p.status }}</span>
+                      </div>
+                      <span style="{{ p.nameStyle }}">{{ p.name }}</span>
+                      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 6px">
+                        <span style="{{ p.stateStyle }}">{{ p.state }}</span>
+                        <span style="{{ p.gamesStyle }}">{{ p.games }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #2b2f36; padding-top: 16px">
+                <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 10px">
+                  <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: #8b98ab">OPPOSING LINEUP</span>
+                  <span style="font-family: 'Space Mono', monospace; font-size: 10px; color: #8b98ab">{{ pdOppTeam }}</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+                  <sc-for list="{{ pdOpps }}" as="p" hint-placeholder-count="6">
+                    <div onClick="{{ p.cycle }}" style="{{ p.cardStyle }}">
+                      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+                        <span style="{{ p.avatarStyle }}">{{ p.initials }}</span>
+                        <span style="{{ p.statusStyle }}">{{ p.status }}</span>
+                      </div>
+                      <span style="{{ p.nameStyle }}">{{ p.name }}</span>
+                      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 6px">
+                        <span style="{{ p.stateStyle }}">{{ p.state }}</span>
+                        <span style="{{ p.gamesStyle }}">{{ p.games }}</span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <span style="{{ pdLineupNoteStyle }}">{{ pdLineupNote }}</span>
             </div>
             </sc-if>
 
@@ -2145,6 +2196,25 @@ const OPPS = [
   { slug: "bal", sport: "mlb" }, { slug: "tb", sport: "mlb" }, { slug: "bos", sport: "mlb" },
   { slug: "tor", sport: "mlb" }, { slug: "hou", sport: "mlb" }, { slug: "sea", sport: "mlb" },
   { slug: "cle", sport: "mlb" }, { slug: "min", sport: "mlb" },
+];
+
+// Judge's teammates, and the lineup he faces. Availability comes from the same
+// feed the Injuries page reads, so a status here cannot contradict it.
+const PD_MATES = [
+  { name: "A. Volpe", initials: "AV", status: "" },
+  { name: "J. Chisholm", initials: "JC", status: "" },
+  { name: "A. Wells", initials: "AW", status: "QUEST" },
+  { name: "G. Stanton", initials: "GS", status: "" },
+  { name: "B. Rice", initials: "BR", status: "" },
+  { name: "P. Goldschmidt", initials: "PG", status: "OUT" },
+];
+const PD_OPPS = [
+  { name: "G. Henderson", initials: "GH", status: "" },
+  { name: "A. Rutschman", initials: "AR", status: "" },
+  { name: "J. Westburg", initials: "JW", status: "QUEST" },
+  { name: "R. Mountcastle", initials: "RM", status: "" },
+  { name: "C. Mullins", initials: "CM", status: "" },
+  { name: "Z. Eflin", initials: "ZE", status: "" },
 ];
 
 const SPLIT_IDS = ["season", "home", "away", "last3", "vs"];
@@ -4243,7 +4313,9 @@ class Component extends DCLogic {
       pdShowSeason: st.pdSheet === "season" || st.pdSheet === "all",
       pdShowWindow: st.pdSheet === "window" || st.pdSheet === "all",
       pdShowSplits: st.pdSheet === "splits" || st.pdSheet === "all",
-      pdSheetTitle: st.pdSheet === "season" ? "Season"
+      pdShowLineups: st.pdSheet === "lineups" || st.pdSheet === "all",
+      pdSheetTitle: st.pdSheet === "lineups" ? "Lineups"
+        : st.pdSheet === "season" ? "Season"
         : st.pdSheet === "market" ? "Market"
         : st.pdSheet === "window" ? "Window"
         : st.pdSheet === "splits" ? "Splits" : "Filters",
@@ -4251,6 +4323,7 @@ class Component extends DCLogic {
       openSeasonSheet: () => this.set("pdSheet", "season"),
       openWindowSheet: () => this.set("pdSheet", "window"),
       openSplitSheet: () => this.set("pdSheet", "splits"),
+      openLineupSheet: () => this.set("pdSheet", "lineups"),
       openAllSheet: () => this.set("pdSheet", "all"),
       pdMarket: st.pdMarket,
       pdWin: st.pdWin,
@@ -4263,6 +4336,91 @@ class Component extends DCLogic {
       })),
       pdWinChip: chip(false),
       pdSplitChip: chip(st.pdSplit !== "season"),
+      ...(() => {
+        const states = st.pdLineupStates || {};
+        const on = Object.keys(states).filter((k) => states[k]);
+        // 22 games, each carrying who sat out on either side.
+        const games = [];
+        for (let i = 0; i < 22; i++) {
+          games.push({
+            out: PD_MATES.filter((t, j) => (i + j * 3) % 5 === 0).map((t) => t.name),
+            oppOut: PD_OPPS.filter((t, j) => (i + j * 2) % 4 === 0).map((t) => t.name),
+          });
+        }
+        const passes = (g) =>
+          PD_MATES.every((t) => {
+            const s = states[t.name] || 0;
+            return !s ? true : s === 1 ? g.out.indexOf(t.name) < 0 : g.out.indexOf(t.name) >= 0;
+          }) &&
+          PD_OPPS.every((t) => {
+            const s = states[t.name] || 0;
+            return !s ? true : s === 1 ? g.oppOut.indexOf(t.name) < 0 : g.oppOut.indexOf(t.name) >= 0;
+          });
+        const kept = games.filter(passes);
+        const card = (t, key) => {
+          const s = states[t.name] || 0;
+          // Each card counts its own filter alone, so the number under it
+          // answers "how many games does this one leave".
+          const mine = games.filter((g) => {
+            const missed = (g[key] || []).indexOf(t.name) >= 0;
+            return !s ? true : s === 1 ? !missed : missed;
+          });
+          const bg = s === 1 ? "#2f8f68" : s === 2 ? "#c04b4b" : S1;
+          return {
+            key: t.name, name: t.name, initials: t.initials, status: t.status,
+            state: s === 1 ? "WITH" : s === 2 ? "W/O" : "ANY",
+            games: mine.length + " G",
+            cardStyle: {
+              display: "flex", flexDirection: "column", gap: "8px", padding: "12px",
+              borderRadius: "10px", cursor: "pointer", background: bg, minHeight: "44px",
+              border: "1px solid " + (s ? "transparent" : LINE),
+            },
+            avatarStyle: {
+              width: "32px", height: "32px", borderRadius: "999px", display: "flex",
+              alignItems: "center", justifyContent: "center", fontFamily: MONO, fontSize: "11px",
+              background: s ? "rgba(0,0,0,0.28)" : "#20242b", color: s ? "#f4f7fb" : T2,
+            },
+            nameStyle: {
+              fontSize: "13.5px", fontWeight: 600, color: s ? "#f4f7fb" : T,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            },
+            stateStyle: {
+              fontFamily: MONO, fontSize: "11px", fontWeight: 700, letterSpacing: "0.08em",
+              color: s ? "#ffffff" : DIM,
+            },
+            gamesStyle: { fontFamily: MONO, fontSize: "10px", color: s ? "rgba(255,255,255,0.78)" : DIM },
+            // Colour follows the status itself: out red, questionable amber.
+            statusStyle: t.status
+              ? {
+                  fontFamily: MONO, fontSize: "10px", letterSpacing: "0.08em", padding: "3px 6px",
+                  borderRadius: "999px",
+                  background: t.status === "OUT" ? "rgba(239,91,91,0.22)" : "rgba(232,177,58,0.22)",
+                  color: t.status === "OUT" ? "#ffb4b4" : "#f3d79a",
+                }
+              : { display: "none" },
+            cycle: () => this.setState((s2) => ({
+              pdLineupStates: Object.assign({}, s2.pdLineupStates, {
+                [t.name]: (((s2.pdLineupStates || {})[t.name] || 0) + 1) % 3,
+              }),
+            })),
+          };
+        };
+        return {
+          pdMates: PD_MATES.map((t) => card(t, "out")),
+          pdOpps: PD_OPPS.map((t) => card(t, "oppOut")),
+          pdMateTeam: "NYY",
+          pdOppTeam: "BAL",
+          pdLineupChip: chip(on.length > 0),
+          pdLineupLabel: on.length ? "Lineups · " + on.length : "Lineups",
+          pdLineupNote: on.length
+            ? "His log narrows to the " + kept.length + " games matching this lineup."
+            : "One tap for with, two for without. It matters most in the NFL, NBA and WNBA, but it works here too.",
+          pdLineupNoteStyle: {
+            fontSize: "12.5px", lineHeight: 1.5,
+            color: on.length ? (kept.length < 5 ? "#e8b13a" : AI) : DIM,
+          },
+        };
+      })(),
       pdSplitLabel: st.pdSplit === "season" ? "Splits" : (SPLIT_LABELS[st.pdSplit] || "Splits"),
       pdGraphTitle: st.pdMarket.toUpperCase() + " · " + st.pdSeason + " · " + st.pdWin.toUpperCase(),
       // Applying a sheet commits whatever the stepper is showing, so a window
@@ -4271,7 +4429,7 @@ class Component extends DCLogic {
         { pdSheet: null },
         s.customTouched ? this.commitCustom(s, false) : null
       )),
-      resetPdSheet: () => this.setState({ pdMarket: "Total Bases", pdWin: "L10", pdSplit: "season", customTouched: false }),
+      resetPdSheet: () => this.setState({ pdMarket: "Total Bases", pdWin: "L10", pdSplit: "season", customTouched: false, pdLineupStates: {} }),
       // Every other control commits on the tap, so the primary button exists only
       // for a window that was typed rather than chosen.
       pdApplyLabel: st.customTouched ? "APPLY L" + st.customWin : "DONE",

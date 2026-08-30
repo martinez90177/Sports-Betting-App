@@ -89,6 +89,73 @@ const fmtRate = (hits, n) => (n ? `${Math.round((hits / n) * 100)}%` : "—");
 // The tone the mock uses on a rate figure. Its own thresholds, kept.
 const rateTone = (p) => (p >= 0.7 ? "var(--pos)" : p >= 0.55 ? "var(--status-questionable)" : "var(--text-2)");
 
+// One With/Without card, as frame 1c's `card()` builds it.
+//
+// Three states cycling on tap -- neutral, WITH, W/O -- and the word is
+// printed as well as coloured, which is what lets the outcome green and red
+// legitimately leave the graph here: they mean include and exclude, and the
+// colour is never the only carrier.
+//
+// `games` is that card's own count, not the combined one. The mock is
+// explicit about it -- "each card counts its own filter alone, so the number
+// under it answers 'how many games does this one leave'" -- and the combined
+// figure is the sentence under the grids.
+function LineupCard({ c, renderAvatar }) {
+  const on = c.state === "WITH" || c.state === "W/O";
+  const fill = c.state === "WITH" ? "var(--pos)" : c.state === "W/O" ? "var(--neg)" : null;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={c.onCycle}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); c.onCycle && c.onCycle(); } }}
+      title={c.state === "ANY" ? `Only the games ${c.name} played` : c.state === "WITH" ? `Only the games ${c.name} missed` : "Clear"}
+      style={{
+        display: "flex", flexDirection: "column", gap: 8, padding: 12,
+        borderRadius: 10, cursor: "pointer", minHeight: 44, minWidth: 0,
+        background: on ? fill : "var(--surface-1)",
+        border: `1px solid ${on ? "transparent" : "var(--line)"}`,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        {/* Rule 1: a named player travels with their face and their
+            availability. The mock draws an initials circle; this is the
+            standing substitution for one. */}
+        {renderAvatar ? renderAvatar(c, 32) : (
+          <span style={{ width: 32, height: 32, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: MONO, fontSize: 11, background: on ? "rgba(0,0,0,0.28)" : "var(--surface-2)", color: on ? "#f4f7fb" : "var(--text-2)" }}>
+            {c.initials}
+          </span>
+        )}
+        {/* The word beside the dot, for the two states that are a reason not
+            to count on someone. Colour follows the status itself. */}
+        {c.status === "out" || c.status === "questionable" ? (
+          <span
+            style={{
+              fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "3px 6px",
+              borderRadius: 999, flex: "0 0 auto",
+              background: c.status === "out" ? "rgba(239,91,91,0.22)" : "rgba(232,177,58,0.22)",
+              color: c.status === "out" ? "#ffb4b4" : "#f3d79a",
+            }}
+          >
+            {c.status === "out" ? "OUT" : "QUEST"}
+          </span>
+        ) : null}
+      </div>
+      <span style={{ fontSize: 13.5, fontWeight: 600, color: on ? "#f4f7fb" : "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {c.name}
+      </span>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: on ? "#ffffff" : "var(--dim)" }}>
+          {c.state}
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: on ? "rgba(255,255,255,0.78)" : "var(--dim)" }}>
+          {c.games}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // The page
 // ---------------------------------------------------------------------------
@@ -126,6 +193,14 @@ export default function PlayerDetailMobile({
   // sentences and a page that confuses them says something untrue.
   availabilityCovered = false,
   news = null,           // [{ id, when, headline }]
+  // The With/Without control, frame 1c's `pdShowLineups` section. Null on a
+  // page that cannot answer who else played -- the chip does not appear at
+  // all rather than opening a sheet with nothing in it.
+  //
+  // { teamLabel, oppLabel, mates: [card], opps: [card], note, noteTone,
+  //   activeCount, onReset }
+  // card: { key, name, initials, status, state, games, onCycle, avatarNode }
+  lineups = null,
 }) {
   const [tab, setTab] = React.useState("Form");
   const [gameMenu, setGameMenu] = React.useState(false);
@@ -420,8 +495,15 @@ export default function PlayerDetailMobile({
             {(activeSplit && !splits[0].active ? activeSplit.label : "Splits")} ▾
           </div>
         )}
+        {/* Only where the page can actually answer it. A chip that opens an
+            empty sheet is worse than no chip. */}
+        {lineups && (
+          <div onClick={() => { if (lineups.onOpen) lineups.onOpen(); setSheet("lineups"); }} style={chip(lineups.activeCount > 0)}>
+            {(lineups.activeCount ? `Lineups · ${lineups.activeCount}` : "Lineups")} ▾
+          </div>
+        )}
         <div
-          onClick={() => setSheet("all")}
+          onClick={() => { if (lineups && lineups.onOpen) lineups.onOpen(); setSheet("all"); }}
           style={{
             minHeight: 40, display: "flex", alignItems: "center", gap: 7, padding: "0 14px",
             borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-1)",
@@ -905,9 +987,11 @@ export default function PlayerDetailMobile({
   const showSeason = sheet === "season" || sheet === "all";
   const showWindow = sheet === "window" || sheet === "all";
   const showSplits = sheet === "splits" || sheet === "all";
+  const showLineups = !!lineups && (sheet === "lineups" || sheet === "all");
   const sheetTitle = sheet === "season" ? "Season"
     : sheet === "market" ? "Market"
     : sheet === "window" ? "Window"
+    : sheet === "lineups" ? "Lineups"
     : sheet === "splits" ? "Splits" : "Filters";
 
   const sheetNode = sheet && (
@@ -1004,6 +1088,35 @@ export default function PlayerDetailMobile({
           </div>
         )}
 
+        {showLineups && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {[
+              { label: "TEAMMATES", team: lineups.teamLabel, cards: lineups.mates },
+              { label: "OPPOSING LINEUP", team: lineups.oppLabel, cards: lineups.opps },
+            ].map((grp, gi) => (
+              (grp.cards && grp.cards.length > 0) ? (
+                <div
+                  key={grp.label}
+                  style={{
+                    display: "flex", flexDirection: "column", gap: 10,
+                    borderTop: gi === 1 ? "1px solid var(--line)" : "none",
+                    paddingTop: gi === 1 ? 16 : 0,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+                    <span style={sectionLabel}>{grp.label}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{grp.team}</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {grp.cards.map((c) => <LineupCard key={c.key} c={c} renderAvatar={renderAvatar} />)}
+                  </div>
+                </div>
+              ) : null
+            ))}
+            <span style={{ fontSize: 12.5, lineHeight: 1.5, color: lineups.noteTone || "var(--dim)" }}>{lineups.note}</span>
+          </div>
+        )}
+
         {showSplits && splits && splits.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={sectionLabel}>SPLITS</span>
@@ -1033,7 +1146,16 @@ export default function PlayerDetailMobile({
 
         <div style={{ display: "flex", gap: 10 }}>
           <div
-            onClick={() => { windows && windows.onReset && windows.onReset(); closeSheet(); }}
+            onClick={() => {
+              // RESET clears what this sheet is actually showing. On the
+              // Lineups sheet that is the chips, not the window -- clearing a
+              // control the reader cannot see from here is the kind of thing
+              // that makes a reset button untrustworthy.
+              if (sheet === "lineups") { if (lineups && lineups.onReset) lineups.onReset(); }
+              else if (windows && windows.onReset) windows.onReset();
+              if (sheet === "all" && lineups && lineups.onReset) lineups.onReset();
+              closeSheet();
+            }}
             style={{
               flex: "0 0 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
               padding: "0 20px", borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface-2)",

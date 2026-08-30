@@ -1424,6 +1424,94 @@ function espnAbsenceRows({ absent = [], allGames = [], byEvent, valueOf, line, h
   });
 }
 
+// The mobile With/Without sheet, frame 1c's `pdMates` / `pdOpps`.
+//
+// Written once for all four sports. What differs per page is only how a
+// game answers "did this player appear" -- MLB reads its boxscore lineups,
+// the other three read lib/participation.js -- so that arrives as
+// `playedInGame` rather than being resolved in here.
+//
+// Two things the mock is explicit about and this keeps:
+//
+//   * the number on a card is *that card's own* filter, not the combined
+//     one. It answers "how many games does this one leave". The combined
+//     figure is the sentence under the grids, which is the only place the
+//     whole set is counted.
+//   * one tap is with, two is without, three clears. Same three states as
+//     the desktop tiles, and the same chips array behind them, so the two
+//     controls cannot disagree about what is set.
+function buildLineupSheet({
+  chips = [], onChange, games = [], playedInGame,
+  mates = [], opps = [], teamLabel, oppLabel, sport, statusOf,
+  // Opening the sheet is what asks for the participation record, the same way
+  // opening the desktop filter panel does. Without it the cards would all read
+  // the full game count until something else happened to request it.
+  onOpen,
+}) {
+  const modeOf = (pid) => (chips.find((c) => c.pid === pid) || {}).mode || null;
+  const stateOf = (pid) => { const m = modeOf(pid); return m === "with" ? "WITH" : m === "without" ? "W/O" : "ANY"; };
+
+  const cycle = (person) => () => onChange((prev) => {
+    const cur = (prev.find((c) => c.pid === person.pid) || {}).mode || null;
+    if (!cur) return [...prev, { pid: person.pid, name: person.name, mode: "with" }];
+    if (cur === "with") return prev.map((c) => (c.pid === person.pid ? { ...c, mode: "without" } : c));
+    return prev.filter((c) => c.pid !== person.pid);
+  });
+
+  // A game we could not check satisfies neither side, the same rule the
+  // chart filter and absenceSplit already follow.
+  const passesOne = (g, pid, state) => {
+    if (state === "ANY") return true;
+    const played = playedInGame(g, pid);
+    if (played === null || played === undefined) return false;
+    return state === "WITH" ? played : !played;
+  };
+
+  const card = (person) => {
+    const state = stateOf(person.pid);
+    return {
+      key: person.pid,
+      pid: person.pid,
+      name: person.name,
+      // For PlayerAvatar, via the page's own renderAvatar.
+      team: person.team,
+      espnId: person.espnId,
+      mlbId: person.mlbId,
+      id: person.id,
+      sport,
+      initials: String(person.name || "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase(),
+      status: statusOf ? statusOf(person) : undefined,
+      state,
+      games: `${games.filter((g) => passesOne(g, person.pid, state)).length} G`,
+      onCycle: cycle(person),
+    };
+  };
+
+  const all = [...mates, ...opps];
+  const active = all.filter((p) => modeOf(p.pid));
+  const kept = games.filter((g) => all.every((p) => passesOne(g, p.pid, stateOf(p.pid)))).length;
+
+  return {
+    teamLabel, oppLabel,
+    mates: mates.map(card),
+    opps: opps.map(card),
+    activeCount: active.length,
+    onOpen,
+    onReset: () => onChange([]),
+    // No pronoun. These grids render on all four sport pages and "his" is
+    // wrong on one of them -- the same reason absenceEffectCopy names the
+    // player rather than reaching for one.
+    note: active.length
+      ? `This log narrows to the ${kept} game${kept === 1 ? "" : "s"} matching this lineup.`
+      : (sport === "mlb"
+          ? "One tap for with, two for without. It matters most in the NFL, NBA and WNBA, but it works here too."
+          : "One tap for with, two for without. This is where a role change shows up — the games a teammate missed are a different sample."),
+    noteTone: active.length
+      ? (kept < 5 ? "var(--status-questionable)" : "var(--amber-ink)")
+      : "var(--dim)",
+  };
+}
+
 // Recent headlines for one player, shaped into InjuryAndNews's timeline.
 //
 // The `result` field that component supports is deliberately never set: tying a
@@ -1926,6 +2014,14 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   React.useEffect(() => {
     if (absentTeammates.length) setTeammateDataWanted(true);
   }, [absentTeammates.length]);
+
+  // The other side of tonight's game. NBA and WNBA participation comes off
+  // the boxscore summary, which answers for both teams in one request, so
+  // the opposing grid costs nothing the teammate grid has not already paid.
+  const opponentCandidates = useMemo(() => {
+    const opp = playerSide === matchup?.teamA ? matchup?.teamB : matchup?.teamA;
+    return (opp?.players || []).filter((pl) => pl.espnId).map((pl) => ({ ...pl, pid: String(pl.espnId) }));
+  }, [matchup, playerSide]);
 
   const teammateValueOf = React.useCallback((g) => statValue(g, market, rebSplit), [market, rebSplit]);
 
@@ -2961,6 +3057,25 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     })
     .filter(Boolean);
 
+  // The phone's With/Without sheet (frame 1c). Same chips array the desktop
+  // tiles write, so the two controls can never disagree about what is set.
+  const v3Lineups = useMemo(() => {
+    if (!teammateSplits.supported) return null;
+    return buildLineupSheet({
+      sport: "nba",
+      chips: teammateChips,
+      onChange: setTeammateChips,
+      games: allGames.filter((g) => g.eventId),
+      playedInGame: (g, pid) => playedIn(teammateSplits.byEvent, g, pid),
+      mates: teammateCandidates,
+      opps: opponentCandidates,
+      teamLabel: (teammateCandidates[0] || {}).team || null,
+      oppLabel: (opponentCandidates[0] || {}).team || null,
+      statusOf: nbaStatusOf,
+      onOpen: () => setTeammateDataWanted(true),
+    });
+  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates]);
+
   const v2Page = (
     <PlayerDetailV2
       sport="nba"
@@ -2978,6 +3093,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       availability={nbaStatusOf(player) || null}
       availabilityCovered
       injuryTeams={v3InjuryTeams}
+      lineups={v3Lineups}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "nba", scope: logScope, onChange: setLogScope })}
       windows={v3Windows}
@@ -4979,7 +5095,9 @@ function nflRateAgg(games) {
     ypc: rushAtt ? rushYds / rushAtt : 0,
     tgt: avgOf("tgt"),
     rec: rec / n,
-    catchPct: tgt ? (rec / tgt) * 100 : 0,
+    // Catch rate needs targets, so a source without them has no catch rate --
+    // null, not 0%, which would read as "caught nothing".
+    catchPct: (() => { const t = avgOf("tgt"); return t ? (rec / n / t) * 100 : null; })(),
     recYds: recYds / n,
     ypr: rec ? recYds / rec : 0,
     snapPct: snaps.length ? snaps.reduce((a, b) => a + b, 0) / snaps.length : 0,
@@ -8865,6 +8983,25 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     })
     .filter(Boolean);
 
+  // The phone's With/Without sheet (frame 1c). Same chips array the desktop
+  // tiles write, so the two controls can never disagree about what is set.
+  const v3Lineups = useMemo(() => {
+    if (!teammateSplits.supported) return null;
+    return buildLineupSheet({
+      sport: "nfl",
+      chips: teammateChips,
+      onChange: setTeammateChips,
+      games: allGames.filter((g) => g.eventId),
+      playedInGame: (g, pid) => playedIn(teammateSplits.byEvent, g, pid),
+      mates: teammateCandidates,
+      opps: [],
+      teamLabel: (teammateCandidates[0] || {}).team || null,
+      oppLabel: ([][0] || {}).team || null,
+      statusOf: nflStatusOf,
+      onOpen: () => setTeammateDataWanted(true),
+    });
+  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates]);
+
   const v2Page = (
     <PlayerDetailV2
       sport="nfl"
@@ -8882,6 +9019,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       availability={nflStatusOf(player) || null}
       availabilityCovered
       injuryTeams={v3InjuryTeams}
+      lineups={v3Lineups}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "nfl", scope: logScope, onChange: setLogScope })}
       windows={v3Windows}
@@ -10580,6 +10718,12 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     [allGames]
   );
 
+  // See the NBA page: one summary request answers for both sides.
+  const opponentCandidates = useMemo(() => {
+    const opp = playerSide === matchup?.teamA ? matchup?.teamB : matchup?.teamA;
+    return (opp?.players || []).filter((pl) => pl.espnId).map((pl) => ({ ...pl, pid: String(pl.espnId) }));
+  }, [matchup, playerSide]);
+
   const teammateValueOf = React.useCallback((g) => statValue(g, market, rebSplit), [market, rebSplit]);
 
   const teammateSplits = useEspnTeammateSplits({
@@ -11578,6 +11722,25 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     })
     .filter(Boolean);
 
+  // The phone's With/Without sheet (frame 1c). Same chips array the desktop
+  // tiles write, so the two controls can never disagree about what is set.
+  const v3Lineups = useMemo(() => {
+    if (!teammateSplits.supported) return null;
+    return buildLineupSheet({
+      sport: "wnba",
+      chips: teammateChips,
+      onChange: setTeammateChips,
+      games: allGames.filter((g) => g.eventId),
+      playedInGame: (g, pid) => playedIn(teammateSplits.byEvent, g, pid),
+      mates: teammateCandidates,
+      opps: opponentCandidates,
+      teamLabel: (teammateCandidates[0] || {}).team || null,
+      oppLabel: (opponentCandidates[0] || {}).team || null,
+      statusOf: statusOf,
+      onOpen: () => setTeammateDataWanted(true),
+    });
+  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates]);
+
   const v2Page = (
     <PlayerDetailV2
       sport="wnba"
@@ -11595,6 +11758,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       availability={statusOf(player) || null}
       availabilityCovered
       injuryTeams={v3InjuryTeams}
+      lineups={v3Lineups}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "wnba", scope: logScope, onChange: setLogScope })}
       windows={v3Windows}
@@ -17030,6 +17194,30 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     })
     .filter(Boolean);
 
+  // The phone's With/Without sheet (frame 1c) -- the frame MLB is actually
+  // drawn from. Reads boxscoreLineups rather than lib/participation.js: the
+  // MLB record predates it and answers for both teams already, which is what
+  // lets the opposing grid render here.
+  const v3Lineups = useMemo(() => {
+    if (isPitcher) return null;
+    return buildLineupSheet({
+      sport: "mlb",
+      chips: teammateChips,
+      onChange: setTeammateChips,
+      games: mlbSplitGames,
+      playedInGame: (g, pid) => {
+        const ids = g.gamePk ? boxscoreLineups[g.gamePk] : null;
+        return ids ? ids.has(Number(pid)) : null;
+      },
+      mates: teammateCandidates,
+      opps: opponentCandidates,
+      teamLabel: (teammateCandidates[0] || {}).team || null,
+      oppLabel: (opponentCandidates[0] || {}).team || null,
+      statusOf: mlbStatusOf,
+      onOpen: () => setTeammateDataWanted(true),
+    });
+  }, [isPitcher, teammateChips, mlbSplitGames, boxscoreLineups, teammateCandidates, opponentCandidates, mlbStatusOf]);
+
   const v2Page = (
     <PlayerDetailV2
       sport="mlb"
@@ -17045,6 +17233,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       windows={v3Windows}
       splits={v3Splits}
       injuryTeams={v3InjuryTeams}
+      lineups={v3Lineups}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -22475,7 +22664,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // same list through PropFeedMobile, and two copies of this would be two
   // chances for one of them to blame the wrong thing.
   const feedEmptyNote = (
-    <>sport === "mlb" && mlbLoading
+    <>{sport === "mlb" && mlbLoading
               ? "Loading live MLB matchup data…"
               /* The window, not the filters. This is the out-of-season case:
                  3,089 NFL props exist and every one of them is for a game
@@ -22512,7 +22701,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               ? `No props match ${emptyStateNames.length === 1 ? "this filter" : "these filters"}: ${emptyStateNames.join(" · ")}. Remove one to widen the feed.`
               : feedActiveFilterCount > 0
               ? `No props match the current filters. ${feedActiveFilterCount} ${feedActiveFilterCount === 1 ? "control is" : "controls are"} away from your defaults inside the Filters panel.`
-              : "No props match these filters yet."</>
+              : "No props match these filters yet."}</>
   );
 
   const refineSummary = `${refineMarketLabel} · ${direction === "under" ? "Under" : "Over"} · ${refineWindowLabel}`;
