@@ -32,6 +32,7 @@ import useCustomWindow from "./v3/useCustomWindow.js";
 import PropFeedMobile from "./v3/PropFeedMobile.jsx";
 import PropFeedDesktop from "./v3/PropFeedDesktop.jsx";
 import MyPicksMobile from "./v3/MyPicksMobile.jsx";
+import MyPicksDesktop from "./v3/MyPicksDesktop.jsx";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import { venueWord } from "./lib/venue.js";
@@ -26551,9 +26552,32 @@ export default function PropLedger() {
         </LazyPane>
         </MaybeV3Shell>
       )}
-      {/* My Picks stops being a drawer on the phone: the v3 mock draws it as a
-          screen with SLIP / LEDGER / READ, reached from the dock every other
-          v3 screen carries. Above 900 the drawer is unchanged. */}
+      {/* My Picks stops being a drawer. The phone mock draws it as a screen
+          with SLIP / LEDGER / READ, reached from the dock every other v3
+          screen carries; the desktop mock (frame 2a) draws slip *beside*
+          read — two tabs on the left and THE READ as a permanent column, so
+          the read stays visible while the slip is edited. */}
+      {page === "picks" && !isPhoneShell && (
+        <MyPicksDesktop
+          legs={myPicks.filter((x) => !x.result)}
+          settled={myPicks.filter((x) => x.result)}
+          calibration={ledgerCalibration(myPicks)}
+          correlationGroups={parlayCorrelationGroups(myPicks.filter((x) => !x.result))}
+          bookLabel={(SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0]).label}
+          bookHref={(SPORTSBOOKS.find((b) => b.id === sportsbook) || SPORTSBOOKS[0]).url}
+          onRemove={removePick}
+          onClear={clearPicks}
+          onOpenProp={goToProp}
+          navTabs={NAV_TABS}
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          combinedOdds={(() => {
+            const open = myPicks.filter((x) => !x.result);
+            return open.length ? combineParlayOdds(open.map((x) => x.odds)) : null;
+          })()}
+        />
+      )}
       {page === "picks" && isPhoneShell && (
         <V3Shell
           page={null}
@@ -26668,7 +26692,7 @@ export default function PropLedger() {
         // the mock draws.
         hideTrigger={
           (isPhoneShell && (page === "picks" || page === "landing" || PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page)))
-          || (!isPhoneShell && page === "feed")
+          || (!isPhoneShell && (page === "feed" || page === "picks"))
         }
       />
       {/* Reads and writes every preference through the settings context, so

@@ -49,7 +49,7 @@ const FRAMES = {
     "1a": "BoardMobile", "1b": "BoardDesktop",
   },
   "PropPalace Desktop v3.dc.html": {
-    "1a": "PlayerDetailDesktop", "1c": "PropFeedDesktop",
+    "1a": "PlayerDetailDesktop", "1c": "PropFeedDesktop", "2a": "MyPicksDesktop",
   },
 };
 
@@ -70,7 +70,8 @@ const SHARED = ["v3/FormPlot.jsx", "v3/Shell.jsx", "v3/AgeMark.jsx", "v3/boardSh
 // import PropLedger at all. Only the frames that really draw through a file
 // get to match against it.
 const EXTRA = {
-  "1c-desktop": ["NavBar.jsx", "PropLedger.jsx"],
+  "1c-desktop": ["NavBar.jsx", "PropLedger.jsx", "v3/MyPicksDesktop.jsx"],
+  "2a-desktop": ["v3/intentRead.js", "v3/useMyPicks.js"],
   // The Board's tiers, reasons and cards are assembled in BoardPage.jsx.
   "1a-board": ["BoardPage.jsx"],
   "1b-board": ["NavBar.jsx", "BoardPage.jsx"],
@@ -85,17 +86,18 @@ const EXTRA = {
 const NOT_BUILT = {
   "1a-board": { why: "mock scaffolding for a navigation the app performs", strings: ["OPENING"] },
   "1b-board": { why: "mock scaffolding for a navigation the app performs", strings: ["OPENING"] },
+  // Frame 1c draws its full view as an overlay with a CLOSE control. The app
+  // opens frame 2a, which is a page, so the way back is the nav rather than a
+  // dismiss -- building the same screen twice to keep one glyph would be the
+  // worse trade.
+  "1c-desktop": { why: "the full view is a page here, not an overlay", strings: ["CLOSE ✕"] },
 };
 
-const DEFERRED = {
-  "1c": {
-    to: "frame 2a (desktop My Picks)",
-    strings: [
-      "← PROP FEED", "BUILDING", "CLOSE ✕", "LEG", "YOUR RATE", "READ", "ALT",
-      "THE READ", "WHAT THE FLAGS REST ON", "DID YOUR RATES HOLD",
-    ],
-  },
-};
+// Regions a frame draws that another frame builds. Frame 1c is the desktop
+// Prop Feed and its ⌘ FULL VIEW overlay is the desktop My Picks screen --
+// frame 2a -- reached by that control rather than built twice. So 1c matches
+// against MyPicksDesktop as well, and nothing is held.
+const DEFERRED = {};
 
 // The iOS status bar, which is frame furniture inside the device box.
 const STATUS_BAR = /^(9:41|▮+.*|.*ᯬ.*|\d{1,3}%)$/;

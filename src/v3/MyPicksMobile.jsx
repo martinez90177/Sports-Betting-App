@@ -1,7 +1,8 @@
 import React from "react";
 import PlayerAvatar from "../PlayerAvatar.jsx";
 import { crest } from "./FormPlot.jsx";
-import { INTENTS, TARGETS, intentRead, intentMoves, readSummary, fmtAmerican } from "./intentRead.js";
+import { INTENTS, TARGETS, fmtAmerican } from "./intentRead.js";
+import useMyPicks from "./useMyPicks.js";
 
 // A transcription of frame `3a` in `v3 Mocks/PropPalace Mobile v3.dc.html`.
 //
@@ -48,60 +49,16 @@ export default function MyPicksMobile({
   combinedOdds = null,
   formatOdds,
 }) {
-  const [tab, setTab] = React.useState("Slip");
-  const [intentId, setIntentId] = React.useState("safe");
-  const [target, setTarget] = React.useState(300);
-  const [ledgerFilter, setLedgerFilter] = React.useState("All");
-
-  const intent = INTENTS.find((i) => i.id === intentId) || INTENTS[0];
-
-  // Every rate on this screen is the leg's own, counted when it was added --
-  // `hitRate`, `gamesOver` and `gamesCounted` were written together by
-  // pickFromRung, so the percentage and its sample cannot disagree.
-  const view = legs.map((p) => ({
-    id: p.id,
-    sport: p.sport,
-    name: p.name,
-    team: p.team,
-    prop: p.subtitle,
-    rate: p.hitRate,
-    hits: p.gamesOver,
-    n: p.gamesCounted,
-    alt: p.mainLine != null && p.line != null && p.line !== p.mainLine,
-    avail: p.status || null,
-    defRank: (p.snap && p.snap.rank) != null ? p.snap.rank : null,
-    odds: p.odds,
-    opp: p.opp,
-    avatar: p.avatar,
-    avatarFallback: p.avatarFallback,
-    espnId: p.espnId,
-    playerId: p.playerId,
-    marketId: p.marketId,
-  }));
-
-  // Their own rates multiplied. Not a price, and never presented as one.
-  const combinedRate = view.length && view.every((l) => l.rate != null)
-    ? view.reduce((a, l) => a * l.rate, 1)
-    : null;
-
-  const read = view.map((l) => intentRead(l, intent, null));
-  const rs = readSummary(read, intent);
-  const am = combinedOdds;
-  const short = am == null || am < target;
-  const sameGame = correlationGroups.length;
-  const moves = intentMoves(read, intent, { short, target, am, sameGame });
-
-  const ledgerRows = settled.filter((p) =>
-    ledgerFilter === "All"
-      || (ledgerFilter === "Won" && p.result === "won")
-      || (ledgerFilter === "Lost" && p.result === "lost")
-      || (ledgerFilter === "Open" && p.result && p.result !== "won" && p.result !== "lost"));
-
-  const ledgerCount = (label) => settled.filter((p) =>
-    label === "All"
-      || (label === "Won" && p.result === "won")
-      || (label === "Lost" && p.result === "lost")
-      || (label === "Open" && p.result && p.result !== "won" && p.result !== "lost")).length;
+  // The whole derivation moved to useMyPicks when the desktop frame started
+  // needing the same one. Same intents, same flags, same combined number --
+  // two copies would be two answers to "is this leg AGAINST".
+  const {
+    tab, setTab, intent, intentId, setIntentId, target, setTarget,
+    ledgerFilter, setLedgerFilter,
+    view, combinedRate, read, rs, moves, short, am, sameGame,
+    ledgerRows, ledgerCount,
+    calLine,
+  } = useMyPicks({ legs, settled, correlationGroups, combinedOdds, calibration });
 
   const avatarFor = (l, size) => (
     <PlayerAvatar
@@ -412,15 +369,6 @@ export default function MyPicksMobile({
   );
 
   // ---- READ ---------------------------------------------------------------
-  const calLine = (() => {
-    if (!calibration) return "Not yet — no settled pick carries the rate it claimed, so there is nothing to check against.";
-    if (calibration.readable === 0) return "Not yet — no claimed band has enough settled picks behind it, so there is nothing to check against.";
-    if (calibration.worst) {
-      return `The ${calibration.worst.label} band claimed ${Math.round(calibration.worst.claimed * 100)}% and returned ${Math.round(calibration.worst.real * 100)}% over ${calibration.worst.count} picks.`;
-    }
-    return `${calibration.readable} of the four bands are readable, and each landed within what it claimed.`;
-  })();
-
   const report = (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, padding: "16px 16px 30px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
