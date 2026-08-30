@@ -23423,9 +23423,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedRailGroups = [
     {
       key: "league", label: "LEAGUE", cols: 2,
-      // The mock's order -- MLB, NFL, NBA, WNBA -- not FEED_SPORTS's, which
-      // leads with NFL. Which leagues exist is data; the order they are
-      // offered in is layout, and the rail is drawn one way.
+      // FEED_SPORTS leads with NFL; every mock offers MLB, NFL, NBA, WNBA.
+      // Ordered here rather than reordering FEED_SPORTS, which also drives
+      // which leagues are available and in what order they are fetched.
       items: ["mlb", "nfl", "nba", "wnba"]
         .map((id) => FEED_SPORTS.find((sp) => sp.id === id))
         .filter((sp) => sp && sp.available)

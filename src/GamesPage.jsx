@@ -4,6 +4,7 @@ import GamecastPage from "./GamecastPage.jsx";
 import GameCard, { StateSwatch } from "./GameCard.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import GamesMobile from "./v3/GamesMobile.jsx";
+import GamesDesktop from "./v3/GamesDesktop.jsx";
 import {
   SPORTS, dayKey, timeLabel, buildDateTabs,
   fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate, fetchNbaSlate, fetchNbaOpenerDay,
@@ -802,7 +803,11 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   // Same slate, same poller, same statuses -- the phone's own layout.
   // See src/v3/GamesMobile.jsx. Declared after the full-page branch above so
   // opening a gamecast cannot change the hook order.
-  if (isPhone) {
+  // Both v3 frames, off one prop set. The phone (mobile frame 2a) stacks
+  // its controls; the desktop (frame 2b) puts them in a 212px rail beside a
+  // three-across grid. Building the card contents twice would be two
+  // answers to what a game's status is.
+  {
     const dow = (key) => {
       const d = new Date(`${key}T12:00:00`);
       return {
@@ -810,6 +815,74 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         day: String(d.getDate()).padStart(2, "0"),
       };
     };
+    // Every game on the slate for the desktop grid; the phone paginates
+    // because it shows one card per row and five is a screenful.
+    const gamesFor = (list) => list.map((g) => {
+      const live = isActiveStatus(g.status);
+      const done = g.status === GAME_STATUS.FINAL;
+      const aw = g.away || {}, hm = g.home || {};
+      const lead = (live || done) && aw.score != null && hm.score != null
+        ? (aw.score > hm.score ? "away" : hm.score > aw.score ? "home" : null)
+        : null;
+      return {
+        id: g.id, sport: g.sport, live, done,
+        statusLabel: live ? "LIVE" : done ? "FINAL" : "SCHEDULED",
+        // The provider's own period label while live, the venue before it.
+        // `venue` is an object here ({ name, city, indoor }), not a string
+        // -- see espnSlate. Reading it as text put a React child error on
+        // the whole page.
+        meta: live ? (g.periodLabel || "In progress")
+          : done ? (g.periodLabel || "Final")
+            : ((g.venue && g.venue.name)
+              || (g.startsAt ? new Date(g.startsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "")),
+        note: live ? "Live scoring from the provider."
+          : done ? "Finished — props on this game are settled."
+            : `${aw.full || aw.abbr} at ${hm.full || hm.abbr}`,
+        cta: live ? "GAMECAST →" : done ? "SEE RESULTS →" : "OPEN BOARD →",
+        teams: [
+          { side: "away", abbr: aw.abbr, name: aw.name || aw.full, record: aw.record, score: live || done ? aw.score : null, winning: lead === "away" },
+          { side: "home", abbr: hm.abbr, name: hm.name || hm.full, record: hm.record, score: live || done ? hm.score : null, winning: lead === "home" },
+        ],
+        raw: g,
+      };
+    });
+
+    const v3Shared = {
+      leagues: SPORTS,
+      league: sport,
+      onSetLeague: (id) => { setSport(id); setPickedKey(null); setShowAll(false); },
+      query,
+      onSetQuery: (q) => { setQuery(q); setShowAll(false); },
+      sampleQuery: (shown[0] && (shown[0].home || {}).name) || null,
+      dates: tabs.map((t) => ({ key: t.key, ...dow(t.key), count: tabCounts[t.key] ?? null })),
+      activeDate: activeKey,
+      onSetDate: (k) => { setPickedKey(k); setShowAll(false); },
+      states: [
+        { id: "all", label: "All games", tone: null },
+        { id: "live", label: "Live", tone: "var(--neg)" },
+        { id: "pre", label: "Scheduled", tone: "var(--amber)" },
+        { id: "final", label: "Final", tone: "var(--dim)" },
+      ],
+      state: stateFilter,
+      onSetState: (id) => { setStateFilter(id); setShowAll(false); },
+      slateHeading: `${sport === ALL_SPORT.id ? "ALL" : sport.toUpperCase()} · ${dow(activeKey).dow} ${dow(activeKey).day}`,
+      loading: slateLoading,
+      // Five states, because they mean five different things.
+      emptyCopy: slateFailed
+        ? "That slate could not be loaded. This is a network answer, not an empty day."
+        : query
+          ? "No games match that search."
+          : slateGames.length === 0
+            ? "No games scheduled for this date."
+            : `No ${stateFilter === "live" ? "live" : stateFilter === "pre" ? "scheduled" : "finished"} games on this slate.`,
+      onOpenGame: (g) => { selectedSnap.current = g.raw; setSelectedId(g.id); },
+      // Positional, matching the desktop card below: the helper takes
+      // (sport, away, home), not a game.
+      propsCountFor: (g) => (getPropsCount ? getPropsCount(g.sport, g.teams[0].abbr, g.teams[1].abbr) : null),
+    };
+
+    if (!isPhone) return <GamesDesktop {...v3Shared} games={gamesFor(filtered)} />;
+
     return (
       // Four things this hands down that the desktop layout does differently,
       // each because frame 2a draws it that way:
@@ -824,72 +897,12 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       //   cta           GAMECAST / SEE RESULTS / OPEN BOARD, the frame's own
       //                 three words.
       <GamesMobile
-        leagues={SPORTS}
-        league={sport}
-        onSetLeague={(id) => { setSport(id); setPickedKey(null); setShowAll(false); }}
-        query={query}
-        onSetQuery={(q) => { setQuery(q); setShowAll(false); }}
-        sampleQuery={(shown[0] && (shown[0].home || {}).name) || null}
-        dates={tabs.map((t) => ({ key: t.key, ...dow(t.key), count: tabCounts[t.key] ?? null }))}
-        activeDate={activeKey}
-        onSetDate={(k) => { setPickedKey(k); setShowAll(false); }}
-        states={[
-          { id: "all", label: "All games", tone: null },
-          { id: "live", label: "Live", tone: "#ef5b5b" },
-          { id: "pre", label: "Scheduled", tone: "var(--amber)" },
-          { id: "final", label: "Final", tone: "var(--dim)" },
-        ]}
-        state={stateFilter}
-        onSetState={(id) => { setStateFilter(id); setShowAll(false); }}
-        slateHeading={(() => {
-          const d = dow(activeKey);
-          return `${sport === ALL_SPORT.id ? "ALL" : sport.toUpperCase()} · ${d.dow} ${d.day}`;
-        })()}
-        games={shown.map((g) => {
-          const live = isActiveStatus(g.status);
-          const done = g.status === GAME_STATUS.FINAL;
-          const aw = g.away || {}, hm = g.home || {};
-          const lead = (live || done) && aw.score != null && hm.score != null
-            ? (aw.score > hm.score ? "away" : hm.score > aw.score ? "home" : null)
-            : null;
-          return {
-            id: g.id, sport: g.sport, live, done,
-            statusLabel: live ? "LIVE" : done ? "FINAL" : "SCHEDULED",
-            // The provider's own period label while live, the venue before it.
-            // `venue` is an object here ({ name, city, indoor }), not a
-            // string -- see espnSlate. Reading it as text put a React child
-            // error on the whole page.
-            meta: live ? (g.periodLabel || "In progress")
-              : done ? (g.periodLabel || "Final")
-                : ((g.venue && g.venue.name)
-                  || (g.startsAt ? new Date(g.startsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "")),
-            note: live ? "Live scoring from the provider."
-              : done ? "Finished — props on this game are settled."
-                : `${aw.full || aw.abbr} at ${hm.full || hm.abbr}`,
-            cta: live ? "GAMECAST →" : done ? "SEE RESULTS →" : "OPEN BOARD →",
-            teams: [
-              { side: "away", abbr: aw.abbr, name: aw.name || aw.full, record: aw.record, score: live || done ? aw.score : null, winning: lead === "away" },
-              { side: "home", abbr: hm.abbr, name: hm.name || hm.full, record: hm.record, score: live || done ? hm.score : null, winning: lead === "home" },
-            ],
-            raw: g,
-          };
-        })}
-        moreCount={showAll ? filtered.length - VISIBLE_GAMES : Math.max(0, filtered.length - VISIBLE_GAMES)}
+        {...v3Shared}
+        // The phone paginates: one card per row, and five is a screenful.
+        games={gamesFor(shown)}
+        moreCount={Math.max(0, filtered.length - VISIBLE_GAMES)}
         showAll={showAll}
         onToggleShowAll={() => setShowAll((v) => !v)}
-        loading={slateLoading}
-        // Five states, because they mean five different things.
-        emptyCopy={slateFailed
-          ? "That slate could not be loaded. This is a network answer, not an empty day."
-          : query
-            ? "No games match that search."
-            : slateGames.length === 0
-              ? "No games scheduled for this date."
-              : `No ${stateFilter === "live" ? "live" : stateFilter === "pre" ? "scheduled" : "finished"} games on this slate.`}
-        onOpenGame={(g) => { selectedSnap.current = g.raw; setSelectedId(g.id); }}
-        // Positional, matching the desktop card below: the helper takes
-        // (sport, away, home), not a game.
-        propsCountFor={(g) => (getPropsCount ? getPropsCount(g.sport, g.teams[0].abbr, g.teams[1].abbr) : null)}
       />
     );
   }

@@ -138,11 +138,16 @@ export function teamInfo(sport, abbr) {
   return { abbr, city: t.city, name: t.name, full: t.city ? `${t.city} ${t.name}` : t.name };
 }
 
+// MLB, NFL, NBA, WNBA — the order every v3 mock offers them in, without
+// exception: the Games rail, the Prop Feed rail, the Board chips and the phone
+// frames all list them this way. It used to be MLB, WNBA, NFL, NBA here, which
+// meant each frame either reordered at the point of use or quietly disagreed
+// with the design.
 export const SPORTS = [
   { id: "mlb", label: "MLB" },
-  { id: "wnba", label: "WNBA" },
   { id: "nfl", label: "NFL" },
   { id: "nba", label: "NBA" },
+  { id: "wnba", label: "WNBA" },
 ];
 
 // ------------------------------------------------------------ date utils
