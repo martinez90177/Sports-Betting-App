@@ -1728,3 +1728,17 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
    under them eats 8px of a 430px row and reads as a divider. */
 .nsb { scrollbar-width: none; -ms-overflow-style: none; }
 .nsb::-webkit-scrollbar { display: none; }
+
+/* The 21+ compliance panel. Hidden until the mark is hovered or focused --
+   `visibility` as well as opacity, so it cannot be clicked while invisible,
+   and focus-within so it is reachable by keyboard, not mouse only. */
+.pp-nav-age-panel {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms;
+}
+.pp-nav-age:hover .pp-nav-age-panel,
+.pp-nav-age:focus-within .pp-nav-age-panel {
+  opacity: 1;
+  visibility: visible;
+}

@@ -1,6 +1,8 @@
 import React from "react";
 import FormPlot, { PLOT, crest } from "./FormPlot.jsx";
 import { probToAmericanOdds, formatOdds } from "../odds.js";
+import { buildRungs } from "../lib/altLines.js";
+import AgeMark from "./AgeMark.jsx";
 import { STATUS } from "../lib/teamColors.js";
 
 // A transcription of frame `1a` in `v3 Mocks/PropPalace Desktop v3.dc.html`,
@@ -44,6 +46,10 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
 const cellLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" };
 const railNote = { fontSize: 11.5, color: "var(--dim)", lineHeight: 1.4 };
+
+// Rows and their header share one template string. Defined once, or the
+// columns drift apart the moment either changes (`desktop-handoff.md` §1).
+const LADDER_COLS = "92px 92px 128px 1fr 96px 104px";
 
 // Rounded rectangle: clickable. Never a pill.
 function option(on) {
@@ -109,9 +115,15 @@ export default function PlayerDetailDesktop({
   onNavigate = null,
   onHome = null,
   onOpenSettings = null,
-  // The alt-line ladder. Rungs are counted over the same games, never
-  // interpolated, and a rung the sample never split shows no price.
-  ladder = null,
+  // (line) => void, for the ladder's + ADD LEG. The rungs themselves are
+  // built here off the same series the graph draws, so a rung and a bar can
+  // never describe different games.
+  onAddLeg = null,
+  // (game, marketId) => value. The page's own stat accessor, so the box
+  // score in the bar-detail card and the bar above it are read by one
+  // function. Derived markets (rebounds from oreb+dreb, stocks, PRA) do
+  // not exist as fields on a logged game and cannot be read off it.
+  valueOfMarket = null,
   // Minimum-sample and workload controls, where the sport has them.
   samples = null,
   workload = null,
@@ -144,6 +156,73 @@ export default function PlayerDetailDesktop({
     [chart, line]
   );
   const hits = shown.filter((g) => hitOf(g.v)).length;
+
+  // Built off the very series the graph draws, so the ladder and the bars
+  // can never be counting different games.
+  const rungs = React.useMemo(() => buildRungs({
+    values: shown.map((g) => g.v),
+    mainLine: chart && chart.marketLine != null ? chart.marketLine : line,
+    isBinary: !!(chart && chart.isBinary),
+    direction: (chart && chart.direction) || "over",
+  }), [shown, chart, line]);
+
+  // ---- the bar-detail card's two lower sections -------------------------
+  //
+  // Both are derived, never carried: the box line is the logged game's own
+  // fields, and the notes are counted off the same record the teammate
+  // filter uses. Anything neither can answer is left out of the list rather
+  // than printed with a placeholder.
+  const pickedGame = picked != null && shown[picked] ? shown[picked] : null;
+  const rawGame = pickedGame && pickedGame.raw;
+
+  const cardBox = React.useMemo(() => {
+    if (!rawGame || !valueOfMarket) return [];
+    return (markets || [])
+      .map((m) => ({ label: String(m.label || m.id).toUpperCase(), value: valueOfMarket(rawGame, m.id) }))
+      .filter((b) => b.value != null && b.value !== "" && !Number.isNaN(b.value))
+      .slice(0, 10);
+  }, [rawGame, markets, valueOfMarket]);
+
+  const cardNotes = React.useMemo(() => {
+    if (!pickedGame) return [];
+    const rows = [];
+
+    // Rest is the gap to the previously logged game. The first game in a
+    // log has nothing before it, so it gets no row rather than a zero.
+    const at = games.indexOf(pickedGame);
+    const prev = at > 0 ? games[at - 1] : null;
+    if (prev && pickedGame.iso && prev.iso) {
+      const days = Math.round((new Date(pickedGame.iso) - new Date(prev.iso)) / 86400000) - 1;
+      if (Number.isFinite(days) && days >= 0) rows.push({ label: "DAYS REST", value: String(days) });
+    }
+
+    rows.push({ label: "HOME / AWAY", value: pickedGame.home === false ? "Away" : "Home" });
+
+    // Who was out on either side. `playedInGame` returns null for a game we
+    // could not check, and an unchecked game says so instead of claiming
+    // everyone was available.
+    const played = lineups && lineups.playedInGame;
+    if (played && rawGame) {
+      const side = (people, label) => {
+        if (!people || !people.length) return;
+        let unknown = 0;
+        const out = [];
+        people.forEach((person) => {
+          const v = played(rawGame, person.pid);
+          if (v === null || v === undefined) unknown += 1;
+          else if (!v) out.push(person.name);
+        });
+        if (unknown === people.length) rows.push({ label, value: "Not recorded for this game" });
+        else if (!out.length) rows.push({ label, value: "None" });
+        else rows.push({ label, value: out.join(", ") });
+      };
+      side(lineups.mates, "TEAMMATES · DID NOT PLAY");
+      side(lineups.opps, "OPPONENTS · DID NOT PLAY");
+    }
+
+    rows.push({ label: "AGAINST THE LINE", value: `${hitOf(pickedGame.v) ? "Cleared" : "Under"} ${line}` });
+    return rows;
+  }, [pickedGame, rawGame, games, lineups, line, hitOf]);
 
   const st = availability ? STATUS[availability] : null;
 
@@ -186,7 +265,12 @@ export default function PlayerDetailDesktop({
         >
           ⚙
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 7, padding: "5px 12px" }}>21+</span>
+        {/* Drawn because the frame draws it. It does nothing yet -- there is
+            no account server (see docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md), so
+            it is a label, not a control, and carries no affordance saying
+            otherwise. */}
+        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
+        <AgeMark radius={7} />
       </span>
     </div>
   );
@@ -560,7 +644,67 @@ export default function PlayerDetailDesktop({
         </div>
       )}
 
-      {ladder}
+      {/* The alt-line ladder. Every rung is counted over the same games the
+          graph is drawing -- never interpolated between two that were -- and a
+          rung the sample never split carries no price at all: converting 0% or
+          100% only reaches the clamp, which is a display floor dressed as a
+          number the games produced. */}
+      {rungs.length > 0 && (
+        <div style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "14px 18px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)" }}>
+            <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 16 }}>Alt lines</span>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>
+              {`${rungs[0].gamesCounted} games counted${rungs[0].thin ? " · too few to lean on" : ""}`}
+            </span>
+            {/* Read-only, so a pill. */}
+            <span style={{ marginLeft: "auto", ...pill("var(--dim)", "transparent"), border: "1px solid var(--line)" }}>NO BOOK PRICED THESE</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: LADDER_COLS, alignItems: "center", padding: "10px 18px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+            <span>LINE</span>
+            <span style={{ textAlign: "right" }}>HIT RATE</span>
+            <span style={{ textAlign: "right" }}>GAMES OVER</span>
+            <span style={{ paddingLeft: 20 }}>SHAPE</span>
+            <span style={{ textAlign: "right" }}>PRICE</span>
+            <span />
+          </div>
+          {rungs.map((r) => (
+            <div
+              key={r.line}
+              role={onAddLeg ? "button" : undefined}
+              tabIndex={onAddLeg ? 0 : undefined}
+              onClick={onAddLeg ? () => onAddLeg(r.line) : undefined}
+              onKeyDown={onAddLeg ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAddLeg(r.line); } } : undefined}
+              style={{
+                display: "grid", gridTemplateColumns: LADDER_COLS, alignItems: "center",
+                padding: "11px 18px", borderBottom: "1px solid #20242b",
+                cursor: onAddLeg ? "pointer" : "default",
+                background: r.isMain ? "var(--surface-2)" : "transparent",
+              }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: r.isMain ? 700 : 400 }}>{r.line}</span>
+              <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: r.hitRate == null ? "var(--dim)" : r.hitRate >= 0.6 ? "var(--pos)" : r.hitRate <= 0.4 ? "var(--neg)" : "var(--text)" }}>
+                {r.hitRate == null ? "—" : `${Math.round(r.hitRate * 100)}%`}
+              </span>
+              <span style={{ textAlign: "right", fontSize: 12.5, color: "var(--dim)" }}>{`${r.gamesOver} of ${r.gamesCounted}`}</span>
+              <span style={{ paddingLeft: 20, display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ display: "flex", height: 6, width: 190, background: "var(--surface-2)" }}>
+                  <span style={{ width: `${Math.round((r.hitRate || 0) * 100)}%`, background: r.hitRate >= 0.6 ? "var(--pos)" : "var(--text-2)", display: "block" }} />
+                </span>
+                {r.isMain && <span style={pill("var(--amber-ink)", "var(--amber-dim)")}>MAIN LINE</span>}
+              </span>
+              {/* No price on a rung the sample never split -- an em dash says
+                  the sample does not price it, rather than overstating it. */}
+              <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 13.5, color: r.price == null ? "var(--dim)" : "var(--text)" }}>
+                {r.price == null ? "—" : formatOdds(r.price)}
+              </span>
+              {onAddLeg && (
+                <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", color: "var(--amber-ink)" }}>+ ADD LEG</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {extraBlocks}
 
       {footerNote && <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.7, color: "var(--dim)" }}>{footerNote}</span>}
@@ -656,21 +800,72 @@ export default function PlayerDetailDesktop({
 
       {conditions && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
-          <span style={railLabel}>{String(conditions.label || "CONDITIONS").toUpperCase()}</span>
-          {conditions.body}
+          <span style={railLabel}>{`CONDITIONS${conditions.venue ? ` · ${conditions.venue}` : ""}`}</span>
+
+          {/* Indoors is a fact about the venue, not a missing forecast, so
+              it is stated rather than left as an empty weather row. */}
+          {conditions.noForecastReason === "indoor" && (
+            <span style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.45 }}>Indoors — no weather or park factor applies.</span>
+          )}
+
+          {/* Any other reason there is no forecast is named, never drawn as
+              a blank chip row that reads like a calm night. */}
+          {conditions.noForecastReason && conditions.noForecastReason !== "indoor" && (
+            <span style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.45 }}>
+              {conditions.noForecastReason === "pregame"
+                ? "No forecast published for this game yet."
+                : "Forecast still pending for this game."}
+            </span>
+          )}
+
+          {conditions.weather && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {[
+                conditions.weather.temp != null ? `${conditions.weather.temp}°F` : null,
+                conditions.weather.wind ? `WIND ${String(conditions.weather.wind).toUpperCase()}` : null,
+                conditions.weather.precipPct != null ? `PRECIP ${conditions.weather.precipPct}%` : null,
+              ].filter(Boolean).map((w) => (
+                <span key={w} style={{ minHeight: 26, display: "flex", alignItems: "center", padding: "0 9px", borderRadius: 999, fontFamily: MONO, fontSize: 10, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--text-2)" }}>{w}</span>
+              ))}
+            </div>
+          )}
+
+          {/* Park factors, drawn from a centre line: the bar grows right of
+              centre for a park that adds and left for one that takes away,
+              so the direction is legible before the number is read. */}
+          {conditions.parkFactors && conditions.parkFactors.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", marginTop: 4 }}>
+              {conditions.parkFactors.map((b) => {
+                const w = Math.min(50, Math.abs(b.value) * 3.2);
+                const up = b.value >= 0;
+                return (
+                  <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: "1px solid #191c21" }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--text-2)", flex: "0 0 82px" }}>{String(b.label).toUpperCase()}</span>
+                    <span style={{ position: "relative", flex: "1 1 auto", height: 7, background: "#191c21", borderRadius: 2, minWidth: 0 }}>
+                      <span style={{ position: "absolute", left: "50%", top: -3, bottom: -3, width: 1, background: "var(--line)" }} />
+                      <span style={{ position: "absolute", top: 0, bottom: 0, borderRadius: 2, left: up ? "50%" : `${50 - w}%`, width: `${w}%`, background: up ? "var(--pos)" : "var(--neg)" }} />
+                    </span>
+                    <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, flex: "0 0 40px", textAlign: "right", color: up ? "var(--pos)" : "var(--neg)" }}>
+                      {`${up ? "+" : "−"}${Math.abs(b.value)}%`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
       {injuryTeams && injuryTeams.length > 0 && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
-          <span style={railLabel}>INJURIES</span>
+          <span style={railLabel}>INJURIES · THIS MATCHUP</span>
           {injuryTeams.map((t) => (
             <div key={t.abbr} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span role="img" style={crest(t.slug || t.abbr, t.sport || sport, 16)} />
                 <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2)" }}>{t.abbr}</span>
                 <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>
-                  {`${t.players.length} ${t.players.length === 1 ? "PLAYER" : "PLAYERS"}`}
+                  {`${t.players.length} LISTED`}
                 </span>
               </div>
               {t.players.map((p) => (
@@ -727,15 +922,55 @@ export default function PlayerDetailDesktop({
                 ×
               </span>
             </div>
-            <div style={{ padding: "18px 20px 20px", display: "flex", alignItems: "flex-end", gap: 22 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={cellLabel}>{String(marketLabel || "").toUpperCase()}</span>
-                <span style={{ fontFamily: MONO, fontSize: 34, fontWeight: 700, lineHeight: 1 }}>{shown[picked].v}</span>
+            <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 22 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span style={cellLabel}>{String(marketLabel || "").toUpperCase()}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 34, fontWeight: 700, lineHeight: 1 }}>{shown[picked].v}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span style={cellLabel}>LINE</span>
+                  <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{line}</span>
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={cellLabel}>LINE</span>
-                <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{line}</span>
-              </div>
+
+              {/* That night's own stat line, read straight off the logged
+                  game. Only markets the log actually recorded appear -- a
+                  market this sport does not carry is absent, not zero. */}
+              {cardBox.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <span style={cellLabel}>BOX SCORE</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+                    {cardBox.map((b) => (
+                      <div key={b.label} style={{ border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface-2)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: "var(--dim)" }}>{b.label}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700 }}>{b.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* The circumstances of that night. Every row is measured --
+                  rest from the logged dates, the two absence rows from the
+                  same participation record the teammate filter reads. A row
+                  whose fact this sport does not record is not printed. */}
+              {cardNotes.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--line)", paddingTop: 14 }}>
+                  <span style={cellLabel}>THAT NIGHT</span>
+                  {cardNotes.map((n) => (
+                    <div key={n.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 0", borderBottom: "1px solid #20242b" }}>
+                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)", flex: "0 0 150px" }}>{n.label}</span>
+                      <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 12.5, color: "var(--text-2)" }}>{n.value}</span>
+                    </div>
+                  ))}
+                  {cardNotes.some((n) => n.label.includes("DID NOT PLAY")) && (
+                    <span style={{ fontSize: 11, lineHeight: 1.45, color: "var(--dim)", paddingTop: 6 }}>
+                      Read against today's rosters. A name here was not in this game's box score — which can mean rested, injured, or not yet on the team.
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </>

@@ -1,4 +1,5 @@
 import React from "react";
+import AgeMark from "./v3/AgeMark.jsx";
 import PalaceMark from "./PalaceMark.jsx";
 
 // The v2 nav bar, measured off the mocks rather than described from them:
@@ -124,15 +125,7 @@ export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge
         <span className="pp-mono pp-nav-signin" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>
           SIGN IN
         </span>
-        <span
-          className="pp-mono"
-          style={{
-            fontSize: 11, letterSpacing: "0.12em", color: "var(--amber-ink)",
-            border: "1px solid var(--amber)", borderRadius: 999, padding: "5px 12px", whiteSpace: "nowrap",
-          }}
-        >
-          21+
-        </span>
+        <AgeMark />
       </span>
     </nav>
   );

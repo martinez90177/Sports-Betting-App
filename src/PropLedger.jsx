@@ -1495,6 +1495,10 @@ function buildLineupSheet({
     teamLabel, oppLabel,
     mates: mates.map(card),
     opps: opps.map(card),
+    // Handed out so a single game can be asked the same question the filter
+    // asks of the whole log -- who was out that night. One record, so the
+    // card and the chips can never disagree.
+    playedInGame,
     activeCount: active.length,
     onOpen,
     onReset: () => onChange([]),
@@ -1704,7 +1708,7 @@ function PlayerPropContextBlocks({
   );
 }
 
-function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
+function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
   const [showContext, setShowContext] = useState(false);
 
   // The real schedule, over the invented pairings. NBA_MATCHUPS stays as the
@@ -3090,6 +3094,13 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       })}
       slipCount={pickIds ? pickIds.size : null}
       onOpenSlip={onOpenSlip}
+      // Frame 1a draws the app nav inside the frame. The v2 mock opened on
+      // the breadcrumb alone, which is why PLAYER_PAGES is excluded from
+      // PropLedger's own NavBar -- so the row is handed down here instead.
+      navTabs={NAV_TABS}
+      onNavigate={onNavigate}
+      onHome={onHome}
+      onOpenSettings={onOpenSettings}
       availability={nbaStatusOf(player) || null}
       availabilityCovered
       injuryTeams={v3InjuryTeams}
@@ -3230,8 +3241,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         upcoming: nbaNextGameForTeam(player?.team),
         seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba"),
       }}
+      valueOfMarket={(g, id) => statValue(g, id, rebSplit)}
       chart={{
-        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g), raw: g })),
         onZoomRange: (from, to) => setRange({ from, to }),
         zoomed: !!range,
         onClearZoom: () => setRange(null),
@@ -7751,7 +7763,7 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
   );
 }
 
-function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
+function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
@@ -9016,6 +9028,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       })}
       slipCount={pickIds ? pickIds.size : null}
       onOpenSlip={onOpenSlip}
+      // Frame 1a draws the app nav inside the frame. The v2 mock opened on
+      // the breadcrumb alone, which is why PLAYER_PAGES is excluded from
+      // PropLedger's own NavBar -- so the row is handed down here instead.
+      navTabs={NAV_TABS}
+      onNavigate={onNavigate}
+      onHome={onHome}
+      onOpenSettings={onOpenSettings}
       availability={nflStatusOf(player) || null}
       availabilityCovered
       injuryTeams={v3InjuryTeams}
@@ -9158,8 +9177,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         upcoming: nflNextGameForTeam(player?.team),
         seasons: seasonSplits(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl"),
       }}
+      valueOfMarket={(g, id) => statValueNFL(g, id)}
       chart={{
-        games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValueNFL(g, market), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g), raw: g })),
         onZoomRange: (from, to) => setRange({ from, to }),
         zoomed: !!range,
         onClearZoom: () => setRange(null),
@@ -10346,7 +10366,7 @@ function wnbaPlayerMarkets(player) {
   return [...WNBA_MARKETS_CORE, ...extra];
 }
 
-function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
+function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
   // Same volume stat as the NBA page -- minutes are the input almost every
   // basketball prop scales with, so the two pages share NBA_CONTEXT_STAT.
   const [showContext, setShowContext] = useState(false);
@@ -11755,6 +11775,13 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       })}
       slipCount={pickIds ? pickIds.size : null}
       onOpenSlip={onOpenSlip}
+      // Frame 1a draws the app nav inside the frame. The v2 mock opened on
+      // the breadcrumb alone, which is why PLAYER_PAGES is excluded from
+      // PropLedger's own NavBar -- so the row is handed down here instead.
+      navTabs={NAV_TABS}
+      onNavigate={onNavigate}
+      onHome={onHome}
+      onOpenSettings={onOpenSettings}
       availability={statusOf(player) || null}
       availabilityCovered
       injuryTeams={v3InjuryTeams}
@@ -11898,8 +11925,9 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         upcoming: wnbaNextGameForTeam(player?.team),
         seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba"),
       }}
+      valueOfMarket={(g, id) => statValue(g, id, rebSplit)}
       chart={{
-        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g) })),
+        games: filtered.map((g) => ({ v: statValue(g, market, rebSplit), opp: g.opp, home: g.home, iso: g.date, date: axisDateShort(g.date), po: isPlayoffGame(g), raw: g })),
         onZoomRange: (from, to) => setRange({ from, to }),
         zoomed: !!range,
         onClearZoom: () => setRange(null),
@@ -14994,7 +15022,7 @@ class MLBPageErrorBoundary extends React.Component {
   }
 }
 
-function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip }) {
+function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
   const [showContext, setShowContext] = useState(false);
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
@@ -15865,6 +15893,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // every remaining bar -- the useful moment to show the split is before it.
   const chartData = filtered.map((g, i) => ({
     idx: i + 1,
+    // The logged game itself, for the bar-detail card's box score. Kept
+    // rather than re-found by date: two games can share one.
+    game: g,
     opp: g.opp,
     axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
     value: statValueFn(g),
@@ -17430,6 +17461,13 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       })}
       slipCount={pickIds ? pickIds.size : null}
       onOpenSlip={onOpenSlip}
+      // Frame 1a draws the app nav inside the frame. The v2 mock opened on
+      // the breadcrumb alone, which is why PLAYER_PAGES is excluded from
+      // PropLedger's own NavBar -- so the row is handed down here instead.
+      navTabs={NAV_TABS}
+      onNavigate={onNavigate}
+      onHome={onHome}
+      onOpenSettings={onOpenSettings}
       availability={mlbStatusOf(player) || null}
       availabilityCovered
       renderAvatar={v3RenderAvatar}
@@ -17575,8 +17613,9 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
         unit: isPitcher ? "starts" : "games",
         seasons: seasonSplits(logGames, statValueFn, (v) => v > liveLine, "mlb"),
       }}
+      valueOfMarket={(g, id) => (isPitcher ? statValueMLBPitcher(g, id) : statValueMLB(g, id))}
       chart={{
-        games: chartData.map((d) => ({ v: d.value, opp: d.opp, home: d.home, iso: d.date, date: axisDateShort(d.date), po: d.playoff })),
+        games: chartData.map((d) => ({ v: d.value, opp: d.opp, home: d.home, iso: d.date, date: axisDateShort(d.date), po: d.playoff, raw: d.game })),
         onZoomRange: (from, to) => setRange({ from, to }),
         zoomed: !!range,
         onClearZoom: () => setRange(null),
@@ -26432,6 +26471,9 @@ export default function PropLedger() {
           onOpenProp={goToProp}
           onOpenSlip={() => setPage("picks")}
           onBack={() => setPage("feed")}
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
         />
       )}
 
@@ -26448,6 +26490,9 @@ export default function PropLedger() {
           onOpenProp={goToProp}
           onOpenSlip={() => setPage("picks")}
           onBack={() => setPage("feed")}
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
         />
       )}
 
@@ -26464,6 +26509,9 @@ export default function PropLedger() {
           onOpenProp={goToProp}
           onOpenSlip={() => setPage("picks")}
           onBack={() => setPage("feed")}
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
         />
       )}
 
@@ -26480,6 +26528,9 @@ export default function PropLedger() {
             onOpenProp={goToProp}
             onOpenSlip={() => setPage("picks")}
             onBack={() => setPage("feed")}
+            onNavigate={setPage}
+            onHome={goHome}
+            onOpenSettings={() => setSettingsOpen((v) => !v)}
           />
         </MLBPageErrorBoundary>
       )}
