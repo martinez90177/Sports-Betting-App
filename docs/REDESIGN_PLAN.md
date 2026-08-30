@@ -2050,3 +2050,69 @@ as its four sections expose them, and every control reads and writes the same
 store — a value set on the phone is the value the desktop page shows. Account
 and About stay as the app's components: they are the frame's `rows` and `note`
 kinds, and the app already draws exactly those two shapes.
+
+## Batch 5 — desktop Player Detail, Prop Feed, Board
+
+Three frames, and the first desktop batch. Commits `12cb60b`, `117e32c`,
+`01b62d7`, `988f56a`, and this one.
+
+**Player Detail (frame 1a)** — 236px filter rail / centre / 268px context rail.
+Bar zoom by drag, hover tooltip, `←`/`→` step the line, Escape clears the zoom.
+The alt-line ladder builds its rungs from the same series the graph draws, and a
+rung the sample never split shows no price at all.
+
+**Prop Feed (frame 1c)** — 218px rail / table / 296px My Picks dock. The rows
+are the same `FeedRow`: it owns the bar strip, the draggable line, the ladder
+and the six rate cells, all of which are already the mock's. 797 lines of v2
+page chrome came out; the table went in unchanged. The custom rate column is new
+— stepper and slider in the rail, ceiling set to the league's season length,
+APPLY adds the column left of L5 and SAVE keeps it.
+
+**Board (frame 1b)** — the hero across the top, the rest as tiers three across.
+`TONE`, `TIERS`, `atStyle` and `MiniStrip` moved to `src/v3/boardShared.jsx` so
+the phone and desktop frames cannot tint the same reason differently.
+
+### The audit
+
+`scripts/mockaudit.cjs` checks every literal a frame prints against the
+component that transcribes it. It exists because paraphrase is the failure this
+project keeps hitting and the one review does not catch. It found "A season is a
+different sample, not a longer one." where the mock says "MLB, NBA and the WNBA
+carry 2025 logs." — a sentence of mine standing in for one of theirs.
+
+**What it cannot see** is the more useful lesson. Two controls were built,
+guarded on a prop, and never passed by any page: the Player Detail rail's
+workload slider and the Board's OPENING banner. Both compiled, both audited
+clean — every label they would print comes from a prop, so there is no literal
+to miss — and neither had ever rendered. Alex caught the first by eye. If a
+region's copy is all props, the audit is silent on whether it exists.
+
+### Departures, each deliberate
+
+- **The feed rail draws the mock's five groups plus a sixth**, EVERYTHING ELSE,
+  opening the panel that holds defence tier, role, odds range, teams and games
+  and saved screens. The mock's rail has no home for them and a control with no
+  door is gone.
+- **Market tabs stay multi-select** and the row scrolls: fourteen MLB markets
+  against the mock's nine, and the last was cut off at the frame's edge.
+- **Sort chips are this app's four real modes.** The mock's Cushion and Streak
+  are not computed here and would have been labels over nothing.
+- **The Board hero is band 0's leader, and band 0 still draws as a tier.** The
+  mock renders `tiersD: [1, 2]`, which drops the top band's other games from the
+  widest screen while keeping them on the phone.
+- **The OPENING banner is not built.** It is the mock standing in for a
+  navigation it cannot perform.
+- **Deferred and named:** the dock's SLIP / LEDGER / READ tabs and the ⤢ FULL
+  VIEW overlay are frame 2a. `mockaudit.cjs` carries a DEFERRED map naming those
+  strings and the frame that owes them.
+
+### Two bugs the frames surfaced, both older than the frames
+
+- **`body { margin: 8px }` was never reset.** The shell is `min-height: 100vh`,
+  so every page in the app overflowed the viewport by 16px and carried a
+  scrollbar it had no content for. Found measuring why the feed table came out
+  903px where frame 1c gives it 926.
+- **The feed's 48-hour lookahead is a daily league's rule.** The NFL plays once a
+  week, so it emptied the page for five days in seven — and for the ten days
+  before Week 1, while the books were already pricing it. See
+  `docs/PROJECT_NOTES.md`, "…except in a weekly league".

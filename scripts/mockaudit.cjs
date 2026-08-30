@@ -45,6 +45,9 @@ const FRAMES = {
     "3a": "MyPicksMobile", "3b": "GamecastMobile", "3c": "MatchupMobile",
     "3d": "SettingsMobile", "3e": "LandingMobile",
   },
+  "PropPalace Board v4 part 2.dc.html": {
+    "1a": "BoardMobile", "1b": "BoardDesktop",
+  },
   "PropPalace Desktop v3.dc.html": {
     "1a": "PlayerDetailDesktop", "1c": "PropFeedDesktop",
   },
@@ -52,7 +55,7 @@ const FRAMES = {
 
 // Shared pieces every frame may draw through, so a string living in one of
 // these is still transcribed. Small files only, on purpose.
-const SHARED = ["v3/FormPlot.jsx", "v3/Shell.jsx", "v3/AgeMark.jsx"];
+const SHARED = ["v3/FormPlot.jsx", "v3/Shell.jsx", "v3/AgeMark.jsx", "v3/boardShared.jsx"];
 
 // Extra haystacks, per frame, for the parts of a screen that legitimately live
 // outside src/v3/ -- the desktop nav row is NavBar.jsx, and the feed's table
@@ -68,12 +71,22 @@ const SHARED = ["v3/FormPlot.jsx", "v3/Shell.jsx", "v3/AgeMark.jsx"];
 // get to match against it.
 const EXTRA = {
   "1c-desktop": ["NavBar.jsx", "PropLedger.jsx"],
+  // The Board's tiers, reasons and cards are assembled in BoardPage.jsx.
+  "1a-board": ["BoardPage.jsx"],
+  "1b-board": ["NavBar.jsx", "BoardPage.jsx"],
 };
 
 // Regions of a frame that are knowingly not built yet, with the frame that
 // will build them. Listed rather than silently passed: an unbuilt region and
 // a botched one look identical to a string matcher, and the whole point of
 // this file is that the difference gets stated.
+// Strings a frame draws that this app deliberately does not, with the reason.
+// Separate from DEFERRED: nothing is coming for these.
+const NOT_BUILT = {
+  "1a-board": { why: "mock scaffolding for a navigation the app performs", strings: ["OPENING"] },
+  "1b-board": { why: "mock scaffolding for a navigation the app performs", strings: ["OPENING"] },
+};
+
 const DEFERRED = {
   "1c": {
     to: "frame 2a (desktop My Picks)",
@@ -138,7 +151,7 @@ for (const [file, map] of Object.entries(FRAMES)) {
     for (const sh of SHARED) { const extra = readSrc(sh); if (extra) src += extra; }
     // Keyed by frame id plus which mock it came from -- 1c is a frame id in
     // both files, and they are different screens.
-    const scope = id + (file.includes("Desktop") ? "-desktop" : "-mobile");
+    const scope = id + (file.includes("Board") ? "-board" : file.includes("Desktop") ? "-desktop" : "-mobile");
     for (const ex of (EXTRA[scope] || [])) { const extra = readSrc(ex); if (extra) src += extra; }
     const flat = norm(src);
 
@@ -149,15 +162,18 @@ for (const [file, map] of Object.entries(FRAMES)) {
     )];
     const all = lits.filter((t) => !flat.includes(norm(t)));
     const defer = DEFERRED[id];
+    const skip = NOT_BUILT[scope];
     const held = defer ? all.filter((t) => defer.strings.includes(t)) : [];
-    const miss = all.filter((t) => !held.includes(t));
+    const notBuilt = skip ? all.filter((t) => skip.strings.includes(t)) : [];
+    const miss = all.filter((t) => !held.includes(t) && !notBuilt.includes(t));
 
     total += lits.length; missing += miss.length; checked += 1;
     console.log(
       (miss.length ? "MISS " : "ok   ") + id + "  " + map[id].padEnd(20) +
       String(lits.length).padStart(3) + " literals" +
       (miss.length ? "  " + miss.length + " missing" : "") +
-      (held.length ? "  (" + held.length + " held for " + defer.to + ")" : "")
+      (held.length ? "  (" + held.length + " held for " + defer.to + ")" : "") +
+      (notBuilt.length ? "  (" + notBuilt.length + " not built: " + skip.why + ")" : "")
     );
     miss.forEach((m) => console.log("        " + JSON.stringify(m)));
   }

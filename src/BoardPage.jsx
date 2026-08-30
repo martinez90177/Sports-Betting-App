@@ -7,6 +7,7 @@ import TeamLogo from "./TeamLogo.jsx";
 import { teamInfo } from "./lib/gamesData.js";
 import { matchupTones as boardTones } from "./lib/teamColors.js";
 import BoardMobile from "./v3/BoardMobile.jsx";
+import BoardDesktop from "./v3/BoardDesktop.jsx";
 
 // The three bands `PropPalace Board v4 part 2.dc.html` names, with its own
 // subtitles. A tier is a count of the reasons on the card -- nothing is
@@ -506,13 +507,25 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         if (!s || s.rate == null || s.n < minGames) return false;
         return wilsonLower(s.over, s.n) >= 0.7;
       }).length;
-      if (strong > 0) reasons.push({ kind: "rate", label: `${strong} PROP${strong === 1 ? "" : "S"} AT 70%+` });
+      if (strong > 0) reasons.push({
+        kind: "rate",
+        label: `${strong} PROP${strong === 1 ? "" : "S"} AT 70%+`,
+        // title/cite are the hero card WHY IT LEADS list. Every cite names
+        // the count behind the reason rather than restating the chip.
+        title: `${strong} prop${strong === 1 ? "" : "s"} at 70%+`,
+        cite: `Wilson lower bound over ${minGames}+ games, so 7 of 10 does not qualify and 35 of 50 does.`,
+      });
 
       // 2. The availability feed, both sides. Only MLB and the WNBA publish
       //    one; the other two leagues simply never fire this reason rather
       //    than reporting zero, which would read as "nobody is hurt".
       const outCount = (outByTeam.get(`${sport}:${teamA}`) || 0) + (outByTeam.get(`${sport}:${teamB}`) || 0);
-      if (outCount > 0) reasons.push({ kind: "out", label: `${outCount} OUT` });
+      if (outCount > 0) reasons.push({
+        kind: "out",
+        label: `${outCount} OUT`,
+        title: `${outCount} listed out`,
+        cite: `From the availability report for ${teamA || "both sides"} and ${teamB || "their opponent"} — counted, not inferred from a news item.`,
+      });
 
       // 3. The softest opposing defence any prop on this card faces, in that
       //    prop's own market. A rank is only a reason when it is genuinely
@@ -527,7 +540,12 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       // chip and the word printed on a row cannot disagree about "soft".
       const softCut = teamCount ? Math.floor(teamCount - teamCount / 3) + 1 : null;
       if (softest && softCut && softest.rank >= softCut) {
-        reasons.push({ kind: "matchup", label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}` });
+        reasons.push({
+          kind: "matchup",
+          label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}`,
+          title: `${softest.opp || "Opponent"} ranks #${softest.rank} of ${teamCount}`,
+          cite: `Softest defence any prop on this card faces, measured in ${softest.marketLabel || "that prop’s own market"} rather than overall.`,
+        });
       }
 
       return { g, reasons };
@@ -571,6 +589,10 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         key: g.key,
         away: away || "", home: home || "",
         time: g.time || "",
+        // The hero states its venue beside the time. Off the slate the card
+        // is already drawn from, so the two cannot describe different games,
+        // and absent rather than guessed when the feed never gave one.
+        venue: (g.slate && g.slate.venue && g.slate.venue.name) || null,
         reasons,
         hero,
         quiet: reasons.length === 0,
@@ -708,6 +730,56 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         // rendered as the "Functions are not valid as a React child" warning
         // and an empty slot. The date comes off the slate the cards are
         // already drawn from, so it cannot describe a different day.
+        slateLabel={slateDateLabel}
+        footNote="A tier is a count of the reasons on the card — nothing is weighted, and no tier is a prediction. A quiet game is shown rather than dropped, and says what it was missing."
+        loading={loading}
+        emptyNote={loading ? null : "No games on this slate yet."}
+        onOpenProp={onOpenProp}
+        onOpenGameProps={(g) => onOpenGameProps && onOpenGameProps(g)}
+      />
+    );
+  }
+
+  // ---- the desktop frame (see src/v3/BoardDesktop.jsx) --------------------
+  //
+  // `PropPalace Board v4 part 2.dc.html` frame 1b. Same tiers, same cards,
+  // same reasons as the phone — the frame promotes the leading game to a
+  // full-width hero and lays the rest out three across.
+  //
+  // The hero is band 0's leader. The mock then draws only bands 1 and 2,
+  // which would drop band 0's other games from the widest screen while
+  // keeping them on the phone; here band 0 keeps its tier and simply loses
+  // its leader to the hero.
+  const heroTier = v3Tiers.find((t) => t.games.some((g) => g.hero)) || null;
+  const heroCard = heroTier ? heroTier.games.find((g) => g.hero) : null;
+  const desktopHero = heroCard
+    ? {
+        ...heroCard,
+        meta: [heroCard.time, heroCard.venue].filter(Boolean).join(" · "),
+        // The reasons carry their own citation (see v3Tiers). Nothing is
+        // written here that the card did not already count.
+        why: heroCard.reasons.filter((r) => r.title),
+      }
+    : null;
+  // The count is recomputed after the hero is pulled out, not carried. It read
+  // "2 games" over a grid holding one, because v3Tiers counted the band
+  // before the hero was lifted from it.
+  const desktopTiers = v3Tiers
+    .map((t) => {
+      const games = t.games.filter((g) => !g.hero);
+      return { ...t, games, count: `${games.length} game${games.length === 1 ? "" : "s"}` };
+    })
+    .filter((t) => t.games.length);
+
+  if (!isPhone) {
+    return (
+      <BoardDesktop
+        sport={sport}
+        sports={sports.filter((sp) => sp.available !== false).map((sp) => (typeof sp === "string" ? { id: sp, label: sp.toUpperCase() } : { id: sp.id, label: sp.label || String(sp.id).toUpperCase() }))}
+        onSetSport={onSetSport}
+        hero={desktopHero}
+        tiers={desktopTiers}
+        summary={`${visible.length - (v3Tiers.find((t) => t.title === "Quiet")?.games.length || 0)} of ${visible.length} games have something counted`}
         slateLabel={slateDateLabel}
         footNote="A tier is a count of the reasons on the card — nothing is weighted, and no tier is a prediction. A quiet game is shown rather than dropped, and says what it was missing."
         loading={loading}
