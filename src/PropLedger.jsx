@@ -12393,7 +12393,9 @@ const METS_PLAYERS = [
   { id: "semien", name: "Marcus Semien", team: "NYM", pos: "2B", mlbId: 543760 },
   { id: "bichette", name: "Bo Bichette", team: "NYM", pos: "3B", mlbId: 666182 },
   { id: "alvarez", name: "Francisco Alvarez", team: "NYM", pos: "C", mlbId: 682626 },
-  { id: "polanco", name: "Jorge Polanco", team: "NYM", pos: "DH", mlbId: 593871 },
+  // Polanco moved to the 60-day IL (out for the season); Soto, activated
+  // off the IL 2026-08-29 after a calf strain, is now the everyday DH.
+  { id: "soto", name: "Juan Soto", team: "NYM", pos: "DH", mlbId: 665742 },
   { id: "robert", name: "Luis Robert Jr.", team: "NYM", pos: "CF", mlbId: 673357 },
   { id: "benge", name: "Carson Benge", team: "NYM", pos: "RF", mlbId: 701807 },
   { id: "taylor", name: "Tyrone Taylor", team: "NYM", pos: "LF", mlbId: 621438 },
@@ -12638,9 +12640,11 @@ const NATIONALS_PLAYERS = [
   // García Jr. was traded to the Yankees at the deadline; Ortiz was
   // recalled from Triple-A Rochester to replace him at first.
   { id: "aortiz", name: "Abimelec Ortiz", team: "WSH", pos: "1B", mlbId: 694673 },
-  { id: "nunez", name: "Nasim Nuñez", team: "WSH", pos: "2B", mlbId: 683083 },
+  // Nationals moved Abrams to second and made Nuñez the regular shortstop
+  // (confirmed by the club in late August 2026).
+  { id: "nunez", name: "Nasim Nuñez", team: "WSH", pos: "SS", mlbId: 683083 },
   { id: "vivas", name: "Jorbit Vivas", team: "WSH", pos: "3B", mlbId: 678391 },
-  { id: "abrams", name: "CJ Abrams", team: "WSH", pos: "SS", mlbId: 682928 },
+  { id: "abrams", name: "CJ Abrams", team: "WSH", pos: "2B", mlbId: 682928 },
   { id: "lile", name: "Daylen Lile", team: "WSH", pos: "LF", mlbId: 695734 },
   { id: "jyoung", name: "Jacob Young", team: "WSH", pos: "CF", mlbId: 696285 },
   { id: "wood", name: "James Wood", team: "WSH", pos: "RF", mlbId: 695578 },
@@ -12672,7 +12676,9 @@ const MARLINS_PLAYERS = [
   { id: "junk", name: "Janson Junk", team: "MIA", pos: "SP", mlbId: 676083 },
 ];
 const ATHLETICS_PLAYERS = [
-  { id: "langeliers", name: "Shea Langeliers", team: "ATH", pos: "C", mlbId: 669127 },
+  // Langeliers had season-ending knee surgery (torn meniscus); Heim has
+  // taken over as the Athletics' primary catcher.
+  { id: "heim", name: "Jonah Heim", team: "ATH", pos: "C", mlbId: 641680 },
   { id: "kurtz", name: "Nick Kurtz", team: "ATH", pos: "1B", mlbId: 701762 },
   { id: "mcneil", name: "Jeff McNeil", team: "ATH", pos: "2B", mlbId: 643446 },
   { id: "twhite", name: "Tommy White", team: "ATH", pos: "3B", mlbId: 695720 },
