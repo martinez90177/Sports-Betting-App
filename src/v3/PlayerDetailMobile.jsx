@@ -201,6 +201,12 @@ export default function PlayerDetailMobile({
   //   activeCount, onReset }
   // card: { key, name, initials, status, state, games, onCycle, avatarNode }
   lineups = null,
+  // Frame 1c's `pdBlocks`: four { label, value, note } cells. Passed in
+  // because what belongs in them is the page's own -- MLB draws SEASON /
+  // VS RHP / PARK / ORDER, and a sport with no probable starter or batting
+  // order names its own four. Without them the grid falls back to what the
+  // v2 contract already carried, so an unwired page still renders.
+  blocks = null,
 }) {
   const [tab, setTab] = React.useState("Form");
   const [gameMenu, setGameMenu] = React.useState(false);
@@ -694,7 +700,7 @@ export default function PlayerDetailMobile({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        {[
+        {(blocks || [
           verdict && { key: "avg", label: "AVERAGE", value: verdict.average, note: `${String(marketLabel || "").toLowerCase()} per game, ${games.length} games counted` },
           verdict && { key: "margin", label: "MARGIN", value: verdict.margin, note: "average against the line on the graph" },
           context && context.lastMeeting && { key: "last", label: "LAST MEETING", value: context.lastMeeting, note: `most recent game against ${context.allowsLabel ? String(context.allowsLabel).split(" ")[0] : "this opponent"}` },
@@ -708,7 +714,7 @@ export default function PlayerDetailMobile({
             value: context.park,
             note: band && band.venue && !String(context.park).includes(band.venue) ? band.venue : "",
           },
-        ].filter(Boolean).map((bl) => (
+        ]).filter(Boolean).map((bl) => (
           <div
             key={bl.key}
             style={{

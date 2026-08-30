@@ -13022,41 +13022,100 @@ async function fetchMLBGameLog(mlbId, season = currentMLBSeason()) {
 // Historical boxscores are immutable once the game is final, so this is
 // cached with no TTL (in-memory Map + sessionStorage) rather than refetched
 // on any schedule.
+// One boxscore now answers two questions, because it already carries both:
+// who appeared, and which pitcher each side started. The second is what
+// frame 1c's VS RHP block needs -- the player's rate against the hand he
+// faces tonight -- and asking for it separately would be a second fetch of a
+// response this already has.
 const mlbBoxscoreLineupCache = new Map();
-async function fetchMLBGameBoxscoreLineupIds(gamePk) {
-  if (!gamePk) return new Set();
+async function fetchMLBBoxscoreRecord(gamePk) {
+  if (!gamePk) return null;
   const cached = mlbBoxscoreLineupCache.get(gamePk);
   if (cached) return cached;
 
-  const cacheKey = `mlb_boxscore_lineup_v1_${gamePk}`;
+  // v2 adds `starters`. A stored v1 payload has only the id array, and the
+  // VS RHP block would quietly never appear -- the same failure the game-log
+  // cache bumps exist for.
+  const cacheKey = `mlb_boxscore_lineup_v2_${gamePk}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
-      const ids = new Set(JSON.parse(stored));
-      mlbBoxscoreLineupCache.set(gamePk, ids);
-      return ids;
+      const parsed = JSON.parse(stored);
+      const rec = { ids: new Set(parsed.ids), starters: parsed.starters || {} };
+      mlbBoxscoreLineupCache.set(gamePk, rec);
+      return rec;
     }
   } catch {}
 
-  let ids = new Set();
+  let rec = null;
   try {
     const res = await fetch(`https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`);
     const data = await res.json();
+    const ids = new Set();
+    const starters = {};
     // `batters`/`pitchers` are id arrays of who actually appeared -- the
     // boxscore's `players` dict lists the whole active roster present that
     // day (including bench players who never got in), so those two arrays
     // are the correct "did they play" signal, not presence in `players`.
-    [data?.teams?.home, data?.teams?.away].forEach((side) => {
+    ["home", "away"].forEach((key) => {
+      const side = data?.teams?.[key];
       (side?.batters || []).forEach((id) => ids.add(id));
       (side?.pitchers || []).forEach((id) => ids.add(id));
+      // The first pitcher listed is the one who started. The boxscore does
+      // not carry his throwing hand (checked), so only the id is kept here
+      // and fetchMLBPitcherHands resolves the hand once per pitcher rather
+      // than once per game.
+      const first = (side?.pitchers || [])[0];
+      if (first != null) starters[key] = first;
     });
+    if (!ids.size) return null;
+    rec = { ids, starters };
   } catch {
-    return new Set();
+    return null;
   }
 
-  mlbBoxscoreLineupCache.set(gamePk, ids);
-  try { sessionStorage.setItem(cacheKey, JSON.stringify([...ids])); } catch {}
-  return ids;
+  mlbBoxscoreLineupCache.set(gamePk, rec);
+  try { sessionStorage.setItem(cacheKey, JSON.stringify({ ids: [...rec.ids], starters: rec.starters })); } catch {}
+  return rec;
+}
+
+// Kept for the callers that only want the appearance set.
+async function fetchMLBGameBoxscoreLineupIds(gamePk) {
+  const rec = await fetchMLBBoxscoreRecord(gamePk);
+  return rec ? rec.ids : new Set();
+}
+
+// mlbId -> "R" | "L". A pitcher's throwing hand does not change, so this is
+// cached with no TTL and asked in batches: one request answers for every
+// starter in a whole game log, and the same pitcher is never asked twice.
+const mlbPitchHandCache = new Map();
+try {
+  const stored = sessionStorage.getItem("mlb_pitchhand_v1");
+  if (stored) Object.entries(JSON.parse(stored)).forEach(([k, v]) => mlbPitchHandCache.set(Number(k), v));
+} catch {}
+
+async function fetchMLBPitcherHands(ids) {
+  const want = [...new Set((ids || []).filter((id) => id != null && !mlbPitchHandCache.has(id)))];
+  if (!want.length) return mlbPitchHandCache;
+  // The people route takes a list, so a 60-game log is one request.
+  for (let i = 0; i < want.length; i += 60) {
+    const batch = want.slice(i, i + 60);
+    try {
+      const res = await fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${batch.join(",")}`);
+      const data = await res.json();
+      (data?.people || []).forEach((p) => {
+        const code = p?.pitchHand?.code;
+        if (p?.id != null && (code === "R" || code === "L")) mlbPitchHandCache.set(p.id, code);
+      });
+    } catch {
+      // Left unset rather than guessed: an unknown hand drops the game from
+      // the split instead of being counted as the wrong one.
+    }
+  }
+  try {
+    sessionStorage.setItem("mlb_pitchhand_v1", JSON.stringify(Object.fromEntries(mlbPitchHandCache)));
+  } catch {}
+  return mlbPitchHandCache;
 }
 
 // Rolls a set of batter game logs up into the rate stats shown on the
@@ -15215,6 +15274,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // the "Teammates" filter group below and fetchMLBGameBoxscoreLineupIds.
   const [teammateChips, setTeammateChips] = useState([]);
   const [boxscoreLineups, setBoxscoreLineups] = useState({});
+  // gamePk -> { home, away } starter ids, and a counter that re-renders once
+  // the batched hand lookup has answered (the cache itself is module state).
+  const [boxscoreStarters, setBoxscoreStarters] = useState({});
+  const [pitchHandVersion, setPitchHandVersion] = useState(0);
   const [boxscoresLoading, setBoxscoresLoading] = useState(false);
   // Boxscores used to be fetched only once a chip was already active, which
   // is fine for filtering but leaves every chip's with/without differential
@@ -15222,6 +15285,15 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // true the first time the Filters panel is opened (and stays true) so the
   // fetch is still demand-driven rather than firing on every page load.
   const [teammateDataWanted, setTeammateDataWanted] = useState(false);
+  // The phone draws two things off the participation record without being
+  // asked -- frame 1c's VS RHP block and the Lineups chip's counts -- so the
+  // phone page wants it on arrival. The desktop keeps the demand-driven rule,
+  // where opening the Filters panel is the trigger: there the block is not on
+  // screen until you go looking for it.
+  const isPhonePage = useIsPhone();
+  React.useEffect(() => {
+    if (isPhonePage) setTeammateDataWanted(true);
+  }, [isPhonePage]);
   // mlbId of the teammate chip currently under the cursor, used to preview
   // that filter's effect on the chart before it's committed.
   const [hoverTeammate, setHoverTeammate] = useState(null);
@@ -15479,18 +15551,35 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     if (!teammateScopeGamePks.length) return;
     let cancelled = false;
     setBoxscoresLoading(true);
-    Promise.all(teammateScopeGamePks.map((pk) => fetchMLBGameBoxscoreLineupIds(pk).then((ids) => [pk, ids])))
-      .then((pairs) => {
+    Promise.all(teammateScopeGamePks.map((pk) => fetchMLBBoxscoreRecord(pk).then((rec) => [pk, rec])))
+      .then(async (pairs) => {
         if (cancelled) return;
         setBoxscoreLineups((prev) => {
           const next = { ...prev };
-          pairs.forEach(([pk, ids]) => { next[pk] = ids; });
+          pairs.forEach(([pk, rec]) => { if (rec) next[pk] = rec.ids; });
           return next;
         });
+        // The starter each side used, kept off the same response, and then
+        // one batched lookup for every hand this log needs (see
+        // fetchMLBPitcherHands). Frame 1c's VS RHP block is the consumer.
+        const starters = {};
+        pairs.forEach(([pk, rec]) => { if (rec) starters[pk] = rec.starters; });
+        const ids = [];
+        Object.values(starters).forEach((st) => { if (st) { if (st.home != null) ids.push(st.home); if (st.away != null) ids.push(st.away); } });
+        // Tonight's opposing starter too. He is the hand the VS RHP block is
+        // *about*, and he is not in any past boxscore of this player's, so a
+        // batch built only from history would never know him.
+        if (nextGame && nextGame.oppProbablePitcher && nextGame.oppProbablePitcher.mlbId != null) {
+          ids.push(nextGame.oppProbablePitcher.mlbId);
+        }
+        await fetchMLBPitcherHands(ids);
+        if (cancelled) return;
+        setBoxscoreStarters((prev) => ({ ...prev, ...starters }));
+        setPitchHandVersion((v) => v + 1);
       })
       .finally(() => { if (!cancelled) setBoxscoresLoading(false); });
     return () => { cancelled = true; };
-  }, [teammateScopeGamePks]);
+  }, [teammateScopeGamePks, nextGame]);
 
   // True once every in-scope game has a boxscore to check chips against.
   // Until then the teammate predicate can only produce a partial answer.
@@ -17218,6 +17307,77 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     });
   }, [isPitcher, teammateChips, mlbSplitGames, boxscoreLineups, teammateCandidates, opponentCandidates, mlbStatusOf]);
 
+  // Frame 1c's four blocks: SEASON / VS RHP / PARK / ORDER. The page used to
+  // render v2's AVERAGE / MARGIN / LAST MEETING / PARK here -- the mock's grid
+  // with the old contents in it, which is the one thing this redesign is not
+  // supposed to do.
+  //
+  // A block whose fact this app cannot establish is dropped, not filled: the
+  // grid is a `.filter(Boolean)` and three cells is a finished row.
+  const v3Blocks = useMemo(() => {
+    const dp = (v) => (Number.isFinite(v) ? v.toFixed(1) : null);
+
+    // SEASON -- the whole log, not the window, which is what separates this
+    // from the verdict rail above it.
+    const seasonVals = allGames.map(statValueFn);
+    const seasonAvg = seasonVals.length ? seasonVals.reduce((a, b) => a + b, 0) / seasonVals.length : null;
+
+    // VS RHP / VS LHP -- this player's rate against the hand he faces
+    // tonight, counted over the games whose starter's hand is actually
+    // known. A game we could not resolve is left out of the count rather
+    // than assigned to a hand.
+    const oppStarter = nextGame && nextGame.oppProbablePitcher;
+    const tonightHand = oppStarter && oppStarter.mlbId != null
+      ? mlbPitchHandCache.get(oppStarter.mlbId)
+      : undefined;
+    let handBlock = null;
+    if (tonightHand === "R" || tonightHand === "L") {
+      const vals = [];
+      allGames.forEach((g) => {
+        const st = g.gamePk ? boxscoreStarters[g.gamePk] : null;
+        if (!st) return;
+        // The opposing starter is the one on the other side from this batter.
+        const oppId = g.home ? st.away : st.home;
+        if (oppId == null) return;
+        if (mlbPitchHandCache.get(oppId) !== tonightHand) return;
+        vals.push(statValueFn(g));
+      });
+      if (vals.length) {
+        handBlock = {
+          key: "hand",
+          label: `VS ${tonightHand}HP`,
+          value: dp(vals.reduce((a, b) => a + b, 0) / vals.length),
+          note: `Starter is ${tonightHand === "R" ? "right" : "left"}-handed tonight · ${vals.length} game${vals.length === 1 ? "" : "s"} counted`,
+        };
+      }
+    }
+
+    return [
+      seasonAvg != null && {
+        key: "season",
+        label: "SEASON",
+        value: dp(seasonAvg),
+        note: `${String(marketLabel || "").toLowerCase()} per game, ${seasonVals.length} games counted`,
+      },
+      handBlock,
+      nextGame && nextGame.venue && {
+        key: "park",
+        label: "PARK",
+        value: nextGame.venue,
+        note: nextGame.weather && nextGame.weather.wind ? `Wind ${nextGame.weather.wind}` : "Run environment",
+      },
+      battingOrder && {
+        key: "order",
+        label: "ORDER",
+        value: battingOrder,
+        note: battingSeason && Number.isFinite(battingSeason.pa)
+          ? `Posted lineup, ${battingSeason.pa.toFixed(1)} PA per game`
+          : "Posted lineup",
+      },
+    ].filter(Boolean);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allGames, statValueFn, marketLabel, nextGame, boxscoreStarters, pitchHandVersion, battingOrder, battingSeason]);
+
   const v2Page = (
     <PlayerDetailV2
       sport="mlb"
@@ -17234,6 +17394,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       splits={v3Splits}
       injuryTeams={v3InjuryTeams}
       lineups={v3Lineups}
+      blocks={v3Blocks}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
