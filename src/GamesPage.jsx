@@ -811,12 +811,25 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       };
     };
     return (
+      // Four things this hands down that the desktop layout does differently,
+      // each because frame 2a draws it that way:
+      //
+      //   leagues       the four leagues, not ALL_SPORTS_TABS -- `gamesLeagues`
+      //                 has no All chip, and the slate heading it feeds
+      //                 carries one league's own tone.
+      //   sampleQuery   the tap-to-fill example beside the search box
+      //                 (`gQueryAction`), taken off this slate so it matches.
+      //   slateHeading  `gLeague + " · " + dow + " " + day`, the short form,
+      //                 not the long date the desktop subtitle uses.
+      //   cta           GAMECAST / SEE RESULTS / OPEN BOARD, the frame's own
+      //                 three words.
       <GamesMobile
-        leagues={ALL_SPORTS_TABS}
+        leagues={SPORTS}
         league={sport}
         onSetLeague={(id) => { setSport(id); setPickedKey(null); setShowAll(false); }}
         query={query}
         onSetQuery={(q) => { setQuery(q); setShowAll(false); }}
+        sampleQuery={(shown[0] && (shown[0].home || {}).name) || null}
         dates={tabs.map((t) => ({ key: t.key, ...dow(t.key), count: tabCounts[t.key] ?? null }))}
         activeDate={activeKey}
         onSetDate={(k) => { setPickedKey(k); setShowAll(false); }}
@@ -828,7 +841,10 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         ]}
         state={stateFilter}
         onSetState={(id) => { setStateFilter(id); setShowAll(false); }}
-        slateHeading={`${sport === ALL_SPORT.id ? "ALL" : sport.toUpperCase()} · ${subtitle.toUpperCase()}`}
+        slateHeading={(() => {
+          const d = dow(activeKey);
+          return `${sport === ALL_SPORT.id ? "ALL" : sport.toUpperCase()} · ${d.dow} ${d.day}`;
+        })()}
         games={shown.map((g) => {
           const live = isActiveStatus(g.status);
           const done = g.status === GAME_STATUS.FINAL;
@@ -850,7 +866,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
             note: live ? "Live scoring from the provider."
               : done ? "Finished — props on this game are settled."
                 : `${aw.full || aw.abbr} at ${hm.full || hm.abbr}`,
-            cta: live ? "GAMECAST →" : done ? "SEE RESULTS →" : "MATCHUP →",
+            cta: live ? "GAMECAST →" : done ? "SEE RESULTS →" : "OPEN BOARD →",
             teams: [
               { side: "away", abbr: aw.abbr, name: aw.name || aw.full, record: aw.record, score: live || done ? aw.score : null, winning: lead === "away" },
               { side: "home", abbr: hm.abbr, name: hm.name || hm.full, record: hm.record, score: live || done ? hm.score : null, winning: lead === "home" },

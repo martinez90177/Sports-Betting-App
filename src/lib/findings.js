@@ -229,7 +229,11 @@ export const FINDING_SIDES = ["Both", "Over", "Under"];
 export const FINDING_SORTS = [
   { id: "strength", label: "Strength" },
   { id: "streak", label: "Longest streak" },
-  { id: "start", label: "First start" },
+  // Frame 2b names these three exactly, and its own comment says the controls
+  // must offer what this file exports. "Sample" it is: deepest sample first,
+  // strength breaking the tie, which is the ordering a reader asking "what is
+  // best supported" actually wants.
+  { id: "sample", label: "Sample" },
 ];
 
 export function buildFindings(rows, sport) {
@@ -256,7 +260,7 @@ export function filterFindings(findings, { split, side, hideStructural, sort }) 
 
   const sorted = [...list];
   if (sort === "streak") sorted.sort((a, b) => (b.streak - a.streak) || (b.strength - a.strength));
-  else if (sort === "start") sorted.sort((a, b) => String(a.startsAt || "").localeCompare(String(b.startsAt || "")) || (b.strength - a.strength));
+  else if (sort === "sample") sorted.sort((a, b) => (b.n - a.n) || (b.strength - a.strength));
   else sorted.sort((a, b) => b.strength - a.strength);
   return sorted;
 }

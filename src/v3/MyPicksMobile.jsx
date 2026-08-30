@@ -302,18 +302,21 @@ export default function MyPicksMobile({
             >
               CLEAR
             </div>
+            {/* `trackSlip: () => this.set("mpTab", "Ledger")`. This button was
+                "READ THE SLIP" in accent -- a word the frame does not use and a
+                colour it does not give this control. */}
             <div
-              onClick={() => setTab("Read")}
+              onClick={() => setTab("Ledger")}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("Read"); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("Ledger"); } }}
               style={{
                 flex: "1 1 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
-                borderRadius: 12, border: "1px solid var(--amber)", background: "var(--amber-dim)",
-                color: "var(--amber-ink)", fontFamily: MONO, fontSize: 13, letterSpacing: "0.08em", cursor: "pointer",
+                borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface-2)",
+                color: "var(--text)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
               }}
             >
-              READ THE SLIP
+              TRACK IN LEDGER
             </div>
           </div>
         </>

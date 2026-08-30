@@ -34,6 +34,8 @@ export default function GamesMobile({
   onSetLeague,
   query,
   onSetQuery,
+  // A real team on the slate, for the mock's tap-to-fill example.
+  sampleQuery = null,
   dates = [],
   activeDate,
   onSetDate,
@@ -81,17 +83,19 @@ export default function GamesMobile({
                 color: "var(--text)", background: "transparent", border: "none", outline: "none",
               }}
             />
-            {query && (
-              <span
-                onClick={() => onSetQuery("")}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSetQuery(""); } }}
-                style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer" }}
-              >
-                CLEAR
-              </span>
-            )}
+            {/* The mock's `gQueryAction`: CLEAR once something is typed, and
+                before that a worked example you can tap. A search box whose
+                only affordance is a placeholder does not tell you what it
+                will match. */}
+            <span
+              onClick={() => onSetQuery(query ? "" : sampleQuery || "")}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSetQuery(query ? "" : sampleQuery || ""); } }}
+              style={{ marginLeft: "auto", flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              {query ? "CLEAR" : `TRY \u201C${(sampleQuery || "").toUpperCase()}\u201D`}
+            </span>
           </span>
         </div>
 

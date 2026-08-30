@@ -51,6 +51,8 @@ const statusPill = (status) => ({
 export default function InjuriesMobile({
   query,
   onSetQuery,
+  // A name off this very list, for the mock's tap-to-fill example.
+  sampleQuery = null,
   leagues = [],
   league,
   onSetLeague,
@@ -94,15 +96,18 @@ export default function InjuriesMobile({
                 color: "var(--text)", background: "transparent", border: "none", outline: "none",
               }}
             />
-            {query && (
+            {/* `injQueryAction`: CLEAR once something is typed, and before
+                that a name off this very list, so the example the box
+                offers is one that will actually match. */}
+            {(query || sampleQuery) && (
               <span
-                onClick={() => onSetQuery("")}
+                onClick={() => onSetQuery(query ? "" : sampleQuery)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSetQuery(""); } }}
-                style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer" }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSetQuery(query ? "" : sampleQuery); } }}
+                style={{ marginLeft: "auto", flex: "0 0 auto", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer" }}
               >
-                CLEAR
+                {query ? "CLEAR" : `TRY \u201C${String(sampleQuery).toUpperCase()}\u201D`}
               </span>
             )}
           </span>

@@ -138,6 +138,7 @@ export default function InjuriesPage({
       <InjuriesMobile
         query={q}
         onSetQuery={setQ}
+        sampleQuery={(list[0] && String(list[0].name || "").split(" ").slice(-1)[0]) || null}
         leagues={[{ id: "all", label: "All", count: countBySport("all") }]
           .concat(coveredSports.map((s) => ({ id: s.id, label: s.label, count: countBySport(s.id) })))}
         league={sport}
