@@ -116,6 +116,11 @@ function findingsForRow(row, sport) {
       // The v3 Findings card prints it as a chip beside the split, and
       // re-deriving it from the sentence would be reading a string back.
       id: f.id,
+      // The card's chip, in the three words the v3 frames use. Derived from
+      // the id here rather than written at each of the three push sites, so a
+      // fourth kind of finding cannot be added without deciding what it is
+      // called.
+      kind: f.id === "streak" ? "STREAK" : f.id === "h2h" ? "MATCHUP" : "SPLIT",
       rowKey: row.key,
       sport,
       name,

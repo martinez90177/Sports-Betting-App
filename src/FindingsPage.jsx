@@ -4,6 +4,7 @@ import { TEAM_COLORS_BY_SPORT } from "./lib/teamColors.js";
 import { buildFindings, filterFindings, FINDING_SPLITS, FINDING_SIDES, FINDING_SORTS } from "./lib/findings.js";
 import useIsNarrow, { useIsPhone } from "./lib/useIsNarrow.js";
 import FindingsMobile from "./v3/FindingsMobile.jsx";
+import FindingsDesktop from "./v3/FindingsDesktop.jsx";
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -119,39 +120,48 @@ export default function FindingsPage({
 
   const countFor = (s) => (s === "All splits" ? all.length : all.filter((f) => f.split === s).length);
 
-  // Same findings, same filters, same counts -- the phone's own layout for
-  // them. See src/v3/FindingsMobile.jsx.
+  // Same findings, same filters, same counts -- one prop set, two layouts.
+  // The phone stacks its controls (src/v3/FindingsMobile.jsx); the desktop
+  // puts them in a 236px rail beside a two-across grid (FindingsDesktop, mock
+  // frame 2c). Neither re-ranks anything: lib/findings.js decides the order.
+  const v3Shared = {
+    sports,
+    sport,
+    onSetSport,
+    splits: FINDING_SPLITS,
+    split,
+    onSetSplit: (s) => { setSplit(s); setShown(20); },
+    sides: FINDING_SIDES,
+    side,
+    onSetSide: (s) => { setSide(s); setShown(20); },
+    sorts: FINDING_SORTS,
+    sort,
+    onSetSort: (s) => { setSort(s); setShown(20); },
+    hideStructural,
+    onToggleStructural: () => { setHideStructural((v) => !v); setShown(20); },
+    structuralHeld: structuralCount,
+    findings: visible,
+    total: list.length,
+    hasMore: list.length > shown,
+    moreCount: list.length - shown,
+    onShowMore: () => setShown((n) => n + 20),
+    loading,
+    onOpenProp,
+    renderAvatar: (fd, size) => (
+      <PlayerAvatar
+        name={fd.name} alt={fd.name} sport={fd.sport || sport} team={fd.team}
+        headshotSrc={fd.avatar} espnId={fd.espnId}
+        status={statusFor ? statusFor(fd) : fd.status} size={size} inset={2}
+        surface="var(--surface-1)"
+      />
+    ),
+  };
+
+  if (!isPhone) return <FindingsDesktop {...v3Shared} />;
+
   if (isPhone) {
     return (
-      <FindingsMobile
-        splits={FINDING_SPLITS}
-        split={split}
-        onSetSplit={(s) => { setSplit(s); setShown(20); }}
-        sides={FINDING_SIDES}
-        side={side}
-        onSetSide={(s) => { setSide(s); setShown(20); }}
-        sorts={FINDING_SORTS}
-        sort={sort}
-        onSetSort={(s) => { setSort(s); setShown(20); }}
-        hideStructural={hideStructural}
-        onToggleStructural={() => { setHideStructural((v) => !v); setShown(20); }}
-        structuralHeld={structuralCount}
-        findings={visible}
-        total={list.length}
-        hasMore={list.length > shown}
-        moreCount={list.length - shown}
-        onShowMore={() => setShown((n) => n + 20)}
-        loading={loading}
-        onOpenProp={onOpenProp}
-        renderAvatar={(fd, size) => (
-          <PlayerAvatar
-            name={fd.name} alt={fd.name} sport={fd.sport || sport} team={fd.team}
-            headshotSrc={fd.avatar} espnId={fd.espnId}
-            status={statusFor ? statusFor(fd) : fd.status} size={size} inset={2}
-            surface="var(--surface-1)"
-          />
-        )}
-      />
+      <FindingsMobile {...v3Shared} />
     );
   }
 

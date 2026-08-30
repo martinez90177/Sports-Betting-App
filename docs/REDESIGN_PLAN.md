@@ -2116,3 +2116,62 @@ region's copy is all props, the audit is silent on whether it exists.
   week, so it emptied the page for five days in seven — and for the ten days
   before Week 1, while the books were already pricing it. See
   `docs/PROJECT_NOTES.md`, "…except in a weekly league".
+
+## Batch 6 — desktop My Picks, Games, Findings
+
+Commits `b9f7622`, `b8d5333`, and this one. Desktop is 7 of 11 screens.
+
+**My Picks (frame 2a)** — slip beside read: SLIP and LEDGER tabs, THE READ as a
+permanent 404px column. The derivation moved to `src/v3/useMyPicks.js` and both
+frames call it, so the phone and the desktop cannot disagree about whether a leg
+is AGAINST. Verified with three legs at 90%: 0.9³ = 73%, which is what the
+column prints.
+
+**Games (frame 2b)** — a 212px rail beside a three-across grid. Both frames come
+off one prop set; that collapsed 68 lines of duplicated card mapping.
+
+**Findings (frame 2c)** — a 236px rail beside a two-across grid. `lib/findings.js`
+gained a `kind` field (STREAK / SPLIT / MATCHUP) derived from the finding's id
+in one place, because the card prints it as a chip and re-deriving it from the
+sentence would be reading a string back.
+
+### One league order, at the source
+
+`SPORTS` was MLB, WNBA, NFL, NBA and `FEED_SPORTS` led with NFL. Every v3 mock
+without exception offers **MLB, NFL, NBA, WNBA** — Games rail, Prop Feed rail,
+Board chips, Findings rail, phone frames. Both lists now hold that order, and
+the Prop Feed rail's hand re-sort came back out. Neither list drives a default:
+`defaultFeedSport()` decides by kickoff date and `boardSport` is explicit.
+
+### Controls the frames do not draw, kept anyway
+
+Three, and the reasoning is the same each time: the mock did not have to carry
+a control this app has, and dropping one to match would cost the reader
+something that works.
+
+- **Games keeps its search box.** It filters the slate.
+- **Findings keeps its league control.** This one is not cosmetic — the page is
+  per-sport (`buildFindings` takes one), so without it three of the four leagues
+  are unreachable at this width. Caught by noticing MATCHUP findings never
+  appeared: the page was stuck on NFL, whose Week 1 teams have no prior
+  meetings. On MLB it draws 594 of them.
+- **The Prop Feed keeps EVERYTHING ELSE**, opening the panel that holds defence
+  tier, role, odds range, teams and games and saved screens.
+
+### Not built
+
+The Games card's team rows carry a moneyline (`al: "−138", hl: "+118"`). There
+is no odds feed here, so the column is not drawn — see PROJECT_NOTES, "Free data
+only no fake edge". This is the clearest instance in the bundle of the rule that
+no book prices anything.
+
+### Verified
+
+Every count reconciles rather than being read off one number:
+
+- Findings near-certainty switch: 1322 shown + 222 held = 1544 with it off.
+- Findings splits: Season 346 + Home 507 + Away 469 + vs-opponent 0 = 1322.
+- Games: each league heads its own next slate — MLB SUN 30 (14), WNBA SUN 30
+  (4), NFL WED 09 (1), NBA TUE 20 (3).
+
+Frames 2a, 2b and 2c audit 14, 6 and 7 literals with nothing missing.

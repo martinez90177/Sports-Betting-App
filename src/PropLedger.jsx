@@ -21061,9 +21061,12 @@ const BOARD_DISCLAIMER = {
   nba: "Real 2025-26 game logs (ESPN Stats API), regular season and playoffs. Not a live odds feed.",
 };
 
+// MLB, NFL, NBA, WNBA -- the order every v3 mock offers them in, matching
+// SPORTS in lib/gamesData.js. It led with NFL, which meant the Prop Feed rail
+// re-sorted at the point of use and the Findings rail disagreed with both.
 const FEED_SPORTS = [
-  { id: "nfl", label: "NFL", available: true },
   { id: "mlb", label: "MLB", available: true },
+  { id: "nfl", label: "NFL", available: true },
   // NBA carried a `simulated` qualifier here until its logs became real.
   // It is gone rather than left on: the rows are built from ESPN box scores
   // now, exactly like the other three, and a badge saying otherwise would be
@@ -23423,12 +23426,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedRailGroups = [
     {
       key: "league", label: "LEAGUE", cols: 2,
-      // FEED_SPORTS leads with NFL; every mock offers MLB, NFL, NBA, WNBA.
-      // Ordered here rather than reordering FEED_SPORTS, which also drives
-      // which leagues are available and in what order they are fetched.
-      items: ["mlb", "nfl", "nba", "wnba"]
-        .map((id) => FEED_SPORTS.find((sp) => sp.id === id))
-        .filter((sp) => sp && sp.available)
+      // FEED_SPORTS is already in the mocks' order (MLB, NFL, NBA, WNBA), so
+      // this reads it straight rather than re-sorting.
+      items: FEED_SPORTS.filter((sp) => sp.available)
         .map((sp) => feedChip(sp.id, sp.label, sport === sp.id, () => setSport(sp.id))),
     },
     {
