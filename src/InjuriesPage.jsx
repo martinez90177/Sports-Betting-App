@@ -4,6 +4,7 @@ import TeamLogo from "./TeamLogo.jsx";
 import { TEAM_COLORS_BY_SPORT, STATUS } from "./lib/teamColors.js";
 import useIsNarrow, { useIsPhone } from "./lib/useIsNarrow.js";
 import InjuriesMobile from "./v3/InjuriesMobile.jsx";
+import InjuriesDesktop from "./v3/InjuriesDesktop.jsx";
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -126,46 +127,65 @@ export default function InjuriesPage({
     return id === "all" ? inSport.length : inSport.filter((r) => r.status === id).length;
   };
 
-  // Same wire, same coverage rules, same sorts -- the phone's own layout.
-  // See src/v3/InjuriesMobile.jsx.
-  if (isPhone) {
+  // Same wire, same coverage rules, same sorts -- one prop set, two layouts.
+  // The phone stacks its rail as a disclosure (src/v3/InjuriesMobile.jsx);
+  // the desktop puts it in a 224px column beside the wire as a table
+  // (InjuriesDesktop, mock frame 2e).
+  {
     const kickoffLabel = (r) => {
       if (r.kickoff == null) return "No game on this slate";
       const d = new Date(r.kickoff);
       return d.toLocaleDateString([], { weekday: "short" }) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     };
+    const v3Shared = {
+      query: q,
+      onSetQuery: setQ,
+      sampleQuery: (list[0] && String(list[0].name || "").split(" ").slice(-1)[0]) || null,
+      leagues: [{ id: "all", label: "All", count: countBySport("all") }]
+        .concat(coveredSports.map((sp) => ({ id: sp.id, label: sp.label, count: countBySport(sp.id) }))),
+      league: sport,
+      onSetLeague: setSport,
+      statuses: [
+        { id: "all", label: "All", count: countByStatus("all") },
+        { id: "questionable", label: "Questionable", count: countByStatus("questionable") },
+        { id: "out", label: "Out", count: countByStatus("out") },
+        { id: "active", label: "Active · watched", count: countByStatus("active") },
+      ],
+      status,
+      onSetStatus: setStatus,
+      sorts: (kickoffFor ? [{ id: "kickoff", label: "Playing next" }] : []).concat([{ id: "name", label: "By status" }]),
+      sort,
+      onSetSort: setSort,
+      playingSoon,
+      rows: list,
+      scopeLabel: [sport === "all" ? "All leagues" : sport.toUpperCase(), status === "all" ? "All statuses" : status].join(" · "),
+      // Which leagues publish a feed at all. A league showing nobody has
+      // nobody designated, not nobody checked.
+      coverageNote: uncoveredSports.length
+        ? `${andList(coveredSports.map((sp) => sp.label))} publish an availability feed this app can read. ${andList(uncoveredSports.map((sp) => sp.label))} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
+        : `${andList(coveredSports.map((sp) => sp.label))} all publish an availability designation this app reads. A league showing nobody here has nobody designated, not nobody checked.`,
+      loading,
+      onOpenProp: onOpenProp ? (r) => onOpenProp(r) : null,
+      kickoffLabelFor: kickoffLabel,
+    };
+
+    if (!isPhone) {
+      return (
+        <InjuriesDesktop
+          {...v3Shared}
+          renderAvatar={(r, size) => (
+            <PlayerAvatar
+              name={r.name} alt={r.name} sport={r.sport} team={r.team}
+              headshotSrc={r.avatar} espnId={r.espnId} status={r.status}
+              size={size} inset={2} surface="var(--bg)"
+            />
+          )}
+        />
+      );
+    }
+
     return (
-      <InjuriesMobile
-        query={q}
-        onSetQuery={setQ}
-        sampleQuery={(list[0] && String(list[0].name || "").split(" ").slice(-1)[0]) || null}
-        leagues={[{ id: "all", label: "All", count: countBySport("all") }]
-          .concat(coveredSports.map((s) => ({ id: s.id, label: s.label, count: countBySport(s.id) })))}
-        league={sport}
-        onSetLeague={setSport}
-        statuses={[
-          { id: "all", label: "All", count: countByStatus("all") },
-          { id: "questionable", label: "Questionable", count: countByStatus("questionable") },
-          { id: "out", label: "Out", count: countByStatus("out") },
-          { id: "active", label: "Active · watched", count: countByStatus("active") },
-        ]}
-        status={status}
-        onSetStatus={setStatus}
-        sorts={(kickoffFor ? [{ id: "kickoff", label: "Playing next" }] : []).concat([{ id: "name", label: "By status" }])}
-        sort={sort}
-        onSetSort={setSort}
-        playingSoon={playingSoon}
-        rows={list}
-        scopeLabel={[sport === "all" ? "All leagues" : sport.toUpperCase(), status === "all" ? "All statuses" : status].join(" · ")}
-        coverageNote={
-          uncoveredSports.length
-            ? `${andList(coveredSports.map((s) => s.label))} publish an availability feed this app can read. ${andList(uncoveredSports.map((s) => s.label))} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
-            : `${andList(coveredSports.map((s) => s.label))} all publish an availability designation this app reads. A league showing nobody here has nobody designated, not nobody checked.`
-        }
-        loading={loading}
-        onOpenProp={onOpenProp ? (r) => onOpenProp(r) : null}
-        kickoffLabelFor={kickoffLabel}
-      />
+      <InjuriesMobile {...v3Shared} />
     );
   }
 

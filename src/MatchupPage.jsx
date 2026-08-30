@@ -5,6 +5,8 @@ import { MLB_TEAM_COLORS } from "./lib/teamColors.js";
 import { MLB_ABBR_TEAM_ID, fetchMLBTeamRosterStatus, mlbAvailability, mlbHeadshot } from "./lib/mlbStatus.js";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import MatchupMobile from "./v3/MatchupMobile.jsx";
+import MatchupDesktop from "./v3/MatchupDesktop.jsx";
+import { mlbPitchHandCache, fetchMLBPitcherHands } from "./lib/mlbPitchers.js";
 
 // Matchup Overview -- the page a GameCard opens.
 //
@@ -287,10 +289,10 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
     "linear-gradient(120deg, #0b0d12 0%, #10131a 55%, #0b0d12 100%)",
   ].join(", "), [isMobile]);
 
-  // The phone's own layout -- a transcription of frame 3c. Declared below
-  // every hook above, and fed by the same three fetches, so the two screens
-  // can never be looking at different numbers.
-  if (isPhone) {
+  // Both v3 frames -- the phone's frame 3c and the desktop's frame 2f --
+  // declared below every hook above and fed by the same three fetches, so no
+  // two of these screens can be looking at different numbers.
+  {
     const sideOf = (t, side) => ({
       abbr: t.abbr,
       name: t.name,
@@ -321,7 +323,21 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
 
     // MLB alone posts probables, and only where the slate row carries them.
     const pr = game.probables;
-    const probableCells = game.sport === "mlb" && pr && (pr.away || pr.home)
+
+  // Throwing hands for the two probables. Asked once, cached with no TTL
+  // (a hand does not change), and left absent rather than guessed when the
+  // lookup fails -- an unknown hand prints nothing, never a default.
+  const [handsReady, setHandsReady] = React.useState(0);
+  const probableIds = [pr && pr.away && pr.away.id, pr && pr.home && pr.home.id].filter((x) => x != null);
+  React.useEffect(() => {
+    if (game.sport !== "mlb" || !probableIds.length) return;
+    if (probableIds.every((id) => mlbPitchHandCache.has(id))) return;
+    let alive = true;
+    fetchMLBPitcherHands(probableIds).then(() => { if (alive) setHandsReady((n) => n + 1); }).catch(() => {});
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.sport, probableIds.join(",")]);
+    const probableCells = handsReady >= 0 && game.sport === "mlb" && pr && (pr.away || pr.home)
       ? [["away", game.away], ["home", game.home]].map(([side, team]) => {
           const pitcher = pr[side];
           return {
@@ -330,7 +346,15 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
             team: team.abbr,
             headshotSrc: pitcher ? mlbHeadshot(pitcher.id) : null,
             status: pitcher ? mlbAvailability(probableStatus[pitcher.id]) : undefined,
-            hand: null,
+            // AWAY / HOME, which the frame prints above the name. It was
+            // only ever on `key`, so the label rendered blank.
+            side: side.toUpperCase(),
+            hand: pitcher && mlbPitchHandCache.get(pitcher.id)
+              ? `${mlbPitchHandCache.get(pitcher.id)}HP`
+              : null,
+            // No line: this app reads no odds feed, so a starter carries no
+            // posted total. The frame draws `hand · line` and gets the half
+            // that is measured.
             line: null,
           };
         })
@@ -357,37 +381,54 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
                 : "This season's meetings only. Last year's series is a different roster on both sides, so it is not folded in.",
             };
 
+    const v3Shared = {
+      sport: game.sport,
+      onBack,
+      onOpenBoard: onViewProps ? () => onViewProps(game) : null,
+      state: timeLabel(game.startsAt),
+      live: !!game.isLive,
+      venue: game.venue ? [game.venue.name, game.venue.indoor ? "INDOORS" : null].filter(Boolean).join(" · ") : null,
+      sides: [sideOf(game.away, "AWAY"), sideOf(game.home, "HOME")],
+      probables: probableCells,
+      probableNote: probableCells ? "From the day's posted probables. A starter whose availability has not resolved shows no dot rather than a green one." : null,
+      depth,
+      depths: [5, 10, 20],
+      onSetDepth: setDepth,
+      form: [formFor(game.away, form.away), formFor(game.home, form.home)],
+      h2h: h2hBlock,
+      reads: topProps === undefined ? undefined : (topProps || []).map((r) => ({
+        key: r.playerId,
+        name: r.name,
+        team: r.team,
+        sport: r.sport,
+        market: r.market,
+        prop: `${r.marketLabel} ${r.line}`,
+        rate: r.hitRate,
+        hits: r.gamesOver,
+        n: r.gamesCounted,
+        thin: r.thin,
+      })),
+      readScope: "FROM TONIGHT'S SLATE",
+      onOpenRead: (r) => onOpenProp && onOpenProp(r.sport, r.key, r.market, { name: r.name, team: r.team }),
+    };
+
+    if (!isPhone) {
+      return (
+        <MatchupDesktop
+          {...v3Shared}
+          renderAvatar={(x, size) => (
+            <PlayerAvatar
+              name={x.name} alt={x.name} sport={x.sport || game.sport} team={x.team}
+              headshotSrc={x.headshotSrc} status={x.status}
+              size={size} inset={2} surface="var(--surface-1)"
+            />
+          )}
+        />
+      );
+    }
+
     return (
-      <MatchupMobile
-        sport={game.sport}
-        onBack={onBack}
-        onOpenBoard={onViewProps ? () => onViewProps(game) : null}
-        state={timeLabel(game.startsAt)}
-        live={!!game.isLive}
-        venue={game.venue ? [game.venue.name, game.venue.indoor ? "INDOORS" : null].filter(Boolean).join(" · ") : null}
-        sides={[sideOf(game.away, "AWAY"), sideOf(game.home, "HOME")]}
-        probables={probableCells}
-        probableNote={probableCells ? "From the day's posted probables. A starter whose availability has not resolved shows no dot rather than a green one." : null}
-        depth={depth}
-        depths={[5, 10, 20]}
-        onSetDepth={setDepth}
-        form={[formFor(game.away, form.away), formFor(game.home, form.home)]}
-        h2h={h2hBlock}
-        reads={topProps === undefined ? undefined : (topProps || []).map((r) => ({
-          key: r.playerId,
-          name: r.name,
-          team: r.team,
-          sport: r.sport,
-          market: r.market,
-          prop: `${r.marketLabel} ${r.line}`,
-          rate: r.hitRate,
-          hits: r.gamesOver,
-          n: r.gamesCounted,
-          thin: r.thin,
-        }))}
-        readScope="FROM TONIGHT'S SLATE"
-        onOpenRead={(r) => onOpenProp && onOpenProp(r.sport, r.key, r.market, { name: r.name, team: r.team })}
-      />
+      <MatchupMobile {...v3Shared} />
     );
   }
 

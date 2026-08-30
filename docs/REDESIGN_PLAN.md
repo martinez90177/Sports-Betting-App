@@ -2175,3 +2175,58 @@ Every count reconciles rather than being read off one number:
   (4), NFL WED 09 (1), NBA TUE 20 (3).
 
 Frames 2a, 2b and 2c audit 14, 6 and 7 literals with nothing missing.
+
+## Batch 7 — desktop News, Injuries, Matchup
+
+Commit `a97935d` and this one. Desktop is 10 of 11 screens; only the Gamecast,
+Settings and Landing of batch 8 remain.
+
+**News (frame 2d)** — the wire beside a 336px rail. ON YOUR SLIP matches on the
+player the article was attributed to, not on headline text.
+
+**Injuries (frame 2e)** — a 224px rail beside the wire as a table. Counts
+reconcile: WNBA 40 + MLB 51 + NFL 108 + NBA 51 = 250, and Questionable 146 + Out
+102 + Active 2 = the same 250.
+
+**Matchup (frame 2f)** — the crumb bar, probables, RECENT FORM as two panels,
+then HEAD TO HEAD beside PROPS WITH A READ. Verified on CIN @ CHC: 4 + 7 = 11
+meetings, which is what the block reads.
+
+All three collapse their mobile call onto the shared prop set — 20, 31 and 30
+lines of duplicated mapping removed.
+
+### The pitcher lookup moved to lib
+
+`MatchupPage` needed the throwing hand that Player Detail already prints, and it
+is imported *by* `PropLedger`, so reaching back up would be a cycle.
+`fetchMLBPitcherHands` and its two caches are `src/lib/mlbPitchers.js` now.
+
+The hand costs its own request and that was checked rather than assumed: the
+schedule's `probablePitcher` hydration answers with id, fullName and link at
+every hydrate depth tried (`(note)`, `(person)`, `(stats)`) and carries no
+`pitchHand`. Cached with no TTL — a throwing hand does not change.
+
+Frame 2f also draws `hand · line` on each probable. The hand is real (Chase
+Burns RHP, Shota Imanaga LHP, from the API); **the line is not drawn**, because
+this app reads no odds feed and a starter here carries no posted total.
+
+### Two defects the frames surfaced
+
+- **The News screen was printing a raw exception where the news goes.**
+  `/api/news` is a Vercel function, so `vite dev` serves its source and the
+  browser parses `import { Redis }` as JSON. Dev-only — production answers 200
+  application/json — but the reader got the exception either way. It goes to the
+  console now and the screen says which of the two happened.
+- **`p.side` was only ever on `key`**, so the AWAY / HOME label above each
+  probable rendered blank.
+
+### A check for the audit's blind spot
+
+`scripts/deadregions.cjs`. `mockaudit` proves the copy was transcribed; it
+cannot prove the copy is ever on screen, and it had been wrong about that twice
+— the workload control and the Board's OPENING banner were both `{prop && (`
+with no caller passing the prop. Every label they would print comes from a prop,
+so there was no literal for a string matcher to miss.
+
+It found a third: `GamecastMobile`'s `{refreshed && ...}`, in no mock and never
+passed. Removed. Zero flagged across fifteen components.
