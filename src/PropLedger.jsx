@@ -1763,7 +1763,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [opponent, setOpponent] = useState("all");
   const [oppView, setOppView] = useState("season");
   const [minMinutes, setMinMinutes] = useState(0);
-  const [maxMinutes, setMaxMinutes] = useState(40);
+  const [maxMinutes, setMaxMinutes] = useState(42);
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   // The one control over the game log itself -- season, season type, team.
   // Everything else on this page filters the games this leaves behind.
@@ -1855,7 +1855,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setOpponent("all");
     setOppView("season");
     setMinMinutes(0);
-    setMaxMinutes(40);
+    setMaxMinutes(42);
     setMinutesRangeEnabled(false);
     setLine(null);
     setTeammateChips([]);
@@ -2153,7 +2153,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       if (side !== 'all') n += 1;
       if (lastN !== 10) n += 1;
     }
-    if (minMinutes !== 0 || maxMinutes !== 40) n += 1;
+    if (minMinutes !== 0 || maxMinutes !== 42) n += 1;
     n += teammateChips.length;
     n += scopeFilterCount(logScope);
     return n;
@@ -2403,12 +2403,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
           <span className="mono" style={{ fontSize: 13, fontWeight: 700, color: "var(--amber)" }}>
             {!minutesRangeEnabled
               ? (minMinutes === 0 ? "Any" : `${minMinutes}+`)
-              : (minMinutes === 0 && maxMinutes === 40 ? "Any" : `${minMinutes}–${maxMinutes}`)}
+              : (minMinutes === 0 && maxMinutes === 42 ? "Any" : `${minMinutes}–${maxMinutes}`)}
           </span>
         </div>
         <ThresholdSlider
           min={0}
-          max={40}
+          max={42}
           step={1}
           lo={minMinutes}
           hi={maxMinutes}
@@ -3241,6 +3241,33 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: nbaNextGameForTeam(player?.team),
         seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba"),
+      }}
+      workload={{
+        // The frame draws a workload filter in the rail -- MINUTES on the two
+        // basketball leagues, PLATE APPEARANCES on MLB. Only this page has the
+        // state for it today, so only this page passes it; the block hides
+        // where it is absent rather than drawing a control that does nothing.
+        // The mock scales it 0-42 on the NBA.
+        label: "MINUTES",
+        value: !minutesRangeEnabled
+          ? (minMinutes === 0 ? "Any" : minMinutes + "+ MIN")
+          : (minMinutes === 0 && maxMinutes === 42 ? "Any" : minMinutes + "–" + maxMinutes + " MIN"),
+        active: minMinutes !== 0 || maxMinutes !== 42,
+        control: (
+          <ThresholdSlider
+            min={0} max={42} step={1}
+            lo={minMinutes} hi={maxMinutes}
+            onChangeLo={setMinMinutes} onChangeHi={setMaxMinutes}
+            rangeEnabled={minutesRangeEnabled}
+            onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+            showToggle={false}
+            compact
+          />
+        ),
+        modeLabel: minutesRangeEnabled ? "RANGE" : "MINIMUM",
+        onToggleMode: () => setMinutesRangeEnabled((v) => !v),
+        onReset: () => { setMinMinutes(0); setMaxMinutes(42); },
+        games: filtered.length + " G",
       }}
       valueOfMarket={(g, id) => statValue(g, id, rebSplit)}
       chart={{
@@ -11925,6 +11952,30 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: wnbaNextGameForTeam(player?.team),
         seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba"),
+      }}
+      workload={{
+        // The mock scales the WNBA 0-40, against the NBA 40-minute-plus 42.
+        // A minute means the same thing; the games are not the same length.
+        label: "MINUTES",
+        value: !minutesRangeEnabled
+          ? (minMinutes === 0 ? "Any" : minMinutes + "+ MIN")
+          : (minMinutes === 0 && maxMinutes === 40 ? "Any" : minMinutes + "–" + maxMinutes + " MIN"),
+        active: minMinutes !== 0 || maxMinutes !== 40,
+        control: (
+          <ThresholdSlider
+            min={0} max={40} step={1}
+            lo={minMinutes} hi={maxMinutes}
+            onChangeLo={setMinMinutes} onChangeHi={setMaxMinutes}
+            rangeEnabled={minutesRangeEnabled}
+            onToggleRange={() => setMinutesRangeEnabled((v) => !v)}
+            showToggle={false}
+            compact
+          />
+        ),
+        modeLabel: minutesRangeEnabled ? "RANGE" : "MINIMUM",
+        onToggleMode: () => setMinutesRangeEnabled((v) => !v),
+        onReset: () => { setMinMinutes(0); setMaxMinutes(40); },
+        games: filtered.length + " G",
       }}
       valueOfMarket={(g, id) => statValue(g, id, rebSplit)}
       chart={{
@@ -23492,7 +23543,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedRailGroups = [
     {
       key: "league", label: "LEAGUE", cols: 2,
-      items: FEED_SPORTS.filter((sp) => sp.available).map((sp) => feedChip(sp.id, sp.label, sport === sp.id, () => setSport(sp.id))),
+      // The mock's order -- MLB, NFL, NBA, WNBA -- not FEED_SPORTS's, which
+      // leads with NFL. Which leagues exist is data; the order they are
+      // offered in is layout, and the rail is drawn one way.
+      items: ["mlb", "nfl", "nba", "wnba"]
+        .map((id) => FEED_SPORTS.find((sp) => sp.id === id))
+        .filter((sp) => sp && sp.available)
+        .map((sp) => feedChip(sp.id, sp.label, sport === sp.id, () => setSport(sp.id))),
     },
     {
       key: "window", label: "YOUR OWN WINDOW", cols: 2, custom: true,

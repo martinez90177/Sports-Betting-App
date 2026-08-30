@@ -51,21 +51,46 @@ const railNote = { fontSize: 11.5, color: "var(--dim)", lineHeight: 1.4 };
 // columns drift apart the moment either changes (`desktop-handoff.md` §1).
 const LADDER_COLS = "92px 92px 128px 1fr 96px 104px";
 
-// Rounded rectangle: clickable. Never a pill.
-function option(on) {
+// The rail's one control, transcribed from the mock's `railPill`. Every
+// group in the left rail uses it -- MARKET, WINDOW, SEASON, MINIMUM SAMPLE
+// -- and it is left-aligned.
+function railPill(on) {
   return {
-    minHeight: 34, display: "flex", alignItems: "center", justifyContent: "center",
-    padding: "0 10px", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap",
-    fontFamily: MONO, fontSize: 11.5,
+    minHeight: 34, display: "flex", alignItems: "center", padding: "0 11px",
+    borderRadius: 7, fontFamily: MONO, fontSize: 12, cursor: "pointer",
     border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
     background: on ? "var(--amber-dim)" : "var(--surface-1)",
     color: on ? "var(--amber-ink)" : "var(--text-2)",
   };
 }
 
-function marketRow(on) {
-  return { ...option(on), justifyContent: "flex-start", minHeight: 32, fontSize: 12.5, fontFamily: "inherit" };
-}
+// Centred, which the mock applies to exactly two things: the two-column
+// SEASON pair and the full-width H2H row. Both are short labels in a wide
+// box, where left-aligned text drifts away from its own control.
+const railPillC = (on) => ({ ...railPill(on), justifyContent: "center" });
+
+// The workload slider's two buttons and the roster rail's team tabs. Each
+// is its own style in the mock rather than a railPill variant, so each is
+// written out rather than derived from one.
+const roleModeStyle = {
+  minHeight: 28, display: "flex", alignItems: "center", padding: "0 10px",
+  borderRadius: 7, border: "1px solid var(--line)", background: "var(--surface-1)",
+  color: "var(--text-2)", fontSize: 11.5, cursor: "pointer", whiteSpace: "nowrap",
+};
+const roleResetStyle = (clean) => ({
+  minHeight: 28, display: "flex", alignItems: "center", padding: "0 10px",
+  borderRadius: 7, fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em",
+  cursor: "pointer", whiteSpace: "nowrap",
+  border: `1px solid ${clean ? "var(--amber)" : "var(--line)"}`,
+  color: clean ? "var(--amber-ink)" : "var(--text-2)",
+});
+const rosterTabStyle = (on) => ({
+  minHeight: 28, display: "flex", alignItems: "center", padding: "0 10px",
+  borderRadius: 7, fontFamily: MONO, fontSize: 11, cursor: "pointer", whiteSpace: "nowrap",
+  border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
+  background: on ? "var(--amber-dim)" : "var(--surface-1)",
+  color: on ? "var(--amber-ink)" : "var(--text-2)",
+});
 
 // Read-only label: a full pill, and only ever read-only.
 const pill = (fg, bg) => ({
@@ -351,7 +376,7 @@ export default function PlayerDetailDesktop({
                 tabIndex={0}
                 onClick={m.onPick}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); m.onPick(); } }}
-                style={marketRow(m.active)}
+                style={railPill(m.active)}
               >
                 {m.label}
               </div>
@@ -367,7 +392,7 @@ export default function PlayerDetailDesktop({
             {seasons.map((s) => (
               <div key={s.id} role="button" tabIndex={0} onClick={s.onPick}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); s.onPick(); } }}
-                style={option(s.active)}>
+                style={railPillC(s.active)}>
                 {s.label}
               </div>
             ))}
@@ -382,7 +407,7 @@ export default function PlayerDetailDesktop({
             {windows.options.filter((w) => w.id !== "h2h").map((w) => (
               <div key={w.id} role="button" tabIndex={0} onClick={w.onPick}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.onPick(); } }}
-                style={option(w.active)}>
+                style={railPill(w.active)}>
                 {w.label}
               </div>
             ))}
@@ -391,7 +416,7 @@ export default function PlayerDetailDesktop({
           {windows.options.filter((w) => w.id === "h2h").map((w) => (
             <div key={w.id} role="button" tabIndex={0} onClick={w.onPick}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.onPick(); } }}
-              style={option(w.active)}>
+              style={railPillC(w.active)}>
               {w.label}
             </div>
           ))}
@@ -440,14 +465,14 @@ export default function PlayerDetailDesktop({
             {workload.onToggleMode && (
               <div role="button" tabIndex={0} onClick={workload.onToggleMode}
                 onKeyDown={(e) => { if (e.key === "Enter") workload.onToggleMode(); }}
-                style={{ ...option(!!workload.rangeMode), minHeight: 28, fontSize: 10.5 }}>
+                style={roleModeStyle}>
                 {workload.modeLabel}
               </div>
             )}
             {workload.onReset && (
               <div role="button" tabIndex={0} onClick={workload.onReset}
                 onKeyDown={(e) => { if (e.key === "Enter") workload.onReset(); }}
-                style={{ ...option(false), minHeight: 28, fontSize: 10.5 }}>
+                style={roleResetStyle(!workload.active)}>
                 ANY
               </div>
             )}
@@ -495,7 +520,7 @@ export default function PlayerDetailDesktop({
             {samples.map((s) => (
               <div key={s.id} role="button" tabIndex={0} onClick={s.onPick}
                 onKeyDown={(e) => { if (e.key === "Enter") s.onPick(); }}
-                style={option(s.active)}>
+                style={railPill(s.active)}>
                 {s.label}
               </div>
             ))}
@@ -766,7 +791,7 @@ export default function PlayerDetailDesktop({
               {rails.map((r) => (
                 <div key={r.key} role="button" tabIndex={0} onClick={() => setRosterTeam(r.key)}
                   onKeyDown={(e) => { if (e.key === "Enter") setRosterTeam(r.key); }}
-                  style={{ ...option(rosterTeam === r.key), minHeight: 26, fontSize: 10.5, padding: "0 8px" }}>
+                  style={rosterTabStyle(rosterTeam === r.key)}>
                   {r.rail.label}
                 </div>
               ))}

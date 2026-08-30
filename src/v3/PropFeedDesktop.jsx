@@ -28,6 +28,20 @@ const railLabel = {
   fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)",
 };
 
+// The mock's own `railPill`, value for value. Worth naming rather than
+// inlining: this had been eyeballed, and five of its six values were wrong
+// -- 32px instead of 34, centred instead of left with 11px of padding, 11px
+// type instead of 12, and a transparent unselected background where the
+// mock fills with surface-1. Centred short labels in a 218px rail read as a
+// different control from left-aligned ones, which is how it was spotted.
+const railPill = (sel) => ({
+  minHeight: 34, display: "flex", alignItems: "center", padding: "0 11px",
+  borderRadius: 7, fontFamily: MONO, fontSize: 12, cursor: "pointer",
+  border: `1px solid ${sel ? "var(--amber)" : "var(--line)"}`,
+  background: sel ? "var(--amber-dim)" : "var(--surface-1)",
+  color: sel ? "var(--amber-ink)" : "var(--text-2)",
+});
+
 export default function PropFeedDesktop({
   // ---- market tabs and the direction pair ----
   marketTabs = [],
@@ -169,7 +183,13 @@ export default function PropFeedDesktop({
                   <span style={railLabel}>{fg.label}</span>
                   {fg.value != null && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{fg.value}</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: `repeat(${fg.cols || 2}, minmax(0, 1fr))`, gap: 6 }}>
+                {/* The mock switches shape rather than narrowing: a
+                    one-column group is a flex column, so its pills keep
+                    their natural height instead of being stretched by a
+                    grid row. */}
+                <div style={fg.cols === 1
+                  ? { display: "flex", flexDirection: "column", gap: 6 }
+                  : { display: "grid", gridTemplateColumns: `repeat(${fg.cols || 2}, minmax(0, 1fr))`, gap: 6 }}>
                   {fg.items.map((it) => (
                     <div key={it.id || it.label} style={{ position: "relative" }}>
                       <div
@@ -177,13 +197,7 @@ export default function PropFeedDesktop({
                         tabIndex={0}
                         onClick={it.onPick}
                         onKeyDown={(e) => { if (e.key === "Enter") it.onPick && it.onPick(); }}
-                        style={{
-                          minHeight: 32, display: "flex", alignItems: "center", justifyContent: "center",
-                          borderRadius: 7, fontFamily: MONO, fontSize: 11, cursor: "pointer",
-                          border: `1px solid ${it.active ? "var(--amber)" : "var(--line)"}`,
-                          background: it.active ? "var(--amber-dim)" : "transparent",
-                          color: it.active ? "var(--amber-ink)" : "var(--text-2)",
-                        }}
+                        style={railPill(it.active)}
                       >
                         {it.label}
                       </div>
@@ -195,10 +209,10 @@ export default function PropFeedDesktop({
                           onClick={(e) => { e.stopPropagation(); it.onRemove(); }}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); it.onRemove(); } }}
                           style={{
-                            position: "absolute", top: -6, right: -6, width: 18, height: 18,
-                            display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 999,
+                            position: "absolute", top: -6, right: -6, width: 16, height: 16,
+                            display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 5,
                             border: "1px solid var(--line)", background: "var(--surface-2)",
-                            color: "var(--dim)", fontSize: 11, cursor: "pointer",
+                            color: "var(--dim)", fontSize: 10, lineHeight: 1, cursor: "pointer", zIndex: 2,
                           }}
                         >
                           ×
