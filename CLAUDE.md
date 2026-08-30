@@ -36,6 +36,18 @@ live site silently keeps serving the previous version.
 Background: in Aug 2026 four commits (including the Prop Ledger → PropPalace rebrand)
 sat on a feature branch while the shared link kept serving stale code from `master`.
 
+## No generated data
+
+Every number shown under a real player's or team's name is measured, or it is
+not shown. There is no seeded fallback, no synthetic game log, no invented
+opponent history, and nothing may be added. A player whose real log cannot be
+fetched is **dropped** — from the pool, the rails and the search index — not
+filled in. See `docs/PROJECT_NOTES.md` ("Every number on screen is measured")
+for the four generators this replaced and the coverage measurement behind it.
+
+Alex, 2026-08-28: *"every single player that is on this site should have real
+data nothing mocked or generated."*
+
 ## Avatar and availability rules
 
 1. Anywhere a player is named — feed rows, roster rails, player pages, mobile nav,

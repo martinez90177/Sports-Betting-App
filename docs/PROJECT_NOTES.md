@@ -717,3 +717,72 @@ The hand-written NFL pool has **no `espnId` field** — its ids are slugs and
 `NFL_ESPN_ID` maps them. `nflHeadshot` has resolved it that way since it was
 written; anything else reading an ESPN id on that page must do the same or it
 silently sees an empty roster.
+
+## Every number on screen is measured — the generators are gone — 2026-08-28
+
+Alex, after being told Davante Adams had no real log: *"every single player that
+is on this site should have real data nothing mocked or generated."*
+
+Four generators produced numbers that appeared under real players' names. All
+four are deleted, not gated:
+
+| Removed | What it produced |
+|---|---|
+| `genGames` (NBA) | A whole seeded season per player from a hand-written base/variance pair. |
+| `genWNBAGames` | The same, for the WNBA. |
+| `genSyntheticNFLGames` + `SYNTHETIC_NFL_STAT_BASE` + `syntheticOpponentPool` | A seeded season for every hand-written NFL player, against invented opponents. |
+| `genOpponentHistory` (NBA) | Two prior seasons of invented meetings against a real opponent, **with scores**, plus a fabricated 5–7 game playoff series for one opponent in five. |
+
+`getNBAGames` / `getWNBAGames` / `getNFLGames` now return the real ESPN log or
+an empty array. Empty means the player is not listed — every consumer already
+had that path, because `liveOnly` players have always taken it.
+
+### The coverage was measured before the cut, not guessed
+
+Each hand-written pool's ESPN ids were queried against the gamelog endpoint:
+
+| Pool | Real log | None |
+|---|---|---|
+| NBA (4 hand-written teams) | 20 / 20 | 0 |
+| WNBA (10 teams) | 50 / 50 | 0 |
+| NFL | 246 / 256 | 10 |
+
+The ten NFL misses are `adams, kelce, sea_price, no_lance, ten_tate,
+pit_bernard, lv_mwashington, gb_smack, was_stevens, ari_love`. Davante Adams is
+the instructive one: ESPN has him on the Rams' current roster under id 16800,
+lists seasons 2014–2025 in his gamelog filters, and returns **zero events for
+every one of them**. The core API agrees — his 2025 eventlog is an empty stub
+where Nacua's carries 17. There is nothing to fetch; he is dropped.
+
+Pool sizes after the cut, read off the running feed: NFL 3051 props, NBA 6019,
+WNBA 1798, MLB 1199. Nothing collapsed.
+
+**The search index now filters on having games**, for the reason the MLB branch
+already documented: a hit that navigates to a page with no games is a dead end.
+Searching "Davante" or "Kelce" returns nothing; "Nacua" returns him.
+
+### The opponent history is real meetings now
+
+`oppHistory` reads `logGames` — the merged multi-season log the Scope control
+already draws on — filtered to the opponent, split on `isPlayoffGame`. Brunson's
+log alone holds 177 real games across 2025 and 2026, 37 of them postseason, with
+14 real meetings against Boston. The generator was inventing 2–4 per season.
+
+### Team defence: NBA now matches MLB's rule
+
+`getNBADefRank` returned a per-market **seeded** table (`buildDefenseCategoryFor`,
+seeded off a hash of the market name) whenever ESPN's standings had not landed,
+and permanently for dd/td via `TEAM_DEF`. It now returns `nbaTeamDefReal` or
+`null`, which is what `getMLBDefRank` has always done. Consumers draw an em dash
+rather than a rank. Verified unaffected in practice: the real table loads, and
+the matchup cell still reads "PHI ALLOWS 116.1 · #19 of 30 · MID".
+
+`TEAM_DEF` and `MLB_TEAM_DEF` still exist as objects — MLB's is overwritten in
+place by the real ranking and gated behind `mlbTeamDefReal`, and both are now
+unreachable as a *displayed* rank.
+
+### Still generated, and deliberately
+
+Nothing in the player or team data. `mulberry32` survives only for
+`buildDefenseCategoryFor` (now unreachable from the NBA path) and the two
+cold-start rating objects described above.
