@@ -46,21 +46,53 @@ const FRAMES = {
     "3d": "SettingsMobile", "3e": "LandingMobile",
   },
   "PropPalace Desktop v3.dc.html": {
-    "1a": "PlayerDetailDesktop",
+    "1a": "PlayerDetailDesktop", "1c": "PropFeedDesktop",
   },
 };
 
 // Shared pieces every frame may draw through, so a string living in one of
-// these is still transcribed.
-const SHARED = ["FormPlot", "Shell", "AgeMark"];
+// these is still transcribed. Small files only, on purpose.
+const SHARED = ["v3/FormPlot.jsx", "v3/Shell.jsx", "v3/AgeMark.jsx"];
+
+// Extra haystacks, per frame, for the parts of a screen that legitimately live
+// outside src/v3/ -- the desktop nav row is NavBar.jsx, and the feed's table
+// header and rows are still FeedTableHeader/FeedRow in PropLedger.jsx because
+// those own the bar strip, the draggable line and the alt-line ladder, none of
+// which would survive being retyped.
+//
+// Scoped per frame rather than added to SHARED, and worth saying why: adding a
+// 28,000-line file to every frame's haystack makes the check much weaker,
+// because any string in the app matches by accident. Doing exactly that made
+// "Aaron Judge" and "AJ" stop being reported on two phone frames that do not
+// import PropLedger at all. Only the frames that really draw through a file
+// get to match against it.
+const EXTRA = {
+  "1c-desktop": ["NavBar.jsx", "PropLedger.jsx"],
+};
+
+// Regions of a frame that are knowingly not built yet, with the frame that
+// will build them. Listed rather than silently passed: an unbuilt region and
+// a botched one look identical to a string matcher, and the whole point of
+// this file is that the difference gets stated.
+const DEFERRED = {
+  "1c": {
+    to: "frame 2a (desktop My Picks)",
+    strings: [
+      "← PROP FEED", "BUILDING", "CLOSE ✕", "LEG", "YOUR RATE", "READ", "ALT",
+      "THE READ", "WHAT THE FLAGS REST ON", "DID YOUR RATES HOLD",
+    ],
+  },
+};
 
 // The iOS status bar, which is frame furniture inside the device box.
 const STATUS_BAR = /^(9:41|▮+.*|.*ᯬ.*|\d{1,3}%)$/;
 
 const norm = (x) => x.replace(/[’']/g, "").replace(/\s+/g, " ").trim();
 
-function readSrc(name) {
-  const p = path.join(ROOT, "src", "v3", name + ".jsx");
+// A bare name is a component under src/v3/; anything carrying an extension is
+// a path relative to src/.
+function readSrc(rel) {
+  const p = path.join(ROOT, "src", /\.[jt]sx?$/.test(rel) ? rel : path.join("v3", rel + ".jsx"));
   return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
 }
 
@@ -103,7 +135,11 @@ for (const [file, map] of Object.entries(FRAMES)) {
 
     let src = readSrc(map[id]);
     if (src == null) { console.log("FAIL " + id + " -- no src/v3/" + map[id] + ".jsx"); missing += 1; continue; }
-    for (const s of SHARED) { const extra = readSrc(s); if (extra) src += extra; }
+    for (const sh of SHARED) { const extra = readSrc(sh); if (extra) src += extra; }
+    // Keyed by frame id plus which mock it came from -- 1c is a frame id in
+    // both files, and they are different screens.
+    const scope = id + (file.includes("Desktop") ? "-desktop" : "-mobile");
+    for (const ex of (EXTRA[scope] || [])) { const extra = readSrc(ex); if (extra) src += extra; }
     const flat = norm(src);
 
     const lits = [...new Set(
@@ -111,13 +147,17 @@ for (const [file, map] of Object.entries(FRAMES)) {
         .map((m) => m[1].replace(/&mdash;/g, "—").replace(/&amp;/g, "&").trim())
         .filter((t) => t && /[A-Za-z]/.test(t) && !STATUS_BAR.test(t))
     )];
-    const miss = lits.filter((t) => !flat.includes(norm(t)));
+    const all = lits.filter((t) => !flat.includes(norm(t)));
+    const defer = DEFERRED[id];
+    const held = defer ? all.filter((t) => defer.strings.includes(t)) : [];
+    const miss = all.filter((t) => !held.includes(t));
 
     total += lits.length; missing += miss.length; checked += 1;
     console.log(
       (miss.length ? "MISS " : "ok   ") + id + "  " + map[id].padEnd(20) +
       String(lits.length).padStart(3) + " literals" +
-      (miss.length ? "  " + miss.length + " missing" : "")
+      (miss.length ? "  " + miss.length + " missing" : "") +
+      (held.length ? "  (" + held.length + " held for " + defer.to + ")" : "")
     );
     miss.forEach((m) => console.log("        " + JSON.stringify(m)));
   }

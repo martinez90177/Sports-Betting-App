@@ -40,5 +40,16 @@ export default function useCustomWindow(sport) {
     });
   }, [sport]);
 
-  return { custom, setCustom, saved, onSave };
+  // The rail draws a × on each saved chip, so saving has to be
+  // reversible. Without this a mistyped window is on the bar for good.
+  const onRemove = useCallback((n) => {
+    setSaved((prev) => {
+      const next = prev.filter((x) => x !== n);
+      if (next.length === prev.length) return prev;
+      try { localStorage.setItem(KEY(sport), JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [sport]);
+
+  return { custom, setCustom, saved, onSave, onRemove };
 }

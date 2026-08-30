@@ -360,6 +360,13 @@ html, body { max-width: 100%; overflow-x: clip; }
   scroll-behavior: auto !important;
 }
 body {
+  /* The browser's default 8px. Never reset, and it has been costing every
+     page in the app 16px of width and 16px of height: the app shell is
+     `min-height: 100vh`, so 100vh plus two 8px margins always overflowed the
+     viewport and every screen carried a vertical scrollbar it had no content
+     for. Found while measuring why the v3 feed table came out 903px wide
+     where frame 1c gives it 926 -- 16 of the missing 23 were this. */
+  margin: 0;
   background:
     radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--amber) 7%, transparent), transparent 60%),
     radial-gradient(900px 700px at 100% 0%, rgba(62,207,142,0.04), transparent 55%),
@@ -752,10 +759,25 @@ input.pp-search:focus, input.pp-search:focus-visible {
      because the last two are this season and last (mock 3d, item 5) rather
      than one blended "Season" figure. 55 is what "16 of 20" needs at 10.5px
      Space Mono with 4px of side padding. */
+  /* The v3 desktop frame's own minima (`PropPalace Desktop v3.dc.html` frame
+     1c, `feedHeadStyle`), which are narrower than the ones they replace:
+     200/180 where this rule said 218/210.
+
+     That looked like the mock being careless with the "no games yet" marker
+     the 210 was measured for. It is not. Frame 1c puts a 296px My Picks dock
+     beside this table where the layout those figures were measured in had
+     none, and at the mock's own 1440px width the table column comes out 903px
+     inside. The old minima summed to 916. The table was 13px short of its own
+     minimum on the exact window the design is drawn for, which is why every
+     player name truncated to "Mauricio Du..." on first render.
+
+     The mock's sum to 868 and leave 35px of slack. Measured in the browser at
+     1440, not derived: scrollWidth === clientWidth === 903 on both the header
+     and the rows. */
   grid-template-columns:
     34px
-    minmax(218px, 262px)
-    minmax(210px, 250px)
+    minmax(200px, 262px)
+    minmax(180px, 250px)
     minmax(380px, 1fr);
   column-gap: 14px;
   padding-left: 16px;

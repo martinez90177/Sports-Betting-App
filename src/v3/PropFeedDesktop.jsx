@@ -1,5 +1,4 @@
 import React from "react";
-import AgeMark from "./AgeMark.jsx";
 
 // Desktop Prop Feed -- `v3 Mocks/PropPalace Desktop v3.dc.html`, frame 1c.
 //
@@ -30,13 +29,6 @@ const railLabel = {
 };
 
 export default function PropFeedDesktop({
-  // ---- nav row ----
-  navTabs = [],
-  activeTab = "feed",
-  onNavigate,
-  onHome,
-  onOpenSettings,
-
   // ---- market tabs and the direction pair ----
   marketTabs = [],
   directions = [],
@@ -74,70 +66,39 @@ export default function PropFeedDesktop({
     picks ? (picks.open ? "296px" : "56px") : null,
   ].filter(Boolean).join(" ");
 
-  const tab = (t) => {
-    const on = t.id === activeTab;
-    return (
-      <span
-        key={t.id}
-        role="button"
-        tabIndex={0}
-        onClick={() => onNavigate && onNavigate(t.id)}
-        onKeyDown={(e) => { if (e.key === "Enter") onNavigate && onNavigate(t.id); }}
-        style={{
-          fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.1em", cursor: "pointer",
-          color: on ? "var(--text)" : "var(--dim)",
-          borderBottom: on ? "2px solid var(--amber)" : "2px solid transparent",
-          paddingBottom: 3,
-        }}
-      >
-        {t.label}
-      </span>
-    );
-  };
+  const frameRef = React.useRef(null);
+  const [height, setHeight] = React.useState(null);
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      const el = frameRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      // A floor, so a mis-measure during a transition cannot collapse the
+      // table to nothing.
+      setHeight(Math.max(420, Math.round(window.innerHeight - top)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
 
   return (
     <div
+      ref={frameRef}
       style={{
+        // Rule 4: the full-view overlay resolves against this.
         position: "relative",
-        height: "100%", minHeight: 0,
+        height: height == null ? "70vh" : height, minHeight: 0,
         display: "flex", flexDirection: "column",
         background: "var(--bg)",
         overflow: "hidden",
+        borderTop: "1px solid var(--line)",
       }}
     >
-      {/* ---- nav row ---------------------------------------------------- */}
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 32, padding: "16px 32px", borderBottom: "1px solid var(--line)" }}>
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={onHome}
-          onKeyDown={(e) => { if (e.key === "Enter") onHome && onHome(); }}
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
-        >
-          <PalaceMark />
-          <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 26 }}>{navTabs.map(tab)}</span>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={onOpenSettings}
-            onKeyDown={(e) => { if (e.key === "Enter") onOpenSettings && onOpenSettings(); }}
-            style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--dim)", fontSize: 15, cursor: "pointer" }}
-          >
-            ⚙
-          </span>
-          {/* Drawn because the frame draws it. There is no account server yet
-              (docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md), so it is a label, not a
-              control, and carries no affordance saying otherwise. */}
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
-          <AgeMark radius={7} />
-        </span>
-      </div>
-
       {/* ---- market tabs, direction pair, filters button ----------------- */}
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 26, padding: "0 32px", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 26, padding: "0 32px", borderBottom: "1px solid var(--line)", minWidth: 0 }}>
+        <div className="nsb" style={{ display: "flex", alignItems: "center", gap: 26, overflowX: "auto", minWidth: 0, flex: "1 1 auto" }}>
         {marketTabs.map((m) => (
           <div
             key={m.id}
@@ -155,7 +116,8 @@ export default function PropFeedDesktop({
             {m.label}
           </div>
         ))}
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+        </div>
+        <span style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 10 }}>
           {directions.map((d) => (
             <div
               key={d.id}
@@ -493,25 +455,5 @@ function Slider({ fillPct = 0, onDragTo }) {
       <span style={{ position: "absolute", left: 0, top: 8, height: 4, borderRadius: 999, width: `${fillPct * 100}%`, background: "var(--amber)" }} />
       <span style={{ position: "absolute", top: 3, left: `calc(${fillPct * 100}% - 7px)`, width: 14, height: 14, borderRadius: 999, background: "var(--amber)", border: "2px solid var(--bg)" }} />
     </div>
-  );
-}
-
-// The palace mark. Five bars behind a dashed line -- two misses outlined in
-// red, three clears filled green, the tallest carrying the pennant. Identical
-// to the one NavBar draws; it is here so the frame can draw its own nav row
-// without importing the phone chassis.
-function PalaceMark() {
-  return (
-    <span style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: 2, flexShrink: 0 }}>
-      <span style={{ width: 4, height: 9, border: "1.5px solid var(--neg)", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
-      <span style={{ width: 4, height: 16, background: "var(--pos)", borderRadius: "2px 2px 0 0" }} />
-      <span style={{ position: "relative", width: 4, height: 23, background: "var(--pos)", borderRadius: "2px 2px 0 0" }}>
-        <span style={{ position: "absolute", left: 1, bottom: 23, width: 2, height: 9, background: "var(--pos)", borderRadius: "1px 1px 0 0" }} />
-        <span style={{ position: "absolute", left: 3, bottom: 26, width: 9, height: 6, background: "var(--pos)", clipPath: "polygon(0 0, 100% 50%, 0 100%)" }} />
-      </span>
-      <span style={{ width: 4, height: 16, background: "var(--pos)", borderRadius: "2px 2px 0 0" }} />
-      <span style={{ width: 4, height: 9, border: "1.5px solid var(--neg)", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
-      <span style={{ position: "absolute", left: -3, right: -3, bottom: 11, borderTop: "1.5px dashed var(--text)" }} />
-    </span>
   );
 }

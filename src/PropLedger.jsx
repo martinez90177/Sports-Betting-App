@@ -27,9 +27,10 @@ import NavBar, { NAV_TABS } from "./NavBar.jsx";
 // The v3 router: below 900px this is the mobile mock, above it still the v2
 // desktop transcription. See src/v3/PlayerDetail.jsx.
 import PlayerDetailV2 from "./v3/PlayerDetail.jsx";
-import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW } from "./v3/playerDetailProps.js";
+import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW, SEASON_LENGTH } from "./v3/playerDetailProps.js";
 import useCustomWindow from "./v3/useCustomWindow.js";
 import PropFeedMobile from "./v3/PropFeedMobile.jsx";
+import PropFeedDesktop from "./v3/PropFeedDesktop.jsx";
 import MyPicksMobile from "./v3/MyPicksMobile.jsx";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
@@ -18806,7 +18807,12 @@ const FEED_LABEL = {
   fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
 };
 
-function FeedTableHeader({ columnSort, onSort, seasonLabels }) {
+// `customWin` is the reader's own window, applied from the filters rail.
+// It is a seventh column left of L5 -- the mock puts it there because it
+// is the one column the reader chose, and a column you asked for reads
+// first. Null when nothing is applied, and then this is the six-column
+// table it has always been.
+function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null }) {
   // The four rate columns are a nested `repeat(4, 1fr)` inside the last
   // track, exactly as the rows are -- that's what keeps L5/L10/L20/SEASON
   // sitting over their own cells at every width without a seventh, eighth,
@@ -18837,12 +18843,12 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels }) {
       }}
     >
       <span />
-      <span className="pp-mono" style={FEED_LABEL}>Proposition</span>
+      <span className="pp-mono" style={FEED_LABEL}>PROPOSITION</span>
       {/* Not sortable: the strip is ten discrete results, not one value to
            order by -- L5/L10 already sort the same information. The label
            states the window and what the bars are measured against, which is
            the one thing the chart itself can't say. */}
-      <span className="pp-mono" style={FEED_LABEL}>Form vs. line</span>
+      <span className="pp-mono" style={FEED_LABEL}>FORM</span>
       {/* LINE and ODDS both used to have a track here. Both are gone --
            2026-08-24, making room for H2H and last season.
 
@@ -18867,7 +18873,8 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels }) {
            The prior column is not sortable: it fills in as rows scroll into
            view, so sorting on it would reorder the table under the reader as
            each request lands. */}
-      <span style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }}>
+      <span style={{ display: "grid", gridTemplateColumns: `repeat(${customWin ? 7 : 6}, minmax(0, 1fr))`, gap: 6 }}>
+        {customWin ? col(`L${customWin}`, "custom") : null}
         {col("L5", "l5")}
         {col("L10", "l10")}
         {col("L20", "l20")}
@@ -19289,7 +19296,7 @@ function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status })
   };
 }
 
-const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder, prior = null }) {
+const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder, prior = null, customWin = null }) {
   // Read from context rather than passed down: this component is memo'd, and
   // a context read still re-renders it when the format changes (memo only
   // short-circuits prop changes), so the whole feed reformats without adding
@@ -19896,7 +19903,19 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           draw; L20/Season cover a wider window than that log holds, so they
           stay as built rather than being recomputed off a shorter sample
           than they claim. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${customWin ? 7 : 6}, minmax(0, 1fr))`, gap: 6 }}>
+        {/* The reader's own window. Counted off the same array and through
+            the same predicate as every other cell -- and against the
+            dragged line too, since a window this short is exactly where
+            dragging changes the answer. A window longer than the log
+            simply counts the log, and `FeedPctCell` states the sample it
+            actually had rather than the one that was asked for. */}
+        {customWin ? (() => {
+          const w = Array.isArray(r.values) ? windowValues(r.values, customWin) : [];
+          if (!w.length) return <FeedPctCell v={null} n={0} label={customWin} minSample={feedWindowFloor(minGames, customWin)} active={false} />;
+          const hit = w.filter((v) => feedIsHit(v, lineVal, r.isBinary, direction)).length;
+          return <FeedPctCell v={hit / w.length} n={w.length} label={customWin} minSample={feedWindowFloor(minGames, customWin)} active />;
+        })() : null}
         <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={feedWindowFloor(minGames, "l5")} active={sampleWindow === "l5"} />
         <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={feedWindowFloor(minGames, "l10")} active={sampleWindow === "l10"} />
         <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={feedWindowFloor(minGames, "l20")} active={sampleWindow === "l20"} />
@@ -21493,7 +21512,7 @@ function useMlbFeedData(active) {
 // read one fetch between them -- and so the data survives navigating away from
 // the feed, which used to throw it away on unmount and re-fetch every roster
 // and game log on the way back.
-function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport, mlb, searchSlot }) {
+function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport, mlb, searchSlot, picks = [], onOpenPicks }) {
   const { mlbSlate, mlbLoading, mlbRows, mlbStatusVersion } = mlb;
   const isNarrow = useIsNarrow(560);
   const isPhone = useIsPhone();
@@ -21615,6 +21634,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the Sort By dropdown's mode until cleared. null means "use the Sort By/
   // primary-hit-rate behavior below" (see sortedRows).
   const [columnSort, setColumnSort] = useState(null);
+  // The applied custom rate column, and the builder behind it. null is the
+  // six-column table; a number adds a seventh, left of L5.
+  const [feedCustomCol, setFeedCustomCol] = useState(null);
+  // Same hook the four player pages use, so a window saved on a player page
+  // is on the feed rail too -- it is the reader own window, not the screen.
+  const feedCustom = useCustomWindow(sport);
+  // The mock frame 1c opens with its rail showing.
+  const [feedRailOpen, setFeedRailOpen] = useState(true);
+  const [feedPicksOpen, setFeedPicksOpen] = useState(true);
   // "near" is today and tomorrow; "all" is the whole schedule. Near by
   // default, because a prop for a game three weeks out is not what this screen
   // is for -- see FEED_LOOKAHEAD_MS.
@@ -23039,224 +23067,23 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     );
   }
 
-  return (
-    // 900px left ~270px of dead gutter either side of a 1440px window while
-    // the table itself overflowed its container -- the feed is a ten-column
-    // table, not a reading column, so it gets the same generous ceiling as
-    // the single-player pages (1920 there; 1600 here keeps the rows from
-    // stretching past the point where scanning a row is comfortable).
-    <div className="page-shell" style={{ maxWidth: 1600, margin: "0 auto", boxSizing: "border-box" }}>
-      <SharedScreenBanner
-        shared={sharedScreen}
-        onApply={() => { applyFeedFilters(sharedScreen.filters); setSharedScreen(null); }}
-        onDismiss={() => setSharedScreen(null)}
-      />
-      <FeedPresets
-        open={presetsOpen}
-        onClose={() => setPresetsOpen(false)}
-        isNarrow={isNarrow}
-        currentFilters={feedFilters}
-        onApply={applyFeedFilters}
-        resultCount={filteredRows.length}
-        describeArgs={{
-          maxRank,
-          marketLabel: activeMarketLabel,
-          sortLabel: activeSortMode?.label,
-        }}
-        presets={presets}
-        setPresets={setPresets}
-        defaultPresetId={defaultPresetId}
-        setDefaultPresetId={setDefaultPresetId}
-      />
-      {/* The v2 grid. `196px | 1fr | 196px` on desktop, one column on a
-          phone -- the mock has no rails at 390px and the Mobile file draws
-          that screen separately. */}
-      <div style={isNarrow ? undefined : {
-        display: "grid", gridTemplateColumns: "196px minmax(0, 1fr) 196px",
-        gap: 20, padding: "20px 0 40px", alignItems: "start",
-      }}>
-      {!isNarrow && v2SlateRail}
-      <div style={{ minWidth: 0 }}>
+  // ---- the desktop frame (see src/v3/PropFeedDesktop.jsx) -----------------
+  //
+  // `v3 Mocks/PropPalace Desktop v3.dc.html` frame 1c. The rows are the same
+  // FeedRow the old layout drew -- this is the chassis around them, not a
+  // second table -- and everything above this line (the filtering, the sort,
+  // the counts, the empty note) is untouched and shared with the phone.
+  const seasonCap = SEASON_LENGTH[sport] || 82;
+  // Unsettled legs only. A graded pick belongs to the Ledger, not the slip.
+  const openPicks = (picks || []).filter((pk) => !pk.result);
 
-      {/* Phone control block. The desktop layout below stacks each control
-          under its own centered uppercase label, which on a 375px screen came
-          to roughly 600px of filters -- you scrolled past a screen and a half
-          of chrome before the first prop. Here the same controls sit on four
-          full-width lines with no labels (a segmented OVER|UNDER needs no
-          caption saying SIDE), and the legend moves behind a disclosure. */}
-      {isNarrow ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-          <FeedSegmented
-            options={FEED_SPORTS.filter((s) => s.available).map((s) => [s.label, s.id])}
-            value={sport}
-            onChange={setSport}
-            fill
-            padding="9px 6px"
-          />
-          {/* Today's games, moved up here right under the sport switcher so
-              it's one of the first things visible instead of sitting below
-              the whole filter stack. MLB only for now -- see the note by
-              showGamesStrip's definition. */}
-          {showGamesStrip && (
-            <TodaysGamesStrip
-              options={activeMatchupOptions}
-              selected={selectedGameIds}
-              onChange={setSelectedGameIds}
-              logoFn={gamesStripLogoFn}
-              emptyLabel={gamesStripEmptyLabel}
-            />
-          )}
-          {/* Card 3a's summary + REFINE bar. Everything the old stacked column
-              held here (market picker, side/window switchers, lines mode,
-              team/game select, Screens, the feed key) moved into the sheet
-              this opens -- REFINE is a sheet, not a page-shover, per the
-              design's own subtitle for this card. Same feedFiltersOpen state
-              the desktop Filters button already drives, so there's exactly
-              one filters surface, not two competing ones. */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-            padding: "12px 14px", background: "var(--surface-sunken)", border: "1px solid var(--line)",
-          }}>
-            <div style={{ minWidth: 0 }}>
-              <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>
-                SHOWING {filteredRows.length} OF {rows.length}
-              </div>
-              <div style={{ fontSize: 14, marginTop: 4, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {refineSummary}
-              </div>
-            </div>
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setFeedFiltersOpen(true)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(true); } }}
-              className="pp-mono"
-              style={{
-                cursor: "pointer", flexShrink: 0, minHeight: 44,
-                display: "flex", alignItems: "center", padding: "0 18px",
-                fontSize: 12, letterSpacing: "0.08em", fontWeight: 600,
-                color: "var(--accent-on)", background: "var(--amber)",
-              }}
-            >
-              REFINE{feedActiveFilterCount > 0 ? ` (${feedActiveFilterCount})` : ""}
-            </div>
-          </div>
-        </div>
-      ) : (
-      <>
-      {/* Page header. The design also puts a "search players or teams"
-          field here, but the app already has one in its global header --
-          two search boxes on one screen would be two places to type the
-          same thing, so this uses the existing one rather than adding a
-          second. */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 20, marginBottom: 16 }}>
-        <div>
-          <h1 className="pp-display" style={{ fontSize: 34, margin: 0, letterSpacing: "-0.02em", fontWeight: 600 }}>Prop Feed</h1>
-          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 7 }}>
-            Every row states its sample · counts first, rate second
-          </div>
-        </div>
-        {searchSlot && <div style={{ marginLeft: "auto", width: 260 }}>{searchSlot}</div>}
-      </div>
-
-      {/* League tabs -- a real underlined tab strip on a shared bottom rule,
-          replacing the row of centered pill chips. */}
-      <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", marginBottom: 20 }}>
-        {FEED_SPORTS.map((s) => {
-          const active = sport === s.id;
-          return (
-            <div
-              key={s.id}
-              role="tab"
-              aria-selected={active}
-              onClick={() => s.available && setSport(s.id)}
-              title={s.available ? (s.simulated ? "Generated sample data, not a live feed" : undefined) : "Coming soon"}
-              className="pp-mono"
-              style={{
-                display: "flex", alignItems: "baseline", gap: 8,
-                cursor: s.available ? "pointer" : "not-allowed",
-                padding: "12px 18px", marginBottom: -1,
-                fontSize: 13, letterSpacing: "0.12em", textTransform: "uppercase",
-                color: !s.available ? "#4a5361" : active ? "var(--text)" : "var(--dim)",
-                borderBottom: `2px solid ${active ? "var(--amber)" : "transparent"}`,
-                opacity: s.available ? 1 : 0.6,
-              }}
-            >
-              {s.label}
-              {/* The count the mock prints beside each league. Only the open
-                  league can be counted -- the other three build their rows on
-                  demand, and a number there would be a guess. */}
-              {active && (
-                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{rows.length}</span>
-              )}
-              {s.simulated && (
-                <span style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>simulated</span>
-              )}
-            </div>
-          );
-        })}
-        {/* Filters lives on this row, at its right end, which is where the
-            mock puts it. What it opens is the set-and-forget half -- minimum
-            sample, defence, role, sort, price -- since the four controls
-            everyone touches constantly sit under the summary strip below. */}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, paddingBottom: 8, alignSelf: "flex-end" }}>
-          {filtersButton}
-          {screensButton}
-        </div>
-      </div>
-
-      {v2SummaryStrip}
-      {!isNarrow && v2ControlBar}
-
-      {/* The active-filter chips.
-
-          `marginTop`, because this used to sit flush against the summary
-          strip's bottom border and read as a pill balanced on the edge of the
-          box above it rather than as its own row.
-
-          `minHeight`, because the row collapses to nothing when the last chip
-          is removed and everything below it jumps up by 41px -- and the click
-          that removes a chip is a click on this row, so the thing under the
-          cursor moves out from under it. Same call as the form graph's run
-          track: a fixed cost paid on every render beats a layout that shifts
-          while it is being used. */}
-      <div style={{
-        display: "flex", alignItems: "center", flexWrap: "wrap",
-        gap: 12, fontSize: 11.5, color: "var(--dim)",
-        marginTop: 12, marginBottom: 16, minHeight: 26,
-      }}>
-        {activeFilterChips.map((c) => (
-          <span
-            key={c.key}
-            className="mono"
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              fontSize: 11, fontWeight: 600, letterSpacing: "0.04em",
-              color: "var(--amber)", border: "1px solid var(--amber)",
-              borderRadius: 999, padding: "4px 10px",
-            }}
-          >
-            {c.label}
-            <span
-              role="button"
-              onClick={c.onRemove}
-              title="Remove this filter"
-              style={{ cursor: "pointer", fontWeight: 800 }}
-            >
-              ✕
-            </span>
-          </span>
-        ))}
-
-      </div>
-      </>
-      )}
-
-      {/* The panel's header. Markets / Side / Games counted / Lines used to
-          open here, as the mock draws them; they are the always-on control bar
-          above the table now (see v2ControlBar for why). What is left below
-          the header is the half that is genuinely set once. The panel stays
-          inline and accent-bordered, which is how the file draws it. */}
+  // The Filters panel, kept verbatim from the layout this replaces. The mock's
+  // rail draws five of this page's controls; the panel owns the rest (defence
+  // tier, role, odds range, teams and games, saved screens), and a control
+  // with no door is a control that is gone. It opens over the frame now
+  // instead of pushing the table down the page.
+  const feedFiltersPanel = (
+    <>
       {feedFiltersOpen && !isNarrow && (
       <div style={{ marginTop: 12, padding: "16px 18px 0", background: "var(--surface-sunken)", border: "1px solid var(--amber)", borderBottom: "none", borderRadius: "6px 6px 0 0" }}>
         {/* marginBottom matches the 14px the panel below rules its own
@@ -23612,228 +23439,201 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       </div>
       </div>
       )}
+    </>
+  );
 
-      {/* Feed */}
-      {/* Phone only now -- the "+" explainer and the matchup/lineup key sit
-          above the cards here, behind the "What am I looking at?"
-          disclosure. Desktop moved its copy of this to a footer bar below
-          the table (see just after the row list), matching the reference's
-          own table-foot legend instead of duplicating it up here too. */}
-      {(isNarrow && showFeedKey) && (
-      <>
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10,
-        fontSize: 12, color: "var(--dim)", textAlign: "center",
-      }}>
-        <span style={{
-          display: "inline-flex", alignItems: "center", justifyContent: "center",
-          width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
-          border: "1px solid var(--line)", fontSize: 12, fontWeight: 700, color: "var(--dim)",
-        }}>+</span>
-        <span>adds a prop to your <b style={{ color: "var(--text)" }}>My Picks</b> slip (bottom right) — stack multiple picks to see the combined parlay odds.</span>
-      </div>
-      {/* OPP RANK key -- the badge color is the only thing that distinguishes
-          a favorable matchup from a tough one at a glance, so it needs its
-          own legend rather than relying on the reader to infer it from the
-          numbers alone. */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 16, flexWrap: "wrap",
-        marginBottom: 10, fontSize: 11.5, color: "var(--dim)",
-      }}>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--green)", color: "#08131c" }}>#</span>
-          Soft matchup
-        </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--neutral-badge-bg)", color: "var(--dim-strong)", border: "1px solid var(--line-strong)" }}>#</span>
-          Average matchup
-        </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="mono" style={{ display: "inline-block", padding: "1px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, background: "var(--red)", color: "#08131c" }}>#</span>
-          Tough matchup
-        </span>
-        {/* Key for the avatar's lineup dot. A bare dot is only better than
-             the "LINEUP"/"PROJ" chip it replaced if its meaning is stated
-             somewhere other than a tooltip -- a hover is not discoverable on
-             a phone, and this is the row's one piece of same-day news.
-             MLB only, since it's the only sport whose rows carry the flag. */}
-        {sport === "mlb" && (
-          <>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--pos)", boxSizing: "border-box" }} />
-              In posted lineup
-            </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--panel)", border: "1.5px solid var(--line-strong)", boxSizing: "border-box" }} />
-              Projected lineup
-            </span>
-          </>
-        )}
-      </div>
-      </>
+  const feedTable = (
+    <>
+      {sortedRows.length === 0 && (
+        <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>{feedEmptyNote}</div>
       )}
-      {/* .feed-table-wrap replaces the old inline overflow:hidden -- see
-          index.css for why the horizontal overflow mode has to change with
-          the viewport (it decides whether the sticky header below can pin
-          to the viewport at all). */}
-      <div className="feed-table-wrap">
-        {!isNarrow && <FeedTableHeader columnSort={columnSort} onSort={onSortColumn} seasonLabels={seasonLabels} />}
-        {sortedRows.length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>
-            {/* "No props match these filters" is the wrong sentence when the
-                filters are innocent and the real cause is that every game has
-                been played -- it sends the reader off loosening controls that
-                were never the problem. Only claim it when some live prop
-                actually exists to be filtered. */}
-            {feedEmptyNote}
-          </div>
-        )}
-        {/* Per-row rather than only at the app root: these rows are built from
-            live-fetched logs for hundreds of players, so one player's odd
-            payload is the likeliest single cause of a render throw here. A
-            boundary around each row turns that into one greyed-out line
-            instead of an empty feed. */}
-        {visibleRows.map((r, i) => {
-          const rowStatus = resolveRowStatus(r);
-          const expanded = expandedKey === r.key;
-          return (
+      {visibleRows.map((r, i) => {
+        const rowStatus = resolveRowStatus(r);
+        const expanded = expandedKey === r.key;
+        return (
           <ErrorBoundary key={r.key} compact label={`${r.name || "This row"} couldn't be displayed.`}>
-          <FeedRow
-            r={r}
-            sport={sport}
-            status={rowStatus}
-            sampleWindow={sampleWindow}
-            minGames={minGames}
-            isNarrow={isNarrow}
-            isAdded={pickIds.has(feedPickId(sport, r))}
-            onTogglePick={onTogglePick}
-            onOpenProp={onOpenProp}
-            isLast={i === visibleRows.length - 1}
-            // Read through the cache, so a row whose player was already
-            // fetched on an earlier page is answered without a request.
-            prior={priorFor(r)}
-            showLadder={linesMode === "alt"}
-            expanded={expanded}
-            onToggleLadder={() => setExpandedKey((k) => (k === r.key ? null : r.key))}
-          />
-          {/* Built for the one expanded row only. MLB alone mounts thousands of
-              rows, and a ladder is a pass over the game log per rung -- doing
-              that for every row on screen to show one would be paid on every
-              sort, filter and window change. Inside the same boundary as its
-              row, so a row that can't render can't take the ladder with it. */}
-          {expanded && (
-            <FeedRowLadder
-              r={r}
-              sport={sport}
-              status={rowStatus}
-              sampleWindow={sampleWindow}
-              pickIds={pickIds}
-              onTogglePick={onTogglePick}
+            <FeedRow
+              r={r} sport={sport} status={rowStatus} sampleWindow={sampleWindow}
+              minGames={minGames} isNarrow={false}
+              isAdded={pickIds.has(feedPickId(sport, r))}
+              onTogglePick={onTogglePick} onOpenProp={onOpenProp}
+              isLast={i === visibleRows.length - 1}
+              prior={priorFor(r)}
+              showLadder={linesMode === "alt"}
+              expanded={expanded}
+              onToggleLadder={() => setExpandedKey((k) => (k === r.key ? null : r.key))}
+              customWin={feedCustomCol}
             />
-          )}
+            {expanded && (
+              <FeedRowLadder r={r} sport={sport} status={rowStatus} sampleWindow={sampleWindow} pickIds={pickIds} onTogglePick={onTogglePick} />
+            )}
           </ErrorBoundary>
-          );
-        })}
-      </div>
-      {/* Table foot: the outlined accent LOAD MORE beside the data
-          disclaimer, on one line, rather than a centered filled CTA with the
-          disclaimer stranded further down. The button still names the exact
-          number it will add and how far through the list you are -- the
-          design's flat "LOAD 24 MORE PROPS" would be a lie on the last page. */}
-      {!isNarrow && (
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 20, flexWrap: "wrap" }}>
-          {sortedRows.length > visibleRows.length && (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setVisibleCount((v) => v + FEED_PAGE_SIZE); } }}
-              className="pp-mono"
-              style={{
-                cursor: "pointer", flexShrink: 0,
-                fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
-                color: "var(--amber-ink, var(--amber))", border: "1px solid var(--amber)",
-                borderRadius: 4, padding: "10px 16px",
-              }}
-            >
-              Load {Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} more props
-              <span style={{ color: "var(--dim)" }}> · {visibleRows.length} of {sortedRows.length}</span>
-            </span>
-          )}
-          <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
-            {feedDataDisclaimer} Rates under 10 games read &ldquo;too few&rdquo;, not a percentage.
-            {" "}H2H counts every meeting this log holds and states a rate from five.
-            {/* Item 5 of the competitive brief asks for last season as a
-                second column here. It is built, on the player page, where the
-                prior season is actually loaded -- see seasonSplits. Stated
-                rather than left as a gap: a column that is not here for a
-                reason is a fact, an absent one is a hole. */}
-            {" "}Last season is on the player page, not here — it loads per player.
-          </span>
+        );
+      })}
+      {sortedRows.length > visibleRows.length && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "18px 0 26px" }}>
+          <div
+            role="button" tabIndex={0}
+            onClick={() => setVisibleCount((n) => n + FEED_PAGE_SIZE)}
+            onKeyDown={(e) => { if (e.key === "Enter") setVisibleCount((n) => n + FEED_PAGE_SIZE); }}
+            className="pp-mono"
+            style={{ minHeight: 38, display: "flex", alignItems: "center", padding: "0 20px", borderRadius: 8, border: "1px solid var(--amber)", color: "var(--amber-ink)", fontSize: 11.5, letterSpacing: "0.08em", cursor: "pointer" }}
+          >
+            {`LOAD ${Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} MORE · ${visibleRows.length} OF ${sortedRows.length}`}
+          </div>
         </div>
       )}
+      <div style={{ padding: "0 20px 24px", fontSize: 12, color: "var(--dim)" }}>{feedDataDisclaimer}</div>
+    </>
+  );
 
-      {/* Table-foot key (desktop). The three form-graph marks moved out of
-          here and into the result bar above the table, where the redesign
-          puts them -- keeping them in both places meant the same legend
-          twice on one screen. What's left is the part the design's
-          placeholder data had no equivalent for and nothing else explains:
-          the lineup dot, the OPP RANK badge colours, and the "+". */}
-      {!isNarrow && (
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 18, flexWrap: "wrap",
-          marginTop: 14, padding: "12px 16px", background: "var(--panel2)", borderRadius: 6,
-          fontSize: 11.5, color: "var(--dim)",
-        }}>
-          {sport === "mlb" && (
-            <>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--pos)", boxSizing: "border-box" }} />
-                lineup posted
-              </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 11, height: 11, borderRadius: "50%", background: "var(--panel)", border: "1.5px solid var(--line-strong)", boxSizing: "border-box" }} />
-                projected
-              </span>
-            </>
-          )}
-          {/* The easy/average/tough colour key is gone with the colours it
-              described -- the rank chip is a neutral outlined box now (see
-              tierBg). What it keys instead is the scale, which a bare "#4"
-              doesn't state: low is a defence that stops this stat. */}
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <span className="mono" style={{ display: "inline-block", padding: "2px 6px", borderRadius: 4, fontSize: 10, background: "transparent", color: "var(--text)", border: "1px solid var(--line)" }}>#4</span>
-            opponent rank — #1 is the toughest defence against this stat
-          </span>
-          <span>
-            <span className="mono" style={{ color: "var(--amber)" }}>+</span> adds to My Picks
-          </span>
-        </div>
-      )}
+  const feedChip = (id, label, active, onPick) => ({ id, label, active, onPick });
 
-      {/* The desktop foot already carries this beside LOAD MORE (see above),
-          so it only renders on its own on the phone layout. */}
-      {isNarrow && (
-        <>
-          {sortedRows.length > visibleRows.length && (
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-              <button
-                type="button"
-                className="oswald cta-btn"
-                onClick={() => setVisibleCount((v) => v + FEED_PAGE_SIZE)}
-                style={{ cursor: "pointer", padding: "9px 22px", borderRadius: 6, fontSize: 13, fontWeight: 700 }}
-              >
-                Show {Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} more ({visibleRows.length} of {sortedRows.length})
-              </button>
+  const feedRailGroups = [
+    {
+      key: "league", label: "LEAGUE", cols: 2,
+      items: FEED_SPORTS.filter((sp) => sp.available).map((sp) => feedChip(sp.id, sp.label, sport === sp.id, () => setSport(sp.id))),
+    },
+    {
+      key: "window", label: "YOUR OWN WINDOW", cols: 2, custom: true,
+      value: feedCustomCol ? `L${feedCustomCol} shown` : null,
+      items: feedCustom.saved.map((n) => ({
+        ...feedChip(String(n), `L${n}`, feedCustomCol === n, () => setFeedCustomCol((cur) => (cur === n ? null : n))),
+        onRemove: () => { feedCustom.onRemove(n); if (feedCustomCol === n) setFeedCustomCol(null); },
+      })),
+    },
+    {
+      key: "sample", label: "MINIMUM SAMPLE", cols: 2,
+      value: minGames >= MIN_SAMPLE_ALL ? "All" : `${minGames}+`,
+      note: "Below this a prop shows without a rate rather than being dropped.",
+      items: sampleScale(sport).presets.map((v) => feedChip(String(v), `${v}+`, minGames === v, () => changeMinGames(v)))
+        .concat([feedChip("all", "All", minGames >= MIN_SAMPLE_ALL, () => changeMinGames(MIN_SAMPLE_ALL))]),
+    },
+    {
+      key: "slate", label: "SLATE", cols: 1,
+      items: [
+        feedChip("near", "Next two days", slateScope === "near", () => setSlateScope("near")),
+        feedChip("all", "Whole schedule", slateScope !== "near", () => setSlateScope("all")),
+      ],
+    },
+    {
+      key: "lines", label: "LINES", cols: 1,
+      items: [
+        feedChip("main", "Main only", linesMode === "main", () => setLinesMode("main")),
+        feedChip("alt", "Show alt lines", linesMode === "alt", () => setLinesMode("alt")),
+      ],
+    },
+    {
+      key: "more", label: "EVERYTHING ELSE", cols: 1,
+      note: "Defence tier, role, odds range, teams and games, and saved screens.",
+      items: [feedChip("more", "MORE FILTERS", feedFiltersOpen, () => setFeedFiltersOpen((v) => !v))],
+    },
+  ];
+
+  return (
+    <>
+      <SharedScreenBanner
+        shared={sharedScreen}
+        onApply={() => { applyFeedFilters(sharedScreen.filters); setSharedScreen(null); }}
+        onDismiss={() => setSharedScreen(null)}
+      />
+      <FeedPresets
+        open={presetsOpen}
+        onClose={() => setPresetsOpen(false)}
+        isNarrow={isNarrow}
+        currentFilters={feedFilters}
+        onApply={applyFeedFilters}
+        resultCount={filteredRows.length}
+        describeArgs={{ maxRank, marketLabel: activeMarketLabel, sortLabel: activeSortMode?.label }}
+        presets={presets}
+        setPresets={setPresets}
+        defaultPresetId={defaultPresetId}
+        setDefaultPresetId={setDefaultPresetId}
+      />
+      <PropFeedDesktop
+        marketTabs={propGroups.flatMap((g) => g.markets).map((m) => ({
+          id: m.id, label: m.label,
+          active: selectedMarkets.includes(m.id),
+          // Multi-select, which this page has always been. The mock's tabs are
+          // single-select, but which markets are on is data, not layout.
+          onPick: () => setSelectedMarkets((cur) => (cur.includes(m.id) ? cur.filter((x) => x !== m.id) : cur.concat(m.id))),
+        }))}
+        directions={[
+          { id: "over", label: "OVER", active: direction !== "under", onPick: () => setDirection("over") },
+          { id: "under", label: "UNDER", active: direction === "under", onPick: () => setDirection("under") },
+        ]}
+        filterCount={feedActiveFilterCount}
+        filtersOpen={feedRailOpen}
+        onToggleFilters={() => setFeedRailOpen((v) => !v)}
+        railGroups={feedRailGroups}
+        customWindow={{
+          label: `L${feedCustom.custom}`,
+          onDown: () => feedCustom.setCustom((n) => Math.max(2, n - 1)),
+          onUp: () => feedCustom.setCustom((n) => Math.min(seasonCap, n + 1)),
+          fillPct: (feedCustom.custom - 2) / Math.max(1, seasonCap - 2),
+          onDragTo: (f) => feedCustom.setCustom(Math.round(2 + f * (seasonCap - 2))),
+          ticks: [2, Math.round(seasonCap / 3), Math.round((seasonCap * 2) / 3), seasonCap],
+          onApply: () => setFeedCustomCol(feedCustom.custom),
+          onSave: () => { feedCustom.onSave(feedCustom.custom); setFeedCustomCol(feedCustom.custom); },
+          onClear: () => setFeedCustomCol(null),
+          canClear: feedCustomCol != null,
+        }}
+        toggles={[
+          { id: "regulars", label: "Regulars only", on: regularsOnly, onToggle: () => setRegularsOnly((v) => !v) },
+        ].concat(sport === "mlb" ? [{ id: "posted", label: "Posted lineups only", on: postedLineupsOnly, onToggle: () => setPostedLineupsOnly((v) => !v) }] : [])}
+        toggleNote={regularsOnly
+          ? "A reserve clears a low line more easily than a starter does. Off, they are back in."
+          : "Reserves included."}
+        countLabel={`${filteredRows.length} of ${rows.length} props`}
+        benchedLabel={regularsOnly && feedSummary.benched > 0
+          ? `${feedSummary.benched} hidden · under half their team's games`
+          : null}
+        sortNote={activeSortMode ? activeSortMode.label.toLowerCase() : "hit rate"}
+        sorts={FEED_SORT_MODES.map((mo) => ({
+          id: mo.id, label: mo.label, description: mo.description,
+          active: sortMode === mo.id && !columnSort,
+          onPick: () => { setColumnSort(null); setSortMode(mo.id); },
+        }))}
+        header={<FeedTableHeader columnSort={columnSort} onSort={onSortColumn} seasonLabels={seasonLabels} customWin={feedCustomCol} />}
+        rows={feedTable}
+        picks={{
+          open: feedPicksOpen,
+          onToggle: () => setFeedPicksOpen((v) => !v),
+          count: openPicks.length,
+          note: openPicks.length
+            ? `${openPicks.length} ${openPicks.length === 1 ? "leg" : "legs"}`
+            : "nothing yet",
+          // SLIP / LEDGER / READ and the full view are frame 2a -- the
+          // desktop My Picks screen -- and are built there rather than
+          // twice. This dock lists what is on the slip and opens it.
+          onOpenFull: onOpenPicks,
+          body: openPicks.length ? openPicks.map((pk) => (
+            <div key={pk.id} style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pk.name}</span>
+                {/* The rate this pick was counted at, not a price. There
+                    is no odds feed, and a rung the sample never split has
+                    no price at all -- so an em dash rather than a clamp. */}
+                <span className="pp-mono" style={{ flex: "0 0 auto", fontSize: 12, fontWeight: 700, color: pk.hitRate == null ? "var(--dim)" : "var(--amber-ink)" }}>
+                  {pk.hitRate == null ? "—" : `${Math.round(pk.hitRate * 100)}%`}
+                </span>
+              </div>
+              <span className="pp-mono" style={{ fontSize: 10.5, color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {[pk.subtitle, pk.gamesCounted ? `${pk.gamesOver} of ${pk.gamesCounted}` : null].filter(Boolean).join(" · ")}
+              </span>
             </div>
-          )}
-          <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>{feedDataDisclaimer}</div>
-        </>
-      )}
-      </div>
-      {!isNarrow && v2RightRail}
-      </div>
-    </div>
+          )) : null,
+          foot: openPicks.length
+            ? "Every leg states the games it was counted over. Nothing here is priced by a book."
+            : "Add a prop with the + on any row. It stays here while you keep reading.",
+        }}
+        overlays={feedFiltersOpen ? (
+          <div style={{ position: "absolute", inset: 0, zIndex: 70, overflowY: "auto", background: "rgba(5,6,8,0.82)", padding: "18px 24px 32px" }}>
+            <div style={{ maxWidth: 980, margin: "0 auto" }}>{feedFiltersPanel}</div>
+          </div>
+        ) : null}
+      />
+    </>
   );
 }
 
@@ -26547,7 +26347,7 @@ export default function PropLedger() {
             <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={null} />
           </V3Shell>
         ) : (
-          <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
+          <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} picks={myPicks} onOpenPicks={() => setPage("picks")} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
         )
       )}
 
@@ -26731,7 +26531,15 @@ export default function PropLedger() {
         // Landing is on the list too: frame 3e ends in its own fixed footer
         // (the board CTA and the 21+ line), and the floating slip trigger sat
         // on top of it.
-        hideTrigger={isPhoneShell && (page === "picks" || page === "landing" || PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page))}
+        //
+        // And the desktop Prop Feed, which draws the slip as a rail inside its
+        // own frame (v3 frame 1c). The floating trigger there was a second My
+        // Picks control on the same screen, a few hundred pixels from the one
+        // the mock draws.
+        hideTrigger={
+          (isPhoneShell && (page === "picks" || page === "landing" || PLAYER_PAGES.has(page) || V3_PHONE_PAGES.has(page)))
+          || (!isPhoneShell && page === "feed")
+        }
       />
       {/* Reads and writes every preference through the settings context, so
           the only thing it needs from here is the sportsbook list (which
