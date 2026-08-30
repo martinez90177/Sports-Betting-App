@@ -22213,10 +22213,27 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // it does not shrink as other filters narrow the view.
   const teamGames = useMemo(() => teamGamesPlayed(marketRows), [marketRows]);
 
+  // Recomputed when the row set changes rather than on every render: it is
+  // a scan of the whole market list, and `Date.now()` inside a filter
+  // predicate meant every row was measured against a slightly different
+  // "now".
+  // What the near scope is called. Not the same sentence in a league that
+  // plays nightly and one that plays weekly -- "today and tomorrow" is a
+  // promise the NFL window no longer keeps.
+  const slateWord = WEEKLY_LEAGUES.has(sport)
+    ? { chip: "This week’s slate", count: "this week", none: "this week" }
+    : { chip: "Next two days", count: "today and tomorrow", none: "today or tomorrow" };
+
+  const slateWindow = useMemo(
+    () => feedSlateWindow(sport, rows, Date.now()),
+    [sport, rows]
+  );
+
   const filteredRows = useMemo(() => marketRows.filter((r) => {
-    // Games in the next two days only, unless the reader has asked for the
-    // whole schedule. See FEED_LOOKAHEAD_MS.
-    if (slateScope === "near" && !feedRowIsNear(r, Date.now())) return false;
+    // The upcoming slate only, unless the reader has asked for the whole
+    // schedule. How long a slate lasts depends on the league -- see
+    // feedSlateWindow.
+    if (slateScope === "near" && !feedRowIsNear(r, slateWindow)) return false;
     if (regularsOnly && !feedRowPlaysEnough(r, teamGames)) return false;
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
@@ -22259,7 +22276,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // there and must let it through rather than wipe pitcher markets whole.
     if (postedLineupsOnly && sport === "mlb" && r.lineupConfirmed === false) return false;
     return true;
-  }), [marketRows, sampleWindow, slateScope, regularsOnly, teamGames, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, hitFloor, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
+  }), [marketRows, sampleWindow, slateScope, slateWindow, regularsOnly, teamGames, oddsLoProb, oddsHiProb, rankLo, rankHi, maxRank, roleTier, hitFloor, sport, showMatchupDropdown, selectedGameIds, activeMatchupOptions, teamFilter, postedLineupsOnly, sport]);
 
   // Badge shown on the Filters trigger -- counts only the controls tucked
   // behind it (Sort By/Odds Range/Defense Rank Range) that are away from
@@ -22611,7 +22628,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // feed is showing, not the whole league, or the number would be dominated
     // by teams that are not playing.
     const benched = marketRows.filter((r) =>
-      (slateScope !== "near" || feedRowIsNear(r, Date.now()))
+      (slateScope !== "near" || feedRowIsNear(r, slateWindow))
       && !feedRowPlaysEnough(r, teamGames)).length;
     const key = sampleWindow;
     const nKey = key === "l5" ? "n5" : key === "l20" ? "n20" : key === "all" ? "nAll" : "n10";
@@ -22635,7 +22652,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       if (!best || lower > best.lower) best = { lower, rate, name: r.name, prop: r.subtitle || r.marketLabel };
     });
     return { supported, thin, best, games: games.size, benched };
-  }, [filteredRows, marketRows, teamGames, slateScope, sampleWindow, minGames]);
+  }, [filteredRows, marketRows, teamGames, slateScope, slateWindow, sampleWindow, minGames]);
 
   // The next kickoff beyond the window, for the empty state. Only computed
   // when the feed is actually empty, so this never runs on a normal render.
@@ -22790,7 +22807,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             </>
           )}
           {slateScope === "near"
-            ? `${feedSummary.games} ${feedSummary.games === 1 ? "game" : "games"} today and tomorrow`
+            ? `${feedSummary.games} ${feedSummary.games === 1 ? "game" : "games"} ${slateWord.count}`
             : (
               <>
                 {feedSummary.games} {feedSummary.games === 1 ? "game" : "games"} · whole schedule ·{" "}
@@ -22998,7 +23015,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               : slateScope === "near" && rows.length > 0 && nextKickoff != null
               ? (
                 <span>
-                  No {sport.toUpperCase()} games today or tomorrow, so there are no props to read yet.
+                  No {sport.toUpperCase()} games {slateWord.none}, so there are no props to read yet.
                   {" "}Next kickoff is{" "}
                   <b style={{ color: "var(--text)" }}>
                     {new Date(nextKickoff).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
@@ -23569,7 +23586,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     {
       key: "slate", label: "SLATE", cols: 1,
       items: [
-        feedChip("near", "Next two days", slateScope === "near", () => setSlateScope("near")),
+        feedChip("near", slateWord.chip, slateScope === "near", () => setSlateScope("near")),
         feedChip("all", "Whole schedule", slateScope !== "near", () => setSlateScope("all")),
       ],
     },
@@ -25328,6 +25345,38 @@ const INJURY_FEED_MISSING = [];
 const FEED_LOOKAHEAD_MS = 48 * 60 * 60 * 1000;
 const FEED_GRACE_MS = 6 * 60 * 60 * 1000;
 
+// Forty-eight hours is a *daily* league's slate. MLB, the NBA and the WNBA
+// play most nights, so a two-day window always has games in it and the rule
+// above does what it was asked to do.
+//
+// The NFL plays once a week, and the same window empties the page for about
+// five days in seven — mid-season, with a full slate four days out and the
+// props already up everywhere else. Worse before Week 1: on 2026-08-30 the
+// opener was ten days away, the feed said "no props to read yet", and
+// FanDuel had been taking bets on those games for a fortnight. Alex, and he
+// is right: "i see stuff available on fanduel so that means it's active".
+//
+// So a weekly league's window is a week of *games*, anchored on the next
+// kickoff rather than on the clock. Five days from that kickoff covers a
+// full NFL week — Thursday night through Monday night, with Saturday games
+// in December and the international Sunday mornings inside it — and stops
+// before the following Thursday, so it is one slate and never two.
+//
+// This does not walk back the rule it sits under. The complaint that set
+// the 48 hours was 3,089 NFL props for a kickoff twenty days out: the whole
+// 17-week season at once. One week is a slate. Seventeen is a database.
+const WEEKLY_LEAGUES = new Set(["nfl"]);
+const FEED_SLATE_SPAN_MS = 5 * 24 * 60 * 60 * 1000;
+
+// How far ahead a weekly league will reach for its next slate. Twenty-eight
+// days, which is about when the books start pricing a week: Week 1 props were
+// up on 2026-08-30 for a 2026-09-09 opener, and that is the case this exists
+// for. Past it, the anchored window would drag a September slate onto a July
+// screen, which is the twenty-days-out complaint the fixed window was added to
+// answer. Beyond the horizon the feed falls back to the fixed window, comes up
+// empty, and says which day the season starts.
+const FEED_SLATE_HORIZON_MS = 28 * 24 * 60 * 60 * 1000;
+
 // The kickoff a row belongs to, or null when the schedule never said. A row
 // with no date is kept by the window rather than dropped: "we do not know when
 // this game is" is not the same claim as "this game is not soon", and only the
@@ -25338,10 +25387,34 @@ function feedRowKickoff(r) {
   return Number.isFinite(t) ? t : null;
 }
 
-function feedRowIsNear(r, now) {
+// The window the `Next two days` scope keeps, as {from, to}. Sport-aware:
+// see WEEKLY_LEAGUES. `rows` is the unfiltered market set, so the anchor is
+// found before any filter has had a chance to hide the game it should be
+// anchored on.
+function feedSlateWindow(sport, rows, now) {
+  const from = now - FEED_GRACE_MS;
+  if (!WEEKLY_LEAGUES.has(sport)) return { from, to: now + FEED_LOOKAHEAD_MS };
+  let anchor = null;
+  (rows || []).forEach((r) => {
+    const t = feedRowKickoff(r);
+    if (t == null || t < from) return;
+    if (anchor == null || t < anchor) anchor = t;
+  });
+  // Nothing scheduled ahead, or the next game is further off than the books
+  // price. Fall back to the fixed window so the empty state reads as "no
+  // slate yet" and names the day, rather than backfilling an offseason.
+  if (anchor == null || anchor > now + FEED_SLATE_HORIZON_MS) {
+    return { from, to: now + FEED_LOOKAHEAD_MS };
+  }
+  return { from, to: anchor + FEED_SLATE_SPAN_MS };
+}
+
+function feedRowIsNear(r, win) {
   const t = feedRowKickoff(r);
+  // A row whose date the schedule never gave is kept: "we do not know when
+  // this game is" is not the same claim as "this game is not soon".
   if (t == null) return true;
-  return t >= now - FEED_GRACE_MS && t <= now + FEED_LOOKAHEAD_MS;
+  return t >= win.from && t <= win.to;
 }
 
 function buildNewsInjuryWire(pool, affectsByPlayer, watchingKeys) {

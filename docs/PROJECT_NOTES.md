@@ -414,6 +414,37 @@ silently backfilling.
 scope resets to `near` on every sport switch, deliberately: someone who opened
 the whole NFL schedule has not asked for the same on MLB.
 
+### …except in a weekly league — 2026-08-30
+
+Forty-eight hours is a *daily* league's slate, and the rule above is right for
+MLB, the NBA and the WNBA, which play most nights.
+
+The NFL plays once a week, so the same window empties the page for about five
+days in seven — mid-season, with a full slate four days out and the props up
+everywhere else. On 2026-08-30 the opener was ten days away, the feed read "no
+props to read yet", and FanDuel had been taking bets on those games for a
+fortnight. Alex: *"i see stuff available on fanduel so that means it's active"*.
+
+So `WEEKLY_LEAGUES` (currently just `nfl`) anchors its window on **the next
+kickoff rather than on the clock**, and keeps `FEED_SLATE_SPAN_MS` — five days
+— from it. Five covers Thursday night through Monday night, takes in the
+December Saturdays and the international Sunday mornings, and stops before the
+following Thursday, so it is one slate and never two.
+
+`FEED_SLATE_HORIZON_MS` caps the reach at 28 days, which is roughly when books
+begin pricing a week. Past it the anchored window would drag a September slate
+onto a July screen — which is the twenty-days-out complaint the fixed window was
+added to answer — so beyond the horizon it falls back to the fixed window, comes
+up empty, and names the day.
+
+This does not walk back the rule above. The complaint that set the 48 hours was
+3,089 NFL props for a kickoff twenty days out: the whole 17-week season at once.
+**One week is a slate. Seventeen is a database.**
+
+The copy follows the league too (`slateWord`): the chip reads "This week's
+slate" rather than "Next two days", and the empty state says "this week"
+rather than "today or tomorrow".
+
 ## Where the availability designation comes from, and where it does not
 
 `buildNewsInjuryWire` gates on WNBA and MLB. That is not an oversight — the NFL
