@@ -26520,6 +26520,7 @@ export default function PropLedger() {
             injuryWireMeta={newsInjuryWireMeta}
             injuryWireMore={newsInjuryWireMore}
             onOpenLadder={openNewsPlayer}
+            slipLegs={myPicks.filter((x) => !x.result)}
             footnote="Headlines cache for ~45 minutes to stay within Newsdata's free-tier request limit."
           />
         </LazyPane>

@@ -82,7 +82,18 @@ export async function fetchNews({ q, category = "sports", limit = 10 } = {}) {
     // Offline, or the proxy had nothing -- serve whatever's cached (even if
     // past TTL) rather than showing an empty/broken feed. Note /api/news only
     // exists on Vercel, so this is also the path taken during `npm run dev`.
-    if (cached) return { articles: cached.articles.slice(0, limit), stale: true, error: String(err) };
-    return { articles: [], stale: false, error: String(err) };
+    //
+    // The reader gets a sentence, not the exception. On `npm run dev` this
+    // path throws a JSON parse error, because Vite serves api/news.js as a
+    // module and the browser tries to read `import { Redis }` as JSON -- and
+    // "Unexpected token 'i'" was appearing on the News screen as though it
+    // were the news. The exception still goes to the console, where it is
+    // the right audience for it.
+    console.error("news fetch failed", err);
+    const note = typeof window !== "undefined" && window.location.hostname === "localhost"
+      ? "The news proxy only runs on Vercel, so there is no wire in local development. This is a dev-server answer, not an empty day."
+      : "The news wire could not be reached. This is a network answer, not an empty day.";
+    if (cached) return { articles: cached.articles.slice(0, limit), stale: true, error: note };
+    return { articles: [], stale: false, error: note };
   }
 }

@@ -3,6 +3,7 @@ import { fetchNews } from "./lib/newsdata.js";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import NewsMobile from "./v3/NewsMobile.jsx";
+import NewsDesktop from "./v3/NewsDesktop.jsx";
 
 // Redesigned News page. Replaces the card list in the current NewsPage.jsx with
 // a two-column layout: a feed where every item can name the props it moves, and
@@ -169,6 +170,9 @@ export default function NewsPageRedesign({
   injuryWireMore = 0,
   watchlistMoves = [],
   onOpenLadder,
+  // Open legs, for the desktop rail's ON YOUR SLIP. Still context: the wire
+  // naming a leg is worth surfacing and moves no rate.
+  slipLegs = [],
   query = "NBA OR NFL",
   footnote,
 }) {
@@ -212,30 +216,49 @@ export default function NewsPageRedesign({
     FILTERS.map((f) => [f, withPlayers.filter(({ player }) => matchesFilter(player, f)).length])
   );
 
-  // Same wire, same attribution, same counts -- the phone's own layout.
-  // See src/v3/NewsMobile.jsx.
+  // Same wire, same attribution, same counts -- one prop set, two layouts.
+  // The phone stacks (src/v3/NewsMobile.jsx); the desktop puts the wire beside
+  // a 336px rail (NewsDesktop, mock frame 2d).
+  const v3Shared = {
+    // The mock drops Injuries from this row: it has its own nav tab, and a
+    // filter that duplicates a destination is a second way to ask one
+    // question.
+    filters: FILTERS.filter((f) => f !== "Injuries"),
+    filter: filter === "Injuries" ? "All" : filter,
+    counts: filterCounts,
+    onSetFilter: setFilter,
+    items: shown.map(({ article, player }) => ({
+      key: article.link || article.title,
+      headline: article.title,
+      source: article.sourceName,
+      age: article.pubDate ? timeAgo(article.pubDate) : "",
+      player,
+    })),
+    loading,
+    error,
+    footnote,
+    onOpenLadder,
+  };
+
+  if (!isPhone) {
+    return (
+      <NewsDesktop
+        {...v3Shared}
+        slipLegs={slipLegs}
+        renderAvatar={(p, size) => (
+          <PlayerAvatar
+            name={p.name} alt={p.name} sport={p.sport} team={p.team}
+            headshotSrc={p.avatar} espnId={p.espnId}
+            status={p.status} size={size} inset={2} surface="var(--surface-1)"
+          />
+        )}
+      />
+    );
+  }
+
   if (isPhone) {
     return (
-      <NewsMobile
-        // The mock drops Injuries from this row: it has its own nav tab, and a
-        // filter that duplicates a destination is a second way to ask one
-        // question.
-        filters={FILTERS.filter((f) => f !== "Injuries")}
-        filter={filter === "Injuries" ? "All" : filter}
-        counts={filterCounts}
-        onSetFilter={setFilter}
-        items={shown.map(({ article, player }) => ({
-          key: article.link || article.title,
-          headline: article.title,
-          source: article.sourceName,
-          age: article.pubDate ? timeAgo(article.pubDate) : "",
-          player,
-        }))}
-        loading={loading}
-        error={error}
-        footnote={footnote}
-        onOpenLadder={onOpenLadder}
-      />
+      <NewsMobile {...v3Shared} />
     );
   }
 
