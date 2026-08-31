@@ -19,6 +19,15 @@ import { NAV_TABS } from "../NavBar.jsx";
 // is what those insets encode and what the desktop handoff's rule 2 requires
 // anyway. At 430x932 the two are pixel-identical.
 //
+// The dock is the one band that does not keep the mock's figure. 82px was
+// 14 + a 48px control + 20, and the mock could afford it because its 932px
+// frame has no browser chrome under it. A real phone does: Safari and Chrome
+// both park a toolbar below the viewport, so the dock read as a second bar
+// stacked on the browser's own and ate a finding-and-a-half of the scroller.
+// It is now 8 + a 44px control + 8 (or the home-indicator inset, whichever is
+// larger), which is 60px on a notchless phone -- still a 44px tap target,
+// which is the floor the size is actually constrained by. Alex, 2026-08-31.
+//
 // The nav is the app's own NAV_TABS, which already matches the mock's list
 // exactly: Games, The Board, Findings, Prop Feed, News, Injuries. The mock
 // shortens two of them to fit six tabs across 430px.
@@ -106,8 +115,9 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
       {slipDock && (
         <div
           style={{
-            flex: "0 0 auto", height: 82, zIndex: 26, background: "var(--bg)",
-            borderTop: "1px solid var(--line)", padding: "14px 16px 20px",
+            flex: "0 0 auto", zIndex: 26, background: "var(--bg)",
+            borderTop: "1px solid var(--line)", padding: "8px 16px",
+            paddingBottom: "max(8px, env(safe-area-inset-bottom))",
             display: "flex", justifyContent: "center", boxSizing: "border-box",
           }}
         >
@@ -127,7 +137,7 @@ export function SlipDock({ label, onClick }) {
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick && onClick(); } }}
       style={{
-        minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+        minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
         width: "100%", borderRadius: 12, border: "1px solid var(--amber)",
         background: "var(--amber-dim)", color: "var(--amber-ink)",
         fontFamily: MONO, fontSize: 13, letterSpacing: "0.1em", cursor: "pointer",
