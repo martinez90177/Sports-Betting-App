@@ -102,6 +102,9 @@ export default function GamesDesktop({
               <input
                 value={query}
                 onChange={(e) => onSetQuery(e.target.value)}
+                // A placeholder is not a label: it disappears on the first
+                // keystroke and screen readers may not announce it at all.
+                aria-label="Search the slate"
                 placeholder={sampleQuery ? `e.g. ${sampleQuery}` : "Team or city"}
                 style={{
                   minHeight: 34, padding: "0 11px", borderRadius: 7,

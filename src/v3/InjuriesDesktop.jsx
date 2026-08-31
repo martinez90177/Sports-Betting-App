@@ -114,6 +114,9 @@ export default function InjuriesDesktop({
               <input
                 value={query}
                 onChange={(e) => onSetQuery(e.target.value)}
+                // A placeholder is not a label: it disappears on the first
+                // keystroke and screen readers may not announce it at all.
+                aria-label="Search the injury wire"
                 placeholder={sampleQuery ? `e.g. ${sampleQuery}` : "Player or team"}
                 style={{
                   minHeight: 34, padding: "0 11px", borderRadius: 7,
