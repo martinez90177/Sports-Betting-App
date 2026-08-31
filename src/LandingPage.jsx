@@ -55,6 +55,7 @@ function pct(v) {
 // way out but the two buttons in the hero.
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import LandingMobile from "./v3/LandingMobile.jsx";
+import LandingDesktop from "./v3/LandingDesktop.jsx";
 
 export default function LandingPage({
   rows = [], showNav = true, firstVisit = false,
@@ -116,247 +117,19 @@ export default function LandingPage({
     </span>
   );
 
-  // The phone's own layout -- a transcription of frame 3e. Declared below
-  // every hook, and fed the same hero row this page picked above, so the two
-  // front doors quote the same prop.
-  if (isPhone) {
-    return (
-      <LandingMobile
-        hero={hero}
-        onOpenBoard={onOpenBoard}
-        onOpenSettings={onOpenSettings}
-        onOpenProp={onOpenProp}
-      />
-    );
-  }
-
+  // Both v3 frames -- the phone's 3e and the desktop's 2i -- declared below
+  // every hook and fed the same hero row this page picked above, so the two
+  // front doors quote the same prop and the same rate.
+  const Frame = isPhone ? LandingMobile : LandingDesktop;
   return (
-    <div style={{ background: "var(--bg, var(--page-bg))", color: "var(--text)" }}>
-      {/* Top nav. No active underline here on purpose -- the landing page is
-          not one of the sections those links point at. */}
-      {showNav && (
-      <div className="landing-nav" style={{
-        display: "flex", alignItems: "center", gap: 32,
-        padding: "20px 48px", borderBottom: "1px solid var(--line)", flexWrap: "wrap",
-      }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <PalaceMark />
-          <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
-        </span>
-        {/* The one nav element this page has that no other screen does. It
-            says why you are looking at the front door rather than the app --
-            which is the whole answer to "what is this page". Shown only while
-            the first-run flag is still up. */}
-        {firstVisit && (
-          <span className="pp-mono" style={{
-            fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
-            border: "1px solid var(--line)", borderRadius: 999, padding: "4px 9px", whiteSpace: "nowrap",
-          }}>
-            First visit
-          </span>
-        )}
-        <span style={{ display: "flex", alignItems: "center", gap: 26, flexWrap: "wrap" }}>
-          {/* Games went to the board, which is a different screen with a
-              different job -- the two are deliberately not one route. */}
-          {navLink("Games", onOpenGames)}
-          {navLink("The Board", onOpenBoard)}
-          {navLink("Prop Feed", onOpenFeed)}
-          {navLink("News", onOpenNews)}
-        </span>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
-          {onOpenSettings && (
-            <span
-              role="button"
-              tabIndex={0}
-              title="Settings"
-              onClick={onOpenSettings}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenSettings(); } }}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 30, height: 30, borderRadius: 6, cursor: "pointer",
-                fontSize: 15, lineHeight: 1, color: "var(--text-2, var(--dim))",
-                border: "1px solid var(--line)",
-              }}
-            >
-              ⚙
-            </span>
-          )}
-          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
-          <span className="pp-mono" style={{
-            fontSize: 11, letterSpacing: "0.12em", color: "var(--amber-ink, var(--amber))",
-            border: "1px solid var(--amber)", borderRadius: 999, padding: "5px 12px",
-          }}>21+</span>
-        </span>
-      </div>
-      )}
-
-      {/* Hero */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(440px, 520px)",
-        gap: 56, padding: "64px 32px 80px", alignItems: "start",
-      }} className="landing-hero">
-        <div style={{ minWidth: 0 }}>
-          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>
-            Real season logs · no picks sold
-          </div>
-          <h1 className="pp-display" style={{
-            fontSize: "clamp(40px, 5.5vw, 74px)", lineHeight: 1.02, letterSpacing: "-0.02em",
-            fontWeight: 600, margin: "18px 0 0",
-          }}>
-            Know the sample<br />before you take<br />the line.
-          </h1>
-          <p style={{ fontSize: 16, lineHeight: 1.6, color: "var(--text-2, var(--dim))", maxWidth: "62ch", marginTop: 22 }}>
-            Every hit rate here shows the games behind it. When the sample can&rsquo;t answer the
-            question, we say so instead of printing a number with confidence it hasn&rsquo;t earned.
-          </p>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 32, flexWrap: "wrap" }}>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={onOpenBoard}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenBoard && onOpenBoard(); } }}
-              className="pp-mono"
-              style={{
-                display: "inline-flex", alignItems: "center", minHeight: 46, boxSizing: "border-box",
-                cursor: "pointer", background: "var(--amber)", color: "var(--accent-on)",
-                fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
-                padding: "0 22px", borderRadius: 4,
-              }}
-            >
-              Open the board
-            </span>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={showRules}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showRules(); } }}
-              className="pp-mono"
-              style={{
-                display: "inline-flex", alignItems: "center", minHeight: 46,
-                cursor: "pointer", color: "var(--amber-ink, var(--amber))",
-                fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
-                textDecoration: "underline", textUnderlineOffset: 4,
-              }}
-            >
-              How we count
-            </span>
-            {/* The file's third button here is "Take the 2-minute tour". There
-                is no tour: it is specified in ACCOUNTS_SUBSCRIPTION_TUTORIAL.md
-                and that track has not been started. A dead button on the front
-                door is worse than an absent one, so it renders only once a
-                handler exists to give it. */}
-            {onTakeTour && (
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={onTakeTour}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTakeTour(); } }}
-                className="pp-mono"
-                style={{
-                  display: "inline-flex", alignItems: "center", minHeight: 46, boxSizing: "border-box",
-                  cursor: "pointer", color: "var(--amber-ink, var(--amber))",
-                  border: "1px solid var(--amber)", borderRadius: 4, padding: "0 18px",
-                  fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
-                }}
-              >
-                Take the 2-minute tour
-              </span>
-            )}
-          </div>
-
-          {/* The rules strip. This replaced a "props tracked / game logs" stat
-              block that was cut for being pointless -- do not reintroduce it.
-              Each cell states a rule this product actually follows. */}
-          <div ref={rulesRef} style={{
-            display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 32,
-            borderTop: `1px solid ${rulesFlash ? "var(--amber)" : "var(--line)"}`,
-            // 700 of content plus the 12 of bleed on each side, so the three
-            // rules still measure the file's 700 while the wash can run past
-            // them.
-            maxWidth: 724,
-            padding: "24px 12px 12px", margin: "36px -12px 0",
-            background: rulesFlash ? "var(--amber-dim)" : "transparent",
-            borderRadius: "0 0 6px 6px",
-            transition: "background 0.25s ease, border-color 0.25s ease",
-          }}>
-            <div>
-              <div className="pp-mono" style={RULE_LABEL}>How we count</div>
-              <div style={RULE_BODY}>
-                A rate never appears without its sample.{" "}
-                <span className="pp-mono" style={{ color: "var(--amber-ink, var(--amber))" }}>78% · 7 of 9</span>, never{" "}
-                <span className="pp-mono" style={{ color: "var(--text-2, var(--dim))" }}>78%</span>.
-              </div>
-            </div>
-            <div>
-              <div className="pp-mono" style={RULE_LABEL}>Thin samples</div>
-              <div style={RULE_BODY}>
-                Under ten games we print a verdict instead of a percentage —{" "}
-                <span className="pp-mono">too few</span>.
-              </div>
-            </div>
-            <div>
-              <div className="pp-mono" style={RULE_LABEL}>Margin, not just hits</div>
-              <div style={RULE_BODY}>
-                Bar height shows how far a game cleared the line, so a blowout doesn&rsquo;t read
-                like a squeaker.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* The worked example. A real row or nothing. */}
-        {hero ? <HeroCard row={hero} onOpen={onOpenProp} /> : <HeroEmpty />}
-      </div>
-
-      {/* Board teaser */}
-      <div style={{ padding: "0 48px 88px" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-          <span className="pp-display" style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.01em" }}>Today&rsquo;s board</span>
-          <span className="pp-mono" style={{ fontSize: 13, color: "var(--text-2, var(--dim))", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            {teasers.length ? `${teasers.length} of today's props` : "No props loaded yet"}
-          </span>
-          <span
-            role="button"
-            tabIndex={0}
-            onClick={onOpenBoard}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenBoard && onOpenBoard(); } }}
-            className="pp-mono"
-            style={{ marginLeft: "auto", cursor: "pointer", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}
-          >
-            All games
-          </span>
-        </div>
-
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(232px, 1fr))",
-          gap: 20, marginTop: 24,
-        }}>
-          {teasers.map((r) => <TeaserCard key={r.key} row={r} onOpen={onOpenProp} />)}
-        </div>
-      </div>
-
-      <div style={{
-        borderTop: "1px solid var(--line)", padding: "28px 48px 40px",
-        display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap",
-      }}>
-        <PalaceMark />
-        <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
-          Research only · no picks sold · 21+
-        </span>
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={showRules}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showRules(); } }}
-          className="pp-mono"
-          style={{ marginLeft: "auto", cursor: "pointer", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}
-        >
-          How we count
-        </span>
-      </div>
-    </div>
+    <Frame
+      hero={hero}
+      onOpenBoard={onOpenBoard}
+      onOpenSettings={onOpenSettings}
+      onOpenProp={onOpenProp}
+    />
   );
+
 }
 
 // Rule 4 on the front page: when the rows haven't loaded there is no hero, and

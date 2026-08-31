@@ -49,7 +49,7 @@ const FRAMES = {
     "1a": "BoardMobile", "1b": "BoardDesktop",
   },
   "PropPalace Desktop v3.dc.html": {
-    "1a": "PlayerDetailDesktop", "1c": "PropFeedDesktop", "2a": "MyPicksDesktop", "2b": "GamesDesktop", "2c": "FindingsDesktop", "2d": "NewsDesktop", "2e": "InjuriesDesktop", "2f": "MatchupDesktop",
+    "1a": "PlayerDetailDesktop", "1c": "PropFeedDesktop", "2a": "MyPicksDesktop", "2b": "GamesDesktop", "2c": "FindingsDesktop", "2d": "NewsDesktop", "2e": "InjuriesDesktop", "2f": "MatchupDesktop", "2g": "GamecastDesktop", "2h": "SettingsDesktop", "2i": "LandingDesktop",
   },
 };
 
@@ -77,6 +77,9 @@ const EXTRA = {
   "2d-desktop": ["NavBar.jsx", "NewsPageRedesign.jsx"],
   "2e-desktop": ["NavBar.jsx", "InjuriesPage.jsx"],
   "2f-desktop": ["NavBar.jsx", "MatchupPage.jsx"],
+  "2g-desktop": ["NavBar.jsx", "GamecastPage.jsx"],
+  "2h-desktop": ["v3/settingsFields.jsx", "SettingsSections.jsx"],
+  "2i-desktop": ["v3/AgeMark.jsx", "LandingPage.jsx"],
   // The Board's tiers, reasons and cards are assembled in BoardPage.jsx.
   "1a-board": ["BoardPage.jsx"],
   "1b-board": ["NavBar.jsx", "BoardPage.jsx"],

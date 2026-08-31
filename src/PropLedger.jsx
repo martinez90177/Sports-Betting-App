@@ -17,8 +17,8 @@ import {
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsModal from "./SettingsModal.jsx";
-import SettingsPage from "./SettingsPage.jsx";
 import SettingsMobile from "./v3/SettingsMobile.jsx";
+import SettingsDesktop from "./v3/SettingsDesktop.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
@@ -26214,29 +26214,17 @@ export default function PropLedger() {
 
   if (page === "settings") {
     const back = PAGES.find((x) => x.id === (settingsReturn || "feed"));
-    // The phone gets frame 3d's chassis around the very same four section
-    // components -- see src/v3/SettingsMobile.jsx for why the controls inside
-    // are not re-drawn.
-    if (isPhoneShell) {
-      return (
-        <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
-          <SettingsMobile
-            returnLabel={(back && back.label) || "Prop Feed"}
-            onLeave={() => setPage(settingsReturn || "feed")}
-            sportsbooks={SPORTSBOOKS}
-          />
-        </div>
-      );
-    }
+    // Both v3 frames wrap the very same four section components -- frame 3d's
+    // chip row on the phone, frame 2h's 232px rail above it. The fields
+    // themselves are src/v3/settingsFields.jsx, shared, so a control cannot
+    // exist at one width and not the other.
+    const Frame = isPhoneShell ? SettingsMobile : SettingsDesktop;
     return (
-      <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
-        <SettingsPage
+      <div style={{ minHeight: isPhoneShell ? "100dvh" : "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
+        <Frame
           returnLabel={(back && back.label) || "Prop Feed"}
           onLeave={() => setPage(settingsReturn || "feed")}
-          onNavigate={(id) => { setSettingsReturn(null); setPage(id); }}
-          onHome={() => { setSettingsReturn(null); goHome(); }}
           sportsbooks={SPORTSBOOKS}
-          isNarrow={isNarrowShell}
         />
       </div>
     );

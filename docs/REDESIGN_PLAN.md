@@ -2230,3 +2230,62 @@ so there was no literal for a string matcher to miss.
 
 It found a third: `GamecastMobile`'s `{refreshed && ...}`, in no mock and never
 passed. Removed. Zero flagged across fifteen components.
+
+## Batch 8 — desktop Gamecast, Settings, Landing
+
+**The v3 transcription is complete: 24 frames, all built.**
+
+**Gamecast (frame 2g)** — score, linescore and leaders beside a 392px PROPS IN
+PLAY rail. A period not played stays blank; a market the boxscore does not carry
+is named unfollowable rather than estimated from something adjacent.
+
+**Settings (frame 2h)** — a 232px rail of tabs beside the fields. Every field
+moved to `src/v3/settingsFields.jsx` and both frames render it, so a control
+cannot exist at one width and not the other. `SettingsMobile` went from 537
+lines to 96: it is the chassis now and nothing else.
+
+The desktop frame draws the accent ring **inline**, which is why its own hint —
+"Drag the ring, or pick one below." — is true there. The phone keeps the 52px
+preview row and the sheet, because at 430px the ring and its presets are most of
+a screen.
+
+**Landing (frame 2i)** — the pitch, a live example row, three claims, the
+compliance line.
+
+### The example row is real, and the mock's is not
+
+The frame hand-writes `vals = [3, 1, 2, 4, 0, 2, 3, 2, 1, 4]` under Aaron
+Judge's name. That is the one thing this app does not do. The row here is the
+same `hero` the phone frame draws — a real prop off tonight's board — and the
+strip is `MiniStrip` from `boardShared.jsx`, so the example on the front page is
+drawn by the code the product uses.
+
+Verified that the caption's claim holds: at 4.5 it read 70% on 7 of 10, at 5.0
+it read 60% on 6 of 10, and RESET returned it. The rate and the sample are
+counted off one array against one line, so they cannot disagree.
+
+### Dead code removed as its route stopped reaching it
+
+- The v2 `SettingsPage` return (12 lines) and its import — both frames now cover
+  every width.
+- The v2 landing markup (227 lines).
+- `GamecastMobile`'s `{refreshed && ...}`, which no mock draws and nothing
+  passed.
+- `SettingsDesktop`'s `AccentSheet`, once the ring went inline: a sheet that
+  cannot be opened is worse than no sheet.
+
+### Two defects the frames surfaced
+
+- **The Gamecast crashed the page to its boundary.** A linescore column is
+  `{ key, label, total }`, and rendering the object threw "Objects are not valid
+  as a React child". Caught by driving it, not by building it — the build was
+  clean.
+- **The Gamecast branch was gated on `isPhone && !embedded`**, so the desktop
+  frame was unreachable after being written. It is `!embedded` now; `embedded`
+  is the compact in-card gamecast, which keeps its own layout at every width.
+
+### Final state
+
+24 frames, 247 literals, 25 missing — every one a mock placeholder ("AJ",
+"NYY", "OVER 1.5 TOTAL BASES") or one of the two recorded non-builds. Zero
+regions gated on a prop no caller passes.

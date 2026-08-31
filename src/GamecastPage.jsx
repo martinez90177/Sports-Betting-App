@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import GamecastMobile from "./v3/GamecastMobile.jsx";
+import GamecastDesktop from "./v3/GamecastDesktop.jsx";
 import {
   teamLogo, dayLabel, timeLabel, fetchGamecastDetail,
   GAME_STATUS, isActiveStatus,
@@ -377,11 +378,16 @@ export default function GamecastPage({ game, isMobile, embedded, onBack, onViewP
     return a > h ? "away" : "home";
   }, [game.status, game.away.score, game.home.score]);
 
-  // Same provider payload, same buildPropsInPlay, same statuses -- the phone's
-  // own layout. See src/v3/GamecastMobile.jsx. Declared after every hook above
-  // so the branch cannot change the hook order. `embedded` is the compact
-  // gamecast that folds inside a Games card, which keeps its own layout.
-  if (isPhone && !embedded) {
+  // Same provider payload, same buildPropsInPlay, same statuses -- one prop
+  // set, two layouts. The phone stacks (src/v3/GamecastMobile.jsx); the desktop
+  // puts score, linescore and leaders beside a 392px PROPS IN PLAY rail
+  // (GamecastDesktop, mock frame 2g). Declared after every hook above so the
+  // branch cannot change the hook order.
+  //
+  // `embedded` is the compact gamecast that folds inside a Games card. It
+  // keeps its own layout at every width -- a full frame inside a card would
+  // be a page inside a row.
+  if (!embedded) {
     const isFinal = game.status === GAME_STATUS.FINAL;
     // The mock's panel is the reader's OWN slip, filtered to this game -- "its
     // counts and its note cannot disagree with 3a because they read the same
@@ -410,6 +416,52 @@ export default function GamecastPage({ game, isMobile, embedded, onBack, onViewP
     const lead = winner || (isActiveStatus(game.status) && scoreOf("away") != null && scoreOf("home") != null
       ? (scoreOf("away") > scoreOf("home") ? "away" : scoreOf("home") > scoreOf("away") ? "home" : null)
       : null);
+    if (!isPhone) {
+      return (
+        <GamecastDesktop
+          onBack={onBack}
+          sport={game.sport}
+          state={isFinal ? "FINAL" : isActiveStatus(game.status) ? "LIVE" : "SCHEDULED"}
+          live={isActiveStatus(game.status)}
+          clock={[status.text, game.venue && game.venue.name].filter(Boolean).join(" · ")}
+          sides={["away", "home"].map((side) => ({
+            side,
+            abbr: game[side] && game[side].abbr,
+            name: (game[side] && (game[side].name || game[side].full)) || "",
+            meta: [game[side] && game[side].record, side.toUpperCase()].filter(Boolean).join(" · "),
+            score: scoreOf(side),
+            lead: lead === side,
+          }))}
+          linescore={detail && detail.columns && detail.rows ? { columns: detail.columns, rows: detail.rows } : null}
+          // Only said when it is true: the note names blank periods, so it must
+          // not appear over a linescore that has none.
+          linescoreNote={detail && detail.rows && detail.rows.some((r) => r.cells.some((c) => c === ""))
+            ? "Periods with no value have not been played. They are blank rather than zero."
+            : null}
+          slipLegs={here}
+          propsInPlay={inPlay.rows}
+          untracked={inPlay.untracked}
+          // `leaders` arrives grouped by team ({ teamAbbr, items }); the mock
+          // draws one flat list of category / player / value.
+          leaders={((detail && detail.leaders) || []).flatMap((t) =>
+            (t.items || []).map((it) => ({
+              cat: String(it.category || "").toUpperCase(),
+              name: it.name,
+              team: t.teamAbbr,
+              value: it.statLine,
+            })))}
+          loading={!loaded}
+          renderAvatar={(p, size) => (
+            <PlayerAvatar
+              name={p.name} alt={p.name} sport={game.sport} team={p.team}
+              headshotSrc={p.avatar} espnId={p.espnId} status={p.status}
+              size={size} inset={2} surface="var(--surface-1)"
+            />
+          )}
+        />
+      );
+    }
+
     return (
       <GamecastMobile
         onBack={onBack}
