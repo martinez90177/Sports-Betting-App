@@ -171,6 +171,28 @@ export default function PlayerDetailDesktop({
 
   const [picked, setPicked] = React.useState(null);
 
+  // The frame fills what is left under the nav, and its three columns scroll
+  // inside it -- the same pattern every other desktop frame uses.
+  //
+  // This was `height: "100%"` with no parent height to resolve against, so it
+  // grew with its content and the *document* scrolled instead. The rails and
+  // the centre already carried `overflowY: auto; min-height: 0`; they simply
+  // never had a bounded height to scroll within, so a long centre column
+  // pushed the whole page down and the rails scrolled with it rather than
+  // independently. Rule 1 of the grid contract, arrived at from the other end.
+  const frameRef = React.useRef(null);
+  const [frameH, setFrameH] = React.useState(null);
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      const el = frameRef.current;
+      if (!el) return;
+      setFrameH(Math.max(420, Math.round(window.innerHeight - el.getBoundingClientRect().top)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   // Escape clears the zoom; the arrows step the line one rung (§3).
   React.useEffect(() => {
     const onKey = (e) => {
@@ -959,7 +981,15 @@ export default function PlayerDetailDesktop({
   const cols = [leftRail ? "236px" : null, "minmax(0, 1fr)", rightRail ? "268px" : null].filter(Boolean).join(" ");
 
   return (
-    <div style={{ position: "relative", display: "flex", flexDirection: "column", minHeight: 0, height: "100%", background: "var(--bg)", color: "var(--text)" }}>
+    <div
+      ref={frameRef}
+      style={{
+        position: "relative", display: "flex", flexDirection: "column", minHeight: 0,
+        height: frameH == null ? "100%" : frameH,
+        overflow: "hidden",
+        background: "var(--bg)", color: "var(--text)",
+      }}
+    >
       {nav}
       {crumb}
 
