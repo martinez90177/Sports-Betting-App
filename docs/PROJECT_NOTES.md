@@ -914,19 +914,53 @@ worth having.
 
 ### What it measures
 
-A frequency histogram of **the stat itself** — one bar per distinct total that
-occurred in the log, over `allGames` rather than the window. Height is how many
-games ended on that exact number; fill is whether that number clears the line.
+One bar per **game**, sorted low to high, over `allGames` rather than the window.
+Height is the total itself, zero-based; fill is whether that game cleared the
+line, which is drawn across the plot as a horizontal cut.
 
 It answers a different question from the form graph above it. That one is
 chronological and margin-from-the-line: *did he clear it, and by how much*. This
-is the **shape** of the output. Two players at 70% on a 20.5 line read
+throws time away and sorts, which is the only way to show where the line sits
+relative to where the output piles up. Two players at 70% on a 20.5 line read
 identically there and completely differently here — one piled up at 21-23, where
 half a point of line movement is dangerous; the other bimodal at 14 and 28,
 where the 70% is riding a few big nights.
 
-No smoothing and no fitted curve. Nothing is drawn between the bars, because
-nothing between them happened.
+Nothing is bucketed, smoothed or interpolated: 17 games in the log draws 17 bars.
+
+### Height is the total, not the frequency — 2026-08-31
+
+It shipped for one day as a frequency histogram: one bar per distinct total,
+height being how many games ended on that number. That was wrong, and Alex
+caught it the day it went live — *"why are bars for lower values appearing
+higher that makes no sense."*
+
+Jared Goff's four best games — 27, 28, 31 and 34 completions, one game each —
+were four of the **shortest** bars on the chart, while 25 towered over them for
+having happened four times. Every label on the axis was a completions total and
+every unit of height was a game count, with nothing on the chart saying so.
+
+Sorting recovers the frequency reading without spending the vertical axis on it:
+a total he lands on often is a run of equal bars side by side, so **height reads
+value and width reads frequency on the same chart**. Each bar carries its own
+label, repeats included — a single number centred over a plateau hid how many
+games were standing under it.
+
+The line matters as much as the bars. Drawn as a horizontal cut, "which games
+cleared" is the ones poking above it, rather than a colour rule with no visible
+cause.
+
+Goff, 17 games: `14 16 18 19 20 20 20 23 23 25 25 25 25 27 28 31 34` against
+26.5. The wall at 25 is the whole read — 4 of 17 at 26.5, still 4 at 25.5, but
+**8 of 17 at 24.5**. The form graph cannot show that, and it is why this chart
+exists.
+
+### A thin log says so
+
+Under five games — the floor `lib/findings.js` uses — the header carries a
+`THIN · N GAMES` chip and the footnote says there is no shape yet instead of
+naming a mode. The bars still draw: rule 6 is that a thin sample *says so*, not
+that it is hidden. The chip is a literal `#e8b13a`, never `--amber`.
 
 ### Two things it does that the v2 version did not
 
@@ -946,6 +980,69 @@ receptions/attempts/completions/TDs, and all of MLB's markets. NFL **yardage is
 excluded** — nearly every value is unique, so the histogram would be one bar per
 game and would say nothing. Below two distinct values it does not draw at all.
 
-Verified on Jaxson Dart, Completions: eleven bars summing to 14 games, and the
-count of games above 18.5 agrees three ways — six from the fill, six from the
-arithmetic, and "6 of 14" in the header.
+Verified on Jared Goff, Completions, at 1440: 17 bars and 17 labels, heights
+ascending left to right, and the four filled bars above the line matching the
+"4 of 17 games clear 26.5" in the header. And on the phone at 375px, Malik
+Willis at four games: the THIN chip and the no-shape footnote.
+
+## The repo lives inside OneDrive — 2026-08-31
+
+`C:\Users\GamerX\OneDrive\Desktop\Sports Betting App` is a synced folder, and
+**OneDrive does not read `.gitignore`.** Everything in the tree syncs, including
+the two directories git is told to ignore.
+
+Before this was dealt with, OneDrive was watching **5,686 files / 101 MB**, of
+which `node_modules` alone was 5,072 — 89% of every file, all of it
+regenerable. `dist` is wiped and rewritten by every `npm run build`. Neither is
+worth a byte of cloud backup, and the churn produced a recurring "Delete these
+items?" dialog listing hundreds of files.
+
+### The reparse-tag trap — this cost two failed attempts
+
+`.git`, `node_modules` and `dist` all reported the **ReparsePoint attribute**
+before anything had been done to them. That reads as "already a junction" and it
+is not: OneDrive Files On-Demand marks placeholders the same way.
+
+Check the **tag**, never the attribute:
+
+| tag | meaning |
+|---|---|
+| `0xa0000003` | a real junction (`IO_REPARSE_TAG_MOUNT_POINT`) |
+| `0x9000e01a` | a OneDrive Files On-Demand placeholder |
+
+```
+fsutil reparsepoint query "<path>"
+```
+
+A guard written against `Attributes -band [IO.FileAttributes]::ReparsePoint`
+silently skipped both directories and reported success having done nothing.
+
+### What is set up now
+
+- `node_modules` and `dist` are **moved to `C:\Users\GamerX\.ppcache\`** with
+  real junctions left in the project. OneDrive skips junctions, so it now sees
+  598 files / 45 MB. Both regenerate from `npm install` and `npm run build`, and
+  the other machine has always built its own.
+- `.git` **stays synced**, deliberately — junctioning it would leave the other
+  computer with a junction pointing at a path that does not exist there. It is
+  instead **pinned always-local** so OneDrive can never dehydrate a git object
+  into a cloud-only stub and hand git a stub mid-operation:
+
+  ```
+  attrib +P -U +H "<repo>\.git"
+  attrib +P -U "<repo>\.git\*" /s /d
+  ```
+
+  The `+H` on the first line is required — `attrib` refuses to touch a hidden
+  folder without it and prints "Not resetting hidden file", changing nothing.
+
+### The delete prompts were mostly not a problem
+
+The 513-file dialog that started this was **git's own gc**: it packed loose
+objects into `pack-2ef50c2a….pack` and deleted the originals. `git fsck` clean,
+287 commits reachable, nothing lost. Answer "Delete all items" to that one — the
+objects are inside the packfile. The same answer applies to the one-off prompt
+after the `node_modules` move.
+
+If a gc prompt is ever unwelcome later, the checkbox in the dialog ("Don't ask
+again for large numbers of deletes") ends it permanently.
