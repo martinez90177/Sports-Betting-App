@@ -21,6 +21,12 @@ import React from "react";
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 
+// The same floor `lib/findings.js` uses. Below it a shape is not a shape: four
+// games at one apiece draw four bars of equal height, which reads as a flat
+// distribution when it is really just a short log. Marked rather than hidden —
+// the rule everywhere else on this site is that a thin sample says so.
+const SUPPORT = 5;
+
 export default function ValuePlot({
   bins = [],
   line,
@@ -53,6 +59,12 @@ export default function ValuePlot({
         <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>
           {`${cleared} of ${total} games clear ${line}`}
         </span>
+        {/* Marked, not hidden. Rule 6: a thin sample says so. */}
+        {total < SUPPORT && (
+          <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", padding: "3px 7px", borderRadius: 5, background: "rgba(232,177,58,0.16)", color: "#e8b13a", whiteSpace: "nowrap", flex: "0 0 auto" }}>
+            {`THIN · ${total} GAME${total === 1 ? "" : "S"}`}
+          </span>
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height }}>
@@ -83,9 +95,11 @@ export default function ValuePlot({
       </div>
 
       <span style={{ fontSize: 11.5, lineHeight: 1.45, color: "var(--dim)" }}>
-        {note || (mode
-          ? `Most often ${mode.value}, in ${mode.count} of ${total} games. Filled bars cleared ${line}, outlined bars fell short. Every game in the log, not the window above.`
-          : `Filled bars cleared ${line}, outlined bars fell short.`)}
+        {total < SUPPORT
+          ? `Too few games to have a shape — ${total} in the log. Filled bars cleared ${line}, outlined bars fell short.`
+          : note || (mode
+            ? `Most often ${mode.value}, in ${mode.count} of ${total} games. Filled bars cleared ${line}, outlined bars fell short. Every game in the log, not the window above.`
+            : `Filled bars cleared ${line}, outlined bars fell short.`)}
       </span>
     </div>
   );
