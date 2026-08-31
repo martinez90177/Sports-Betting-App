@@ -901,3 +901,51 @@ Applied **before** the window, so "L10 vs LHP" is the last ten games against
 left-handers, not whichever of the last ten happened to be. Verified on one
 batter at L10: All +150, vs RHP −100, vs LHP +400, each from its own ten games,
 and the alt-line ladder recounts with it.
+
+## The value distribution — brought back on merit, 2026-08-30
+
+`src/v3/ValuePlot.jsx`, under the alt-line ladder on Player Detail (desktop) and
+under the graph on the Form tab (phone).
+
+**No v3 mock draws it.** It is the one capability the v2 era had that the
+redesign did not carry, and it came back because Alex asked what the deleted
+`viewMode === "matchup"` branch contained and then said to add it if it was
+worth having.
+
+### What it measures
+
+A frequency histogram of **the stat itself** — one bar per distinct total that
+occurred in the log, over `allGames` rather than the window. Height is how many
+games ended on that exact number; fill is whether that number clears the line.
+
+It answers a different question from the form graph above it. That one is
+chronological and margin-from-the-line: *did he clear it, and by how much*. This
+is the **shape** of the output. Two players at 70% on a 20.5 line read
+identically there and completely differently here — one piled up at 21-23, where
+half a point of line movement is dangerous; the other bimodal at 14 and 28,
+where the 70% is riding a few big nights.
+
+No smoothing and no fitted curve. Nothing is drawn between the bars, because
+nothing between them happened.
+
+### Two things it does that the v2 version did not
+
+`matchupBins` bakes `cleared: value > effectiveLine` against the **posted** line.
+The v3 graph is drawn against the **dragged** one, so the component recomputes
+`cleared` itself from the live line and the direction. Dragging the tab now moves
+the fill, which "every number moves with it" requires.
+
+It also states its own denominator — "6 of 14 games clear 18.5" — because it is
+drawn over the whole log while the graph above it is drawn over the window, and
+two different samples on one screen have to say which is which.
+
+### Where it does not appear, deliberately
+
+Each page gates its own countable set: NBA/WNBA counting stats, NFL's
+receptions/attempts/completions/TDs, and all of MLB's markets. NFL **yardage is
+excluded** — nearly every value is unique, so the histogram would be one bar per
+game and would say nothing. Below two distinct values it does not draw at all.
+
+Verified on Jaxson Dart, Completions: eleven bars summing to 14 games, and the
+count of games above 18.5 agrees three ways — six from the fill, six from the
+arithmetic, and "6 of 14" in the header.

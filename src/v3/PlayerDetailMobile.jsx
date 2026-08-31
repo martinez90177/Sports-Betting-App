@@ -1,5 +1,6 @@
 import React from "react";
 import FormPlot, { PLOT, crest } from "./FormPlot.jsx";
+import ValuePlot from "./ValuePlot.jsx";
 import { probToAmericanOdds, formatOdds } from "../odds.js";
 import { STATUS } from "../lib/teamColors.js";
 
@@ -189,6 +190,8 @@ export default function PlayerDetailMobile({
   // Opposing-starter handedness, MLB batters only. Alex asked for it; no mock
   // draws it. Same control and same wording as the desktop rail.
   hands = null,
+  // Where the output lands, under the form graph on the Form tab.
+  distribution = null,
   injuryTeams = null,    // [{ abbr, slug, sport, players: [{ id, name, note, status, effect }] }]
   // Does this league publish an availability feed at all? All four do, off
   // ESPN's per-team roster response -- but the flag stays, because "this
@@ -1327,6 +1330,17 @@ export default function PlayerDetailMobile({
         {threeCell}
         {controlBar}
         {tab === "Form" && formBody}
+        {tab === "Form" && distribution && (
+          <div style={{ padding: "0 12px 12px" }}>
+            <ValuePlot
+              bins={distribution.bins}
+              line={chart ? chart.line : null}
+              direction={(chart && chart.direction) || "over"}
+              label={distribution.label || marketLabel}
+              height={56}
+            />
+          </div>
+        )}
         {tab === "Form" && h2hBody}
         {tab === "Matchup" && matchupBody}
         {tab === "Log" && logBody}

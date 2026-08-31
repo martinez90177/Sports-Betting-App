@@ -3030,6 +3030,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         />
       }
       marketLabel={marketLabel}
+      // Where the output lands, as a frequency histogram over the whole log.
+      // Null where a market has no repeat structure -- each page gates its own
+      // countable set, and a single-bar histogram says nothing.
+      distribution={matchupBins && matchupBins.length > 1 ? { bins: matchupBins, label: marketLabel } : null}
       onBack={onBack || (() => {})}
       onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       watched={watched}
@@ -8672,6 +8676,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         />
       }
       marketLabel={marketLabel}
+      // Where the output lands, as a frequency histogram over the whole log.
+      // Null where a market has no repeat structure -- each page gates its own
+      // countable set, and a single-bar histogram says nothing.
+      distribution={matchupBins && matchupBins.length > 1 ? { bins: matchupBins, label: marketLabel } : null}
       onBack={onBack || (() => {})}
       onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       watched={watched}
@@ -11026,6 +11034,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         />
       }
       marketLabel={marketLabel}
+      // Where the output lands, as a frequency histogram over the whole log.
+      // Null where a market has no repeat structure -- each page gates its own
+      // countable set, and a single-bar histogram says nothing.
+      distribution={matchupBins && matchupBins.length > 1 ? { bins: matchupBins, label: marketLabel } : null}
       onBack={onBack || (() => {})}
       onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       watched={watched}
@@ -16458,6 +16470,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
         />
       }
       marketLabel={marketLabel}
+      // Where the output lands, as a frequency histogram over the whole log.
+      // Null where a market has no repeat structure -- each page gates its own
+      // countable set, and a single-bar histogram says nothing.
+      distribution={matchupBins && matchupBins.length > 1 ? { bins: matchupBins, label: marketLabel } : null}
       onBack={onBack || (() => {})}
       onWatch={() => onToggleWatch && onToggleWatch(buildPageWatch())}
       watched={watched}

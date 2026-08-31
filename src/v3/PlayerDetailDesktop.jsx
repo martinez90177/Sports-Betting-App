@@ -4,6 +4,7 @@ import { probToAmericanOdds, formatOdds } from "../odds.js";
 import { buildRungs } from "../lib/altLines.js";
 import AgeMark from "./AgeMark.jsx";
 import { STATUS } from "../lib/teamColors.js";
+import ValuePlot from "./ValuePlot.jsx";
 
 // A transcription of frame `1a` in `v3 Mocks/PropPalace Desktop v3.dc.html`,
 // the largest frame in the bundle.
@@ -122,6 +123,9 @@ export default function PlayerDetailDesktop({
   onAddPick,
   pickAdded,
   extraBlocks,
+  // Where the output lands, as a frequency histogram. Null on a market with
+  // no repeat structure -- see the gates on each page.
+  distribution = null,
   // v3 additions, the same ones the phone frame takes.
   seasons = null,
   windows = null,
@@ -761,6 +765,15 @@ export default function PlayerDetailDesktop({
             </div>
           ))}
         </div>
+      )}
+
+      {distribution && (
+        <ValuePlot
+          bins={distribution.bins}
+          line={line}
+          direction={(chart && chart.direction) || "over"}
+          label={distribution.label || marketLabel}
+        />
       )}
 
       {extraBlocks}
