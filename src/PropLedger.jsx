@@ -17,6 +17,7 @@ import {
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsMobile from "./v3/SettingsMobile.jsx";
+import SettingsPopover from "./v3/SettingsPopover.jsx";
 import SettingsDesktop from "./v3/SettingsDesktop.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
@@ -25646,7 +25647,12 @@ export default function PropLedger() {
   // The cog goes straight to the settings screen. There is no quick-settings
   // drawer any more: no v3 mock draws one, and the one this replaced held a
   // strict subset of the page's controls behind an extra click.
+  // The quick popover's own open state. The cog opens it; ALL SETTINGS inside
+  // it goes to the screen.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const openFullSettings = useCallback(() => {
+    setSettingsOpen(false);
     setSettingsReturn(page === "settings" ? null : page);
     setPage("settings");
   }, [page]);
@@ -26257,7 +26263,7 @@ export default function PropLedger() {
           page={page}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
           // The watch list, on every page that has a nav -- which is every
           // page except player detail, and that one carries its own control.
           // Until now the only way to read the list was to already be on a
@@ -26302,7 +26308,7 @@ export default function PropLedger() {
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
         />
       )}
 
@@ -26321,7 +26327,7 @@ export default function PropLedger() {
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
         />
       )}
 
@@ -26340,7 +26346,7 @@ export default function PropLedger() {
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
         />
       )}
 
@@ -26359,7 +26365,7 @@ export default function PropLedger() {
             onBack={() => setPage("feed")}
             onNavigate={setPage}
             onHome={goHome}
-            onOpenSettings={openFullSettings}
+            onOpenSettings={() => setSettingsOpen((v) => !v)}
           />
         </MLBPageErrorBoundary>
       )}
@@ -26370,7 +26376,7 @@ export default function PropLedger() {
             page="feed"
             onNavigate={setPage}
             onHome={goHome}
-            onOpenSettings={openFullSettings}
+            onOpenSettings={() => setSettingsOpen((v) => !v)}
             slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
           >
             <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={null} />
@@ -26404,7 +26410,7 @@ export default function PropLedger() {
           page="board"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26435,7 +26441,7 @@ export default function PropLedger() {
           page="findings"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26469,7 +26475,7 @@ export default function PropLedger() {
           navTabs={NAV_TABS}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
           combinedOdds={(() => {
             const open = myPicks.filter((x) => !x.result);
             return open.length ? combineParlayOdds(open.map((x) => x.odds)) : null;
@@ -26481,7 +26487,7 @@ export default function PropLedger() {
           page={null}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
         >
           <MyPicksMobile
             legs={myPicks.filter((x) => !x.result)}
@@ -26511,7 +26517,7 @@ export default function PropLedger() {
           page="injuries"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26532,7 +26538,7 @@ export default function PropLedger() {
           page="games"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
           <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} slipLegs={myPicks.filter((p) => !p.result)} /></LazyPane>
@@ -26545,7 +26551,7 @@ export default function PropLedger() {
           page="news"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={openFullSettings}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26595,6 +26601,15 @@ export default function PropLedger() {
         }
       />
 
+      {/* The quick popover, kept alongside the full screen at Alex's ask.
+          Built from the same v3 field primitives the screen uses, so a value
+          changed here is the same value drawn by the same component there. */}
+      <SettingsPopover
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        isNarrow={isNarrowShell}
+        onOpenFullSettings={openFullSettings}
+      />
     </div>
   );
 }
