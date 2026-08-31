@@ -140,6 +140,21 @@ function LineupCard({ c, renderAvatar }) {
           >
             {c.status === "out" ? "OUT" : "QUEST"}
           </span>
+        ) : c.badge ? (
+          // The roster answer rather than the health one: optioned, DFA'd, or
+          // off the 40-man altogether. A player who left the team has no
+          // availability status to show -- he is not unavailable, he is
+          // somebody else's -- so without this he read as fine.
+          <span
+            style={{
+              fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", padding: "3px 6px",
+              borderRadius: 999, flex: "0 0 auto", whiteSpace: "nowrap",
+              background: c.badge.tone === "out" ? "rgba(239,91,91,0.22)" : c.badge.tone === "warn" ? "rgba(232,177,58,0.22)" : "var(--surface-2)",
+              color: c.badge.tone === "out" ? "#ffb4b4" : c.badge.tone === "warn" ? "#f3d79a" : "var(--dim)",
+            }}
+          >
+            {c.badge.label}
+          </span>
         ) : null}
       </div>
       <span style={{ fontSize: 13.5, fontWeight: 600, color: on ? "#f4f7fb" : "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

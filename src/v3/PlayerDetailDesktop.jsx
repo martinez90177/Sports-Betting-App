@@ -45,6 +45,17 @@ const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+
+// Roster-status chips on a teammate row: IL / GTD / AAA / DFA / "Left team".
+//
+// Literal hexes, never `--amber`. CLAUDE.md rule 2 and the naming trap it
+// names: `--amber` is the user's accent colour off the Settings wheel, so a
+// health chip painted with it turns blue the moment somebody picks blue.
+const BADGE_TONE = {
+  out: { fg: "#ef5b5b", bg: "rgba(239,91,91,0.14)" },
+  warn: { fg: "#e8b13a", bg: "rgba(232,177,58,0.16)" },
+  muted: { fg: "var(--dim)", bg: "var(--surface-2)" },
+};
 const cellLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" };
 const railNote = { fontSize: 11.5, color: "var(--dim)", lineHeight: 1.4 };
 
@@ -833,12 +844,27 @@ export default function PlayerDetailDesktop({
                 border: `1px solid ${on ? "transparent" : "var(--line)"}`,
               }}
             >
-              <span style={{ width: 22, height: 22, borderRadius: 999, flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: MONO, fontSize: 9, background: on ? "rgba(0,0,0,0.28)" : "var(--surface-2)", color: on ? "#f4f7fb" : "var(--text-2)" }}>
-                {c.initials}
-              </span>
+              {/* Rule 1: a named player travels with their face and their
+                  availability. The mock draws an initials circle; PlayerAvatar
+                  is the standing substitution for one, and the phone frame has
+                  always done this. This rail was the last place on a player
+                  page still drawing a bare circle with no status on it. */}
+              {renderAvatar ? renderAvatar(c, 22) : (
+                <span style={{ width: 22, height: 22, borderRadius: 999, flex: "0 0 auto", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: MONO, fontSize: 9, background: on ? "rgba(0,0,0,0.28)" : "var(--surface-2)", color: on ? "#f4f7fb" : "var(--text-2)" }}>
+                  {c.initials}
+                </span>
+              )}
               <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 12.5, color: on ? "#f4f7fb" : "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {c.name}
               </span>
+              {/* Why this row is not what it looks like: IL, optioned, or gone
+                  from the roster entirely. Without it a traded player sat here
+                  reading exactly like an available one. */}
+              {c.badge && (
+                <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", padding: "2px 5px", borderRadius: 4, flex: "0 0 auto", whiteSpace: "nowrap", background: on ? "rgba(0,0,0,0.24)" : BADGE_TONE[c.badge.tone].bg, color: on ? "#f4f7fb" : BADGE_TONE[c.badge.tone].fg }}>
+                  {c.badge.label}
+                </span>
+              )}
               <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", flex: "0 0 auto", color: on ? "#ffffff" : "var(--dim)" }}>{c.state}</span>
               <span style={{ fontFamily: MONO, fontSize: 9.5, flex: "0 0 auto", color: on ? "rgba(255,255,255,0.78)" : "var(--dim)" }}>{c.games}</span>
             </div>

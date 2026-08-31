@@ -1444,6 +1444,13 @@ function buildLineupSheet({
       sport,
       initials: String(person.name || "").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase(),
       status: statusOf ? statusOf(person) : undefined,
+      // {label, tone} -- "IL", "GTD", "AAA", "DFA", or the synthetic "Left
+      // team" the MLB page builds for a player who is on our static roster and
+      // on nobody's 40-man. Dropping it here was why a traded teammate drew
+      // exactly like an available one: the chip rows deliberately keep players
+      // who are gone, because "did he play in these games" is a fair question
+      // about someone who left, and the badge is the only thing that says so.
+      badge: person.badge || null,
       state,
       games: `${games.filter((g) => passesOne(g, person.pid, state)).length} G`,
       onCycle: cycle(person),
