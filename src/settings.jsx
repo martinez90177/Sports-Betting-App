@@ -29,7 +29,7 @@ export const DEFAULTS = {
     // Scales the whole UI, not just type. A token-based control would have
     // been close to a no-op: almost all of this app's sizing is inline pixel
     // values, not var(--fs-*)/var(--s-*), so only the newest code would have
-    // responded to it. See UI_SCALE in SettingsModal.
+    // responded to it. See UI_SCALE in SettingsSections.jsx.
     uiScale: "default", // small | default | large
     timeZone: "auto", // "auto" | an IANA zone name
     reduceMotion: null, // null = follow prefers-reduced-motion

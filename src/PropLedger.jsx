@@ -16,7 +16,6 @@ import {
 } from "./lib/gamesData.js";
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
-import SettingsModal from "./SettingsModal.jsx";
 import SettingsMobile from "./v3/SettingsMobile.jsx";
 import SettingsDesktop from "./v3/SettingsDesktop.jsx";
 import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
@@ -25637,7 +25636,6 @@ export default function PropLedger() {
   const [watched, setWatched] = useState(() => {
     try { return JSON.parse(localStorage.getItem("propPalaceWatch") || "[]"); } catch { return []; }
   });
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // Where "All settings" was opened from. The Settings page is reached from
   // the cog, which is on every screen, so "back" is not a fixed destination --
   // the mock hard-codes "Back to Prop Feed" because a static file has only one
@@ -25645,8 +25643,10 @@ export default function PropLedger() {
   const [settingsReturn, setSettingsReturn] = useState(null);
   // The quick panel's way through to the full page. Records the screen the cog
   // was clicked on so Done and the rail's back link return to it.
+  // The cog goes straight to the settings screen. There is no quick-settings
+  // drawer any more: no v3 mock draws one, and the one this replaced held a
+  // strict subset of the page's controls behind an extra click.
   const openFullSettings = useCallback(() => {
-    setSettingsOpen(false);
     setSettingsReturn(page === "settings" ? null : page);
     setPage("settings");
   }, [page]);
@@ -26257,7 +26257,7 @@ export default function PropLedger() {
           page={page}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
           // The watch list, on every page that has a nav -- which is every
           // page except player detail, and that one carries its own control.
           // Until now the only way to read the list was to already be on a
@@ -26302,7 +26302,7 @@ export default function PropLedger() {
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
         />
       )}
 
@@ -26321,7 +26321,7 @@ export default function PropLedger() {
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
         />
       )}
 
@@ -26340,7 +26340,7 @@ export default function PropLedger() {
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
         />
       )}
 
@@ -26359,7 +26359,7 @@ export default function PropLedger() {
             onBack={() => setPage("feed")}
             onNavigate={setPage}
             onHome={goHome}
-            onOpenSettings={() => setSettingsOpen((v) => !v)}
+            onOpenSettings={openFullSettings}
           />
         </MLBPageErrorBoundary>
       )}
@@ -26370,7 +26370,7 @@ export default function PropLedger() {
             page="feed"
             onNavigate={setPage}
             onHome={goHome}
-            onOpenSettings={() => setSettingsOpen((v) => !v)}
+            onOpenSettings={openFullSettings}
             slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
           >
             <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={null} />
@@ -26404,7 +26404,7 @@ export default function PropLedger() {
           page="board"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26435,7 +26435,7 @@ export default function PropLedger() {
           page="findings"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26469,7 +26469,7 @@ export default function PropLedger() {
           navTabs={NAV_TABS}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
           combinedOdds={(() => {
             const open = myPicks.filter((x) => !x.result);
             return open.length ? combineParlayOdds(open.map((x) => x.odds)) : null;
@@ -26481,7 +26481,7 @@ export default function PropLedger() {
           page={null}
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
         >
           <MyPicksMobile
             legs={myPicks.filter((x) => !x.result)}
@@ -26511,7 +26511,7 @@ export default function PropLedger() {
           page="injuries"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26532,7 +26532,7 @@ export default function PropLedger() {
           page="games"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
           <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} slipLegs={myPicks.filter((p) => !p.result)} /></LazyPane>
@@ -26545,7 +26545,7 @@ export default function PropLedger() {
           page="news"
           onNavigate={setPage}
           onHome={goHome}
-          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onOpenSettings={openFullSettings}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
         >
         <LazyPane minHeight={400}>
@@ -26594,15 +26594,7 @@ export default function PropLedger() {
           || (!isPhoneShell && (page === "feed" || page === "picks"))
         }
       />
-      {/* Reads and writes every preference through the settings context, so
-          the only thing it needs from here is the sportsbook list (which
-          lives in this module) and the breakpoint. */}
-      <SettingsModal
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        isNarrow={isNarrowShell}
-        onOpenFullSettings={openFullSettings}
-      />
+
     </div>
   );
 }
