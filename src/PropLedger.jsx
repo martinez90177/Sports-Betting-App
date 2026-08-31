@@ -3871,18 +3871,99 @@ const NFL_SLUG_BY_ESPN_ID = Object.fromEntries(
   Object.entries(NFL_ESPN_ID).map(([slug, espnId]) => [String(espnId), slug])
 );
 
-// The pool every NFL surface reads. Live players win on collision, since the
-// whole point is that they are current; a hand-written player the live roster
-// doesn't list is kept rather than dropped, because "ESPN didn't return him"
-// and "he isn't on the team" are different facts and only one of them is
-// knowable from a missing row.
-function nflPlayerPool() {
-  if (!NFL_LIVE_PLAYERS.length) return ALL_NFL_PLAYERS;
-  const byId = new Map(ALL_NFL_PLAYERS.map((p) => [p.id, p]));
-  NFL_LIVE_PLAYERS.forEach((p) => byId.set(p.id, { ...(byId.get(p.id) || {}), ...p }));
-  return [...byId.values()];
+// Every name on every live roster, unfiltered by position, as a match key.
+// Unfiltered on purpose: it is the answer to "is this man in the league at
+// all", and NFL_PROP_POSITIONS would make a tight end listed by ESPN as an
+// H-back look retired.
+let NFL_LIVE_ROSTERED = null;
+
+// Suffix-stripping, which newsNameKey deliberately does not do. ESPN says
+// "Deebo Samuel Sr." where the hand-written pool says "Deebo Samuel", and
+// without this the two never meet.
+function nflRosterKey(s) {
+  return String(s || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[.'’`]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(jr|sr|ii|iii|iv|v)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
+// The pool every NFL surface reads. Live players win on collision, since the
+// whole point is that they are current.
+//
+// Matching is by id first and by name second. The id path only works for the
+// 100 players NFL_ESPN_ID has an entry for, and the pool holds 256 -- so for
+// the other 156 a live record could not find its own hand-written row and
+// landed beside it instead. That is two of the same man on two teams: the app
+// carried Jaylen Waddle on Miami and Denver at once, and Deebo Samuel on
+// Washington and San Francisco, because both are in that unmapped 156.
+//
+// Removal waits for full coverage. "ESPN didn't return him" and "he isn't on a
+// team" are different facts, and only a complete answer separates them -- but
+// once all 32 rosters are in, a hand-written player on none of them has been
+// cut or has retired, and keeping him is asserting a roster spot that no longer
+// exists.
+function nflPlayerPool() {
+  if (!NFL_LIVE_PLAYERS.length) return ALL_NFL_PLAYERS;
+
+  const byId = new Map(ALL_NFL_PLAYERS.map((p) => [p.id, p]));
+  const byName = new Map();
+  ALL_NFL_PLAYERS.forEach((p) => {
+    const k = nflRosterKey(p.name);
+    // First writer wins, so two hand-written players sharing a name stay two
+    // rows rather than collapsing into whichever the live roster touched last.
+    if (!byName.has(k)) byName.set(k, p.id);
+  });
+
+  NFL_LIVE_PLAYERS.forEach((p) => {
+    const target = byId.has(p.id) ? p.id : (byName.get(nflRosterKey(p.name)) || p.id);
+    // `id: target` keeps the hand-written slug, which is what saved picks,
+    // watch entries and game logs are already keyed by.
+    byId.set(target, { ...(byId.get(target) || {}), ...p, id: target });
+  });
+
+  const cov = NFL_ROSTER_COVERAGE;
+  const complete = cov && cov.teamsTotal > 0 && cov.teamsLoaded === cov.teamsTotal;
+  if (!complete || !NFL_LIVE_ROSTERED) return [...byId.values()];
+
+  return [...byId.values()].filter((p) => p.espnId || NFL_LIVE_ROSTERED.has(nflRosterKey(p.name)));
+}
+
+
+// One side of a matchup, reconciled against the live pool.
+//
+// NFL_MATCHUPS carries hand-written rosters, and every surface that draws
+// teammates reads them: the teammate rail, the opposing-lineup sheet, the
+// switch-player rail. So the pool being current was not enough on its own --
+// Jaylen Waddle stayed on Miami's teammate rail after moving to Denver, and
+// Terrace Marshall Jr. stayed on it after being released, because neither
+// array had been touched.
+//
+// Hand-written order first, so the page still opens on the quarterback rather
+// than on whoever the roster feed happens to list first, then everyone else
+// the live roster puts on this team. A player the pool moved is on his new
+// team's side instead of this one; a player the pool dropped is on nobody's.
+function nflLiveSide(side) {
+  if (!side || !(side.players || []).length) return side;
+  const abbr = side.players[0].team;
+  const pool = nflPlayerPool();
+  const mine = pool.filter((p) => p.team === abbr);
+  // No live answer for this team yet -- the hand-written side is all there is,
+  // and an empty rail would be a worse lie than a stale one.
+  if (!mine.length) return side;
+
+  const left = new Map(mine.map((p) => [p.id, p]));
+  const players = [];
+  side.players.forEach((p) => {
+    const hit = left.get(p.id);
+    if (hit) { players.push(hit); left.delete(p.id); }
+  });
+  left.forEach((p) => players.push(p));
+  return { ...side, players };
+}
 
 // Each entry is one week's matchup the Prop Ledger can scout -- the "matchup
 // selector" dropdown on the NFL page switches between these, swapping which
@@ -4695,6 +4776,14 @@ function getNFLGames(player) {
   // already handles.
   if (!player) return [];
   if (NFL_REAL_GAME_LOGS[player.id]) return NFL_REAL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
+  // The live fetch stores a log under the id it had at fetch time, which for a
+  // player NFL_ESPN_ID never mapped is `nfl_<espnId>`. nflPlayerPool then
+  // merges that record onto his hand-written row and keeps the hand-written
+  // slug, so the id asked for here is no longer the id the log was filed
+  // under. Same player, same real log, one alias apart.
+  if (player.espnId && NFL_REAL_GAME_LOGS[`nfl_${player.espnId}`]) {
+    return NFL_REAL_GAME_LOGS[`nfl_${player.espnId}`].map((g) => normalizeNFLGame(g, player));
+  }
   // NFL_GAME_LOGS is the 2025 Cowboys, transcribed from real box scores --
   // hand-entered, but not invented. It stays.
   if (NFL_GAME_LOGS[player.id]) return NFL_GAME_LOGS[player.id].map((g) => normalizeNFLGame(g, player));
@@ -7437,9 +7526,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
-  const teamRoster = matchup.teamA;
-  const oppRoster = matchup.teamB;
-  const [playerId, setPlayerId] = useState(teamRoster.players[0].id);
+  // Memoised so the objects stay stable across renders: playerSide below
+  // compares against these by identity, and a fresh object each render would
+  // make it think the player belongs to neither side.
+  const teamRoster = useMemo(() => nflLiveSide(matchup.teamA), [matchup.teamA, dataVersion]);
+  const oppRoster = useMemo(() => nflLiveSide(matchup.teamB), [matchup.teamB, dataVersion]);
+  const [playerId, setPlayerId] = useState(matchup.teamA.players[0].id);
   const [market, setMarket] = useState("passYds");
   // Screen #2 (card 248), a separate render of this same page state -- reached
   // from a game rather than the prop feed. A mode flip rather than a route:
@@ -8572,7 +8664,14 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v3RenderAvatar = (p, size) => (
     <PlayerAvatar
       key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nfl" team={p.team}
-      colorMap={NFL_TEAM_COLORS} headshotSrc={espnHeadshot(p.espnId)}
+      // nflHeadshot, not espnHeadshot: the latter hardcodes /headshots/nba/,
+      // so every NFL athlete id went to the NBA path and came back empty --
+      // which is why this renderer drew bare initials circles for the whole
+      // league while the eight other NFL avatars on this page were fine.
+      colorMap={NFL_TEAM_COLORS} headshotSrc={nflHeadshot(p)}
+      // And it carried no status at all, so none of them had an availability
+      // dot. CLAUDE.md rule 1: no avatar appears without one.
+      status={nflStatusOf(p)}
       surface="var(--bg)" size={size} inset={size >= 56 ? 4 : 2} fadeIn
     />
   );
@@ -24671,6 +24770,9 @@ export default function PropLedger() {
           liveOnly: !p.id,
         }));
       NFL_ROSTER_COVERAGE = { teamsLoaded: res.teamsLoaded, teamsTotal: res.teamsTotal };
+      // Built from res.players before the position filter: this set answers
+      // "is he in the league", not "does he have a market here".
+      NFL_LIVE_ROSTERED = new Set(res.players.map((p) => nflRosterKey(p.name)));
       NFL_ROSTER_STATUS = res.byId || {};
       bumpNflRefresh();
       // Their logs, once we know who they are. Keyed by our slug so a player
