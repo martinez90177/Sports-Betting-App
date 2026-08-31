@@ -12424,7 +12424,19 @@ async function fetchMLBTeamActiveRoster(teamId) {
 function applyActiveRoster(roster, activeRoster) {
   if (!activeRoster || !activeRoster.length) return roster;
   const activeIds = new Set(activeRoster.map((p) => p.mlbId));
-  const kept = roster.players.filter((p) => p.pos === "SP" || activeIds.has(p.mlbId));
+  // The exemption is for the *live* probable starter, not for pitchers as a
+  // class. He comes off the schedule feed rather than the roster fetch, so his
+  // mlbId can legitimately be missing from `activeRoster` -- a call-up making
+  // his first start would be trimmed away and the game drawn with nobody
+  // starting it.
+  //
+  // Blanket-exempting `pos === "SP"` also spared the hand-written pitchers,
+  // which is how Freddy Peralta stayed a Met after moving to Tampa Bay and
+  // Miles Mikolas stayed a National after being released: every batter around
+  // them was reconciled against the real active roster and they were not. A
+  // static pitcher now clears the same bar as everyone else, and only the day's
+  // real probable starter is carried through unconditionally.
+  const kept = roster.players.filter((p) => (p.pos === "SP" && p.liveProbable) || activeIds.has(p.mlbId));
   if (!kept.some((p) => p.pos !== "SP")) return roster;
   return { label: roster.label, players: kept };
 }
@@ -14427,7 +14439,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       ? teamRoster
       : {
           label: teamRoster.label,
-          players: [...teamRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(teamAbbr, live.mlbId), name: live.name, team: teamAbbr, pos: "SP", mlbId: live.mlbId }],
+          players: [...teamRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(teamAbbr, live.mlbId), name: live.name, team: teamAbbr, pos: "SP", mlbId: live.mlbId, liveProbable: true }],
         };
     return reconcileMlbLineup(base, { activeRoster: teamActiveRoster, lineupIds: nextGame?.ourLineupIds, abbr: teamAbbr });
   }, [teamRoster, teamAbbr, nextGame, jumpedPitcher, teamActiveRoster]);
@@ -14439,7 +14451,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       ? oppRoster
       : {
           label: oppRoster.label,
-          players: [...oppRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(nextGame.opp, live.mlbId), name: live.name, team: nextGame.opp, pos: "SP", mlbId: live.mlbId }],
+          players: [...oppRoster.players.filter((p) => p.pos !== "SP"), { id: mlbLivePitcherId(nextGame.opp, live.mlbId), name: live.name, team: nextGame.opp, pos: "SP", mlbId: live.mlbId, liveProbable: true }],
         };
     return reconcileMlbLineup(base, { activeRoster: oppActiveRoster, lineupIds: nextGame?.oppLineupIds, abbr: nextGame.opp });
   }, [oppRoster, nextGame, oppActiveRoster]);
@@ -24538,6 +24550,28 @@ export default function PropLedger() {
     setPage(PAGE_IDS.has(startPage) ? startPage : DEFAULTS.display.startPage);
   }, [startPage]);
 
+  // My Picks is the one screen not on the nav -- it is reached from the slip
+  // dock and from the feed's FULL VIEW, which means the nav cannot show it as
+  // the current page and nothing on it reads as "you are somewhere you can
+  // leave". Remembering where the slip was opened from is what lets the way
+  // out land back there instead of guessing.
+  //
+  // A ref, not the `page` value in a closure: every dock on every screen calls
+  // this, and a callback rebuilt on each page change would have them all
+  // holding a stale one.
+  const [picksReturn, setPicksReturn] = useState(null);
+  const pageRef = React.useRef(page);
+  React.useEffect(() => { pageRef.current = page; }, [page]);
+  const openPicksPage = useCallback(() => {
+    if (pageRef.current !== "picks") setPicksReturn(pageRef.current);
+    setPage("picks");
+  }, []);
+  const leavePicksPage = useCallback(() => {
+    // Never back to itself, and never to a page id that no longer exists.
+    const to = picksReturn && picksReturn !== "picks" && PAGE_IDS.has(picksReturn) ? picksReturn : "feed";
+    setPage(to);
+  }, [picksReturn]);
+
   // Leaving the intro on purpose is what ends the first run -- not rendering
   // it. Someone who loads the page and reloads before engaging has not seen it
   // yet, and spending a once-ever prompt on a bounce is how it gets missed.
@@ -25270,7 +25304,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
-          onOpenSlip={() => setPage("picks")}
+          onOpenSlip={openPicksPage}
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
@@ -25289,7 +25323,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
-          onOpenSlip={() => setPage("picks")}
+          onOpenSlip={openPicksPage}
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
@@ -25308,7 +25342,7 @@ export default function PropLedger() {
           watched={watched}
           onRemoveWatch={removeWatch}
           onOpenProp={goToProp}
-          onOpenSlip={() => setPage("picks")}
+          onOpenSlip={openPicksPage}
           onBack={() => setPage("feed")}
           onNavigate={setPage}
           onHome={goHome}
@@ -25327,7 +25361,7 @@ export default function PropLedger() {
             watched={watched}
             onRemoveWatch={removeWatch}
             onOpenProp={goToProp}
-            onOpenSlip={() => setPage("picks")}
+            onOpenSlip={openPicksPage}
             onBack={() => setPage("feed")}
             onNavigate={setPage}
             onHome={goHome}
@@ -25343,12 +25377,12 @@ export default function PropLedger() {
             onNavigate={setPage}
             onHome={goHome}
             onOpenSettings={() => setSettingsOpen((v) => !v)}
-            slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
+            slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
           >
             <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={null} />
           </V3Shell>
         ) : (
-          <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} picks={myPicks} onOpenPicks={() => setPage("picks")} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
+          <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} picks={myPicks} onOpenPicks={openPicksPage} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
         )
       )}
 
@@ -25377,7 +25411,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
         <LazyPane minHeight={400}>
           <BoardPage
@@ -25408,7 +25442,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
         <LazyPane minHeight={400}>
           <FindingsPage
@@ -25438,10 +25472,11 @@ export default function PropLedger() {
           onRemove={removePick}
           onClear={clearPicks}
           onOpenProp={goToProp}
-          navTabs={NAV_TABS}
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
+          onBack={leavePicksPage}
+          backLabel={(NAV_TABS.find((t) => t.id === picksReturn) || {}).label || null}
           combinedOdds={(() => {
             const open = myPicks.filter((x) => !x.result);
             return open.length ? combineParlayOdds(open.map((x) => x.odds)) : null;
@@ -25484,7 +25519,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
         <LazyPane minHeight={400}>
           <InjuriesPage
@@ -25505,7 +25540,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
           <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} slipLegs={myPicks.filter((p) => !p.result)} /></LazyPane>
         </MaybeV3Shell>
@@ -25518,7 +25553,7 @@ export default function PropLedger() {
           onNavigate={setPage}
           onHome={goHome}
           onOpenSettings={() => setSettingsOpen((v) => !v)}
-          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={() => setPage("picks")} />}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
         <LazyPane minHeight={400}>
           <NewsPageRedesign

@@ -1,9 +1,9 @@
 import React from "react";
+import NavBar from "../NavBar.jsx";
 import PlayerAvatar from "../PlayerAvatar.jsx";
 import { crest } from "./FormPlot.jsx";
 import { INTENTS, TARGETS, fmtAmerican } from "./intentRead.js";
 import useMyPicks from "./useMyPicks.js";
-import AgeMark from "./AgeMark.jsx";
 
 // A transcription of frame `2a` in `v3 Mocks/PropPalace Desktop v3.dc.html`.
 //
@@ -67,10 +67,14 @@ export default function MyPicksDesktop({
   onOpenProp,
   combinedOdds = null,
   // The frame draws the app's nav inside itself. My Picks is not one of the
-  // six nav tabs — it is reached from the slip dock — so NAV_PAGES excludes
-  // it and no NavBar renders above this page.
-  navTabs = null,
+  // six nav tabs — it is reached from the slip dock — so NAV_PAGES excludes it
+  // and no NavBar renders above this page; this one renders its own, from the
+  // same component every other screen uses.
   onNavigate,
+  // The way out. My Picks is not a nav tab, so nothing in the row can be
+  // highlighted to say where you are -- this is stated instead.
+  onBack = null,
+  backLabel = null,
   onHome,
   onOpenSettings,
 }) {
@@ -141,45 +145,40 @@ export default function MyPicksDesktop({
         borderTop: "1px solid var(--line)",
       }}
     >
-      {/* ---- nav row ----------------------------------------------------- */}
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 32, padding: "16px 32px", borderBottom: "1px solid var(--line)" }}>
-        <span
-          role="button"
-          tabIndex={0}
-          onClick={onHome}
-          onKeyDown={(e) => { if (e.key === "Enter") onHome && onHome(); }}
-          style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}
-        >
-          Prop Palace
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 26 }}>
-          {(navTabs || []).map((t) => (
-            <span
-              key={t.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onNavigate && onNavigate(t.id)}
-              onKeyDown={(e) => { if (e.key === "Enter") onNavigate && onNavigate(t.id); }}
-              style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", color: "var(--dim)" }}
-            >
-              {t.label}
-            </span>
-          ))}
-        </span>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+      {/* ---- nav row -----------------------------------------------------
+          The real NavBar, not a copy of it. The copy that used to sit here
+          drew its tabs in `--dim` where NavBar uses `--text-2`, and reserved
+          no underline, so on the one screen where no tab is ever active this
+          row read as a static header rather than as navigation. Alex: "there
+          is no way to get back to prop feed or any other page after hitting
+          full view."
+
+          `page={null}` is honest -- My Picks is not one of the six tabs -- so
+          the way out is stated explicitly beside the cog instead of being left
+          to a highlight that can never appear. */}
+      <NavBar
+        page={null}
+        onNavigate={onNavigate}
+        onHome={onHome}
+        onOpenSettings={onOpenSettings}
+        extraRight={onBack ? (
           <span
             role="button"
             tabIndex={0}
-            onClick={onOpenSettings}
-            onKeyDown={(e) => { if (e.key === "Enter") onOpenSettings && onOpenSettings(); }}
-            style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--dim)", fontSize: 15, cursor: "pointer" }}
+            onClick={onBack}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack(); } }}
+            title="Leave the slip"
+            style={{
+              display: "flex", alignItems: "center", gap: 7, minHeight: 32, padding: "0 12px",
+              borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-1)",
+              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em",
+              cursor: "pointer", whiteSpace: "nowrap",
+            }}
           >
-            ⚙
+            {backLabel ? `← ${backLabel.toUpperCase()}` : "← BACK"}
           </span>
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
-          <AgeMark radius={7} />
-        </span>
-      </div>
+        ) : null}
+      />
 
       {/* ---- tabs, intent, target ---------------------------------------- */}
       <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 20, padding: "14px 32px", borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>

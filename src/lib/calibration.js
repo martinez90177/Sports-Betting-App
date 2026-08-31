@@ -95,6 +95,13 @@ export function ledgerCalibration(picks) {
   return {
     bands,
     worst,
+    // How many of the four bands have enough settled picks behind them to say
+    // anything at all. Three callers already read this -- the two calibration
+    // sentences in useMyPicks and a colour in MyPicksMobile -- and it was never
+    // returned, so it was `undefined` at all three: the "nothing to check
+    // against" branch could not fire, and the sentence after it printed
+    // "undefined of the four bands are readable" on screen.
+    readable: bands.filter((b) => b.count >= CALIBRATION_THIN).length,
     total: rated.length,
     unrated,
     belowFloor: rated.length < CALIBRATION_FLOOR,
