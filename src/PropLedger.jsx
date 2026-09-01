@@ -11582,9 +11582,14 @@ const REDSOX_PLAYERS = [
   // Orioles as part of the return (see ORIOLES_PLAYERS below).
   { id: "rutschman", name: "Adley Rutschman", team: "BOS", pos: "C", mlbId: 668939 },
   { id: "contreras", name: "Willson Contreras", team: "BOS", pos: "1B", mlbId: 575929 },
-  { id: "seigler", name: "Anthony Seigler", team: "BOS", pos: "2B", mlbId: 678011 },
+  // Seigler was optioned to Triple-A Worcester on 2026-08-30 to open a
+  // roster spot for the Anthony/Story activations; Sogard has held the
+  // everyday 2B job since his late-July call-up.
+  { id: "sogard", name: "Nick Sogard", team: "BOS", pos: "2B", mlbId: 686765 },
   { id: "durbin", name: "Caleb Durbin", team: "BOS", pos: "3B", mlbId: 702332 },
-  { id: "monasterio", name: "Andruw Monasterio", team: "BOS", pos: "SS", mlbId: 655316 },
+  // Story (sports hernia surgery) was activated 2026-08-30 and reclaims
+  // everyday shortstop; Monasterio moves back to a utility/2B-platoon role.
+  { id: "story", name: "Trevor Story", team: "BOS", pos: "SS", mlbId: 596115 },
   { id: "duran", name: "Jarren Duran", team: "BOS", pos: "LF", mlbId: 680776 },
   { id: "rafaela", name: "Ceddanne Rafaela", team: "BOS", pos: "CF", mlbId: 678882 },
   { id: "abreu", name: "Wilyer Abreu", team: "BOS", pos: "RF", mlbId: 677800 },
@@ -11820,7 +11825,10 @@ const TWINS_PLAYERS = [
   { id: "rlewis", name: "Royce Lewis", team: "MIN", pos: "3B", mlbId: 668904 },
   { id: "kreidler", name: "Ryan Kreidler", team: "MIN", pos: "SS", mlbId: 668952 },
   { id: "larnach", name: "Trevor Larnach", team: "MIN", pos: "LF", mlbId: 663616 },
-  { id: "buxton", name: "Byron Buxton", team: "MIN", pos: "CF", mlbId: 621439 },
+  // Buxton (right hip impingement, his 3rd IL stint this season) was
+  // placed on the 10-day IL on 2026-08-30; top prospect Jenkins was
+  // called up from Triple-A St. Paul and takes over center field.
+  { id: "wjenkins", name: "Walker Jenkins", team: "MIN", pos: "CF", mlbId: 805805 },
   { id: "amartin", name: "Austin Martin", team: "MIN", pos: "RF", mlbId: 668885 },
   { id: "bell", name: "Josh Bell", team: "MIN", pos: "DH", mlbId: 605137 },
   { id: "prielipp", name: "Connor Prielipp", team: "MIN", pos: "SP", mlbId: 687570 },
