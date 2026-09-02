@@ -11512,7 +11512,10 @@ const DODGERS_PLAYERS = [
   { id: "hernandez", name: "Teoscar Hernández", team: "LAD", pos: "LF", mlbId: 606192 },
   { id: "muncy", name: "Max Muncy", team: "LAD", pos: "3B", mlbId: 571970 },
   { id: "pages", name: "Andy Pages", team: "LAD", pos: "CF", mlbId: 681624 },
-  { id: "rushing", name: "Dalton Rushing", team: "LAD", pos: "C", mlbId: 687221 },
+  // Smith was activated off the 60-day IL (neck) on 2026-09-01, reclaiming
+  // the starting job from Rushing (also just activated) as the Dodgers ease
+  // him back into everyday duty.
+  { id: "wsmith", name: "Will Smith", team: "LAD", pos: "C", mlbId: 669257 },
   { id: "rojas", name: "Miguel Rojas", team: "LAD", pos: "2B", mlbId: 500743 },
   { id: "sheehan", name: "Emmet Sheehan", team: "LAD", pos: "SP", mlbId: 686218 },
 ];
@@ -11524,7 +11527,9 @@ const METS_PLAYERS = [
   { id: "bichette", name: "Bo Bichette", team: "NYM", pos: "3B", mlbId: 666182 },
   { id: "alvarez", name: "Francisco Alvarez", team: "NYM", pos: "C", mlbId: 682626 },
   { id: "polanco", name: "Jorge Polanco", team: "NYM", pos: "DH", mlbId: 593871 },
-  { id: "robert", name: "Luis Robert Jr.", team: "NYM", pos: "CF", mlbId: 673357 },
+  // Claimed off waivers by Baltimore on 2026-08-31; Ewing, the Mets' No. 2
+  // prospect, takes over as the everyday center fielder in his place.
+  { id: "ewing", name: "A.J. Ewing", team: "NYM", pos: "CF", mlbId: 805999 },
   { id: "benge", name: "Carson Benge", team: "NYM", pos: "RF", mlbId: 701807 },
   { id: "taylor", name: "Tyrone Taylor", team: "NYM", pos: "LF", mlbId: 621438 },
   { id: "wagaman", name: "Eric Wagaman", team: "NYM", pos: "1B", mlbId: 676572 },
@@ -11820,7 +11825,10 @@ const TWINS_PLAYERS = [
   { id: "rlewis", name: "Royce Lewis", team: "MIN", pos: "3B", mlbId: 668904 },
   { id: "kreidler", name: "Ryan Kreidler", team: "MIN", pos: "SS", mlbId: 668952 },
   { id: "larnach", name: "Trevor Larnach", team: "MIN", pos: "LF", mlbId: 663616 },
-  { id: "buxton", name: "Byron Buxton", team: "MIN", pos: "CF", mlbId: 621439 },
+  // Placed on the 10-day IL (right hip impingement, his third such stint
+  // this year) on 2026-08-30 with no return timetable; Jenkins, the Twins'
+  // top prospect, has taken over in center.
+  { id: "wjenkins", name: "Walker Jenkins", team: "MIN", pos: "CF", mlbId: 805805 },
   { id: "amartin", name: "Austin Martin", team: "MIN", pos: "RF", mlbId: 668885 },
   { id: "bell", name: "Josh Bell", team: "MIN", pos: "DH", mlbId: 605137 },
   { id: "prielipp", name: "Connor Prielipp", team: "MIN", pos: "SP", mlbId: 687570 },
