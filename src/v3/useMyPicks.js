@@ -1,5 +1,6 @@
 import React from "react";
-import { INTENTS, intentRead, intentMoves, readSummary } from "./intentRead.js";
+import { useSettings } from "../settings.jsx";
+import { INTENTS, TARGETS, intentRead, intentMoves, readSummary } from "./intentRead.js";
 
 // Everything both My Picks frames derive from the slip.
 //
@@ -22,11 +23,25 @@ export default function useMyPicks({
   calibration = null,
 }) {
   const [tab, setTab] = React.useState("Slip");
-  const [intentId, setIntentId] = React.useState("safe");
-  const [target, setTarget] = React.useState(300);
   const [ledgerFilter, setLedgerFilter] = React.useState("All");
 
-  const intent = INTENTS.find((i) => i.id === intentId) || INTENTS[0];
+  // Which tab is showing is this frame's business and dies with it. What the
+  // reader is *building*, and what price they are building toward, are not --
+  // those are preferences, and they used to reset to "safe" every time the
+  // slip was reopened or the window crossed the phone/desktop breakpoint,
+  // silently re-flagging every leg against an objective nobody chose.
+  const settings = useSettings();
+  const stored = settings.picks || {};
+
+  // A stored id that no longer exists (an intent renamed in a later release)
+  // resolves to the default rather than leaving `intent` undefined and taking
+  // every read down with it.
+  const intent = INTENTS.find((i) => i.id === stored.intent) || INTENTS[0];
+  const intentId = intent.id;
+  const setIntentId = React.useCallback((id) => settings.set("picks", "intent", id), [settings]);
+
+  const target = TARGETS.includes(stored.target) ? stored.target : 300;
+  const setTarget = React.useCallback((v) => settings.set("picks", "target", v), [settings]);
 
   // Every rate on this screen is the leg's own, counted when it was added --
   // `hitRate`, `gamesOver` and `gamesCounted` were written together by
@@ -43,6 +58,10 @@ export default function useMyPicks({
     alt: p.mainLine != null && p.line != null && p.line !== p.mainLine,
     avail: p.status || null,
     defRank: (p.snap && p.snap.rank) != null ? p.snap.rank : null,
+    // Snapshotted by the player page at add-time (see roleNoteFor in
+    // PropLedger). Absent on legs added from the feed's + button, which has no
+    // participation record loaded to count one from.
+    roleNote: p.roleNote || null,
     odds: p.odds,
     opp: p.opp,
     avatar: p.avatar,
@@ -57,7 +76,7 @@ export default function useMyPicks({
     ? view.reduce((a, l) => a * l.rate, 1)
     : null;
 
-  const read = view.map((l) => intentRead(l, intent, null));
+  const read = view.map((l) => intentRead(l, intent, l.roleNote));
   const rs = readSummary(read, intent);
   const am = combinedOdds;
   const short = am == null || am < target;

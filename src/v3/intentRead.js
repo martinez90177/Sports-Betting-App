@@ -16,8 +16,9 @@
 // And the two traps that document records from the design:
 //
 //   * A teammate on the injury report is not evidence about someone else's
-//     market. The lineup branch fires only on a finding the app has logged
-//     *for this player* naming the absence -- see `roleNotesFor`.
+//     market. The lineup branch fires only on a split the app has actually
+//     counted *for this player* against that absence -- see `roleNoteFor` in
+//     PropLedger, which snapshots one onto a pick as it is added.
 //   * Never assert a direction nothing counted. "He is out, so this cuts your
 //     way" is a claim the data does not support. State the logged fact and its
 //     sample; let the reader draw the arrow.
@@ -59,6 +60,62 @@ export const INTENTS = [
 
 export const TARGETS = [100, 300, 600, 1200];
 
+// ---- the three flags, said in one place ---------------------------------
+//
+// Three, and only three, and each one means the same thing on every surface
+// that draws it. This block exists because it did not: the dock had no flags
+// at all, the desktop legend said "a counted fact points the other way" and
+// the phone said "works against this build" for the same flag, and both froze
+// their chip backgrounds as `rgba(232,177,58,0.14)` -- a literal green and a
+// literal amber that keep the default palette after someone has switched the
+// outcome colours in Settings.
+
+const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+
+export const FLAGS = ["FITS", "CHECK", "AGAINST"];
+
+// Said once, in the legend, rather than left to be inferred from a colour.
+export const FLAG_MEANS = {
+  FITS: "nothing counted argues against it",
+  CHECK: "read it before you place it",
+  AGAINST: "works against this build",
+};
+
+// CHECK is `--warn`, not `--status-questionable`. The availability tokens
+// carry health and nothing else (`CLAUDE.md`, avatar rule 2); a slip flag
+// borrowing one would put the same amber on a leg for two unrelated reasons
+// -- "he is questionable" and "you are building a safe slip and this is 64%"
+// -- with no way to tell which is being said.
+export const FLAG_TONE = {
+  FITS: "var(--pos)",
+  CHECK: "var(--warn)",
+  AGAINST: "var(--neg)",
+};
+
+export const toneOf = (flag) => FLAG_TONE[flag] || FLAG_TONE.CHECK;
+
+// Mixed live against the token rather than frozen as an rgba, so the chip
+// follows the outcome palette a reader picked in Settings. `color-mix` with a
+// `var()` resolves at paint, which is the whole point -- the alternative
+// needs the hex at authoring time, and the hex is the user's.
+export function flagChipStyle(flag) {
+  const tone = toneOf(flag);
+  return {
+    fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "3px 7px",
+    borderRadius: 4, whiteSpace: "nowrap", lineHeight: 1.2,
+    border: `1px solid ${tone}`,
+    background: `color-mix(in srgb, ${tone} 14%, transparent)`,
+    color: tone,
+  };
+}
+
+// A leg card carries its flag in the border, at half strength so it frames
+// rather than shouts. FITS gets the ordinary line: nothing to read means
+// nothing to draw attention to.
+export function flagCardBorder(flag) {
+  return flag === "FITS" ? "var(--line)" : `color-mix(in srgb, ${toneOf(flag)} 50%, transparent)`;
+}
+
 // "a safe build" but "an alt-leg build": the article follows the word.
 const articleFor = (word) =>
   ("aeiou".indexOf(String(word).charAt(0).toLowerCase()) >= 0 ? "an" : "a");
@@ -76,14 +133,20 @@ export function intentRead(l, intent, roleNote) {
   const rank = l.defRank != null ? `opposing defence ranked #${l.defRank} of ${teams} for this market` : null;
 
   // A logged role change outranks the rest, because it changes what the log is
-  // measuring. Only a finding that names this player AND the absence counts --
-  // a teammate being out is not by itself evidence about his market, and the
-  // effect's direction is not asserted, because nothing counted it.
+  // measuring. The note is built by `roleNoteFor` in PropLedger and snapshotted
+  // onto the pick when it is added; it exists only where the app has actually
+  // counted games with and without the absent teammate.
+  //
+  // The tail is fixed here rather than written into the note because it is the
+  // one thing that is true of every such leg: a leg carries a single hit rate
+  // over its window, and that rate does not split into with and without. The
+  // direction is still not asserted -- `why` states both halves and neither is
+  // called the better one.
   if (roleNote) {
     return {
       ...base,
       flag: "CHECK",
-      say: `The app has logged a role change for ${l.name} with a teammate out. That changes what the games behind this rate were measuring; it does not say which way.`,
+      say: `${roleNote.why} The rate on this leg does not separate the two.`,
       cite: `logged: ${roleNote.split} · ${roleNote.hits} of ${roleNote.n} in that role`,
     };
   }
@@ -228,7 +291,7 @@ export function readSummary(read, intent) {
     count: bad || check
       ? `${bad ? `${bad} against` : ""}${bad && check ? " · " : ""}${check ? `${check} to check` : ""}`
       : `all ${read.length} fit`,
-    tone: bad ? "var(--neg)" : check ? "var(--status-questionable)" : "var(--pos)",
+    tone: bad ? FLAG_TONE.AGAINST : check ? FLAG_TONE.CHECK : FLAG_TONE.FITS,
   };
 }
 

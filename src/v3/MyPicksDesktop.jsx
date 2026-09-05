@@ -2,7 +2,9 @@ import React from "react";
 import NavBar from "../NavBar.jsx";
 import PlayerAvatar from "../PlayerAvatar.jsx";
 import { crest } from "./FormPlot.jsx";
-import { INTENTS, TARGETS, fmtAmerican } from "./intentRead.js";
+import {
+  INTENTS, TARGETS, FLAGS, FLAG_MEANS, fmtAmerican, flagChipStyle, flagCardBorder,
+} from "./intentRead.js";
 import useMyPicks from "./useMyPicks.js";
 
 // A transcription of frame `2a` in `v3 Mocks/PropPalace Desktop v3.dc.html`.
@@ -31,19 +33,11 @@ const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: 
 // The three flags, and only three. FITS / CHECK / AGAINST — a leg is never
 // unflagged, because "we have nothing to say about this" is itself one of the
 // three and gets said.
-const FLAG_TONE = {
-  FITS: { fg: "var(--pos)", bg: "var(--pos-dim)" },
-  CHECK: { fg: "var(--status-questionable)", bg: "rgba(232,177,58,0.16)" },
-  AGAINST: { fg: "var(--neg)", bg: "var(--neg-dim)" },
-};
-
-function flagChip(flag) {
-  const t = FLAG_TONE[flag] || FLAG_TONE.CHECK;
-  return {
-    fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", padding: "3px 7px",
-    borderRadius: 5, background: t.bg, color: t.fg, whiteSpace: "nowrap",
-  };
-}
+//
+// The chip itself comes from `intentRead.js` now. The copy that used to sit
+// here froze CHECK as `rgba(232,177,58,0.16)`, which kept the default amber
+// after someone had changed the outcome palette in Settings, and it read the
+// availability token for a flag that has nothing to do with health.
 
 function pickBtn(on) {
   return {
@@ -81,7 +75,7 @@ export default function MyPicksDesktop({
   const {
     calLine, tab, setTab, intent, intentId, setIntentId, target, setTarget,
     ledgerFilter, setLedgerFilter,
-    view, combinedRate, read, moves, short, am,
+    view, combinedRate, read, rs, moves, short, am,
     ledgerRows, ledgerCount,
   } = useMyPicks({ legs, settled, correlationGroups, combinedOdds, calibration });
 
@@ -100,21 +94,16 @@ export default function MyPicksDesktop({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
-  const bad = read.filter((r) => r.flag === "AGAINST").length;
-  const check = read.filter((r) => r.flag === "CHECK").length;
-  const readCount = bad || check
-    ? `${bad ? `${bad} against` : ""}${bad && check ? " · " : ""}${check ? `${check} to check` : ""}`
-    : `all ${read.length} fit`;
-
+  // The counts, the headline and the verdict dot come from `readSummary` in
+  // the engine. They used to be recomputed here, which is how this screen came
+  // to say "legs need a look before it settles" for the same slip the phone
+  // described as "something worth reading before you place it" -- two
+  // sentences for one fact, drifting apart every time either was edited.
   const article = /^[aeiou]/i.test(intent.label) ? "an" : "a";
   const kind = intent.label.toLowerCase();
   const readHeadline = read.length === 0
     ? "Nothing on the slip yet. The read fills in as legs are added."
-    : bad
-      ? `${bad} ${bad === 1 ? "leg works" : "legs work"} against ${article} ${kind} build. ${intent.against}`
-      : check
-        ? `Nothing here contradicts ${article} ${kind} build, but ${check} ${check === 1 ? "leg needs" : "legs need"} a look before it settles.`
-        : `Every leg fits ${article} ${kind} build.`;
+    : rs.headline;
 
   // The combined number is these rates multiplied, and it is labelled as
   // exactly that. It is not a price and no book priced it.
@@ -314,7 +303,7 @@ export default function MyPicksDesktop({
                         </span>
                       </span>
                       <span style={{ display: "flex", justifyContent: "center" }}>
-                        {r && <span style={flagChip(r.flag)}>{r.flag}</span>}
+                        {r && <span style={flagChipStyle(r.flag)}>{r.flag}</span>}
                       </span>
                       <span
                         role="button"
@@ -337,14 +326,10 @@ export default function MyPicksDesktop({
 
               <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 18, padding: "14px 24px", borderTop: "1px solid var(--line)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  {[
-                    ["FITS", "nothing counted argues against it"],
-                    ["CHECK", "something to look at before it settles"],
-                    ["AGAINST", "a counted fact points the other way"],
-                  ].map(([label, means]) => (
+                  {FLAGS.map((label) => (
                     <span key={label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <span style={flagChip(label)}>{label}</span>
-                      <span style={{ fontSize: 12, color: "var(--dim)", whiteSpace: "nowrap" }}>{means}</span>
+                      <span style={flagChipStyle(label)}>{label}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--dim)", whiteSpace: "nowrap" }}>{FLAG_MEANS[label]}</span>
                     </span>
                   ))}
                 </div>
@@ -415,7 +400,7 @@ export default function MyPicksDesktop({
                       {r.hitRate == null ? "unrated" : `claimed ${Math.round(r.hitRate * 100)}%`}
                     </span>
                     <span style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <span style={flagChip(r.result === "won" ? "FITS" : r.result === "lost" ? "AGAINST" : "CHECK")}>
+                      <span style={flagChipStyle(r.result === "won" ? "FITS" : r.result === "lost" ? "AGAINST" : "CHECK")}>
                         {String(r.result || "open").toUpperCase()}
                       </span>
                     </span>
@@ -438,9 +423,9 @@ export default function MyPicksDesktop({
         <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", padding: "20px 20px 30px", display: "flex", flexDirection: "column", gap: 18 }}>
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", padding: 15, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 999, display: "block", flex: "0 0 auto", background: bad ? "var(--neg)" : check ? "var(--status-questionable)" : "var(--pos)" }} />
+              <span style={{ width: 9, height: 9, borderRadius: 999, display: "block", flex: "0 0 auto", background: rs.tone }} />
               <span style={micro}>THE READ</span>
-              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{readCount}</span>
+              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{rs.count}</span>
             </div>
             <span style={{ fontSize: 14, lineHeight: 1.5, color: "var(--text)", textWrap: "pretty" }}>{readHeadline}</span>
             <span style={{ fontFamily: MONO, fontSize: 11.5, lineHeight: 1.5, color: "var(--amber-ink)" }}>{readPrice}</span>
@@ -450,9 +435,9 @@ export default function MyPicksDesktop({
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={micro}>WHAT THE FLAGS REST ON</span>
               {read.map((r) => (
-                <div key={r.key} style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", padding: "11px 13px", display: "flex", flexDirection: "column", gap: 6 }}>
+                <div key={r.key} style={{ border: `1px solid ${flagCardBorder(r.flag)}`, borderRadius: 10, background: "var(--surface-1)", padding: "11px 13px", display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-                    <span style={flagChip(r.flag)}>{r.flag}</span>
+                    <span style={flagChipStyle(r.flag)}>{r.flag}</span>
                     <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: "1 1 auto" }}>{r.name}</span>
                   </div>
                   <span style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}>{r.say}</span>
