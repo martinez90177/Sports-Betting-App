@@ -11820,7 +11820,10 @@ const TWINS_PLAYERS = [
   { id: "rlewis", name: "Royce Lewis", team: "MIN", pos: "3B", mlbId: 668904 },
   { id: "kreidler", name: "Ryan Kreidler", team: "MIN", pos: "SS", mlbId: 668952 },
   { id: "larnach", name: "Trevor Larnach", team: "MIN", pos: "LF", mlbId: 663616 },
-  { id: "buxton", name: "Byron Buxton", team: "MIN", pos: "CF", mlbId: 621439 },
+  // Buxton (recurring right hip impingement, 3rd IL stint of 2026, no return
+  // timetable) has given way to rookie Walker Jenkins, up since his Aug. 28
+  // debut and the everyday center fielder since.
+  { id: "jenkins", name: "Walker Jenkins", team: "MIN", pos: "CF", mlbId: 805805 },
   { id: "amartin", name: "Austin Martin", team: "MIN", pos: "RF", mlbId: 668885 },
   { id: "bell", name: "Josh Bell", team: "MIN", pos: "DH", mlbId: 605137 },
   { id: "prielipp", name: "Connor Prielipp", team: "MIN", pos: "SP", mlbId: 687570 },
