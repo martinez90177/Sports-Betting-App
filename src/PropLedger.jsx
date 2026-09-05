@@ -1247,6 +1247,60 @@ function absenceEffectCopy(split, line, personName) {
   };
 }
 
+// The one input branch 1 of the intent read needs (`src/v3/intentRead.js`),
+// snapshotted onto a pick at the moment it is added.
+//
+// Snapshotted rather than derived on the slip because the split is counted off
+// a participation record only a player page loads -- `useParticipation` for the
+// three ESPN leagues, `boxscoreLineups` for MLB. The slip holds no game logs at
+// all, so deriving it there would mean fetching four leagues' boxscores to draw
+// a betslip.
+//
+// What it is allowed to say is narrow, and deliberately so:
+//
+//   * Only a teammate this app has actually counted games without -- an `ok`
+//     split, which is ABSENCE_MIN_GAMES or more without them. A thin, pending
+//     or unsupported row has nothing counted behind it and is not a finding.
+//   * Only when at least that many games were played *with* them too. A log
+//     that is already almost all without-games is already measuring tonight's
+//     role, and there is nothing to flag.
+//   * Never a direction. Both halves are stated and neither is called the
+//     better one. "He is out, so this cuts your way" is exactly the claim the
+//     data does not make, and the trap the design doc records twice.
+//
+// Where several teammates qualify, the one whose availability shaped the most
+// of the log wins. That is a neutral tie-break; ranking them by whose absence
+// moved the rate most would assert the effect this refuses to assert.
+function roleNoteFor(absences) {
+  const usable = (absences || []).filter(
+    (r) => r && r.split && r.split.state === "ok"
+      && r.split.gamesWith >= ABSENCE_MIN_GAMES
+      && r.split.gamesWithout > 0
+  );
+  if (!usable.length) return null;
+
+  const best = usable.reduce((a, b) => (b.split.gamesWith > a.split.gamesWith ? b : a));
+  const sp = best.split;
+  const short = familyName(best.name);
+  const listedAs = best.status === "questionable" ? "questionable" : "out";
+
+  return {
+    teammate: best.name,
+    status: listedAs,
+    // Past tense on purpose. A pick sits in localStorage for days and the
+    // teammate may be back before it is read; "is listed out" would then be a
+    // false sentence rendered off stale storage, which is the thing CLAUDE.md
+    // rule 2 exists to stop. What was logged when the leg was added stays true.
+    why: `${best.name} was listed ${listedAs} when this leg was added. `
+      + `Of the games this app holds a participation record for, ${sp.gamesWith} `
+      + `were played with ${short} available and ${sp.gamesWithout} without.`,
+    // Reads as "logged: without Nacua · 4 of 6 in that role".
+    split: `without ${short}`,
+    hits: sp.overWithout,
+    n: sp.gamesWithout,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // The teammate filter, for the three ESPN leagues
 // ---------------------------------------------------------------------------
@@ -1385,6 +1439,10 @@ function espnAbsenceRows({ absent = [], allGames = [], byEvent, valueOf, line, h
       note: noteFor ? noteFor(p.status) : null,
       effect,
       count,
+      // The counted split itself, not only the sentence drawn from it.
+      // `roleNoteFor` needs both halves to snapshot onto a pick, and reading
+      // them back out of `effect` would be parsing prose for numbers.
+      split,
     };
   });
 }
@@ -2654,6 +2712,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     logValues: values.slice(),
     addedAt: Date.now(),
     marketLabel: market,
+    // What the app had logged about this player's role when the leg was
+    // added: a teammate out, and how this market went in the games they
+    // missed. Snapshotted because the slip cannot recount it -- see
+    // roleNoteFor. Null whenever nothing was counted, which is most legs.
+    roleNote: roleNoteFor(nbaAbsences),
   });
 
 
@@ -8411,6 +8474,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     logValues: values.slice(),
     addedAt: Date.now(),
     marketLabel: market,
+    // What the app had logged about this player's role when the leg was
+    // added: a teammate out, and how this market went in the games they
+    // missed. Snapshotted because the slip cannot recount it -- see
+    // roleNoteFor. Null whenever nothing was counted, which is most legs.
+    roleNote: roleNoteFor(nflAbsences),
   });
 
   // ---------------------------------------------------------------------
@@ -10245,16 +10313,13 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const absences = useMemo(() => {
     if (!playerLogIsReal) {
       return absentTeammates.map((p) => {
-        const { effect, count } = absenceEffectCopy(
-          { state: "unsupported", reason: "This player's game log is the generated fallback, not a real one, so there is nothing here worth splitting." },
-          effectiveLine,
-          p.name
-        );
+        const unsupported = { state: "unsupported", reason: "This player's game log is the generated fallback, not a real one, so there is nothing here worth splitting." };
+        const { effect, count } = absenceEffectCopy(unsupported, effectiveLine, p.name);
         return {
           name: p.name, team: p.team, position: p.pos, espnId: p.espnId,
           headshotSrc: wnbaHeadshot(p.espnId), status: p.status,
           note: p.status === "out" ? "Listed out on ESPN's availability report" : "Listed questionable on ESPN's availability report",
-          effect, count,
+          effect, count, split: unsupported,
         };
       });
     }
@@ -10744,6 +10809,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     logValues: values.slice(),
     addedAt: Date.now(),
     marketLabel: market,
+    // What the app had logged about this player's role when the leg was
+    // added: a teammate out, and how this market went in the games they
+    // missed. Snapshotted because the slip cannot recount it -- see
+    // roleNoteFor. Null whenever nothing was counted, which is most legs.
+    roleNote: roleNoteFor(absences),
   });
 
   // ---------------------------------------------------------------------
@@ -14967,6 +15037,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       note: p.badge.label === "IL" ? "On the injured list" : "Day to day",
       effect,
       count,
+      split,
     };
   }), [mlbAbsentTeammates, mlbSplitGames, statValueFn, effectiveLine, boxscoreLineups]);
 
@@ -15984,6 +16055,11 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     logValues: values.slice(),
     addedAt: Date.now(),
     marketLabel: market,
+    // What the app had logged about this player's role when the leg was
+    // added: a teammate out, and how this market went in the games they
+    // missed. Snapshotted because the slip cannot recount it -- see
+    // roleNoteFor. Null whenever nothing was counted, which is most legs.
+    roleNote: roleNoteFor(mlbAbsences),
   });
 
   // ---------------------------------------------------------------------

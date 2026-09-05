@@ -16,8 +16,9 @@
 // And the two traps that document records from the design:
 //
 //   * A teammate on the injury report is not evidence about someone else's
-//     market. The lineup branch fires only on a finding the app has logged
-//     *for this player* naming the absence -- see `roleNotesFor`.
+//     market. The lineup branch fires only on a split the app has actually
+//     counted *for this player* against that absence -- see `roleNoteFor` in
+//     PropLedger, which snapshots one onto a pick as it is added.
 //   * Never assert a direction nothing counted. "He is out, so this cuts your
 //     way" is a claim the data does not support. State the logged fact and its
 //     sample; let the reader draw the arrow.
@@ -132,14 +133,20 @@ export function intentRead(l, intent, roleNote) {
   const rank = l.defRank != null ? `opposing defence ranked #${l.defRank} of ${teams} for this market` : null;
 
   // A logged role change outranks the rest, because it changes what the log is
-  // measuring. Only a finding that names this player AND the absence counts --
-  // a teammate being out is not by itself evidence about his market, and the
-  // effect's direction is not asserted, because nothing counted it.
+  // measuring. The note is built by `roleNoteFor` in PropLedger and snapshotted
+  // onto the pick when it is added; it exists only where the app has actually
+  // counted games with and without the absent teammate.
+  //
+  // The tail is fixed here rather than written into the note because it is the
+  // one thing that is true of every such leg: a leg carries a single hit rate
+  // over its window, and that rate does not split into with and without. The
+  // direction is still not asserted -- `why` states both halves and neither is
+  // called the better one.
   if (roleNote) {
     return {
       ...base,
       flag: "CHECK",
-      say: `The app has logged a role change for ${l.name} with a teammate out. That changes what the games behind this rate were measuring; it does not say which way.`,
+      say: `${roleNote.why} The rate on this leg does not separate the two.`,
       cite: `logged: ${roleNote.split} · ${roleNote.hits} of ${roleNote.n} in that role`,
     };
   }

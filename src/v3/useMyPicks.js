@@ -58,6 +58,10 @@ export default function useMyPicks({
     alt: p.mainLine != null && p.line != null && p.line !== p.mainLine,
     avail: p.status || null,
     defRank: (p.snap && p.snap.rank) != null ? p.snap.rank : null,
+    // Snapshotted by the player page at add-time (see roleNoteFor in
+    // PropLedger). Absent on legs added from the feed's + button, which has no
+    // participation record loaded to count one from.
+    roleNote: p.roleNote || null,
     odds: p.odds,
     opp: p.opp,
     avatar: p.avatar,
@@ -72,7 +76,7 @@ export default function useMyPicks({
     ? view.reduce((a, l) => a * l.rate, 1)
     : null;
 
-  const read = view.map((l) => intentRead(l, intent, null));
+  const read = view.map((l) => intentRead(l, intent, l.roleNote));
   const rs = readSummary(read, intent);
   const am = combinedOdds;
   const short = am == null || am < target;
