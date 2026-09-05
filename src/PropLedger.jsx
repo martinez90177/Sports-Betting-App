@@ -11596,7 +11596,9 @@ const METS_PLAYERS = [
   { id: "bichette", name: "Bo Bichette", team: "NYM", pos: "3B", mlbId: 666182 },
   { id: "alvarez", name: "Francisco Alvarez", team: "NYM", pos: "C", mlbId: 682626 },
   { id: "polanco", name: "Jorge Polanco", team: "NYM", pos: "DH", mlbId: 593871 },
-  { id: "robert", name: "Luis Robert Jr.", team: "NYM", pos: "CF", mlbId: 673357 },
+  // Robert was claimed off waivers by Baltimore on 2026-09-01 (see
+  // ORIOLES_PLAYERS); Ewing has taken over center field in his place.
+  { id: "ewing", name: "A.J. Ewing", team: "NYM", pos: "CF", mlbId: 805999 },
   { id: "benge", name: "Carson Benge", team: "NYM", pos: "RF", mlbId: 701807 },
   { id: "taylor", name: "Tyrone Taylor", team: "NYM", pos: "LF", mlbId: 621438 },
   { id: "wagaman", name: "Eric Wagaman", team: "NYM", pos: "1B", mlbId: 676572 },
@@ -11627,9 +11629,10 @@ const ORIOLES_PLAYERS = [
   { id: "alonso", name: "Pete Alonso", team: "BAL", pos: "1B", mlbId: 624413 },
   { id: "mayo", name: "Coby Mayo", team: "BAL", pos: "3B", mlbId: 691723 },
   { id: "encarnacion", name: "Christian Encarnacion-Strand", team: "BAL", pos: "DH", mlbId: 687952 },
-  // Ward was flipped to Seattle days after arriving (see MARINERS_PLAYERS);
-  // Beavers gets the everyday look in left as a result.
-  { id: "beavers", name: "Dylan Beavers", team: "BAL", pos: "LF", mlbId: 687637 },
+  // Claimed off waivers from the Mets on 2026-09-01 (postseason-eligibility
+  // waiver window) and has taken over left field; Beavers -- who'd taken the
+  // job after the Ward flip to Seattle -- is now the bench option.
+  { id: "robert", name: "Luis Robert Jr.", team: "BAL", pos: "LF", mlbId: 673357 },
   { id: "cowser", name: "Colton Cowser", team: "BAL", pos: "CF", mlbId: 681297 },
   { id: "oneill", name: "Tyler O'Neill", team: "BAL", pos: "RF", mlbId: 641933 },
   // Came back from Boston in the Rutschman trade, taking over behind the plate.
