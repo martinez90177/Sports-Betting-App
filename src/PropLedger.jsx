@@ -17825,30 +17825,61 @@ const FEED_LABEL = {
   fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
 };
 
+// The rate group -- L5 / L10 / L20 / H2H / this season / last -- as one flex
+// row that fills the table's trailing `1fr` track and divides it evenly.
+//
+// One function, called by the header and by every row, because the header's
+// labels have to sit exactly over the cells they name. Two copies of the
+// template is how a seventh column (the reader's own window) ends up inserted
+// in one of them and not the other.
+const feedRateGroup = { display: "flex", gap: 10, flex: "1 1 auto", minWidth: 0 };
+// Every cell takes an equal share and is allowed to shrink to nothing rather
+// than pushing the group wider than its track.
+const feedRateCell = { flex: "1 1 0", minWidth: 0 };
+
 // `customWin` is the reader's own window, applied from the filters rail.
 // It is a seventh column left of L5 -- the mock puts it there because it
 // is the one column the reader chose, and a column you asked for reads
 // first. Null when nothing is applied, and then this is the six-column
 // table it has always been.
-function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null }) {
-  // The four rate columns are a nested `repeat(4, 1fr)` inside the last
-  // track, exactly as the rows are -- that's what keeps L5/L10/L20/SEASON
-  // sitting over their own cells at every width without a seventh, eighth,
-  // ninth and tenth top-level column to keep in sync.
-  const col = (label, key) => {
-    const active = columnSort?.key === key;
+function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, sampleWindow = null }) {
+  // The rate columns are the same flex group the rows draw (`feedRateGroup`),
+  // inside the last track -- that's what keeps L5/L10/L20/H2H/SEASON sitting
+  // over their own cells at every width without five more top-level columns
+  // to keep in sync.
+  //
+  // Two different things are marked here and they are deliberately marked
+  // differently, because a reader can have both at once and needs to tell them
+  // apart: the column the table is *sorted* on gets the accent chip, and the
+  // window the rows are *scored* on is simply legible where the others are
+  // dimmed. Sorting is something you did; the window is what the numbers mean.
+  const col = (label, key, { window: isWindow = false, sortable = true } = {}) => {
+    const sorted = columnSort?.key === key;
     return (
       <span
         key={key}
-        role="button"
-        onClick={() => onSort(key)}
+        role={sortable ? "button" : undefined}
+        tabIndex={sortable ? 0 : undefined}
+        onClick={sortable ? () => onSort(key) : undefined}
+        onKeyDown={sortable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSort(key); } } : undefined}
+        title={sortable
+          ? (sorted
+            ? (columnSort.dir === "desc" ? "Sorted highest first — click for lowest first" : "Sorted lowest first — click to clear")
+            : `Sort on ${label}`)
+          : undefined}
         className="pp-mono"
         style={{
-          ...FEED_LABEL, textAlign: "center", cursor: "pointer", userSelect: "none",
-          color: active ? "var(--amber-ink, var(--amber))" : "var(--dim)",
+          ...feedRateCell,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+          fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
+          padding: "3px 0", borderRadius: 6, whiteSpace: "nowrap",
+          cursor: sortable ? "pointer" : "default", userSelect: "none",
+          background: sorted ? "var(--amber-dim)" : "transparent",
+          color: sorted ? "var(--amber-ink)" : isWindow ? "var(--text-2)" : "var(--dim-strong)",
         }}
       >
-        {label} <span style={{ fontSize: 9 }}>{active ? (columnSort.dir === "desc" ? "▾" : "▴") : "↕"}</span>
+        {label}
+        {sorted && <span style={{ fontSize: 9 }}>{columnSort.dir === "desc" ? "↓" : "↑"}</span>}
       </span>
     );
   };
@@ -17891,16 +17922,14 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null })
            The prior column is not sortable: it fills in as rows scroll into
            view, so sorting on it would reorder the table under the reader as
            each request lands. */}
-      <span style={{ display: "grid", gridTemplateColumns: `repeat(${customWin ? 7 : 6}, minmax(0, 1fr))`, gap: 6 }}>
-        {customWin ? col(`L${customWin}`, "custom") : null}
-        {col("L5", "l5")}
-        {col("L10", "l10")}
-        {col("L20", "l20")}
+      <span style={feedRateGroup}>
+        {customWin ? col(`L${customWin}`, "custom", { window: true }) : null}
+        {col("L5", "l5", { window: sampleWindow === "l5" })}
+        {col("L10", "l10", { window: sampleWindow === "l10" })}
+        {col("L20", "l20", { window: sampleWindow === "l20" })}
         {col("H2H", "h2h")}
-        {col(seasonLabels?.current || "Season", "all")}
-        <span className="pp-mono" style={{ ...FEED_LABEL, textAlign: "center" }}>
-          {seasonLabels?.prior || "Last"}
-        </span>
+        {col(seasonLabels?.current || "Season", "all", { window: sampleWindow === "all" })}
+        {col(seasonLabels?.prior || "Last", "prior", { sortable: false })}
       </span>
     </div>
   );
@@ -18024,18 +18053,25 @@ function feedMatchupRead(rank, sport, direction) {
 // yet" -- and rendering those two the same way would be the feed quietly
 // claiming an answer it does not have.
 function PriorSeasonCell({ prior, minSample = 10 }) {
-  const shell = { borderRadius: 4, padding: "8px 4px", textAlign: "center", boxSizing: "border-box" };
+  // Same shell as FeedPctCell, minus the active state -- last season is never
+  // the window a row is scored on, so it can never be the tinted cell.
+  const shell = {
+    ...feedRateCell,
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+    padding: "6px 0", borderRadius: 6, boxSizing: "border-box",
+    border: "1px solid transparent",
+  };
   if (!prior || prior.state === "loading") {
     return (
       <div style={shell}>
-        <div className="pp-mono" title="Fetching last season for this player" style={{ fontSize: 13, color: "var(--line)" }}>···</div>
+        <div className="pp-mono" title="Fetching last season for this player" style={{ fontSize: 13, fontWeight: 600, color: "var(--line)" }}>···</div>
       </div>
     );
   }
   if (prior.state !== "ready") {
     return (
       <div style={shell}>
-        <div className="pp-mono" title="No prior season on file for this player" style={{ fontSize: 15, color: "var(--dim)" }}>—</div>
+        <div className="pp-mono" title="No prior season on file for this player" style={{ fontSize: 13, fontWeight: 600, color: "var(--dim)", whiteSpace: "nowrap" }}>—</div>
       </div>
     );
   }
@@ -18047,41 +18083,42 @@ function PriorSeasonCell({ prior, minSample = 10 }) {
         title={tooFew
           ? `Only ${prior.n} games last season — fewer than the ${minSample} this app will state a rate over`
           : `Cleared tonight's line in ${Math.round(prior.rate * prior.n)} of ${prior.n} games last season`}
-        style={{ fontSize: tooFew ? 11 : 15, color: tooFew ? "var(--dim)" : feedRateColor(prior.rate), lineHeight: 1.25 }}
+        style={{ fontSize: 13, fontWeight: 600, color: tooFew ? "var(--dim)" : feedRateColor(prior.rate), lineHeight: 1.25, whiteSpace: "nowrap" }}
       >
         {tooFew ? "too few" : `${Math.round(prior.rate * 100)}%`}
       </div>
-      {/* Dimmer track than the current season's beside it. Same device, less
-           ink: the standing rule is that this season outranks last, and the
-           column should look like the junior of the two without needing a
-           caption to say so. */}
-      <div style={{ height: 3, borderRadius: 2, margin: "7px 6px 0", background: "var(--line)" }}>
-        <div style={{
-          height: 3, borderRadius: 2,
-          width: tooFew ? 0 : `${Math.round(prior.rate * 100)}%`,
-          background: "var(--amber-dim, var(--line))",
-        }} />
-      </div>
-      <div className="pp-mono" style={{ fontSize: 10, color: "var(--dim)", marginTop: 6, lineHeight: 1.3 }}>
-        {Math.round(prior.rate * prior.n)} of {prior.n}
+      {/* The progress track under every rate cell went with the redraw. Six
+           cells at 3px each was six bars of ink saying what the percentage
+           directly above already said, and at the new cell height they sat
+           closer to the sample line than to their own figure. */}
+      <div className="pp-mono" style={{ fontSize: 9.5, color: "var(--dim)", lineHeight: 1.3, whiteSpace: "nowrap" }}>
+        {Math.round(prior.rate * prior.n)}/{prior.n}
       </div>
     </div>
   );
 }
 
-function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", emptyTitle = "No games in this window" }) {
+function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", emptyTitle = "No games in this window", opp = null }) {
   const one = unit === "meetings" ? "meeting" : "game";
   const shell = {
-    // 4px of side padding, not 6: five cells now share the track four used to,
-    // and the sample line ("16 of 20") is what sets the floor.
-    borderRadius: 4, padding: "8px 4px", textAlign: "center", boxSizing: "border-box",
-    background: active ? "var(--surface-2)" : "transparent",
-    border: `1px solid ${active ? "var(--line)" : "transparent"}`,
+    ...feedRateCell,
+    display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+    padding: "6px 0", borderRadius: 6, boxSizing: "border-box",
+    // The window the row is actually scored on is the one cell that has to be
+    // findable at a glance down a column of thirty rows.
+    //
+    // No phone variant, because there is no phone cell: below 560px FeedRow
+    // draws a card with one dominant hit-rate figure instead of a rate group
+    // (see its isNarrow branch), so nothing here ever renders narrow. The
+    // border track is kept transparent so the tint does not change the cell's
+    // height when it appears.
+    background: active ? "var(--amber-dim)" : "transparent",
+    border: "1px solid transparent",
   };
   if (v == null) {
     return (
       <div style={shell}>
-        <div className="pp-mono" title={emptyTitle} style={{ fontSize: 15, color: "var(--dim)" }}>—</div>
+        <div className="pp-mono" title={emptyTitle} style={{ fontSize: 13, fontWeight: 600, color: "var(--dim)", whiteSpace: "nowrap" }}>—</div>
       </div>
     );
   }
@@ -18102,20 +18139,13 @@ function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", empt
       <div
         className="pp-mono"
         title={tooFew ? `Only ${n} ${n === 1 ? one : unit} — fewer than the ${minSample} this app will state a rate over` : undefined}
-        // Wraps rather than clips. Six cells share the track four used to,
-        // and at 55px "too few" is two pixels wider than the cell -- nowrap
-        // truncated it to "too fe". A verdict that wraps to two short lines is
-        // legible; one that is cut off mid-word is not.
-        style={{ fontSize: tooFew ? 11 : 15, color: pctColor, lineHeight: 1.25 }}
+        // `nowrap` again, now that the cells divide the whole trailing track
+        // between them rather than sitting at a fixed 58px. "too few" wrapped
+        // to two lines at the old width, which made a thin sample the tallest
+        // thing in the row.
+        style={{ fontSize: 13, fontWeight: 600, color: pctColor, lineHeight: 1.25, whiteSpace: "nowrap" }}
       >
         {tooFew ? (unit === "meetings" ? "—" : "too few") : `${Math.round(v * 100)}%`}
-      </div>
-      <div style={{ height: 3, borderRadius: 2, margin: "7px 6px 0", background: "var(--line)" }}>
-        <div style={{
-          height: 3, borderRadius: 2,
-          width: tooFew ? 0 : `${Math.round(v * 100)}%`,
-          background: "var(--amber)",
-        }} />
       </div>
       {/* `8 of 10`, not `10 of 10`: the sample is hits-of-games, the two
           numbers the percentage above is actually the ratio of. The old cell
@@ -18125,13 +18155,22 @@ function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", empt
         <div
           className="pp-mono"
           title={label && n < label ? `Only ${n} ${n === 1 ? one : unit} available — fewer than the ${label} this column asks for` : `${n} ${n === 1 ? one : unit} counted`}
-          style={{ fontSize: 10, color: "var(--dim)", marginTop: 6, lineHeight: 1.3 }}
+          style={{ fontSize: 9.5, color: "var(--dim)", lineHeight: 1.3, whiteSpace: "nowrap" }}
         >
           {/* Under the band, the count IS the statement -- "2 meetings",
               not "2 of 2", which reads as a rate written out longhand and
               is the exact impression the suppressed percentage above it
               exists to avoid. Mock 3d writes the cell this way. */}
-          {tooFew && unit === "meetings" ? `${n} ${n === 1 ? one : unit}` : `${Math.round(v * n)} of ${n}`}
+          {tooFew && unit === "meetings"
+            // Under the five-meeting floor no rate is stated, so the count is
+            // the whole statement -- but it still names who the meetings were
+            // against, because that is the one thing separating this column's
+            // sample from every other cell in the row.
+            ? `${n} ${n === 1 ? one : unit}${opp ? ` vs ${opp}` : ""}`
+            // "8/10", and on H2H the opponent it is 8 of 10 *against* -- the
+            // one column whose sample is a different set of games from every
+            // other cell in the row, which the slash alone does not say.
+            : `${Math.round(v * n)}/${n}${opp ? ` vs ${opp}` : ""}`}
         </div>
       )}
     </div>
@@ -18744,6 +18783,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         adjusted={adjusted}
         onDragLine={startLineDrag}
         onResetLine={resetLine}
+        values
       />
       {formAnchor && <FeedFormPopover r={r} direction={direction} anchor={formAnchor} line={lineVal} />}
     </div>
@@ -18921,7 +18961,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           draw; L20/Season cover a wider window than that log holds, so they
           stay as built rather than being recomputed off a shorter sample
           than they claim. */}
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${customWin ? 7 : 6}, minmax(0, 1fr))`, gap: 6 }}>
+      <div style={feedRateGroup}>
         {/* The reader's own window. Counted off the same array and through
             the same predicate as every other cell -- and against the
             dragged line too, since a window this short is exactly where
@@ -18943,7 +18983,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
              the league forever. Five is the support band this app already
              uses as the floor below which a rate is not stated at all. */}
         <FeedPctCell
-          v={r.h2h} n={r.nH2h} minSample={5} unit="meetings" active={false}
+          v={r.h2h} n={r.nH2h} minSample={5} unit="meetings" active={false} opp={r.opp}
           emptyTitle={r.opp ? `No meetings with ${r.opp} in this log` : "No opponent scheduled yet"}
         />
         <FeedPctCell v={r.all} n={r.nAll} minSample={minGames} active={sampleWindow === "all"} />
@@ -22547,6 +22587,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           </div>
         </div>
       )}
+      {/* What the three colours in the rate group mean, said once under the
+           table rather than inferred from thirty rows of it. The middle band
+           is the point: it is wide and lopsided on purpose (see
+           FEED_RATE_COLD / FEED_RATE_HOT), and without this the grey reads as
+           a missing colour rather than as a deliberate one. */}
+      <div className="pp-mono" style={{ padding: "0 20px 12px", fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)" }}>
+        Rates above 65% are green, below 45% red. The middle is a coin flip after vig and stays grey.
+      </div>
       <div style={{ padding: "0 20px 24px", fontSize: 12, color: "var(--dim)" }}>{feedDataDisclaimer}</div>
     </>
   );
@@ -22661,7 +22709,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           active: sortMode === mo.id && !columnSort,
           onPick: () => { setColumnSort(null); setSortMode(mo.id); },
         }))}
-        header={<FeedTableHeader columnSort={columnSort} onSort={onSortColumn} seasonLabels={seasonLabels} customWin={feedCustomCol} />}
+        header={<FeedTableHeader columnSort={columnSort} onSort={onSortColumn} seasonLabels={seasonLabels} customWin={feedCustomCol} sampleWindow={sampleWindow} />}
         rows={feedTable}
         picks={{
           open: feedPicksOpen,

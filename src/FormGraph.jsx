@@ -80,7 +80,7 @@ export const FORM_PEDESTAL = 10;
 export const FORM_SIZES = {
   hero:   { height: 120, pedestal: 16, gap: 6, gutter: 54 },
   player: { height: 224, pedestal: 30, gap: 6, gutter: 54 },
-  feed:   { height: 60,  pedestal: 10, gap: 5, gutter: 54 },
+  feed:   { height: 60,  pedestal: 10, gap: 6, gutter: 54 },
   board:  { height: 64,  pedestal: 12, gap: 4, gutter: 44 },
   mobile: { height: 52,  pedestal: 10, gap: 4, gutter: 42 },
 };
@@ -139,6 +139,11 @@ export default function FeedFormStrip({
   r, direction, streak = 0,
   height, pedestal, gap, gutter, slots,
   tag = false, caption = true,
+  // Print each game's value inside its own bar. Opt-in rather than always on:
+  // a numeral needs a bar wide enough to hold it, and the board card (64px
+  // over eight columns) and the phone strip (48px) do not have one. The feed
+  // row asks for it; nothing else does.
+  values = false,
   line, onDragLine, onResetLine, adjusted,
 }) {
   const preset = FORM_SIZES[size] || FORM_SIZES.feed;
@@ -180,6 +185,18 @@ export default function FeedFormStrip({
   const runFill = shownRunHit ? "var(--pos-solid, var(--pos))" : "var(--neg)";
   const runInk = shownRunHit ? "var(--pos)" : "var(--neg)";
 
+  // Values inside the bars, but only where a bar can actually hold one.
+  //
+  // Measured rather than assumed: at the feed's FORM track (180-250px) ten
+  // columns and nine 6px gaps leave each bar 7.2px at the minimum and 14.2px
+  // at the maximum, while a 9px mono numeral is 5.4px per digit. One digit
+  // fits at every width; three digits need 16.3px and fit at none. Passing
+  // yards, receiving yards and any other three-figure market would print
+  // "241" clipped to "24" -- a wrong number, which this app does not do.
+  //
+  // So the numerals are dropped for the whole strip, not per bar: a column of
+  // bars where some carry a value and some do not reads as missing data.
+  const showValues = values && recent.every((g) => Math.abs(g.v) < 100);
   const hasPlayoff = recent.some((g) => g.po);
   const draggable = !!onDragLine && !r.isBinary;
   // The tag is what makes the gutter necessary, so both follow the same flag.
@@ -194,32 +211,63 @@ export default function FeedFormStrip({
     <div style={{ width: "100%" }}>
       <div style={{ position: "relative", paddingRight: showTag ? GUT : 0 }}>
         <div style={{ ...grid, position: "relative", alignItems: "end", height: H }}>
-          {recent.map((g, i) => (
-            <div
-              key={i}
-              title={`${g.opp ? `${venueWord(g.home)}${g.opp} · ` : ""}${g.v}${g.po ? " · playoff game" : ""}`}
-              style={{
-                // Explicit column, not auto-placement. The dashed-rule
-                // overlay below is explicitly placed across columns 1..n, and
-                // an *auto*-placed item is never allowed to overlap one that
-                // is explicitly placed -- so with `auto` here the bars get
-                // pushed out into implicit columns past the end of the grid,
-                // where they have no width and the graph draws nothing at
-                // all. Overlap is legal once both sides are explicit, which
-                // is what lets the rule cross the bars.
-                gridRow: 1, gridColumn: i + 1,
-                height: r.isBinary
-                  ? Math.max(4, Math.round((hits[i] ? 1 : 0.35) * H))
-                  : barY(g.v),
-                borderRadius: "2px 2px 0 0",
-                boxSizing: "border-box",
-                // Fill = cleared, outline = fell short, so the two states are
-                // told apart by shape and not by hue alone.
-                background: hits[i] ? "var(--pos-solid, var(--pos))" : "transparent",
-                border: hits[i] ? "none" : "1.5px solid var(--neg)",
-              }}
-            />
-          ))}
+          {recent.map((g, i) => {
+            // A game with none of the stat gets no box at all. An outline at
+            // pedestal height reads as a value the player did not put up; the
+            // numeral standing on the pedestal says nothing but the truth.
+            const zero = !r.isBinary && g.v === 0;
+            return (
+              <div
+                key={i}
+                title={`${g.opp ? `${venueWord(g.home)}${g.opp} · ` : ""}${g.v}${g.po ? " · playoff game" : ""}`}
+                style={{
+                  // Explicit column, not auto-placement. The dashed-rule
+                  // overlay below is explicitly placed across columns 1..n, and
+                  // an *auto*-placed item is never allowed to overlap one that
+                  // is explicitly placed -- so with `auto` here the bars get
+                  // pushed out into implicit columns past the end of the grid,
+                  // where they have no width and the graph draws nothing at
+                  // all. Overlap is legal once both sides are explicit, which
+                  // is what lets the rule cross the bars.
+                  gridRow: 1, gridColumn: i + 1,
+                  height: zero
+                    ? P
+                    : r.isBinary
+                      ? Math.max(4, Math.round((hits[i] ? 1 : 0.35) * H))
+                      : barY(g.v),
+                  borderRadius: 2,
+                  boxSizing: "border-box",
+                  // Fill = cleared, outline = fell short, so the two states are
+                  // told apart by shape and not by hue alone -- which is what
+                  // keeps the strip readable under the "No hue" palette.
+                  background: zero ? "transparent" : hits[i] ? "var(--pos-solid, var(--pos))" : "transparent",
+                  border: zero ? "none" : hits[i] ? "1.5px solid var(--pos)" : "1.5px solid var(--neg)",
+                  // The value rides at the bottom of its own bar, centred.
+                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                  overflow: "hidden",
+                }}
+              >
+                {showValues && (
+                  <span
+                    className="pp-mono"
+                    style={{
+                      fontSize: 9, fontWeight: 600, lineHeight: 1, paddingBottom: 2,
+                      whiteSpace: "nowrap",
+                      // Mixed off --pos rather than frozen as a hex, so the ink
+                      // stays dark against whatever the outcome palette makes
+                      // the fill. On an outlined or absent bar there is no fill
+                      // to sit on, so the numeral takes the outline's own hue.
+                      color: zero || !hits[i]
+                        ? "var(--neg)"
+                        : "color-mix(in srgb, var(--pos) 15%, black)",
+                    }}
+                  >
+                    {g.v}
+                  </span>
+                )}
+              </div>
+            );
+          })}
 
           {/* The games this window does not have. Held open and labelled
               rather than closed up: an absent column is a fact about the
@@ -255,6 +303,18 @@ export default function FeedFormStrip({
             </div>
           )}
 
+          {/* The rule the bars stand on. Without it an outlined miss reads as
+              a bar continuing below the frame, and a zero -- which draws no
+              box at all -- has nothing to sit on. Spans the whole plot, the
+              empty columns included, because the floor is a property of the
+              strip rather than of the games that happen to fill it. */}
+          <div
+            style={{ gridRow: 1, gridColumn: "1 / -1", alignSelf: "stretch", position: "relative", pointerEvents: "none" }}
+            aria-hidden
+          >
+            <span style={{ position: "absolute", left: 0, right: 0, bottom: 0, borderTop: "1px solid var(--line)" }} />
+          </div>
+
           {!r.isBinary && (
             <div
               style={{ gridRow: 1, gridColumn: `1 / ${n + 1}`, alignSelf: "stretch", position: "relative", pointerEvents: "none" }}
@@ -285,15 +345,24 @@ export default function FeedFormStrip({
               className="pp-mono"
               style={{
                 position: "absolute", right: -GUT, bottom: lineY, transform: "translateY(50%)",
+                width: 42, height: 28, boxSizing: "border-box",
+                display: "flex", alignItems: "center", justifyContent: "center",
                 // Solid accent by default, per the handoff -- it re-tints
                 // with the user's chosen hue and never encodes hit/miss.
-                // Off-market it inverts to accent-ink on the row ground, the
-                // same switch the dashed rule and the Line column make, so
-                // an adjusted row is legible as adjusted at a glance.
-                background: adjusted ? "transparent" : "var(--amber)",
-                color: adjusted ? "var(--amber-ink, var(--amber))" : "var(--accent-on)",
+                // Off-market it fills with accent *ink* instead, which is the
+                // same accent at a different lightness: a moved line reads as
+                // moved from across the table without inventing a colour that
+                // means "adjusted". It used to go transparent, which at a
+                // glance looked like no tag at all.
+                background: adjusted ? "var(--amber-ink)" : "var(--amber)",
+                // --accent-on is computed for text on solid --amber and is the
+                // right ink there. It is not computed for --amber-ink, which
+                // is light in the dark theme and dark in the light one -- so
+                // the moved tag takes the page ground, which is the opposite
+                // of --amber-ink in both themes by construction.
+                color: adjusted ? "var(--bg)" : "var(--accent-on)",
                 border: "1px solid var(--amber)",
-                borderRadius: 3, padding: "3px 6px", fontSize: 10.5,
+                borderRadius: 7, fontSize: 11, fontWeight: 600,
                 fontVariantNumeric: "tabular-nums", userSelect: "none",
                 cursor: draggable ? "ns-resize" : "default",
               }}
