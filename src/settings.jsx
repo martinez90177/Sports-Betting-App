@@ -72,6 +72,22 @@ export const DEFAULTS = {
     sampleWindow: "l10", // l5 | l10 | l20 | season
     lean: "over", // over | under
   },
+  // The slip's own two preferences, both of which drive THE READ.
+  //
+  // They live here rather than in component state because they were resetting
+  // on every remount: the phone frame and the desktop frame are two different
+  // components, so crossing the breakpoint -- or simply leaving the slip and
+  // coming back -- silently put the reader back on "safe" and re-flagged
+  // every leg against an objective they had not chosen.
+  //
+  // Values are ids from INTENTS / TARGETS in `src/v3/intentRead.js`. Not
+  // imported from there: this module is loaded before the app and must stay
+  // free of it (same reason the default sportsbook id is written out here).
+  // useMyPicks falls back to the default if a stored id no longer exists.
+  picks: {
+    intent: "safe", // safe | risky | straight | alt | expose
+    target: 300, // the price the slip is being built toward, in American odds
+  },
 };
 
 // Deep-ish merge, one level into each section. Stored objects are always

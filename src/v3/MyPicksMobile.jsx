@@ -1,7 +1,9 @@
 import React from "react";
 import PlayerAvatar from "../PlayerAvatar.jsx";
 import { crest } from "./FormPlot.jsx";
-import { INTENTS, TARGETS, fmtAmerican } from "./intentRead.js";
+import {
+  INTENTS, TARGETS, FLAGS, FLAG_MEANS, fmtAmerican, flagChipStyle, flagCardBorder, toneOf,
+} from "./intentRead.js";
 import useMyPicks from "./useMyPicks.js";
 
 // A transcription of frame `3a` in `v3 Mocks/PropPalace Mobile v3.dc.html`.
@@ -24,8 +26,11 @@ const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", 
 // One template, so the header and the rows cannot drift out of column.
 const SLIP_COLS = "minmax(0, 1fr) 62px 1px 62px 30px";
 
-const flagTone = (flag) => (flag === "AGAINST" ? "var(--neg)" : flag === "CHECK" ? "var(--status-questionable)" : "var(--pos)");
-const flagBg = (flag) => (flag === "AGAINST" ? "var(--neg-dim)" : flag === "CHECK" ? "rgba(232,177,58,0.14)" : "var(--pos-dim)");
+// The flag chip, its card border and the three meanings come from
+// `intentRead.js`. The pair of helpers that used to live here froze CHECK as
+// `rgba(232,177,58,0.14)` -- a literal amber that survived a change of outcome
+// palette in Settings -- and reached for the availability token for a flag
+// that says nothing about health.
 
 function countBadge(on) {
   return {
@@ -443,18 +448,11 @@ export default function MyPicksMobile({
                 style={{
                   display: "flex", flexDirection: "column", gap: 6, padding: "12px 13px", borderRadius: 10,
                   background: "var(--surface-1)",
-                  border: `1px solid ${r.flag === "AGAINST" ? "rgba(239,91,91,0.5)" : r.flag === "CHECK" ? "rgba(232,177,58,0.45)" : "var(--line)"}`,
+                  border: `1px solid ${flagCardBorder(r.flag)}`,
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    style={{
-                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "3px 7px", borderRadius: 5,
-                      flex: "0 0 auto", whiteSpace: "nowrap", background: flagBg(r.flag), color: flagTone(r.flag),
-                    }}
-                  >
-                    {r.flag}
-                  </span>
+                  <span style={{ ...flagChipStyle(r.flag), flex: "0 0 auto" }}>{r.flag}</span>
                   <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
                 </div>
                 <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)" }}>{r.prop}</span>
@@ -509,11 +507,11 @@ export default function MyPicksMobile({
 
       {/* The legend, printed rather than left to be inferred. */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-        {["FITS", "CHECK", "AGAINST"].map((f) => (
+        {FLAGS.map((f) => (
           <span key={f} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: flagTone(f), display: "block", flex: "0 0 auto" }} />
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: toneOf(f), display: "block", flex: "0 0 auto" }} />
             <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", color: "var(--text-2)" }}>
-              {f === "FITS" ? "FITS · nothing counted argues against it" : f === "CHECK" ? "CHECK · a counted fact worth reading" : "AGAINST · works against this build"}
+              {`${f} · ${FLAG_MEANS[f]}`}
             </span>
           </span>
         ))}

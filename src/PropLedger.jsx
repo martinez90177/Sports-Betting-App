@@ -36,6 +36,8 @@ import PropFeedDesktop from "./v3/PropFeedDesktop.jsx";
 import { mlbPitchHandCache, mlbPitcherNameCache, mlbStarterName, fetchMLBPitcherHands } from "./lib/mlbPitchers.js";
 import MyPicksMobile from "./v3/MyPicksMobile.jsx";
 import MyPicksDesktop from "./v3/MyPicksDesktop.jsx";
+import ReadPanel from "./v3/ReadPanel.jsx";
+import useMyPicks from "./v3/useMyPicks.js";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import { venueWord } from "./lib/venue.js";
@@ -22032,7 +22034,33 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the counts, the empty note) is untouched and shared with the phone.
   const seasonCap = SEASON_LENGTH[sport] || 82;
   // Unsettled legs only. A graded pick belongs to the Ledger, not the slip.
-  const openPicks = (picks || []).filter((pk) => !pk.result);
+  // Memoised so its identity is stable: it is the dependency the dock's read
+  // is memoised on, and a fresh array every render would defeat all of them.
+  const openPicks = React.useMemo(() => (picks || []).filter((pk) => !pk.result), [picks]);
+
+  // THE READ, at dock width. The same hook the full slip and the phone frame
+  // use, so the flag a leg carries here is the flag it carries there -- and
+  // the intent it is judged against is the one stored in settings, which is
+  // why changing it in the dock changes it everywhere at once.
+  //
+  // Memoised on the slip rather than computed inline: this page re-renders on
+  // every filter keystroke, sort and hover, and the slip changes on none of
+  // them. `ledgerCalibration` walks every settled pick, so running it per
+  // keystroke would be paid for by the table, not the dock.
+  const settledPicks = React.useMemo(() => (picks || []).filter((pk) => pk.result), [picks]);
+  const dockCorrelations = React.useMemo(() => parlayCorrelationGroups(openPicks), [openPicks]);
+  const dockCombined = React.useMemo(
+    () => (openPicks.length ? combineParlayOdds(openPicks.map((pk) => pk.odds)) : null),
+    [openPicks]
+  );
+  const dockCalibration = React.useMemo(() => ledgerCalibration(picks || []), [picks]);
+  const dockRead = useMyPicks({
+    legs: openPicks,
+    settled: settledPicks,
+    correlationGroups: dockCorrelations,
+    combinedOdds: dockCombined,
+    calibration: dockCalibration,
+  });
 
   // The Filters panel, kept verbatim from the layout this replaces. The mock's
   // rail draws five of this page's controls; the panel owns the rest (defence
@@ -22563,11 +22591,29 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           note: openPicks.length
             ? `${openPicks.length} ${openPicks.length === 1 ? "leg" : "legs"}`
             : "nothing yet",
-          // SLIP / LEDGER / READ and the full view are frame 2a -- the
-          // desktop My Picks screen -- and are built there rather than
-          // twice. This dock lists what is on the slip and opens it.
+          // The full view (frame 2a) is still where the ledger, the target
+          // ladder and the wide read live. The dock carries the two the
+          // reader needs while they are still picking: what is on the slip,
+          // and whether it fits what they said they were building.
           onOpenFull: onOpenPicks,
-          body: openPicks.length ? openPicks.map((pk) => (
+          tabs: [
+            { id: "Slip", label: "SLIP", active: dockRead.tab === "Slip", onPick: () => dockRead.setTab("Slip") },
+            { id: "Read", label: "THE READ", active: dockRead.tab === "Read", onPick: () => dockRead.setTab("Read") },
+          ],
+          body: dockRead.tab === "Read" ? (
+            <ReadPanel
+              read={dockRead.read}
+              rs={dockRead.rs}
+              intent={dockRead.intent}
+              intentId={dockRead.intentId}
+              setIntentId={dockRead.setIntentId}
+              combinedRate={dockRead.combinedRate}
+              am={dockRead.am}
+              short={dockRead.short}
+              target={dockRead.target}
+              calLine={dockRead.calLine}
+            />
+          ) : openPicks.length ? openPicks.map((pk) => (
             <div key={pk.id} style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pk.name}</span>
@@ -22583,9 +22629,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               </span>
             </div>
           )) : null,
-          foot: openPicks.length
-            ? "Every leg states the games it was counted over. Nothing here is priced by a book."
-            : "Add a prop with the + on any row. It stays here while you keep reading.",
+          foot: dockRead.tab === "Read"
+            // The one thing the read must never be mistaken for. It grades a
+            // slip; it does not place one.
+            ? "Logged, not placed. Nothing here puts money anywhere."
+            : openPicks.length
+              ? "Every leg states the games it was counted over. Nothing here is priced by a book."
+              : "Add a prop with the + on any row. It stays here while you keep reading.",
         }}
         overlays={feedFiltersOpen ? (
           <div style={{ position: "absolute", inset: 0, zIndex: 70, overflowY: "auto", background: "rgba(5,6,8,0.82)", padding: "18px 24px 32px" }}>

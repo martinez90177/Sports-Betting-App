@@ -1,5 +1,6 @@
 import React from "react";
-import { INTENTS, intentRead, intentMoves, readSummary } from "./intentRead.js";
+import { useSettings } from "../settings.jsx";
+import { INTENTS, TARGETS, intentRead, intentMoves, readSummary } from "./intentRead.js";
 
 // Everything both My Picks frames derive from the slip.
 //
@@ -22,11 +23,25 @@ export default function useMyPicks({
   calibration = null,
 }) {
   const [tab, setTab] = React.useState("Slip");
-  const [intentId, setIntentId] = React.useState("safe");
-  const [target, setTarget] = React.useState(300);
   const [ledgerFilter, setLedgerFilter] = React.useState("All");
 
-  const intent = INTENTS.find((i) => i.id === intentId) || INTENTS[0];
+  // Which tab is showing is this frame's business and dies with it. What the
+  // reader is *building*, and what price they are building toward, are not --
+  // those are preferences, and they used to reset to "safe" every time the
+  // slip was reopened or the window crossed the phone/desktop breakpoint,
+  // silently re-flagging every leg against an objective nobody chose.
+  const settings = useSettings();
+  const stored = settings.picks || {};
+
+  // A stored id that no longer exists (an intent renamed in a later release)
+  // resolves to the default rather than leaving `intent` undefined and taking
+  // every read down with it.
+  const intent = INTENTS.find((i) => i.id === stored.intent) || INTENTS[0];
+  const intentId = intent.id;
+  const setIntentId = React.useCallback((id) => settings.set("picks", "intent", id), [settings]);
+
+  const target = TARGETS.includes(stored.target) ? stored.target : 300;
+  const setTarget = React.useCallback((v) => settings.set("picks", "target", v), [settings]);
 
   // Every rate on this screen is the leg's own, counted when it was added --
   // `hitRate`, `gamesOver` and `gamesCounted` were written together by
