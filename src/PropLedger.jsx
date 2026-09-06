@@ -17850,6 +17850,14 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, s
   // apart: the column the table is *sorted* on gets the accent chip, and the
   // window the rows are *scored* on is simply legible where the others are
   // dimmed. Sorting is something you did; the window is what the numbers mean.
+  //
+  // The active window takes `--dim-strong` and the rest take `--text-2`, which
+  // reads backwards and is not. `--dim-strong` is defined as `var(--text)` --
+  // the brightest ink in the theme, named for the job it does (standing in for
+  // --dim where --dim would be too faint) rather than for its value. `--text-2`
+  // is the mid tone. Written the other way round, the five columns nobody is
+  // scoring on were the brightest thing in the header and the one column
+  // driving every rate in the table was dimmer than them.
   const col = (label, key, { window: isWindow = false, sortable = true } = {}) => {
     const sorted = columnSort?.key === key;
     return (
@@ -17872,7 +17880,7 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, s
           padding: "3px 0", borderRadius: 6, whiteSpace: "nowrap",
           cursor: sortable ? "pointer" : "default", userSelect: "none",
           background: sorted ? "var(--amber-dim)" : "transparent",
-          color: sorted ? "var(--amber-ink)" : isWindow ? "var(--text-2)" : "var(--dim-strong)",
+          color: sorted ? "var(--amber-ink)" : isWindow ? "var(--dim-strong)" : "var(--text-2)",
         }}
       >
         {label}
