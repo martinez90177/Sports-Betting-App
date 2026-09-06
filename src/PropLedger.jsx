@@ -18395,9 +18395,6 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // Nothing is lost by it. The rank is a number on a stated scale, and "#4"
   // against "#28" says which matchup is harder without needing a colour; the
   // tier only ever restated the number it was sitting on.
-  const tierBg = "transparent";
-  const tierFg = "var(--text)";
-  const tierBorder = "1px solid var(--line)";
   const hrColor = feedRateColor;
   // No odds. There is no price feed behind this column, and a price derived
   // from the row's own hit rate is circular -- it is what printed -900 on
@@ -18413,6 +18410,16 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // at once without one masking the other's added state.
   const pickId = feedPickId(sport, r);
   const direction = r.direction || "over";
+  // The matchup, read once for the two places that state it: the badge, which
+  // carries the rank, and the word beside it, which says what that rank means.
+  // Two calls would be two chances for the chip and the word to disagree about
+  // the same defence.
+  const matchupRead = feedMatchupRead(r.rank, sport, direction);
+  // Null on a middle-third defence, and that is the whole rule: the badge and
+  // the word both tint only at the two ends. A mid row keeps --text on the
+  // number, because the rank is data a reader still has to be able to read --
+  // dimming it would cost legibility to say "nothing to report".
+  const matchupTone = matchupRead && matchupRead !== "mid" ? tierColor(matchupRead) : null;
   const streak = feedStreak(r.values, r.line, r.isBinary, direction);
   const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
   const [formAnchor, setFormAnchor] = useState(null);
@@ -18753,14 +18760,18 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             style={{
               display: "inline-block", padding: "1px 6px", borderRadius: 4,
               fontSize: 10, fontWeight: 800, letterSpacing: 0,
-              background: tierBg, color: tierFg, border: tierBorder,
+              // Mixed live against the token rather than frozen, so the chip
+              // follows the outcome palette the same way the rate cells do.
+              background: matchupTone ? `color-mix(in srgb, ${matchupTone} 14%, transparent)` : "transparent",
+              color: matchupTone || "var(--text)",
+              border: `1px solid ${matchupTone || "var(--line)"}`,
               whiteSpace: "nowrap",
             }}
           >
             D #{r.rank}/{feedTeamCount(sport)}
           </span>
           {(() => {
-            const read = feedMatchupRead(r.rank, sport, direction);
+            const read = matchupRead;
             if (!read) return null;
             // Tinted on the app's own tier mapping, which the game pages, the
             // ladder footer and the matchup blocks already use -- this word was
@@ -18770,14 +18781,13 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             // the rest of this line reads, because a middle-third defence is
             // the row where the matchup is not the story, and marking all
             // three would leave nothing standing out from anything.
-            const mid = read === "mid";
             return (
               <span
                 title={`${read === "easy" ? "A soft" : read === "tough" ? "A tough" : "A middling"} matchup for this market, on this side`}
                 style={{
                   whiteSpace: "nowrap",
-                  color: mid ? "var(--dim)" : tierColor(read),
-                  fontWeight: mid ? 400 : 700,
+                  color: matchupTone || "var(--dim)",
+                  fontWeight: matchupTone ? 700 : 400,
                 }}
               >
                 {read}
