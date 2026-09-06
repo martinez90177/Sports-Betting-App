@@ -43,6 +43,14 @@ import { venueWord } from "./lib/venue.js";
 //      2026-08-21; the handoff's own note is "a zero-based axis buries the
 //      variation".
 //
+// Scaling 2 has now been proposed twice. A v4 spec on 2026-09-05 asked for
+// `9 + v * (52 / max)` and described it as the formula already in this file,
+// which it has not been since 2026-08-21 -- it is item 2 above, word for word.
+// It was declined again, on the same grounds: it is right in the markets it
+// gets checked against (hits, points, strikeouts) and silently wrong in the
+// ones nobody spot-checks, which is what makes it keep coming back. If it is
+// ever genuinely wanted, the thing to change is this comment first.
+//
 // Because the axis is windowed, the bars alone can't be read as quantities --
 // which is why every row still prints its counts underneath and the per-game
 // values stay in the hover popover.
