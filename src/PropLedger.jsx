@@ -173,6 +173,26 @@ const defTier = (rank, teams, direction) => {
   return forOver === "tough" ? "soft" : forOver === "soft" ? "tough" : "mid";
 };
 
+// What a defence tier looks like, in one place. Four copies of this mapping
+// were in the file, which is four chances for one screen to call a soft
+// matchup green while another calls it grey.
+//
+// `--green`/`--red` rather than `--pos`/`--neg` on purpose: those are the two
+// custom properties the outcome-palette control actually writes (see the
+// effect in settings.jsx), so a reader on Blue/Orange or No hue gets a tier
+// that matches the rest of their app rather than a stranded default green.
+//
+// "easy" is the feed's own word for a soft defence -- soft is a fact about the
+// defence, easy is what it means for the side the row is on (see
+// feedMatchupRead) -- and it colours the same, because it is the same tier.
+// Mid returns --dim deliberately: the middle third is the case with nothing to
+// say, and colouring it would spend attention on a non-signal.
+const tierColor = (t) => (
+  t === "soft" || t === "easy" ? "var(--green)"
+    : t === "tough" ? "var(--red)"
+      : "var(--dim)"
+);
+
 // Team abbreviation -> ESPN team-logo CDN slug (mostly lowercase of the
 // abbreviation itself; only a handful of teams use a different slug).
 const NBA_LOGO_SLUG = {
@@ -2238,7 +2258,6 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // market is selected, so the label has to say so rather than naming a
   // per-market defensive category the number is not measuring.
   const defCategoryLabel = nbaDefIsPointsAllowed(gameOppAbbr) ? "points allowed" : nbaDefCategoryLabel(market);
-  const tierColor = (t) => (t === "soft" ? "var(--green)" : t === "tough" ? "var(--red)" : "var(--dim)");
 
   // Detailed rate-stat row: the same columns computed twice, once over the
   // filtered sample the chart is showing and once over the full season, so
@@ -7010,7 +7029,6 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
   const tier = defTier(d.defRank, teams);
   const resultLabel = isBinary ? (d.value === 1 ? "YES" : "NO") : push ? "PUSH" : over ? "OVER" : "UNDER";
   const resultColor = push ? "var(--dim)" : over ? "var(--green)" : "var(--red)";
-  const tierColor = tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)";
 
   return (
     <div
@@ -7068,7 +7086,7 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
         padding: "7px 12px", borderTop: "1px solid var(--line)", fontSize: 10.5,
       }}>
         <span style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>{footerLabel(d)}</span>
-        <span className="mono" style={{ color: tierColor, fontWeight: 600, whiteSpace: "nowrap" }}>
+        <span className="mono" style={{ color: tierColor(tier), fontWeight: 600, whiteSpace: "nowrap" }}>
           #{d.defRank} def{tier === "soft" ? " · soft" : tier === "tough" ? " · tough" : ""}
         </span>
       </div>
@@ -8022,7 +8040,6 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // mock per-category fallback is in play does a market-specific label
   // ("pass yards defense vs WR") describe the figure next to it.
   const gameDefLabel = nflDefIsPointsAllowed(gameOppAbbr) ? "points allowed" : defCategoryLabel;
-  const tierColor = (t) => (t === "soft" ? "var(--green)" : t === "tough" ? "var(--red)" : "var(--dim)");
 
   // Detailed rate-stat row: the same columns computed twice, once over the
   // filtered sample the chart is showing and once over the full season, so
@@ -10368,7 +10385,6 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // mock per-category fallback is in play does "rebounds allowed" describe the
   // figure sitting next to it.
   const defCategoryLabel = wnbaDefIsPointsAllowed(gameOppAbbr) ? "points allowed" : wnbaDefCategoryLabel(market);
-  const tierColor = (t) => (t === "soft" ? "var(--green)" : t === "tough" ? "var(--red)" : "var(--dim)");
 
   // Detailed rate-stat row: the same columns computed twice, once over the
   // filtered sample the chart is showing and once over the full season, so
@@ -18746,10 +18762,23 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           {(() => {
             const read = feedMatchupRead(r.rank, sport, direction);
             if (!read) return null;
+            // Tinted on the app's own tier mapping, which the game pages, the
+            // ladder footer and the matchup blocks already use -- this word was
+            // the one place that stated a tier and drew it flat.
+            //
+            // Only the two ends carry colour and weight. Mid stays exactly as
+            // the rest of this line reads, because a middle-third defence is
+            // the row where the matchup is not the story, and marking all
+            // three would leave nothing standing out from anything.
+            const mid = read === "mid";
             return (
               <span
                 title={`${read === "easy" ? "A soft" : read === "tough" ? "A tough" : "A middling"} matchup for this market, on this side`}
-                style={{ whiteSpace: "nowrap", color: "var(--text-2, var(--dim))" }}
+                style={{
+                  whiteSpace: "nowrap",
+                  color: mid ? "var(--dim)" : tierColor(read),
+                  fontWeight: mid ? 400 : 700,
+                }}
               >
                 {read}
               </span>
