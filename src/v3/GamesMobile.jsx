@@ -39,6 +39,10 @@ export default function GamesMobile({
   dates = [],
   activeDate,
   onSetDate,
+  weeks = [],
+  activeWeek = null,
+  currentWeek = null,
+  onSetWeek,
   states = [],
   state,
   onSetState,
@@ -98,6 +102,32 @@ export default function GamesMobile({
             </span>
           </span>
         </div>
+
+        {/* Football alone schedules by week, and the caller sends an empty
+            list for every other league so this frame does not have to know
+            which is which. A select rather than a row of chips: 22 weeks is
+            a scroller nobody wants above a date scroller. */}
+        {weeks.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 16px 10px" }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)", flex: "0 0 auto" }}>WEEK</span>
+            <select
+              value={activeWeek || ""}
+              onChange={(e) => onSetWeek && onSetWeek(e.target.value)}
+              aria-label="NFL week"
+              style={{
+                flex: "1 1 auto", minWidth: 0, minHeight: 40, padding: "0 9px", borderRadius: 8,
+                border: "1px solid var(--line)", background: "var(--surface-1)",
+                color: "var(--text)", fontFamily: MONO, fontSize: 12,
+              }}
+            >
+              {weeks.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.id === currentWeek ? `${w.label} · this week` : w.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="nsb" style={{ display: "flex", gap: 8, padding: "0 16px 10px", overflowX: "auto" }}>
           {dates.map((d) => {

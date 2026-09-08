@@ -11,7 +11,7 @@ import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
 import AltLineLadder, { SlipLeg } from "./AltLineLadder.jsx";
 import {
-  fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflWeekOneSlate, fetchNbaOpenerDay,
+  fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflCurrentWeekSlate, fetchNbaOpenerDay,
   dayKey as slateDayKey,
 } from "./lib/gamesData.js";
 import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
@@ -1651,7 +1651,7 @@ function matchupContextProps({ allGames, oppAbbr, def, teams, statValue, marketL
 // already call, so a player page and the Board can never disagree about a
 // kickoff time, and asking costs nothing on a warm cache.
 async function playerSlateGames(sport) {
-  if (sport === "nfl") return (await fetchNflWeekOneSlate())?.games || [];
+  if (sport === "nfl") return (await fetchNflCurrentWeekSlate())?.games || [];
   const fetcher = sport === "mlb" ? fetchMlbSlate : sport === "wnba" ? fetchWnbaSlate : fetchNbaSlate;
   const today = (await fetcher(slateDayKey(new Date())))?.games || [];
   if (today.length || sport !== "nba") return today;
@@ -17311,9 +17311,17 @@ function PropTypePicker({ groups, values, onChange, fill = false }) {
 // Shared chrome for the app's floating game pickers. Both the single-select
 // (GameSelect) and the multi-select (GamesMultiSelect) render into it, so the
 // two controls can't drift into looking like unrelated widgets.
+// `position` and the offsets are set by useCenteredPanel below -- they are
+// here only so the panel has a sane box before the first measure.
+//
+// 340px rather than 320: at 320 a full NFL fixture ("New England Patriots @
+// Seattle Seahawks") wraps to two lines on most of the card, which turns a
+// sixteen-game menu into a wall. zIndex above the app's sheets and docks,
+// because a fixed panel is no longer inside the stacking context its trigger
+// sits in.
 const DROPDOWN_PANEL_STYLE = {
-  position: "absolute", top: "calc(100% + 6px)", zIndex: 20,
-  width: "min(320px, 88vw)", maxHeight: 400, overflowY: "auto",
+  position: "absolute", top: "calc(100% + 6px)", zIndex: 3600,
+  width: "min(340px, calc(100vw - 16px))", maxHeight: 400, overflowY: "auto",
   background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 10,
   boxShadow: "0 12px 32px rgba(0,0,0,0.45)",
 };
@@ -17327,42 +17335,86 @@ const DROPDOWN_GROUP_STYLE = {
   borderBottom: "1px solid var(--line)",
 };
 
-// Centers a dropdown panel under its trigger, then nudges it back inside the
-// viewport when centering alone would push an edge off-screen. These panels
-// used to anchor at `left: 0`, which is fine under a left-aligned trigger but
-// not under the centered ones these pages use -- a 320px panel hanging off a
-// mid-screen trigger ran past the right edge of a phone, clipping the
-// checkmarks off every row.
-function useCenteredPanel(open) {
+// Positions a dropdown panel against its trigger, in viewport coordinates.
+//
+// `position: absolute` with a translate was enough while these pickers sat in
+// open page flow. It stopped being enough the moment one went into the feed's
+// filter rail: that rail scrolls (`overflow-y: auto`), and an overflow-auto
+// ancestor clips absolutely-positioned descendants on *both* axes, so a 320px
+// panel hanging off a 218px rail was sliced down the middle -- the left half
+// of every game's name cut away and the panel's own edge invisible. The frame
+// around it is `overflow: hidden` and would have clipped it again.
+//
+// `position: fixed` is not clipped by an ancestor's overflow, so the panel now
+// escapes both boxes. It is still a DOM child of the trigger's wrapper, which
+// is what the outside-click handlers test, so those keep working unchanged.
+// (Fixed positioning is only trapped by an ancestor with transform / filter /
+// perspective / contain; the shell and the feed frame have none, checked
+// rather than assumed.)
+//
+// Left-aligned to the trigger rather than centred: under a rail control at the
+// left edge, centring throws half the panel off-screen and the nudge that
+// corrects it leaves the panel visibly unmoored from the button that opened
+// it. Aligned left it reads as belonging to that control, and the same
+// clamping still keeps it inside the viewport for a centred trigger elsewhere.
+const DROPDOWN_GUTTER = 8;
+const DROPDOWN_MIN_DROP = 220;
+
+function useCenteredPanel(open, anchorRef) {
   const floatRef = React.useRef(null);
-  const [shift, setShift] = useState(0);
+  const [pos, setPos] = useState(null);
 
   React.useLayoutEffect(() => {
     if (!open) {
-      setShift(0);
-      return;
+      setPos(null);
+      return undefined;
     }
     const measure = () => {
+      const anchor = anchorRef && anchorRef.current;
       const el = floatRef.current;
-      if (!el) return;
-      // Measured with any previous nudge removed, so each correction is
-      // computed from the true centered position rather than compounding on
-      // top of the last one as the viewport changes.
-      const prev = el.style.transform;
-      el.style.transform = "translateX(-50%)";
-      const rect = el.getBoundingClientRect();
-      el.style.transform = prev;
-      const gutter = 8;
-      if (rect.left < gutter) setShift(gutter - rect.left);
-      else if (rect.right > window.innerWidth - gutter) setShift(window.innerWidth - gutter - rect.right);
-      else setShift(0);
+      if (!anchor || !el) return;
+      const a = anchor.getBoundingClientRect();
+      const width = el.offsetWidth;
+      let left = a.left;
+      if (left + width > window.innerWidth - DROPDOWN_GUTTER) left = window.innerWidth - DROPDOWN_GUTTER - width;
+      if (left < DROPDOWN_GUTTER) left = DROPDOWN_GUTTER;
+
+      // Opens downward unless there is too little room and more of it above --
+      // a rail control near the bottom of a short window would otherwise open
+      // into a 40px sliver.
+      const below = window.innerHeight - a.bottom - DROPDOWN_GUTTER;
+      const above = a.top - DROPDOWN_GUTTER;
+      const up = below < DROPDOWN_MIN_DROP && above > below;
+      setPos({
+        left,
+        // Never taller than the room it has. The panel scrolls inside itself,
+        // so a fifteen-game slate is reachable at any window height.
+        maxHeight: Math.max(160, Math.min(420, up ? above : below)),
+        top: up ? undefined : a.bottom + 6,
+        bottom: up ? window.innerHeight - a.top + 6 : undefined,
+      });
     };
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [open]);
+    // Capture phase: the rail and the table are their own scrollers, and a
+    // panel left behind by the surface it is anchored to is worse than one
+    // that simply follows.
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open, anchorRef]);
 
-  return { floatRef, anchorStyle: { left: "50%", transform: `translateX(calc(-50% + ${shift}px))` } };
+  // Hidden rather than mispositioned for the one frame before the measure --
+  // `left: 0` on a fixed panel is the top-left corner of the window, which is
+  // a visible jump.
+  return {
+    floatRef,
+    anchorStyle: pos
+      ? { position: "fixed", ...pos }
+      : { position: "fixed", top: 0, left: 0, visibility: "hidden" },
+  };
 }
 
 // The green circled tick marking a chosen row.
@@ -17431,7 +17483,7 @@ function GameOptionRow({ logoFn, teams, time, label, onClick, indicator, highlig
 function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel, variant = "button", triggerLabel }) {
   const [open, setOpen] = useState(false);
   const wrapRef = React.useRef(null);
-  const { floatRef, anchorStyle } = useCenteredPanel(open);
+  const { floatRef, anchorStyle } = useCenteredPanel(open, wrapRef);
 
   React.useEffect(() => {
     if (!open) return;
@@ -17540,10 +17592,15 @@ function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel, vari
 // MATCHUP <select> so a user researching "everyone playing tonight except
 // the early games" isn't limited to one game at a time. An empty `selected`
 // set means "all games", matching the old dropdown's "all" option.
-function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill = false }) {
+// `variant="rail"` is the v3 filter rail's own idiom -- 34px, mono, 12px,
+// surface-1 -- so this sits in the rail beside LEAGUE and SLATE rather than
+// beside them in the v2 panel's Oswald. Same component, same state, same
+// dropdown panel: a second game picker built to match the rail is how two
+// controls for one filter start disagreeing.
+function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill = false, variant = "panel" }) {
   const [open, setOpen] = useState(false);
   const panelRef = React.useRef(null);
-  const { floatRef, anchorStyle } = useCenteredPanel(open);
+  const { floatRef, anchorStyle } = useCenteredPanel(open, panelRef);
 
   React.useEffect(() => {
     if (!open) return;
@@ -17555,14 +17612,23 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill 
   }, [open]);
 
   const label = selected.size === 0 ? allLabel : `${selected.size} game${selected.size > 1 ? "s" : ""}`;
+  const rail = variant === "rail";
 
   return (
     <div ref={panelRef} style={{ position: "relative", display: fill ? "block" : "inline-block" }}>
       <button
         type="button"
-        className="oswald"
+        className={rail ? undefined : "oswald"}
         onClick={() => setOpen((v) => !v)}
-        style={{
+        style={rail ? {
+          cursor: "pointer", minHeight: 34, padding: "0 11px", borderRadius: 7,
+          fontFamily: "'PP At', 'Space Mono', ui-monospace, monospace", fontSize: 12, textAlign: "left",
+          border: `1px solid ${open || selected.size ? "var(--amber)" : "var(--line)"}`,
+          background: open || selected.size ? "var(--amber-dim)" : "var(--surface-1)",
+          color: open || selected.size ? "var(--amber-ink)" : "var(--text-2)",
+          display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between",
+          width: "100%", boxSizing: "border-box",
+        } : {
           cursor: "pointer", padding: "8px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700,
           border: `1px solid ${open ? "var(--amber)" : "var(--line)"}`,
           background: open ? "var(--amber-dim)" : "var(--panel)",
@@ -17571,8 +17637,8 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill 
           ...(fill ? { width: "100%", boxSizing: "border-box", justifyContent: "space-between" } : null),
         }}
       >
-        {label}
-        <span className="mono" style={{ fontSize: 10, color: "var(--dim)" }}>▾</span>
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+        <span className="mono" style={{ fontSize: 10, color: "var(--dim)", flex: "0 0 auto" }}>▾</span>
       </button>
       {open && (
         <div ref={floatRef} style={{ ...DROPDOWN_PANEL_STYLE, ...anchorStyle }}>
@@ -17624,188 +17690,6 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill 
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// The slate, spelled out. Without this the only way to see which games the feed
-// is drawn from is to open the GAMES dropdown, which means the answer to "what's
-// on today" costs a click and hides the table while you read it.
-//
-// Takes the same `options` array the dropdown does (see mlbMatchupOptions) and
-// writes back through the same setSelectedGameIds -- there is deliberately no
-// second slate source and no second filtering path, so the two controls can't
-// drift apart. Sport-agnostic on purpose: NFL/NBA/WNBA only need another call
-// site with a different logoFn.
-function TodaysGamesStrip({ options, selected, onChange, logoFn, emptyLabel }) {
-  const scrollRef = React.useRef(null);
-  const activeRef = React.useRef(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const updateScrollState = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    setCanScrollLeft(el.scrollLeft > 2);
-    setCanScrollRight(el.scrollLeft < maxScroll - 2);
-  };
-
-  // Same rAF-plus-timer dance as TeammateChipRow: measuring synchronously
-  // reports scrollWidth === clientWidth because the team logos haven't laid out
-  // yet, which would leave the right arrow hidden on a row that very much does
-  // scroll. The timer covers tabs that aren't compositing (no rAF fires there
-  // at all), and the observer keeps the arrows honest across resizes.
-  React.useEffect(() => {
-    const raf = requestAnimationFrame(updateScrollState);
-    const timer = setTimeout(updateScrollState, 80);
-    const el = scrollRef.current;
-    const ro = el && typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateScrollState) : null;
-    if (ro) ro.observe(el);
-    return () => { cancelAnimationFrame(raf); clearTimeout(timer); if (ro) ro.disconnect(); };
-  }, [options.length]);
-
-  // Where a smooth scroll is currently headed, so a second click chains onto the
-  // first instead of re-measuring a scrollLeft that is still mid-animation --
-  // otherwise an impatient double-click computes the same destination twice and
-  // the rail moves one step for two clicks. Cleared once the animation lands (or
-  // shortly after, if it was interrupted by a drag or the wheel).
-  const pendingScrollRef = React.useRef(null);
-  const pendingTimerRef = React.useRef(null);
-
-  React.useEffect(() => () => clearTimeout(pendingTimerRef.current), []);
-
-  // Roughly two cards a click -- far enough to feel like progress, short enough
-  // that you can still see where you came from. Anything landing within a card's
-  // width of either end goes the whole way instead: stopping a few pixels short
-  // leaves the arrow lit for one more click that visibly does nothing.
-  const scrollBy = (dir) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    const from = pendingScrollRef.current == null ? el.scrollLeft : pendingScrollRef.current;
-    let target = from + dir * Math.max(240, el.clientWidth * 0.6);
-    if (target > maxScroll - 48) target = maxScroll;
-    if (target < 48) target = 0;
-    pendingScrollRef.current = target;
-    clearTimeout(pendingTimerRef.current);
-    pendingTimerRef.current = setTimeout(() => { pendingScrollRef.current = null; }, 500);
-    el.scrollTo({ left: target, behavior: "smooth" });
-  };
-
-  // Only one game selected means the user narrowed to it -- probably from the
-  // dropdown, where the card in question can easily be off-screen. Two or more
-  // is a multi-game view with no single card to favour, so leave the scroll
-  // position alone. block:"nearest" keeps this from yanking the page vertically.
-  const soleSelectedId = selected.size === 1 ? [...selected][0] : null;
-  React.useEffect(() => {
-    if (!soleSelectedId || !activeRef.current || !scrollRef.current) return;
-    activeRef.current.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
-  }, [soleSelectedId]);
-
-  // An empty rail says so rather than vanishing. Returning null here used to
-  // be harmless because the only way to get an empty list was a slate that
-  // hadn't loaded -- now that concluded games are filtered out, "no games
-  // left today" is a normal end-of-evening state, and an absent row would
-  // read as a broken picker instead of a finished slate (rule 4).
-  if (options.length === 0) {
-    if (!emptyLabel) return null;
-    return (
-      <div
-        className="mono"
-        style={{
-          display: "flex", justifyContent: "center", alignItems: "center",
-          padding: "12px 16px", marginBottom: 12,
-          border: "1px solid var(--line)", borderRadius: 6,
-          fontSize: 11.5, letterSpacing: "0.06em", color: "var(--dim)",
-        }}
-      >
-        {emptyLabel}
-      </div>
-    );
-  }
-
-  // Arrows sit in their own gutters beside the rail rather than floating over
-  // the cards -- an arrow parked on top of a game card both hides the matchup
-  // and steals the click that was meant for it.
-  //
-  // Both gutters stay mounted whatever the scroll position, fading rather than
-  // unmounting. Two reasons: the cards don't reflow out from under the cursor
-  // mid-scroll, and the scroller's clientWidth stays constant, so the overflow
-  // measurement can't feed back into its own result (mounting an arrow narrows
-  // the rail, which can create the very overflow that mounted the arrow).
-  // Box, colours and layout live on .slate-arrow in index.css -- only the
-  // enabled/disabled state is inline. Keeping `display` out of here is what lets
-  // the phone media query drop the arrows at all; an inline display would
-  // outrank the class and the gutters would survive on a 375px screen.
-  const arrowStyle = (enabled) => ({
-    cursor: enabled ? "pointer" : "default",
-    opacity: enabled ? 1 : 0,
-    pointerEvents: enabled ? "auto" : "none",
-  });
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-    <div className="slate-arrow" role="button" aria-label="Scroll games left" aria-hidden={!canScrollLeft} onClick={() => scrollBy(-1)} style={arrowStyle(canScrollLeft)}>‹</div>
-    <div
-      ref={scrollRef}
-      onScroll={updateScrollState}
-      className="slate-scroll"
-      style={{ flex: 1, minWidth: 0, gap: 8, paddingBottom: 6 }}
-    >
-      {options.map((o) => {
-        const isSelected = selected.has(o.id);
-        // Exclusive jump rather than the dropdown's additive toggle: a one-tap
-        // strip reads as "show me this game", and clicking the game you're
-        // already on is the obvious way back to the full slate. Stacking games
-        // is still available in the dropdown.
-        const activate = () => onChange(isSelected && selected.size === 1 ? new Set() : new Set([o.id]));
-        return (
-          <div
-            key={o.id}
-            ref={isSelected && o.id === soleSelectedId ? activeRef : null}
-            role="button"
-            tabIndex={0}
-            aria-pressed={isSelected}
-            aria-label={`${o.label}${o.note ? `, ${o.note}` : ""}, ${slateTimeLabel(o.startsAt)}`}
-            onClick={activate}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                activate();
-              }
-            }}
-            style={{
-              display: "flex", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer",
-              padding: "7px 12px", borderRadius: "var(--r-md)",
-              transition: "background 0.12s ease, border-color 0.12s ease",
-              border: `1px solid ${isSelected ? "var(--amber)" : "var(--line)"}`,
-              background: isSelected ? "var(--amber-dim)" : "var(--panel)",
-            }}
-          >
-            {logoFn && (
-              <div style={{ display: "flex", flexShrink: 0 }}>
-                <img src={logoFn(o.teams[0])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)" }} />
-                <img src={logoFn(o.teams[1])} alt="" width={20} height={20} style={{ objectFit: "contain", borderRadius: "50%", background: "var(--panel)", marginLeft: -6, border: "1.5px solid var(--panel2)" }} />
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-              <div className="oswald" style={{
-                fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap",
-                color: isSelected ? "var(--amber)" : "var(--text)",
-              }}>
-                {o.teams[0]} @ {o.teams[1]}
-              </div>
-              <div className="mono" style={{ fontSize: 10.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
-                {slateTimeLabel(o.startsAt)}
-                {o.note && ` · ${o.note}`}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-    <div className="slate-arrow" role="button" aria-label="Scroll games right" aria-hidden={!canScrollRight} onClick={() => scrollBy(1)} style={arrowStyle(canScrollRight)}>›</div>
     </div>
   );
 }
@@ -20617,7 +20501,7 @@ function useMlbFeedData(active) {
 // read one fetch between them -- and so the data survives navigating away from
 // the feed, which used to throw it away on unmount and re-fetch every roster
 // and game log on the way back.
-function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport, mlb, searchSlot, picks = [], onOpenPicks }) {
+function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaDataVersion, nbaDataVersion, sport, setSport, gameJump, mlb, searchSlot, picks = [], onOpenPicks }) {
   const { mlbSlate, mlbLoading, mlbRows, mlbStatusVersion } = mlb;
   const isNarrow = useIsNarrow(560);
   const isPhone = useIsPhone();
@@ -21185,6 +21069,35 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     applyFeedFiltersNow(f);
   }, [sport, setSport, applyFeedFiltersNow]);
 
+  // Arriving from one game's Matchup page or Gamecast (see goToGameProps).
+  // The feed opens narrowed to that game rather than to the whole slate,
+  // which is what "open the prop feed" from inside NE @ SEA was always
+  // asking for.
+  //
+  // Declared *after* the sport-reset effect above, deliberately and for the
+  // same reason pendingPreset is: React runs effects in declaration order,
+  // and a selection made before the reset would be wiped in the same tick
+  // that the sport switched to get here.
+  //
+  // Waits for the sport's own matchup options, because the ids it has to
+  // select do not exist until the feed's slate fetch answers. `applied` keeps
+  // one request from re-selecting after the reader clears the filter.
+  const appliedGameJump = React.useRef(null);
+  React.useEffect(() => {
+    if (!gameJump || gameJump.sport !== sport) return;
+    if (appliedGameJump.current === gameJump.nonce) return;
+    if (!activeMatchupOptions.length) return;
+    const teams = gameJump.teams || [];
+    const match = activeMatchupOptions.filter((o) => o.teams.some((t) => teams.includes(t)));
+    appliedGameJump.current = gameJump.nonce;
+    // No match is not a reason to filter to nothing: the game may have
+    // concluded (the picker only offers live ones) or belong to a week this
+    // feed is not showing. The whole slate is the safe answer -- an empty
+    // feed under a heading naming one game would read as "this game has no
+    // props".
+    if (match.length) setSelectedGameIds(new Set(match.map((o) => o.id)));
+  }, [gameJump, sport, activeMatchupOptions]);
+
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [presets, setPresets] = useState(loadPresets);
   const [defaultPresetId, setDefaultPresetId] = useState(
@@ -21421,6 +21334,27 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // have no chip, so they are pointed at rather than listed.
   const emptyStateNames = activeFilterChips.map((c) => c.label);
 
+  // The one chip both frames draw, above the table where the count is.
+  //
+  // `activeFilterChips` above has said which filters are narrowing the feed
+  // since it was written, and neither v3 frame ever rendered it -- it reaches
+  // the screen only through the empty state's copy, so a feed that is short
+  // rather than empty explains nothing. That was survivable while every
+  // filter was set from a control the reader could see; it stopped being
+  // survivable when opening the feed from a Matchup page started setting one
+  // for them.
+  const narrowedToGame = useMemo(() => {
+    if (!showMatchupDropdown || selectedGameIds.size === 0) return null;
+    const chosen = activeMatchupOptions.filter((o) => selectedGameIds.has(o.id));
+    if (!chosen.length) return null;
+    return {
+      label: chosen.length === 1
+        ? (chosen[0].teams || []).join(" @ ") || chosen[0].label
+        : `${chosen.length} GAMES`,
+      onClear: () => setSelectedGameIds(new Set()),
+    };
+  }, [showMatchupDropdown, selectedGameIds, activeMatchupOptions]);
+
   const activeSortMode = FEED_SORT_MODES.find((mo) => mo.id === sortMode);
 
   // Hit rate (for whichever sample size is selected) is always the primary
@@ -21593,14 +21527,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     </button>
   );
 
-  // The games strip is itself a game picker, so on a phone the Games dropdown
-  // beside it would be a second control for the same job -- whichever sport
-  // has one gets the strip and drops the dropdown.
-  //
-  // All three live sports now have one. NBA is the only holdout, and stays
-  // one because its rows come from a seeded generator rather than a slate --
-  // there are no real games to chip.
-  const showGamesStrip = sport === "mlb" || sport === "nfl" || sport === "wnba";
   // One data disclaimer per screen (handoff, content rules), stating which
   // season and which source this sport's logs actually come from rather than
   // the design's single hard-coded "Real 2025 regular-season game logs" --
@@ -22101,6 +22027,66 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 
   const refineSummary = `${refineMarketLabel} · ${direction === "under" ? "Under" : "Over"} · ${refineWindowLabel}`;
 
+  // The game picker, back in the rail.
+  //
+  // It had no door on this layout at all. `GamesMultiSelect` renders in one
+  // place -- the v2 Filters panel -- inside that panel's `isNarrow` block,
+  // and gated on a flag (`showGamesStrip`) that was true for exactly the
+  // three sports with a slate. So on desktop it was unreachable for every
+  // sport, and on the phone it reached only the NBA. `TodaysGamesStrip`, the
+  // strip that flag deferred to, had no call site at all and is deleted with
+  // this. The rail's own EVERYTHING ELSE note went on promising "teams and
+  // games" throughout.
+  //
+  // The dropdown rather than a chip per game: sixteen NFL fixtures is the
+  // rail twice over, and this is a multi-select -- picking three games is
+  // the case that makes the control worth having.
+  const feedGamesGroup = {
+    key: "games",
+    label: showMatchupDropdown ? "GAMES" : "TEAM",
+    cols: 1,
+    value: showMatchupDropdown
+      ? (selectedGameIds.size ? `${selectedGameIds.size} of ${activeMatchupOptions.length}` : null)
+      : (teamFilter !== "all" ? teamFilter : null),
+    // Three different facts about an empty picker, never collapsed into one
+    // -- the schedule is loading, it could not be read, or every game has
+    // finished. A dropdown with nothing in it states none of them.
+    note: showMatchupDropdown && activeMatchupOptions.length === 0 ? gamesStripEmptyLabel : null,
+    node: showMatchupDropdown ? (
+      activeMatchupOptions.length > 0 ? (
+        <GamesMultiSelect
+          options={activeMatchupOptions}
+          selected={selectedGameIds}
+          onChange={setSelectedGameIds}
+          allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
+          logoFn={gamesStripLogoFn}
+          variant="rail"
+          fill
+        />
+      ) : null
+    ) : (
+      <select
+        className="select"
+        aria-label="Team"
+        value={teamFilter}
+        onChange={(e) => setTeamFilter(e.target.value)}
+        style={{
+          width: "100%", boxSizing: "border-box", minHeight: 34, padding: "0 9px", borderRadius: 7,
+          border: `1px solid ${teamFilter !== "all" ? "var(--amber)" : "var(--line)"}`,
+          background: teamFilter !== "all" ? "var(--amber-dim)" : "var(--surface-1)",
+          color: teamFilter !== "all" ? "var(--amber-ink)" : "var(--text)",
+          fontFamily: "'PP At', 'Space Mono', ui-monospace, monospace", fontSize: 12,
+        }}
+      >
+        <option value="all">All teams</option>
+        {teamOptions.map((t) => (
+          <option key={t} value={t}>{t}</option>
+        ))}
+      </select>
+    ),
+    items: [],
+  };
+
   // ---- the phone (see src/v3/PropFeedMobile.jsx) ---------------------------
   //
   // Everything above stays: the same rows, the same filters, the same sort,
@@ -22162,6 +22148,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         ]}
         onReset={resetFeedFilters}
         rateColor={feedRateColor}
+        gamesPicker={feedGamesGroup}
+        narrowedTo={narrowedToGame}
         rowsEmptyNote={feedEmptyNote}
         loading={sport === "mlb" && mlbLoading}
         expandedKey={expandedKey}
@@ -22314,25 +22302,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 onSetPresets={updateSamplePresets}
               />
             </div>
-            {!showGamesStrip && (
-              showMatchupDropdown ? (
-                <GamesMultiSelect
-                  options={activeMatchupOptions}
-                  selected={selectedGameIds}
-                  onChange={setSelectedGameIds}
-                  allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
-                  logoFn={gamesStripLogoFn}
-                  fill
-                />
-              ) : (
-                <select className="select" style={{ width: "100%", boxSizing: "border-box" }} value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-                  <option value="all">All teams</option>
-                  {teamOptions.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              )
-            )}
+            {/* The game / team picker used to sit here, behind two gates: the
+                enclosing `isNarrow` block, and `!showGamesStrip` -- false for
+                the three sports that have a slate. So it reached the NBA on a
+                phone and nothing else. It is a rail group on desktop and a
+                REFINE section on the phone now (`feedGamesGroup`), which is
+                one control on both surfaces off one piece of state; leaving a
+                copy here would be two doors onto the same filter, the failure
+                the comment at the top of this panel warns about. */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: "var(--dim)" }}>
               <span>{resultCount}</span>
               <span
@@ -22653,6 +22630,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       items: FEED_SPORTS.filter((sp) => sp.available)
         .map((sp) => feedChip(sp.id, sp.label, sport === sp.id, () => setSport(sp.id))),
     },
+    feedGamesGroup,
     {
       key: "window", label: "YOUR OWN WINDOW", cols: 2, custom: true,
       value: feedCustomCol ? `L${feedCustomCol} shown` : null,
@@ -22684,7 +22662,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     },
     {
       key: "more", label: "EVERYTHING ELSE", cols: 1,
-      note: "Defence tier, role, odds range, teams and games, and saved screens.",
+      // Games left this list when the picker came back up to the rail. The
+      // note is the only description of what is behind that button, so
+      // listing something it no longer holds sends the reader looking.
+      note: "Defence tier, role, odds range and saved screens.",
       items: [feedChip("more", "MORE FILTERS", feedFiltersOpen, () => setFeedFiltersOpen((v) => !v))],
     },
   ];
@@ -22744,6 +22725,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           ? "A reserve clears a low line more easily than a starter does. Off, they are back in."
           : "Reserves included."}
         countLabel={`${filteredRows.length} of ${rows.length} props`}
+        narrowedTo={narrowedToGame}
         benchedLabel={regularsOnly && feedSummary.benched > 0
           ? `${feedSummary.benched} hidden · under half their team's games`
           : null}
@@ -24581,7 +24563,7 @@ const NFL_DEFAULT_MARKET_BY_POS = { QB: "passYds", RB: "rushYds", WR: "rec", TE:
 // and their real hit rate against it. `minGames` mirrors the thin-sample
 // floor used everywhere else in the app (ABSENCE_MIN_GAMES/buildRungs) --
 // under it, the caller labels the read thin rather than printing a rate.
-function playerPropRead({ sport, player, market, marketLabel, games, statValue }) {
+function playerPropRead({ sport, player, market, marketLabel, games, statValue, headshotSrc, fallbackSrc, status }) {
   const finished = games || [];
   if (finished.length < 3) return null;
   const values = finished.map(statValue).filter((v) => Number.isFinite(v));
@@ -24596,6 +24578,15 @@ function playerPropRead({ sport, player, market, marketLabel, games, statValue }
     // (midfield's CDN); the other three by ESPN's. Whichever is absent stays
     // undefined and PlayerAvatar falls back on its own.
     mlbId: player.mlbId, espnId: player.espnId,
+    // Resolved here rather than by the caller: each sport reaches a different
+    // CDN through a different id (the NFL's goes through a hand-written slug
+    // map first), and MatchupPage cannot import any of those helpers. Same
+    // for availability -- rule 1 says a named player carries their status,
+    // and an unresolved one stays undefined so the dot is absent rather than
+    // green.
+    headshotSrc: headshotSrc || null,
+    fallbackSrc: fallbackSrc || null,
+    status,
     market, marketLabel, line,
     hitRate: hits / values.length,
     gamesOver: hits,
@@ -24618,19 +24609,35 @@ async function getTopPropsForMatchup(sport, awayAbbr, homeAbbr, { limit = 4 } = 
     // roster would otherwise crowd the other team out of the pool entirely
     // before ranking ever runs.
     const players = rosters.flatMap((r) => r.players.filter((p) => p.pos !== "SP").slice(0, 6));
+    // The same 40-man roster feed the prop feed and the matchup's probable
+    // pitchers read, off the one shared cache in lib/mlbStatus.js -- so the
+    // dot on a face here cannot disagree with the dot on the same face two
+    // panels up. A team that fails to resolve leaves its players dotless.
+    const statusMaps = await Promise.all(
+      [awayAbbr, homeAbbr]
+        .map((abbr) => MLB_ABBR_TEAM_ID[abbr])
+        .filter(Boolean)
+        .map((teamId) => fetchMLBTeamRosterStatus(teamId).catch(() => null))
+    );
+    const mlbStatus = Object.assign({}, ...statusMaps.filter(Boolean));
     const logs = await Promise.all(players.map((p) => fetchMLBGameLog(p.mlbId).catch(() => null)));
     const reads = players.map((p, i) => playerPropRead({
       sport, player: p, market: "h", marketLabel: "Hits",
       games: logs[i] || [], statValue: (g) => statValueMLB(g, "h"),
+      headshotSrc: p.mlbId ? mlbHeadshot(p.mlbId) : null, fallbackSrc: mlbEspnHeadshot(p.id),
+      status: mlbAvailability(mlbStatus[p.mlbId]),
     })).filter(Boolean);
     return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
   }
   if (sport === "wnba") {
     const players = [...wnbaRosterFor(awayAbbr).slice(0, 6), ...wnbaRosterFor(homeAbbr).slice(0, 6)];
+    const avail = (await fetchWNBAAvailability([awayAbbr, homeAbbr])) || {};
     const reads = players.map((p) => playerPropRead({
       sport, player: p, market: "pts", marketLabel: "Points",
       games: getWNBAGames(p) || [],
       statValue: (g) => statValue(g, "pts"),
+      headshotSrc: p.espnId ? wnbaHeadshot(p.espnId) : null,
+      status: avail[String(p.espnId)],
     })).filter(Boolean);
     return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
   }
@@ -24640,9 +24647,15 @@ async function getTopPropsForMatchup(sport, awayAbbr, homeAbbr, { limit = 4 } = 
       const market = NFL_DEFAULT_MARKET_BY_POS[p.pos];
       if (!market) return null;
       const marketLabel = NFL_MARKETS.find((m) => m.id === market)?.label || market;
+      // The hand-written pool keys players by slug and maps the ESPN id
+      // separately, so an id has to be resolved through both -- the same
+      // reconciliation nflHeadshot does internally.
+      const espnId = p.espnId || NFL_ESPN_ID[p.id];
       return playerPropRead({
         sport, player: p, market, marketLabel,
         games: getNFLGames(p) || [], statValue: (g) => statValueNFL(g, market),
+        headshotSrc: nflHeadshot(p),
+        status: espnId ? NFL_ROSTER_STATUS[String(espnId)] : undefined,
       });
     }).filter(Boolean);
     return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
@@ -24655,6 +24668,11 @@ async function getTopPropsForMatchup(sport, awayAbbr, homeAbbr, { limit = 4 } = 
       sport, player: p, market: "pts", marketLabel: "Points",
       games: getNBAGames(p) || [],
       statValue: (g) => statValue(g, "pts"),
+      // ESPN's crop first, NBA.com's raw 1040x760 behind it -- the same order
+      // and the same reasoning as every other NBA avatar in this file.
+      headshotSrc: p.espnId ? espnHeadshot(p.espnId) : null,
+      fallbackSrc: p.nbaId ? nbaHeadshot(p.nbaId) : null,
+      status: p.espnId ? NBA_ROSTER_STATUS[String(p.espnId)] : undefined,
     })).filter(Boolean);
     return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
   }
@@ -25235,7 +25253,7 @@ export default function PropLedger() {
     let cancelled = false;
     setBoardSlate(null);
     const load = boardSport === "nfl"
-      ? fetchNflWeekOneSlate()
+      ? fetchNflCurrentWeekSlate()
       : (boardSport === "mlb" ? fetchMlbSlate : boardSport === "wnba" ? fetchWnbaSlate : fetchNbaSlate)(slateDayKey(new Date()));
     Promise.resolve(load)
       .then((res) => {
@@ -25269,14 +25287,32 @@ export default function PropLedger() {
     setPage(targetSport);
   };
 
-  // "View Props for this Game" on the Matchup Overview. The Prop Feed's own
-  // matchup filter (see GamesMultiSelect) is internal state keyed off the
-  // feed's own matchup list, so this lands on the right sport's feed rather
-  // than pre-filtering to the one game -- narrowing further would mean
-  // threading initial-filter state through PropFeedPage and reconciling two
-  // different game-id shapes.
+  // "Open prop feed" on the Matchup Overview and the Gamecast. Lands on the
+  // right sport's feed, filtered to the one game it was opened from.
+  //
+  // The two sides identify a game differently and cannot be made to agree:
+  // the feed's matchup ids are index-based (`NE-SEA-0`), built from the
+  // feed's own slate fetch, and the index shifts as games conclude. So what
+  // travels is the *teams*, which is what the reader means anyway -- the feed
+  // resolves them against its own options once those load, exactly the way a
+  // saved screen's `gameTeams` already does (see applyFeedFiltersNow).
+  //
+  // `nonce` so opening the same game twice re-applies the filter after the
+  // reader has cleared it, rather than the request looking already-consumed.
+  const [feedGameJump, setFeedGameJump] = useState(null);
   const goToGameProps = (game) => {
+    // Two shapes reach here and both are legitimate: the slate's games carry
+    // `{ away: { abbr } }`, the Board's cards carry `away` as the plain
+    // abbreviation. Reading only the first quietly left the Board's route
+    // unfiltered, which is the kind of half-working that looks like the
+    // feature is flaky rather than absent.
+    const abbrOf = (side) => (side && typeof side === "object" ? side.abbr : side) || null;
     setFeedSport(game.sport);
+    setFeedGameJump({
+      sport: game.sport,
+      teams: [abbrOf(game.away), abbrOf(game.home)].filter(Boolean),
+      nonce: Date.now(),
+    });
     setPage("feed");
   };
 
@@ -25600,10 +25636,10 @@ export default function PropLedger() {
             onOpenSettings={() => setSettingsOpen((v) => !v)}
             slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
           >
-            <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} searchSlot={null} />
+            <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} gameJump={feedGameJump} mlb={mlb} searchSlot={null} />
           </V3Shell>
         ) : (
-          <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} mlb={mlb} picks={myPicks} onOpenPicks={openPicksPage} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
+          <PropFeedPage onOpenProp={goToProp} pickIds={pickIds} onTogglePick={togglePick} nflDataVersion={nflDataVersion} wnbaDataVersion={wnbaDataVersion} nbaDataVersion={nbaDataVersion} sport={feedSport} setSport={setFeedSport} gameJump={feedGameJump} mlb={mlb} picks={myPicks} onOpenPicks={openPicksPage} searchSlot={<SearchBar index={searchIndex} onOpen={() => setSearchOpened(true)} onSelect={(r) => goToProp(r.sport, r.playerId, r.market)} />} />
         )
       )}
 

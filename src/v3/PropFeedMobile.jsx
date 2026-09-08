@@ -76,6 +76,8 @@ export default function PropFeedMobile({
   advanced = [],
   onReset,
   rateColor,
+  gamesPicker = null,       // { label, value, note, node } -- rendered in the REFINE sheet
+  narrowedTo = null,        // { label, onClear } -- the desktop frame carries the same chip
   rowsEmptyNote = null,
   loading = false,
   expandedKey,
@@ -113,6 +115,29 @@ export default function PropFeedMobile({
           )}
         </div>
       </div>
+      {/* Says why the feed is short, and undoes it — the same chip the
+          desktop frame carries, for the same reason: arriving from one game's
+          Matchup page narrows the list, and a filter nothing on screen names
+          is a filter the reader cannot undo. */}
+      {narrowedTo && (
+        <div style={{ padding: "0 16px 10px" }}>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={narrowedTo.onClear}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); narrowedTo.onClear && narrowedTo.onClear(); } }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8, minHeight: 34,
+              padding: "0 11px", borderRadius: 8, cursor: "pointer",
+              fontFamily: MONO, fontSize: 12, whiteSpace: "nowrap",
+              border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)",
+            }}
+          >
+            {narrowedTo.label}
+            <span style={{ color: "var(--dim)" }}>×</span>
+          </span>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px 10px" }}>
         <span
           onClick={onCycleSort}
@@ -165,6 +190,24 @@ export default function PropFeedMobile({
             ))}
           </div>
         </div>
+
+        {/* The game picker, in the sheet that owns every other pool control.
+            It reached this frame through nothing at all before -- see the
+            note on the rail's GAMES group in PropLedger. */}
+        {gamesPicker && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+              <span style={sectionLabel}>{gamesPicker.label}</span>
+              {gamesPicker.value && (
+                <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--amber-ink)" }}>{gamesPicker.value}</span>
+              )}
+            </div>
+            {gamesPicker.node}
+            {gamesPicker.note && (
+              <span style={{ fontSize: 12, color: "var(--dim)" }}>{gamesPicker.note}</span>
+            )}
+          </div>
+        )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={sectionLabel}>WINDOW</span>

@@ -141,7 +141,11 @@ export default function BoardDesktop({
                 onKeyDown={(e) => { if (e.key === "Enter") onOpenGameProps && onOpenGameProps(hero); }}
                 style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
               >
-                OPEN MATCHUP →
+                {/* Read "OPEN MATCHUP →" and went to the Prop Feed, which is
+                    the same mislabel the Matchup page's own button carried in
+                    the other direction. It goes to the feed, filtered to this
+                    game, and now says so. */}
+                THIS GAME’S PROPS →
               </span>
             </div>
 

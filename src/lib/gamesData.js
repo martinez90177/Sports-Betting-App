@@ -240,7 +240,11 @@ export function buildDateTabs(sport, nflGames) {
       return { key: k, label: `${MONTH[d.getMonth()]} ${String(d.getDate()).padStart(2, "0")}`, sub: WEEKDAY[d.getDay()] };
     });
   }
-  return [-1, 0, 1, 2].map((offset) => {
+  // Today first, then the days ahead. It used to open on yesterday, which put
+  // a finished slate at the head of a page whose question is "what is on now"
+  // -- and on a Monday morning the tab reading "yesterday" was Sunday's whole
+  // NFL card, three tabs to the left of the games actually coming.
+  return [0, 1, 2, 3].map((offset) => {
     const d = addDays(new Date(), offset);
     return {
       key: dayKey(d),
@@ -697,16 +701,101 @@ export async function fetchNbaOpenerDay() {
   return nbaOpenerCache;
 }
 
-// Pinned to week=1 on purpose -- PropLedger's own fetchNFLWeekSlate derives
-// the *current* week, but this page was asked for Week 1 specifically.
-export async function fetchNflWeekOneSlate({ force = false } = {}) {
-  const ck = "nfl:week1";
+// ------------------------------------------------------------- NFL weeks
+//
+// The NFL is the one league here that schedules by week rather than by day,
+// and this page used to answer that with `fetchNflWeekOneSlate` -- pinned to
+// `seasontype=2&week=1&dates=2026`, three hardcoded facts. It was right for
+// exactly as long as Week 1 was the week in progress, and there was no way to
+// look at Week 2 at all.
+//
+// ESPN publishes its own calendar on the scoreboard route -- every week of
+// every phase, with the label it prints and the dates it covers -- and says
+// which one is current. Both come from here, so the picker cannot list a week
+// the provider does not have and cannot disagree with it about which is on.
+//
+// The Pro Bowl is deliberately left out. It is on the postseason calendar, but
+// it is an exhibition between two conference all-star sides whose "teams" have
+// no abbreviation any map in this app knows, so it would draw as a broken card
+// promising props that do not exist.
+const NFL_SKIP_WEEK_LABELS = /pro bowl/i;
+
+export async function fetchNflCalendar({ force = false } = {}) {
+  const ck = "nfl:calendar";
+  if (!force) {
+    const hit = cached(ck);
+    if (hit !== undefined) return hit;
+  }
+  try {
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nfl}/scoreboard`);
+    const data = await res.json();
+    const phases = data?.leagues?.[0]?.calendar || [];
+    const weeks = [];
+    // Regular season then postseason, in that order. Preseason is not offered:
+    // its games carry no props and this page's whole purpose is the route into
+    // them.
+    ["2", "3"].forEach((seasonType) => {
+      const phase = phases.find((p) => String(p.value) === seasonType);
+      (phase?.entries || []).forEach((e) => {
+        if (NFL_SKIP_WEEK_LABELS.test(e.label || "")) return;
+        weeks.push({
+          id: `${seasonType}-${e.value}`,
+          seasonType: Number(seasonType),
+          week: Number(e.value),
+          // ESPN's own label ("Week 7", "Divisional Round"), never one built
+          // here: a postseason round numbered "Week 2" would name the wrong
+          // thing entirely.
+          label: e.label || `Week ${e.value}`,
+          detail: e.detail || null,
+          startDate: e.startDate || null,
+          endDate: e.endDate || null,
+        });
+      });
+    });
+    if (!weeks.length) return store(ck, null);
+    const season = Number(data?.season?.year) || new Date().getFullYear();
+    const currentType = Number(data?.season?.type) || 2;
+    const currentWeek = Number(data?.week?.number) || 1;
+    const currentId = `${currentType}-${currentWeek}`;
+    return store(ck, {
+      season,
+      weeks,
+      // Falls back to the first week the calendar lists rather than to a
+      // hardcoded 1: in the postseason `currentId` is a type-3 id, and in the
+      // off-season it is a phase this list does not carry at all.
+      currentId: weeks.some((w) => w.id === currentId) ? currentId : weeks[0].id,
+    });
+  } catch {
+    return null;
+  }
+}
+
+// Whatever week is on now. The one call for every surface that wants "the
+// NFL slate" without choosing a week itself -- the Board's fixture join and
+// the player pages' next-game lookup. Both used to call a fetcher pinned to
+// week 1, so from week 2 onward they were joining to games already played.
+export async function fetchNflCurrentWeekSlate({ force = false } = {}) {
+  const cal = await fetchNflCalendar({ force });
+  if (!cal) return null;
+  return fetchNflWeekSlate(cal.currentId, cal.season, { force });
+}
+
+// One week's games. `id` is a calendar id from fetchNflCalendar
+// ("2-7" = regular season week 7); season is the year that calendar answered
+// with, so this route can never ask for a week of one season under the
+// calendar of another.
+export async function fetchNflWeekSlate(id, season, { force = false } = {}) {
+  if (!id) return null;
+  const ck = `nfl:week:${season}:${id}`;
   if (!force) {
     const hit = cached(ck, { live: true });
     if (hit !== undefined) return hit;
   }
+  const [seasonType, week] = String(id).split("-");
   try {
-    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nfl}/scoreboard?seasontype=2&week=1&dates=2026`);
+    const res = await fetch(
+      `https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nfl}/scoreboard?seasontype=${seasonType}&week=${week}&dates=${season}`
+    );
     const data = await res.json();
     return store(ck, espnSlate("nfl", data?.events));
   } catch {
@@ -1052,14 +1141,98 @@ export async function fetchGamecastDetail(game, { force = false } = {}) {
   }
 }
 
+
 // ----------------------------------------------------------- recent form
 //
 
 const formCache = new Map();
 
-// Real finals only -- an empty array when there are none. MLB
-// goes through StatsAPI; WNBA/NFL use ESPN's team schedule, which accepts
-// the team abbreviation directly in the path (no id map needed).
+// ESPN's team-schedule route is addressed by *ESPN's* abbreviation, not ours,
+// and three of them differ: football's Washington is WSH, basketball's New
+// Orleans is NO and Utah is UTAH. Asked for WAS / NOP / UTA the route answers
+// `{"code":400}` under a 200 status, which read here exactly like "no games" --
+// so those three teams' recent-form panels sat permanently empty and their
+// season series never resolved. All 77 abbreviations across the three ESPN
+// leagues were checked against the route; only these three are rejected.
+const ESPN_TEAM_ROUTE = {
+  nfl: { WAS: "WSH" },
+  nba: { NOP: "NO", UTA: "UTAH" },
+};
+const espnTeamRoute = (sport, abbr) => (ESPN_TEAM_ROUTE[sport] || {})[abbr] || abbr;
+
+// One team's schedule. Omitting `season` asks for whatever ESPN considers
+// current, and the answer says which that is (`season.year` / `season.type`) --
+// which is how the two callers below find the season to fall back to without
+// hardcoding a calendar anywhere.
+async function espnTeamSchedule(sport, abbr, { season, seasonType } = {}) {
+  const qs = [
+    season ? `season=${season}` : null,
+    seasonType ? `seasontype=${seasonType}` : null,
+  ].filter(Boolean).join("&");
+  const res = await fetch(
+    `https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH[sport]}/teams/${espnTeamRoute(sport, abbr)}/schedule${qs ? `?${qs}` : ""}`
+  );
+  const data = await res.json();
+  return data && !data.code ? data : null;
+}
+
+const espnFinished = (events) => (events || []).filter((e) => e?.competitions?.[0]?.status?.type?.completed);
+
+// The label ESPN itself prints for a season: "2025" for the NFL, "2025-26" for
+// the NBA. Never assembled from the year here -- a hyphenated basketball
+// season written as a single year names a different season.
+const espnSeasonLabel = (data, year) =>
+  data?.requestedSeason?.displayName || data?.season?.displayName || String(year);
+
+// Both halves of one named season, merged. The route serves one seasontype
+// per request, and asking for the wrong half loses whole games: NE and SEA
+// met in Super Bowl LX, which is seasontype 3, so a regular-season-only
+// lookup has the two never having played.
+async function espnSeasonEvents(sport, abbr, year) {
+  const [reg, post] = await Promise.all([
+    espnTeamSchedule(sport, abbr, { season: year, seasonType: 2 }),
+    espnTeamSchedule(sport, abbr, { season: year, seasonType: 3 }),
+  ]);
+  return {
+    events: [...(reg?.events || []), ...(post?.events || [])],
+    label: espnSeasonLabel(reg || post, year),
+  };
+}
+
+// Everything played so far in the season now in progress, and the label for
+// it. Empty when the season has not started: ESPN answers an out-of-season
+// request with the preseason (type 1), whose games are real but are neither
+// form nor a season series -- the same overstatement as counting spring
+// training, which is what MLB_COUNTED_TYPES above exists to avoid.
+//
+// The extra pair of requests fires only in the postseason. Asked during the
+// regular season the probe already *is* the whole of the season so far;
+// asked in January it is the playoff bracket alone, and the eleven regular-
+// season games behind it would have gone missing from a Last 10.
+async function espnSeasonSoFar(sport, abbr) {
+  const probe = await espnTeamSchedule(sport, abbr);
+  if (!probe) return null;
+  const year = Number(probe.season?.year) || new Date().getFullYear();
+  const type = Number(probe.season?.type);
+  if (type === 2) return { events: probe.events || [], label: espnSeasonLabel(probe, year), year };
+  if (type === 3) return { ...(await espnSeasonEvents(sport, abbr, year)), year };
+  return { events: [], label: espnSeasonLabel(probe, year), year };
+}
+
+// Regular season plus the four postseason rounds. Without it the StatsAPI
+// schedule route hands back spring training as well, and the Reds/Cubs season
+// series read 12 meetings when the two had played 10 that counted.
+const MLB_COUNTED_TYPES = "R,F,D,L,W";
+
+const mlbTeamId = (abbr) => Object.keys(MLB_ID_ABBR).find((k) => MLB_ID_ABBR[k] === abbr) || null;
+
+async function mlbFinals(query) {
+  const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&gameType=${MLB_COUNTED_TYPES}&${query}`);
+  const data = await res.json();
+  return (data?.dates || []).flatMap((d) => d.games || [])
+    .filter((g) => g.status?.abstractGameState === "Final");
+}
+
 // W / L / T for one finished game.
 //
 // Ties are real -- the NFL allows them -- and this used to have no way to say
@@ -1079,6 +1252,42 @@ function resultOf({ mineWon, theirsWon, us, them }) {
   return "T";
 }
 
+const shortDate = (d) => `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`;
+
+// One finished ESPN game, read from `abbr`'s side of it.
+function espnFormRow(sport, abbr, e) {
+  const norm = (a) => espnAbbr(sport, a);
+  const comp = e.competitions[0];
+  // ESPN answers this route with its own abbreviations even when asked by
+  // ours, so a raw `=== abbr` comparison finds nobody for the three teams
+  // ESPN_TEAM_ROUTE covers or for the six NBA sides the scoreboard shortens --
+  // and `mine` being undefined renders every row as an 0-0 loss rather than as
+  // an error. Normalised on both sides.
+  const mine = comp.competitors.find((c) => norm(c.team?.abbreviation) === abbr);
+  const theirs = comp.competitors.find((c) => norm(c.team?.abbreviation) !== abbr);
+  const d = new Date(e.date);
+  const us = Number(mine?.score?.value ?? mine?.score ?? 0);
+  const them = Number(theirs?.score?.value ?? theirs?.score ?? 0);
+  return {
+    date: shortDate(d),
+    at: e.date,
+    opp: norm(theirs?.team?.abbreviation) || "",
+    home: mine?.homeAway === "home",
+    us,
+    them,
+    result: resultOf({ mineWon: mine?.winner, theirsWon: theirs?.winner, us, them }),
+  };
+}
+
+const newestFirst = (rows, n) => rows.slice().sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, n);
+
+// Rows for the last `n` finished games, newest first.
+//
+// Every row from a season other than the one in progress carries `season` --
+// the label ESPN or StatsAPI prints for it -- and the panels above put that on
+// screen. That marker is the whole licence for the fallback: without it a
+// Week 1 form panel showing last January's games would be claiming them as
+// this season's form, which is the one thing this app does not do.
 export async function fetchRecentForm(sport, abbr, n) {
   const ck = `${sport}:${abbr}:${n}`;
   const hit = formCache.get(ck);
@@ -1087,22 +1296,16 @@ export async function fetchRecentForm(sport, abbr, n) {
   let rows = null;
   try {
     if (sport === "mlb") {
-      const id = Object.keys(MLB_ID_ABBR).find((k) => MLB_ID_ABBR[k] === abbr);
+      const id = mlbTeamId(abbr);
       const end = dayKey(new Date());
       const start = dayKey(addDays(new Date(), -45));
-      const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${id}&startDate=${start}&endDate=${end}`);
-      const data = await res.json();
-      const finals = (data?.dates || []).flatMap((d) => d.games || [])
-        .filter((g) => g.status?.abstractGameState === "Final")
-        .sort((a, b) => new Date(b.gameDate) - new Date(a.gameDate))
-        .slice(0, n);
-      rows = finals.map((g) => {
+      const mlbRow = (g) => {
         const isHome = MLB_ID_ABBR[g.teams?.home?.team?.id] === abbr;
         const mine = isHome ? g.teams.home : g.teams.away;
         const theirs = isHome ? g.teams.away : g.teams.home;
-        const d = new Date(g.gameDate);
         return {
-          date: `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`,
+          date: shortDate(new Date(g.gameDate)),
+          at: g.gameDate,
           opp: MLB_ID_ABBR[theirs?.team?.id] || "",
           home: isHome,
           us: mine?.score ?? 0,
@@ -1110,36 +1313,35 @@ export async function fetchRecentForm(sport, abbr, n) {
           // No winner flags on this feed, so the score is the only signal.
           result: resultOf({ us: mine?.score ?? 0, them: theirs?.score ?? 0 }),
         };
-      });
+      };
+      rows = newestFirst((await mlbFinals(`teamId=${id}&startDate=${start}&endDate=${end}`)).map(mlbRow), n);
+      // Out of season the trailing 45 days hold nothing, and "no finished
+      // games" was then an answer about the calendar rather than about the
+      // team. The last season that was actually played is the honest one.
+      if (!rows.length) {
+        const year = new Date().getFullYear();
+        for (const y of [year, year - 1]) {
+          const prior = newestFirst((await mlbFinals(`teamId=${id}&season=${y}`)).map(mlbRow), n);
+          if (prior.length) {
+            rows = prior.map((r) => ({ ...r, season: String(y) }));
+            break;
+          }
+        }
+      }
     } else {
-      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH[sport]}/teams/${abbr}/schedule`);
-      const data = await res.json();
-      const finals = (data?.events || [])
-        .filter((e) => e.competitions?.[0]?.status?.type?.completed)
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .slice(0, n);
-      // ESPN answers this route with its own abbreviations even when asked by
-      // ours, so a raw `=== abbr` comparison finds nobody for the six NBA
-      // teams that differ or for Washington's NFL side -- and `mine` being
-      // undefined renders every row as an 0-0 loss rather than as an error.
-      // Normalised on both sides.
-      const norm = (a) => espnAbbr(sport, a);
-      rows = finals.map((e) => {
-        const comp = e.competitions[0];
-        const mine = comp.competitors.find((c) => norm(c.team?.abbreviation) === abbr);
-        const theirs = comp.competitors.find((c) => norm(c.team?.abbreviation) !== abbr);
-        const d = new Date(e.date);
-        const us = Number(mine?.score?.value ?? mine?.score ?? 0);
-        const them = Number(theirs?.score?.value ?? theirs?.score ?? 0);
-        return {
-          date: `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, "0")}`,
-          opp: norm(theirs?.team?.abbreviation) || "",
-          home: mine?.homeAway === "home",
-          us,
-          them,
-          result: resultOf({ mineWon: mine?.winner, theirsWon: theirs?.winner, us, them }),
-        };
-      });
+      const current = await espnSeasonSoFar(sport, abbr);
+      rows = newestFirst(espnFinished(current?.events).map((e) => espnFormRow(sport, abbr, e)), n);
+      // Between seasons -- an NFL Week 1, an NBA October, the WNBA in May --
+      // the current schedule has nothing finished on it, and the panel's "no
+      // finished games in this window" was true of the window and silent
+      // about the team. Last season's closing stretch is the honest answer,
+      // and it travels labelled with the season it came from.
+      if (!rows.length) {
+        const prior = (current?.year || new Date().getFullYear()) - 1;
+        const { events, label } = await espnSeasonEvents(sport, abbr, prior);
+        rows = newestFirst(espnFinished(events).map((e) => espnFormRow(sport, abbr, e)), n)
+          .map((r) => ({ ...r, season: label }));
+      }
     }
   } catch {
     rows = null;
@@ -1158,50 +1360,176 @@ export async function fetchRecentForm(sport, abbr, n) {
   return value;
 }
 
-// Season series between two teams, shown on the Matchup Overview when it is
-// available. MLB only -- ESPN's scoreboard has no equally cheap H2H view.
-// Season series between two teams.
+// ---------------------------------------------------------- head to head
 //
-// Three different answers, deliberately distinguishable, because collapsing
-// them all into null is how a screen ends up silently missing a panel:
+// The season series between the two teams on screen.
 //
-//   null                -> this sport has no season series to show. Nothing was
-//                          promised, so the caller renders no panel at all.
-//   { games: 0 }        -> supported, but these two have not met yet. That is a
-//                          fact worth one line, not an absent section.
-//   { error: true }     -> the lookup failed. Also worth a line; "we could not
-//                          check" is not the same claim as "they never played".
-//   { games, awayWins, homeWins }
+// This answered for MLB alone until now, which meant three quarters of the
+// app's sports drew the panel's "they have not met this season" line without
+// ever having looked -- a claim, not a finding. All four are read now: MLB
+// through StatsAPI, the rest through the same ESPN team-schedule route the
+// form panel uses.
+//
+// It also walks back. Two teams from opposite NFL conferences meet once every
+// four years, so "this season only" returns nothing for most pairings for most
+// of a season, and nothing for *every* pairing in Week 1. When the season in
+// progress has no meeting the search steps back a season at a time, and what
+// it finds is labelled with the season it came from so the panel can say which
+// year it is showing. Rosters turn over -- that was the original argument for
+// this-season-only, and it survives as a sentence on screen rather than as an
+// empty card.
+//
+// Five different answers, deliberately distinguishable, because collapsing
+// them is how a screen ends up silently missing a panel:
+//
+//   null                     -> a sport with no schedule route here at all.
+//   { error: true }          -> the lookup failed. "We could not check" is not
+//                               the same claim as "they never played".
+//   { games: 0, searched }   -> checked, and these two have not met in any of
+//                               the seasons named in `searched`.
+//   { games, current: true } -> a series from the season in progress.
+//   { games, current: false }-> the most recent season they did meet, named in
+//                               `season`, with `last` carrying that meeting so
+//                               the panel can print the result.
+const H2H_LOOKBACK_SEASONS = 3;
+
+function seasonSeries(meetings, meta) {
+  let awayWins = 0;
+  let homeWins = 0;
+  meetings.forEach((m) => {
+    if (m.result === "away") awayWins += 1;
+    else if (m.result === "home") homeWins += 1;
+  });
+  return {
+    games: meetings.length,
+    awayWins,
+    homeWins,
+    // Drawn meetings belong in neither column, and without this the three
+    // cells would not add up to the meeting count above them. The panel says
+    // so when it is non-zero rather than leaving the arithmetic broken.
+    ties: meetings.length - awayWins - homeWins,
+    last: meetings[0] || null,
+    // Every meeting, newest first, each carrying the provider id its own box
+    // score lives behind. Three cells summarising a series is a count; the
+    // scorelines under them are the series.
+    meetings,
+    ...meta,
+  };
+}
+
+// One meeting, always described from the perspective of the two teams the page
+// names -- `awayAbbr` is the visitor *tonight*, whoever hosted back then.
+const meetingResult = (awayScore, homeScore, awayWon, homeWon) => {
+  if (awayWon === true) return "away";
+  if (homeWon === true) return "home";
+  if (awayScore > homeScore) return "away";
+  if (homeScore > awayScore) return "home";
+  return "tie";
+};
+
+function espnMeetings(sport, awayAbbr, homeAbbr, events) {
+  const norm = (a) => espnAbbr(sport, a);
+  return espnFinished(events)
+    .map((e) => {
+      const comp = e.competitions[0];
+      const a = comp.competitors.find((c) => norm(c.team?.abbreviation) === awayAbbr);
+      const h = comp.competitors.find((c) => norm(c.team?.abbreviation) === homeAbbr);
+      if (!a || !h) return null;
+      const awayScore = Number(a.score?.value ?? a.score ?? 0);
+      const homeScore = Number(h.score?.value ?? h.score ?? 0);
+      return {
+        at: e.date,
+        awayScore,
+        homeScore,
+        result: meetingResult(awayScore, homeScore, a.winner, h.winner),
+        // Which side hosted *that* night, which is not who is hosting
+        // tonight -- a series read as four straight wins looks different once
+        // three of them were at home.
+        awayWasHome: a.homeAway === "home",
+        venue: comp.venue?.fullName || null,
+        // What the box score hangs off. `id` doubles as the gamecast cache
+        // key, so two meetings can never share one cached box score.
+        sport,
+        id: `h2h-${sport}-${e.id}`,
+        espnEventId: e.id,
+        note: e.seasonType?.type === 3 ? (e.week?.text || "Postseason") : null,
+      };
+    })
+    .filter(Boolean)
+    .sort((x, y) => new Date(y.at) - new Date(x.at));
+}
+
+async function espnHeadToHead(sport, awayAbbr, homeAbbr) {
+  const current = await espnSeasonSoFar(sport, awayAbbr);
+  if (!current) return { error: true };
+
+  const met = espnMeetings(sport, awayAbbr, homeAbbr, current.events);
+  if (met.length) return seasonSeries(met, { season: current.label, current: true });
+
+  const searched = [current.label];
+  for (let y = current.year - 1; y >= current.year - H2H_LOOKBACK_SEASONS; y -= 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { events, label } = await espnSeasonEvents(sport, awayAbbr, y);
+    searched.push(label);
+    const older = espnMeetings(sport, awayAbbr, homeAbbr, events);
+    if (older.length) return seasonSeries(older, { season: label, current: false });
+  }
+  return {
+    games: 0, awayWins: 0, homeWins: 0, ties: 0, last: null,
+    season: current.label, current: true, searched,
+  };
+}
+
+async function mlbHeadToHead(awayAbbr, homeAbbr) {
+  const awayId = mlbTeamId(awayAbbr);
+  const homeId = mlbTeamId(homeAbbr);
+  if (!awayId || !homeId) return null;
+  const year = new Date().getFullYear();
+  const searched = [];
+  for (let y = year; y >= year - H2H_LOOKBACK_SEASONS; y -= 1) {
+    searched.push(String(y));
+    // eslint-disable-next-line no-await-in-loop
+    const finals = await mlbFinals(`teamId=${awayId}&opponentId=${homeId}&season=${y}`);
+    if (!finals.length) continue;
+    const met = finals.map((g) => {
+      const aIsHome = MLB_ID_ABBR[g.teams?.home?.team?.id] === awayAbbr;
+      const a = aIsHome ? g.teams.home : g.teams.away;
+      const h = aIsHome ? g.teams.away : g.teams.home;
+      const awayScore = a?.score ?? 0;
+      const homeScore = h?.score ?? 0;
+      return {
+        at: g.gameDate,
+        awayScore,
+        homeScore,
+        result: meetingResult(awayScore, homeScore),
+        awayWasHome: aIsHome,
+        venue: g.venue?.name || null,
+        sport: "mlb",
+        id: `h2h-mlb-${g.gamePk}`,
+        gamePk: g.gamePk,
+        note: g.gameType && g.gameType !== "R" ? "Postseason" : null,
+      };
+    }).sort((x, z) => new Date(z.at) - new Date(x.at));
+    return seasonSeries(met, { season: String(y), current: y === year });
+  }
+  return { games: 0, awayWins: 0, homeWins: 0, ties: 0, last: null, season: String(year), current: true, searched };
+}
+
 export async function fetchHeadToHead(sport, awayAbbr, homeAbbr) {
-  if (sport !== "mlb") return null;
-  const ck = `h2h:${awayAbbr}:${homeAbbr}`;
+  const ck = `h2h:${sport}:${awayAbbr}:${homeAbbr}`;
   const hit = formCache.get(ck);
   if (hit && Date.now() - hit.at < SLATE_TTL_MS) return hit.value;
   try {
-    const awayId = Object.keys(MLB_ID_ABBR).find((k) => MLB_ID_ABBR[k] === awayAbbr);
-    const homeId = Object.keys(MLB_ID_ABBR).find((k) => MLB_ID_ABBR[k] === homeAbbr);
-    const year = new Date().getFullYear();
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=${awayId}&opponentId=${homeId}&startDate=${year}-03-01&endDate=${dayKey(new Date())}`);
-    const data = await res.json();
-    const finals = (data?.dates || []).flatMap((d) => d.games || []).filter((g) => g.status?.abstractGameState === "Final");
-    if (!finals.length) {
-      const none = { games: 0, awayWins: 0, homeWins: 0 };
-      formCache.set(ck, { value: none, at: Date.now() });
-      return none;
-    }
-    let awayWins = 0;
-    finals.forEach((g) => {
-      const aIsHome = MLB_ID_ABBR[g.teams?.home?.team?.id] === awayAbbr;
-      const a = aIsHome ? g.teams.home : g.teams.away;
-      const b = aIsHome ? g.teams.away : g.teams.home;
-      if ((a?.score ?? 0) > (b?.score ?? 0)) awayWins++;
-    });
-    const value = { games: finals.length, awayWins, homeWins: finals.length - awayWins };
-    formCache.set(ck, { value, at: Date.now() });
+    const value = sport === "mlb"
+      ? await mlbHeadToHead(awayAbbr, homeAbbr)
+      : ESPN_PATH[sport]
+        ? await espnHeadToHead(sport, awayAbbr, homeAbbr)
+        : null;
+    // A failure is deliberately not cached: it should retry on the next visit
+    // rather than pin "couldn't check" to this matchup for the whole TTL.
+    if (value && !value.error) formCache.set(ck, { value, at: Date.now() });
     return value;
   } catch {
-    // Not cached: a failed lookup should retry on the next visit rather than
-    // pinning "couldn't check" to this matchup for the rest of the TTL.
     return { error: true };
   }
 }

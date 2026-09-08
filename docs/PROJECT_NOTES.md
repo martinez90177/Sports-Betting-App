@@ -985,6 +985,52 @@ ascending left to right, and the four filled bars above the line matching the
 "4 of 17 games clear 26.5" in the header. And on the phone at 375px, Malik
 Willis at four games: the THIN chip and the no-shape footnote.
 
+### The drawing, redone for a long log — 2026-09-07
+
+The measurement survived a 121-game batting log intact; the drawing did not.
+Alex: *"this section doesnt look great."* Three things had compounded, and all
+three were drawing decisions rather than anything about what was counted:
+
+- **The hollow miss.** A missed game was drawn as a 1.5px red outline. That is
+  the app's fill/hollow device and it works at avatar scale; on a bar the log's
+  own width had squeezed to three pixels, the outline *was* the bar. Both sides
+  are filled now, the miss in `--neg` at 52% so the cleared games still carry.
+- **Forty-seven games at nought.** Every zero draws a 2px stub — the floor that
+  keeps a real game from vanishing — and forty-seven hollow stubs in a row read
+  as a broken red dashed rule sitting on the axis. Filled, they read as what
+  they are, and the footnote names the count.
+- **No labels at all past 45 bars.** The row was one label per bar, dropped
+  wholesale above the limit — so the densest charts, the ones where a plateau
+  matters most, carried no numbers. It labels the **run** now: `0 ×37 1 ×44 2 ×34`.
+  That keeps what the per-bar row existed to protect (the count under a
+  plateau is printed, not eyeballed off its width) and reaches the charts that
+  had nothing.
+
+Two more, from the same screenshot:
+
+- **The line's own number** was a chip pinned to the right edge *inside* the
+  plot, so on any log whose big games are its last bars it sat on top of them.
+  It is in the left gutter with 0 and the top of the range, where it reads as a
+  value on the scale and collides with nothing.
+- **Bar gaps are conditional.** One per bar while there is room (≥7px a bar),
+  none below that. Seventeen games at twenty pixels apiece should read as
+  seventeen games; 121 games at under three have no pixel to spend on a
+  divider, and forcing one turns every plateau into a picket fence.
+
+Label placement is decided in **pixels, not share of axis**. Share was the first
+cut and it was the wrong unit — five games of 121 is 4% either way, but 4% of a
+330px desktop plot is 13px and 4% of the phone's is 5px, which is how `3 ×5` and
+`5` ended up printed into fourteen pixels between them. Each run now takes the
+full `value ×count` if its own width holds it, the bare value if not, and
+nothing if even that would land on the label before it. `×` rather than the
+app's usual `·` because at 9px "0·37" reads as the decimal 0.37.
+
+Verified: Drake Baldwin, Hits, 121 games — `0 ×37 1 ×44 2 ×34 3`, no overlap,
+no clipping, the zero run flat on the axis and named in the footnote. Total
+Bases on the same log: a clean staircase to 11. Goff, Completions, 17 games —
+still `14 16 18 19 20 ×3 23 ×2 25 ×4 27 28 31 34` with gaps between every bar
+and the four winners above 26.5, which is the read the chart was built for.
+
 ## The repo lives inside OneDrive — 2026-08-31
 
 `C:\Users\GamerX\OneDrive\Desktop\Sports Betting App` is a synced folder, and

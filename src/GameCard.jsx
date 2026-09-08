@@ -407,11 +407,12 @@ function PropsInPlay({ game, sport, reads, detail, propsCount, onViewProps, onOp
             className="pp-mono"
             style={{ marginLeft: "auto", cursor: "pointer", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--accent-text)", whiteSpace: "nowrap" }}
           >
-            {/* Not "All N props →" as the file writes it: the feed does not
-                open filtered to one game (see goToGameProps in PropLedger),
-                so that label would promise a narrowing that never happens.
-                The count is stated in the footnote below instead. */}
-            Open in feed →
+            {/* This used to read "Open in feed →" rather than the mock's
+                "All N props →", because the feed did not open filtered to
+                one game and the mock's label promised a narrowing that never
+                happened. goToGameProps narrows now (see PropLedger), so the
+                label can say which game's props it is opening. */}
+            This game’s props →
           </span>
         )}
       </div>

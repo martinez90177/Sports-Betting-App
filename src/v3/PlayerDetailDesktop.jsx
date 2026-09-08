@@ -61,7 +61,27 @@ const railNote = { fontSize: 11.5, color: "var(--dim)", lineHeight: 1.4 };
 
 // Rows and their header share one template string. Defined once, or the
 // columns drift apart the moment either changes (`desktop-handoff.md` §1).
-const LADDER_COLS = "92px 92px 128px 1fr 96px 104px";
+// The mock's own template, with every fixed column trimmed to what its
+// header actually measures and the SHAPE column allowed to reach zero.
+//
+// It was "92px 92px 128px 1fr 96px 104px" — 512px of fixed track — and the
+// 1fr column held a bar pinned to a literal `width: 190`, so the row's
+// min-content was about 830px. The centre track is 696px at 1252 and 443px
+// at 1000, and a grid row cannot be narrower than its min-content: the
+// ladder simply ran off the end of the card, silently, because `.nsb` hides
+// the scrollbar it was overflowing into.
+const LADDER_COLS = "72px 74px 104px minmax(0, 1fr) 78px 88px";
+
+// What is left when the card cannot hold six columns: SHAPE and the "+ ADD
+// LEG" hint go, in that order, because they are the two that repeat something
+// already on the row. SHAPE is the hit rate drawn again two columns to its
+// left, and every rung is a button whether or not the words are printed.
+// Losing them is a real cost and it beats a bar squeezed to twenty pixels
+// with a MAIN LINE pill hanging out of its own cell.
+const LADDER_COLS_TIGHT = "68px 70px 100px minmax(0, 1fr)";
+// Below this the six-column row's own fixed tracks (416px) plus its padding
+// no longer fit, so the grid overflows the card rather than compressing.
+const LADDER_WIDE_MIN = 620;
 
 // The rail's one control, transcribed from the mock's `railPill`. Every
 // group in the left rail uses it -- MARKET, WINDOW, SEASON, MINIMUM SAMPLE
@@ -181,6 +201,23 @@ export default function PlayerDetailDesktop({
   const shown = zoom ? games.slice(zoom[0], zoom[1] + 1) : games;
 
   const [picked, setPicked] = React.useState(null);
+
+  // The alt-line ladder's own width, so it can drop columns it has no room
+  // for rather than overflowing the card it lives in.
+  const ladderRef = React.useRef(null);
+  const [ladderW, setLadderW] = React.useState(0);
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      if (ladderRef.current) setLadderW(ladderRef.current.getBoundingClientRect().width);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  });
+  // Six columns until the card says it cannot hold them. `0` is "not measured
+  // yet", which resolves before paint (useLayoutEffect) and so never flashes
+  // the wrong layout.
+  const ladderWide = ladderW === 0 || ladderW >= LADDER_WIDE_MIN;
 
   // The frame fills what is left under the nav, and its three columns scroll
   // inside it -- the same pattern every other desktop frame uses.
@@ -630,11 +667,23 @@ export default function PlayerDetailDesktop({
         </div>
       ) : null}
 
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 18 }}>
+      {/* The hero wraps rather than overflowing.
+          It was one unwrappable row — a 68px avatar, a name block floored at
+          330px, and a three-cell strip pinned `flex: 0 0 auto` — which needs
+          about 780px. The mock is 1440 wide and the centre track there has
+          it; at 1252 (an iPad in landscape, a 13" laptop) the track is 748
+          and the strip ran 44px past the end of it. `.nsb` hides the
+          scrollbar, so what a reader sees is not a scroller: it is LINE /
+          IMPLIED / MATCHUP sliced down the middle by the roster rail.
+
+          Wrapping is the fix rather than a new breakpoint, because the
+          desktop handoff's own rule is that the rails collapse and the layout
+          does not change shape again. At 1440 nothing moves. */}
+      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", rowGap: 14 }}>
         <div style={{ position: "relative", flex: "0 0 auto" }}>
           {renderAvatar ? renderAvatar(player, 68) : null}
         </div>
-        <div style={{ flex: "1 1 auto", minWidth: 330, display: "flex", flexDirection: "column", gap: 7 }}>
+        <div style={{ flex: "1 1 260px", minWidth: 260, display: "flex", flexDirection: "column", gap: 7 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 11, whiteSpace: "nowrap" }}>
             <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 34, letterSpacing: "-0.015em" }}>{player && player.name}</span>
             {player && player.jersey && <span style={{ fontFamily: MONO, fontSize: 22, color: "var(--dim)" }}>{`#${player.jersey}`}</span>}
@@ -654,10 +703,14 @@ export default function PlayerDetailDesktop({
             </div>
           )}
         </div>
-        <div style={{ marginLeft: "auto", flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
+        {/* `0 1 auto` and a `minWidth: 0` on every cell, so the strip gives
+            ground before the row wraps and never forces the track wider than
+            it is. Grid items default to `min-width: auto`, which is what let
+            three cells refuse to compress at all. */}
+        <div style={{ marginLeft: "auto", flex: "0 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
             {three.map((c, i) => (
-              <div key={c.key} style={{ padding: "13px 18px", borderRight: i < 2 ? "1px solid var(--line)" : "none", display: "flex", flexDirection: "column", gap: 3 }}>
+              <div key={c.key} style={{ padding: "13px 16px", minWidth: 0, borderRight: i < 2 ? "1px solid var(--line)" : "none", display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={cellLabel}>{c.label}</span>
                 <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: c.tone || "var(--text)" }}>{c.value}</span>
                 <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{c.sub}</span>
@@ -745,8 +798,8 @@ export default function PlayerDetailDesktop({
           100% only reaches the clamp, which is a display floor dressed as a
           number the games produced. */}
       {rungs.length > 0 && (
-        <div style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "14px 18px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)" }}>
+        <div ref={ladderRef} style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "14px 18px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
             <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 16 }}>Alt lines</span>
             <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>
               {`${rungs[0].gamesCounted} games counted${rungs[0].thin ? " · too few to lean on" : ""}`}
@@ -754,13 +807,13 @@ export default function PlayerDetailDesktop({
             {/* Read-only, so a pill. */}
             <span style={{ marginLeft: "auto", ...pill("var(--dim)", "transparent"), border: "1px solid var(--line)" }}>NO BOOK PRICED THESE</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: LADDER_COLS, alignItems: "center", padding: "10px 18px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: ladderWide ? LADDER_COLS : LADDER_COLS_TIGHT, alignItems: "center", padding: ladderWide ? "10px 18px" : "10px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
             <span>LINE</span>
             <span style={{ textAlign: "right" }}>HIT RATE</span>
             <span style={{ textAlign: "right" }}>GAMES OVER</span>
-            <span style={{ paddingLeft: 20 }}>SHAPE</span>
+            {ladderWide && <span style={{ paddingLeft: 20, minWidth: 0 }}>SHAPE</span>}
             <span style={{ textAlign: "right" }}>PRICE</span>
-            <span />
+            {ladderWide && <span />}
           </div>
           {rungs.map((r) => (
             <div
@@ -770,29 +823,36 @@ export default function PlayerDetailDesktop({
               onClick={onAddLeg ? () => onAddLeg(r.line) : undefined}
               onKeyDown={onAddLeg ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAddLeg(r.line); } } : undefined}
               style={{
-                display: "grid", gridTemplateColumns: LADDER_COLS, alignItems: "center",
-                padding: "11px 18px", borderBottom: "1px solid #20242b",
+                display: "grid", gridTemplateColumns: ladderWide ? LADDER_COLS : LADDER_COLS_TIGHT, alignItems: "center",
+                padding: ladderWide ? "11px 18px" : "11px 14px", borderBottom: "1px solid #20242b",
                 cursor: onAddLeg ? "pointer" : "default",
                 background: r.isMain ? "var(--surface-2)" : "transparent",
               }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: r.isMain ? 700 : 400 }}>{r.line}</span>
+              {/* Accent-marked rather than pilled once SHAPE is gone: the
+                  main line still has to be findable, and the row's own tinted
+                  background is easy to miss on a short ladder. */}
+              <span style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: r.isMain ? 700 : 400, color: !ladderWide && r.isMain ? "var(--amber-ink)" : "var(--text)" }}>{r.line}</span>
               <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: r.hitRate == null ? "var(--dim)" : r.hitRate >= 0.6 ? "var(--pos)" : r.hitRate <= 0.4 ? "var(--neg)" : "var(--text)" }}>
                 {r.hitRate == null ? "—" : `${Math.round(r.hitRate * 100)}%`}
               </span>
               <span style={{ textAlign: "right", fontSize: 12.5, color: "var(--dim)" }}>{`${r.gamesOver} of ${r.gamesCounted}`}</span>
-              <span style={{ paddingLeft: 20, display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ display: "flex", height: 6, width: 190, background: "var(--surface-2)" }}>
+              {ladderWide && (
+              <span style={{ paddingLeft: 20, minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+                {/* The bar gives ground before the row does. A literal 190px
+                    here is what pushed the whole ladder past the card. */}
+                <span style={{ display: "flex", height: 6, flex: "1 1 auto", minWidth: 40, maxWidth: 190, background: "var(--surface-2)" }}>
                   <span style={{ width: `${Math.round((r.hitRate || 0) * 100)}%`, background: r.hitRate >= 0.6 ? "var(--pos)" : "var(--text-2)", display: "block" }} />
                 </span>
                 {r.isMain && <span style={pill("var(--amber-ink)", "var(--amber-dim)")}>MAIN LINE</span>}
               </span>
+              )}
               {/* No price on a rung the sample never split -- an em dash says
                   the sample does not price it, rather than overstating it. */}
               <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 13.5, color: r.price == null ? "var(--dim)" : "var(--text)" }}>
                 {r.price == null ? "—" : formatOdds(r.price)}
               </span>
-              {onAddLeg && (
+              {ladderWide && onAddLeg && (
                 <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", color: "var(--amber-ink)" }}>+ ADD LEG</span>
               )}
             </div>
@@ -877,19 +937,24 @@ export default function PlayerDetailDesktop({
 
   const rightRail = (
     <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", minHeight: 0, padding: "20px 18px 30px", display: "flex", flexDirection: "column", gap: 22 }}>
+      {/* SWITCH PLAYER sits above its tabs, not beside them.
+          Side by side with `justify-content: space-between` and a nowrap tab
+          row, two full club names — "New Orleans Saints", "Detroit Lions" —
+          need about 370px inside a rail whose content box is 231. The row ran
+          104px past the rail's edge and the second team was cut in half.
+          Stacked, each tab gets the rail's full width and the pair wraps onto
+          two lines when one line will not hold them. */}
       {activeRail && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)", whiteSpace: "nowrap" }}>SWITCH PLAYER</span>
-            <div style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
-              {rails.map((r) => (
-                <div key={r.key} role="button" tabIndex={0} onClick={() => setRosterTeam(r.key)}
-                  onKeyDown={(e) => { if (e.key === "Enter") setRosterTeam(r.key); }}
-                  style={rosterTabStyle(rosterTeam === r.key)}>
-                  {r.rail.label}
-                </div>
-              ))}
-            </div>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)", whiteSpace: "nowrap" }}>SWITCH PLAYER</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {rails.map((r) => (
+              <div key={r.key} role="button" tabIndex={0} onClick={() => setRosterTeam(r.key)}
+                onKeyDown={(e) => { if (e.key === "Enter") setRosterTeam(r.key); }}
+                style={{ ...rosterTabStyle(rosterTeam === r.key), flex: "1 1 auto", minWidth: 0, justifyContent: "center", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {r.rail.label}
+              </div>
+            ))}
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {(activeRail.players || []).map((rp) => (
@@ -1104,7 +1169,13 @@ export default function PlayerDetailDesktop({
       )}
 
       {onAddPick && (
-        <div style={{ position: "absolute", right: 26, bottom: 22, zIndex: 30 }}>
+        // Above the My Picks launcher, not on top of it. That button is
+        // `position: fixed; bottom: 20; right: 20` at the app root (see
+        // PropLedger) and stands about 44px tall, so this one at `bottom: 22`
+        // was landing across it — two controls occupying the same corner,
+        // with the wrong one on top. Stacked, they read as what they are: add
+        // this prop, then open the slip.
+        <div style={{ position: "absolute", right: 26, bottom: 76, zIndex: 30 }}>
           <span
             role="button"
             tabIndex={0}

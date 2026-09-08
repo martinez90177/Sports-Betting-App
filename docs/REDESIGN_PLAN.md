@@ -1879,6 +1879,11 @@ than render empty, which is what the desktop already does: probable pitchers
 alone). Where H2H does answer, all three of its outcomes get a line — a real
 record, "they haven't met", "we couldn't check".
 
+> **Superseded 2026-09-07** — `fetchHeadToHead` answers for all four sports now
+> and walks back through past seasons, so HEAD TO HEAD is present on every game
+> and is dropped only while the lookup is out. See "Both matchup panels were
+> answering about the calendar" at the end of this file.
+
 Departures from the frame, and why:
 
 - **The form bar has three segments, not two.** The NFL has ties, and a drawn
@@ -2190,7 +2195,8 @@ reconcile: WNBA 40 + MLB 51 + NFL 108 + NBA 51 = 250, and Questionable 146 + Out
 
 **Matchup (frame 2f)** — the crumb bar, probables, RECENT FORM as two panels,
 then HEAD TO HEAD beside PROPS WITH A READ. Verified on CIN @ CHC: 4 + 7 = 11
-meetings, which is what the block reads.
+meetings, which is what the block reads. (Two of those eleven were spring
+training — see the 2026-09-07 section at the end of this file.)
 
 All three collapse their mobile call onto the shared prop set — 20, 31 and 30
 lines of duplicated mapping removed.
@@ -2289,3 +2295,432 @@ counted off one array against one line, so they cannot disagree.
 24 frames, 247 literals, 25 missing — every one a mock placeholder ("AJ",
 "NYY", "OVER 1.5 TOTAL BASES") or one of the two recorded non-builds. Zero
 regions gated on a prop no caller passes.
+
+---
+
+# Both matchup panels were answering about the calendar — 2026-09-07
+
+Opening NE @ SEA in NFL Week 1 showed a Matchup page with nothing on it: both
+RECENT FORM panels read "No finished games in this window", HEAD TO HEAD read
+"These two have not met this season, so there is nothing to count", and the
+four PROPS WITH A READ rows were named players behind blank team-coloured
+discs. Every one of those was measurably wrong, and each for a different
+reason.
+
+## What was actually broken
+
+**Four faces were dropped in a mapping, not missing from the data.**
+`getTopPropsForMatchup` has returned `mlbId`/`espnId` since it was written, and
+`MatchupPage`'s `reads:` mapping listed nine fields and neither of those, so
+`renderAvatar` was handed `headshotSrc: undefined` for every row. `PlayerAvatar`
+draws its team disc when there is no photo and only prints initials when there
+is no disc either, so the failure surfaced as four blank circles rather than as
+four sets of initials. Rule 1 (a named player carries their face and their
+status) was being met by the builder and lost by the caller.
+
+The fix resolves both in `playerPropRead` instead — each sport reaches a
+different CDN through a different id, and the NFL's goes through a hand-written
+slug map first (`nflHeadshot`), none of which `MatchupPage` can import. The same
+call now resolves availability: `NFL_ROSTER_STATUS` / `NBA_ROSTER_STATUS` for
+the two module-level maps, `fetchWNBAAvailability` for the WNBA, and
+`fetchMLBTeamRosterStatus` off the shared `lib/mlbStatus.js` cache for MLB — so
+a dot here cannot disagree with the same player's dot two panels up. Verified
+on WAS @ PHI: three `#3ecf8e` and one `#e8b13a`, off ESPN's real designations.
+
+**Head to head was answering for MLB and asserting for everyone else.**
+`fetchHeadToHead` returned `null` for three of the four sports — and
+`MatchupDesktop` printed one hardcoded sentence, "these two have not met this
+season", for *every* state the lookup could return, including `null` (never
+checked), `{ error: true }` (checked, failed) and a loaded series it could not
+fit in cells. The `note` the caller had carefully built for each of those was
+thrown away. Three quarters of the app's games were making a factual claim
+nobody had looked into.
+
+It reads all four now — MLB through StatsAPI, the rest through the same ESPN
+team-schedule route the form panel uses — and the desktop panel renders the
+caller's note.
+
+**"This season only" is a rule that returns nothing for most NFL pairings.**
+Two teams from opposite conferences meet once every four years, and in Week 1
+*no* pairing has met. So the search walks back a season at a time (three prior
+seasons) and labels what it finds. NE and SEA had in fact played seven months
+earlier — Super Bowl LX, SEA 29 NE 13 — which the old rule called "nothing to
+count" twice over: wrong season, and seasontype 3, which a regular-season-only
+request does not return either.
+
+The roster-turnover argument that justified this-season-only was right, and it
+survives as a sentence on screen rather than as an empty card: *"They have not
+met yet this season, so this is the 2025 series — SEA 29, NE 13 on Feb 8, 2026.
+Both rosters have turned over since, so read it as history rather than form."*
+
+**Recent form had the same shape of bug.** Between seasons the current
+schedule holds nothing finished, and "no finished games in this window" was
+true of the window and silent about the team. It falls back to the last season
+that was played — and every row from a season other than the one in progress
+carries `season`, which both frames print beside the record. That label is the
+whole licence for the fallback: ten games from last January shown unlabelled
+would be claiming this season's form.
+
+## Three data bugs found on the way, all silent
+
+- **ESPN rejects three of our abbreviations.** `/teams/{abbr}/schedule` is
+  addressed by ESPN's abbreviation: football's Washington is WSH, basketball's
+  New Orleans is NO and Utah is UTAH. Asked for WAS / NOP / UTA it answers
+  `{"code":400}` **under a 200 status**, which read exactly like "no games" — so
+  those three teams' form panels had been permanently empty. All 77
+  abbreviations across the three ESPN leagues were checked against the route;
+  only these three fail, and `ESPN_TEAM_ROUTE` maps them.
+- **MLB head to head was counting spring training.** The schedule route returns
+  every game type in a date range unless told otherwise, so the Reds/Cubs season
+  series read 12 meetings when the two had played 10 that counted.
+  `gameType=R,F,D,L,W` — regular season plus the four postseason rounds.
+- **A postseason probe hid the regular season behind it.** ESPN serves one
+  seasontype per request and defaults to the current one, so asked in January
+  the route answers with the playoff bracket alone and eleven regular-season
+  games go missing from a Last 10. `espnSeasonSoFar` fetches the second half
+  only when the probe says the postseason is in progress — during the regular
+  season the probe already *is* the whole season so far, so the common case
+  still costs one request.
+
+Preseason (ESPN type 1) is deliberately excluded from both panels for the same
+reason spring training is: those games are real, but they are neither form nor
+a season series.
+
+## Two states that were one value
+
+`form` was `{ away: [], home: [] }` before the fetch and `{ away: [], home: [] }`
+after it answered with nothing, so `loading` was derived as "the array is
+empty" — and the phone panel said "Loading…" forever on a team that genuinely
+had no games. It starts `null` now. Same split on the desktop panel, which had
+only the one sentence.
+
+## Verified by driving it, not by building it
+
+- **NE @ SEA** — NE 8-2 and SEA 10-0 over their last ten of 2025 (SEA's ten
+  includes the Super Bowl; checked against ESPN's own schedule), both tagged
+  2025. H2H 1 / 0 / 1 with the Super Bowl scoreline in the note. Four ESPN
+  headshots at `naturalWidth` 350.
+- **WAS @ PHI** — the abbreviation that used to 400. Form populates, H2H reads
+  2 / 1 / 1 from 2025.
+- **CHC @ MIL** — MLB unchanged and in season: no season tag, H2H 10 / 4 / 6
+  with the original this-season note, six MLB headshots, six `#3ecf8e` dots.
+- **BOS @ DET** — NBA out of season: form tagged 2025-26 and correctly showing
+  the seven-game PHI and CLE playoff series ahead of the regular-season tail.
+- Phone layout driven at 500px through `javascript_tool`, because the pane
+  still hangs on synthesised clicks below ~900px (the failure recorded in
+  batch 3): the same season tags, the same note, the same four faces and dots.
+
+## Not done
+
+The WNBA path could not be driven — no WNBA games on the slate this week. Its
+code is the same shape as the other three and builds, but it has not been seen
+on screen.
+
+---
+
+# Four things the Games and Matchup screens were getting wrong — 2026-09-07
+
+Alex, on a Monday, looking at NE @ SEA: the button labelled OPEN BOARD opens the
+Prop Feed; opening it should narrow the feed to that game; HEAD TO HEAD needs
+more than three numbers; and the date rail is offering yesterday while the NFL
+has no way to show any week but the one hardcoded into it.
+
+## A button that named the wrong screen, twice, in opposite directions
+
+The Matchup header's **OPEN BOARD →** called `onViewProps` → `goToGameProps` →
+the Prop Feed. The Board is a different screen in this app's own nav, so the
+label named a place the button does not go. It reads **OPEN PROP FEED →** now
+(**PROP FEED →** on the phone).
+
+The same defect ran the other way on the Board's hero card, which said **OPEN
+MATCHUP →** and also went to the feed — now **THIS GAME'S PROPS →**. And the
+slate card's third CTA said OPEN BOARD while opening the Matchup page; its two
+siblings (GAMECAST, SEE RESULTS) already named their destinations correctly,
+which is what made the odd one out worth fixing rather than matching. It reads
+**OPEN MATCHUP →**.
+
+> The mock writes "OPEN BOARD" on the slate card, so this is a deliberate
+> departure from it. The rule the mock cannot know is which screen the handler
+> actually routes to.
+
+## The feed now opens on the one game
+
+`goToGameProps` set the sport and stopped. Its own comment said why: the feed's
+matchup ids are index-based (`NE-SEA-0`), built from the feed's own slate fetch,
+and the index moves as games conclude — so an id cannot be handed across.
+
+What travels is the **teams**, which is what the reader means anyway, and the
+feed resolves them against its own options once those load. That mechanism was
+already in the file: a saved screen stores `gameTeams` for the same reason
+(ids identify one scheduled game, so a preset saved today would match nothing
+tomorrow) and `applyFeedFiltersNow` already turns teams back into ids.
+
+Two details that are load-bearing:
+
+- **The effect is declared after the sport-reset effect**, exactly as
+  `pendingPreset` is, and for the same reason: React runs effects in
+  declaration order, and a selection made before the reset is wiped in the same
+  tick that the sport switched to get here.
+- **No match is not a reason to filter to nothing.** The game may have
+  concluded (the picker only offers live ones) or belong to a week the feed is
+  not showing. The whole slate is the safe answer; an empty feed under a
+  heading naming one game would read as "this game has no props".
+
+Both shapes of game object are accepted — the slate's `{ away: { abbr } }` and
+the Board's plain `away` string. Reading only the first left the Board's route
+silently unfiltered, which looks like a flaky feature rather than an absent one.
+
+### The chip that had to exist first
+
+`activeFilterChips` has listed what is narrowing the feed since it was written,
+and **neither v3 frame ever rendered it** — it reaches the screen only through
+the empty state's copy, so a feed that is short rather than empty explained
+nothing. Survivable while every filter came from a control the reader could
+see; not survivable the moment opening the feed from a Matchup page started
+setting one for them. Both frames now draw one clearable chip beside the count:
+`2 of 2402 props · NE @ SEA ×`.
+
+## HEAD TO HEAD: the scorelines, and the box score behind each
+
+Three numbers answer "who has won more" and nothing else. A 3-1 edge built on
+one 40-point win and three one-score games is a different fact from four
+blowouts, and the cells cannot tell those apart.
+
+`fetchHeadToHead` returns every meeting now — date, both scores, the venue,
+whether it was a postseason round, and the provider id its box score lives
+behind. `src/v3/H2HMeetings.jsx` (one component, both frames) lists them and
+expands any one into its linescore and per-category leaders, pulled through
+`fetchGamecastDetail` — the same fetcher the Gamecast uses, so a meeting opened
+here and the same game opened from the slate cannot show two different
+linescores. Five rows, then `ALL N MEETINGS →`, because an MLB pair can meet
+thirteen times.
+
+The winner's score carries the weight rather than a green/red W/L: neither team
+is "ours" on this screen, and the over/under palette would be picking a side.
+
+The note above the list dropped its scoreline, which the list now carries, and
+keeps the one job the list cannot do — saying which season these are and why.
+
+## The date rail, and the NFL by week
+
+**Yesterday is gone.** `buildDateTabs` ran `[-1, 0, 1, 2]` and the All tab ran
+`-1..3`, so a page whose question is "what is on now" opened with a finished
+slate at the head of the row — on a Monday, Sunday's whole NFL card, three tabs
+left of the games actually coming. Both start at today.
+
+**The NFL has all 22 weeks.** `fetchNflWeekOneSlate` was pinned to
+`seasontype=2&week=1&dates=2026` — three hardcoded facts, right for exactly as
+long as Week 1 was the week in progress, with no way to reach Week 2 at all.
+
+ESPN publishes its own calendar on the scoreboard route: every week of every
+phase with the label it prints and the dates it covers, plus which one is
+current. Both come from there now (`fetchNflCalendar`), so the picker cannot
+list a week the provider does not have and cannot disagree about which is on.
+Regular season 1–18 then Wild Card / Divisional / Conference Championship /
+Super Bowl; the Pro Bowl is skipped, being an exhibition between conference
+all-star sides whose "teams" no map in this app knows.
+
+The rail gets a WEEK select above DATE (22 pills would be the rail twice over),
+marked `Week 1 · this week`, with the week's own date range under it. The date
+tabs are derived from the kickoff days that week actually contains, and the
+page opens on the next day with games rather than the week's first — it was
+`tabs[0]` unconditionally, so a Monday-night game sat four tabs right of where
+the reader landed.
+
+`fetchNflCurrentWeekSlate` replaces the pinned fetcher for the two surfaces that
+want "the NFL slate" without choosing a week — the Board's fixture join and the
+player pages' next-game lookup. Both were pinned to Week 1 too, so from Week 2
+onward they would have been joining to games already played.
+
+## Verified by driving it
+
+- **Week picker** — Week 1 (Wed 09 / Thu 10 / Sun 13 / Mon 14, counts
+  1/1/13/1), Week 7 (Oct 21-27, Thu 22 / Sun 25 / Mon 26), Super Bowl (SoFi
+  Stadium, Feb 14, "TBD at TBD" — the provider's own placeholder, not ours).
+- **NE @ SEA** — H2H lists `Feb 8, 2026 · SUPER BOWL · NE 13 · SEA 29`, which
+  expands to SEA 3-6-3-17 / NE 0-0-0-13 at Levi's Stadium with both sides'
+  passing, rushing, receiving and defensive leaders.
+- **CHC @ MIL** — ten meetings, five shown; Sep 3 expands to a nine-inning
+  linescore with R/H/E and the bottom of the ninth correctly blank (the home
+  side won and did not bat), plus batting and pitching lines.
+- **The feed jump** — from NE @ SEA: `2 of 2402 props · NE @ SEA ×`; clicking
+  the × returns 43 of 2784. From the Board's NO @ DET hero: `3 of 2793 props ·
+  NO @ DET ×`.
+- **Date rails** — MLB now opens MON 07 / TUE 08 / WED 09 / THU 10.
+
+## Not done
+
+The phone frames were changed alongside the desktop ones (the week select, the
+narrowing chip, the meetings list) and build, but were not driven: the browser
+pane still hangs on synthesised clicks below ~900px.
+
+---
+
+# The Prop Feed's game picker had no door — 2026-09-07
+
+Asked to "add back the dropdown game selector", and it turned out not to be a
+missing feature but an unreachable one.
+
+`GamesMultiSelect` has exactly one call site: the v2 Filters panel. That call
+sits **inside that panel's `isNarrow` block**, and is additionally gated on
+`!showGamesStrip` — which was true for MLB, NFL and WNBA, i.e. for every sport
+that has a slate to pick from. Compose those two gates and the control reached
+the NBA on a phone and nothing else. On desktop, at every width, for every
+sport, there was no way to filter the feed by game at all.
+
+`TodaysGamesStrip` — the chip row `showGamesStrip` was deferring to, written to
+replace the dropdown on those three sports — has **no call site anywhere**. It
+never shipped, so the gate was deferring to nothing. Deleted with this (182
+lines), along with the now-unused flag.
+
+Meanwhile the rail's own EVERYTHING ELSE note went on advertising "Defence
+tier, role, odds range, **teams and games**, and saved screens" behind MORE
+FILTERS. Two of those were not there. The note is corrected.
+
+## Where it lives now
+
+A **GAMES** group in the desktop filter rail, directly under LEAGUE, and a
+**GAMES** section in the phone's REFINE sheet — one object (`feedGamesGroup`)
+feeding both, so the two surfaces cannot describe the same filter differently.
+NBA has no real slate, so it gets **TEAM** instead, which is the same control
+this page has always offered that sport.
+
+The dropdown rather than a chip per game: sixteen NFL fixtures is the rail
+twice over, and this is a multi-select — picking three games is the case that
+makes the control worth having at all.
+
+Three details:
+
+- **`variant="rail"` on `GamesMultiSelect`**, not a second component. Building
+  a rail-shaped game picker beside the panel-shaped one is how two controls for
+  one filter start disagreeing; this is the same component, the same state and
+  the same dropdown panel in the rail's own 34px/mono/surface-1 idiom.
+- **The copy left in the v2 panel is gone.** Leaving it would have been two
+  doors onto one filter, which is the failure that panel's own header comment
+  warns about.
+- **An empty picker states which kind of empty.** Loading / could not be read /
+  every game has finished — `gamesStripEmptyLabel` was written for the strip
+  that never shipped and finally has a reader.
+
+The group's header carries the selection count (`2 of 11`), and the clearable
+chip added beside the feed's count earlier today names the games themselves.
+
+## Verified by driving it
+
+- **MLB** — rail reads `All of today's games`; the panel lists all eleven with
+  crests and first pitch. One game: 1,887 → 16. Two: → 35, header `2 of 11`,
+  chip `2 GAMES ×`, and the rows are only ATL/PHI/NYM/MIA players.
+- **NFL** — `All of this week's games`, sixteen fixtures with kickoff times.
+- **NBA** — TEAM select; BOS narrows 333 → 11.
+
+One thing that looked like a bug and is not: NBA reads `0 of 6058` on arrival.
+That is the SLATE scope (`Next two days`) against an offseason with no games —
+`Whole schedule` returns 333. Unrelated to this, and unchanged by it.
+
+## The panel was being sliced in half — same day
+
+The picker landed in the rail and looked wrong immediately: half of every game
+name cut away down the left, the panel's own edge missing, the whole thing
+sitting over the rail's other controls rather than under its button.
+
+Not a styling problem. `useCenteredPanel` positioned the panel `absolute` with
+a `translateX(-50%)` nudge, which was fine while these pickers sat in open page
+flow. The feed's filter rail is `overflow-y: auto`, and **an overflow-auto
+ancestor clips absolutely-positioned descendants on both axes** — so a 340px
+panel inside a 218px rail was cut to the rail's width. The frame around the
+rail is `overflow: hidden` and would have clipped it a second time.
+
+`position: fixed` is not clipped by ancestor overflow, so the panel escapes
+both boxes. It stays a DOM child of the trigger's wrapper, which is what the
+outside-click handlers test, so those needed no change. (Fixed positioning is
+only trapped by an ancestor carrying transform / filter / perspective /
+contain — the shell and the feed frame have none, checked rather than assumed.)
+
+Three changes came with it:
+
+- **Left-aligned to the trigger, not centred.** Under a rail control at the
+  left edge, centring throws half the panel off-screen, and the clamp that
+  pulls it back leaves it visibly unmoored from the button that opened it. The
+  same clamp still keeps a centred trigger's panel inside the viewport.
+- **It flips up when there is no room below**, and its height is capped to the
+  space it actually has, scrolling inside itself. A sixteen-game slate is
+  reachable at any window height.
+- **340px rather than 320.** At 320 a full NFL fixture ("New England Patriots @
+  Seattle Seahawks") wrapped to two lines on most of the card, which turned a
+  sixteen-game menu into a wall.
+
+Both pickers share the hook, so the player pages' `GameSelect` gets all of this
+too — verified there as well as on the feed.
+
+Verified: NFL rail panel 340px, left edges flush at 33px, 6px below the
+trigger, nothing clipped, scrolls (989px of content in 420px); at a 520px-tall
+window it flips above the trigger and stays inside the viewport; MLB the same;
+the player page's own fixture dropdown unchanged in behaviour and no longer
+clipped either.
+
+---
+
+# The player page at an iPad width — 2026-09-07
+
+Alex, on a ~1250px screen: *"the stuff is overlapping everywhere like crazy."*
+Not a tablet or phone layout — this is the desktop frame, and `useIsPhone` is
+900, deliberately (an iPad in landscape gets the desktop design; batch 4 records
+why). The desktop frame is supposed to hold down to whatever width it is given,
+and on this page it did not.
+
+Frame 1a is a 1440px mock and four of its blocks had a hard minimum width above
+what the centre track actually gets below that. Everything overflowed into a
+`.nsb` container — which hides its scrollbar — so none of it read as "scroll to
+see the rest". It read as content sliced in half.
+
+## The four
+
+- **The hero row.** One unwrappable flex row: a 68px avatar, a name block
+  floored at `minWidth: 330`, and the LINE / IMPLIED / MATCHUP strip pinned
+  `flex: 0 0 auto`. About 780px. The centre track at 1252 is 748, less 52 of
+  padding — so the strip ran 44px past the end and was cut down the middle by
+  the roster rail. It wraps now, the name block floors at 260, and the strip is
+  `0 1 auto` with `minmax(0, 1fr)` cells so it gives ground before the row
+  breaks. At 1440 nothing moves.
+- **SWITCH PLAYER and its tabs.** Label and tabs side by side under
+  `justify-content: space-between`, with two full club names — "New Orleans
+  Saints", "Detroit Lions" — needing ~370px inside a rail whose content box is
+  231. **This one overflowed at 1440 too**; the rail is a fixed 268 at every
+  width, so it had never fitted. The label sits above the tabs now and the pair
+  wraps.
+- **The alt-line ladder.** `92px 92px 128px 1fr 96px 104px` is 512px of fixed
+  track, and the `1fr` column held a bar pinned to a literal `width: 190` — so
+  the row's min-content was ~830px against a 696px track at 1252 and 443 at
+  1000. A grid row cannot be narrower than its min-content, so it simply ran
+  off the card. The fixed columns are trimmed to what their headers measure,
+  the bar is `flex: 1 1 auto` with a 190 cap, and below a **measured** 620px of
+  card the ladder drops SHAPE and the "+ ADD LEG" hint — the two columns that
+  repeat something already on the row (SHAPE is the hit rate drawn again two
+  columns left; every rung is a button whether or not the words are printed).
+  The main line keeps its accent on the LINE cell once its pill has nowhere to
+  sit.
+- **"+ ADD TO MY PICKS" over the My Picks launcher.** The launcher is
+  `position: fixed; bottom: 20; right: 20` at the app root and stands ~44px;
+  this was `absolute; bottom: 22` in the frame, so the two occupied the same
+  corner with the wrong one on top. Stacked at `bottom: 76`, they read as what
+  they are — add this prop, then open the slip.
+
+## Why widths and not a breakpoint
+
+The desktop handoff's rule is that the rails collapse and the layout does not
+change shape again; batch 4 already paid for getting that wrong once. So every
+fix here is the frame giving ground at the width it is handed, and the only
+conditional is the ladder's, which is keyed off **its own measured card** rather
+than off the viewport — the same card is 696px wide at 1252 and 443 at 1000, and
+the viewport alone cannot tell it which.
+
+## Verified by driving it
+
+Overflowing scroll containers, counted directly (`scrollWidth > clientWidth`):
+
+- **1252** — was: centre +44, roster rail +104, ADD button overlapping the
+  launcher. Now: none, six-column ladder with its bars and MAIN LINE pill.
+- **1000** — the worst supported desktop width. Now: none. Hero wrapped, ladder
+  in its four-column form with 308.5 accent-marked as the main line.
+- **1440** — none; hero on one row, six columns, unchanged from the mock apart
+  from the roster tabs, which now fit.

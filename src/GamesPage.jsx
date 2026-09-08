@@ -7,7 +7,7 @@ import GamesMobile from "./v3/GamesMobile.jsx";
 import GamesDesktop from "./v3/GamesDesktop.jsx";
 import {
   SPORTS, dayKey, timeLabel, buildDateTabs,
-  fetchMlbSlate, fetchWnbaSlate, fetchNflWeekOneSlate, fetchNbaSlate, fetchNbaOpenerDay,
+  fetchMlbSlate, fetchWnbaSlate, fetchNflCalendar, fetchNflWeekSlate, fetchNbaSlate, fetchNbaOpenerDay,
   MONTH_SHORT,
   GAME_STATUS, statusSortKey, isActiveStatus, opensGamecast,
 } from "./lib/gamesData.js";
@@ -261,7 +261,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   const [selectedId, setSelectedId] = useState(null);
   const selectedSnap = useRef(null);
 
-  // NFL is a week competition, so its whole Week 1 slate is loaded once and
+  // NFL is a week competition, so a whole week's slate is loaded at once and
   // the date tabs are derived from the kickoff days it actually contains.
   // null means "not loaded yet", [] means "loaded, genuinely no games". Both
   // used to be filled with a fabricated slate first -- mockNflWeekOne() and
@@ -269,6 +269,17 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   // team records, and only swapped to real data once the fetch answered. A
   // brief flash of invented records is still invented records on screen.
   const [nflWeek, setNflWeek] = useState(null);
+  // Which week, and every week there is. Both come from ESPN's own calendar
+  // (see fetchNflCalendar) rather than from a number written here: this page
+  // was pinned to `week=1` of `2026`, which was right for one week of one
+  // season and gave no way to look at week 2 at all.
+  //
+  // `pickedWeekId` is null until the reader chooses, so the page opens on
+  // whichever week the provider says is current and follows it into week 2
+  // without an edit.
+  const [nflCalendar, setNflCalendar] = useState(null);
+  const [pickedWeekId, setPickedWeekId] = useState(null);
+  const nflWeekId = pickedWeekId || nflCalendar?.currentId || null;
   const [dayGames, setDayGames] = useState(null);
   // The merged slate for the All tab: every league's games for one calendar
   // day. Held separately from dayGames so switching between All and a league
@@ -312,7 +323,11 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
     // and this view spans four leagues, so the only honest axis is the date.
     if (sport === ALL_SPORT.id) {
       const out = [];
-      for (let i = -1; i <= 3; i += 1) {
+      // Today first, then the days ahead -- the same window buildDateTabs
+      // gives a single league, for the same reason: the page answers "what is
+      // on now", and it opened with yesterday's finished slate at the head of
+      // the row.
+      for (let i = 0; i <= 4; i += 1) {
         const d = new Date();
         d.setDate(d.getDate() + i);
         const key = dayKey(d);
@@ -344,7 +359,14 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   const activeKey = useMemo(() => {
     if (pickedKey && tabs.some((t) => t.key === pickedKey)) return pickedKey;
     if (sport === ALL_SPORT.id) return dayKey(new Date());
-    if (sport === "nfl") return tabs[0]?.key;
+    // The next day of this week that has games, or its first day when the
+    // whole week is behind us. It used to be `tabs[0]` unconditionally, so a
+    // Monday-night game sat four tabs to the right of the one the page opened
+    // on and the reader landed on Thursday's finished slate.
+    if (sport === "nfl") {
+      const today = dayKey(new Date());
+      return tabs.find((t) => t.key >= today)?.key || tabs[0]?.key;
+    }
     // Offseason: open on the date that has games rather than on an empty
     // today. The tab is labelled with its own date, so this reads as a
     // selection the reader can see and change, not as a claim about today.
@@ -406,8 +428,12 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   const loadSlate = React.useCallback((s, key, { silent = false } = {}) => {
     const opts = { force: silent }; // polling always bypasses short TTL
     if (s === "nfl") {
+      // The week is an argument now, not a constant, so the poller and the
+      // retry control refresh the week actually on screen rather than
+      // whichever one this function was written against.
+      if (!nflWeekId || !nflCalendar) return Promise.resolve(null);
       if (!silent) { setNflWeek(null); setLoadError(null); }
-      return fetchNflWeekOneSlate(opts).then((res) => {
+      return fetchNflWeekSlate(nflWeekId, nflCalendar.season, opts).then((res) => {
         if (res) setNflWeek(res);
         else if (!silent) setLoadError("nfl");
         return res;
@@ -423,7 +449,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       else if (!silent) setLoadError(key);
       return res;
     });
-  }, []);
+  }, [nflWeekId, nflCalendar]);
 
   // All: one day, four leagues, fetched together. NFL is a week competition
   // so its whole slate is loaded and filtered to the day, the same thing the
@@ -441,7 +467,10 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       fetchMlbSlate(activeKey).catch(() => null),
       fetchWnbaSlate(activeKey).catch(() => null),
       fetchNbaSlate(activeKey).catch(() => null),
-      fetchNflWeekOneSlate().catch(() => null),
+      // Whichever NFL week the provider says is on, not a pinned one -- and
+      // null while the calendar is still out, which counts as a league that
+      // could not be read rather than one with no games.
+      nflCalendar ? fetchNflWeekSlate(nflCalendar.currentId, nflCalendar.season).catch(() => null) : Promise.resolve(null),
     ]).then(([mlb, wnba, nba, nfl]) => {
       if (cancelled) return;
       const nflToday = (nfl?.games || []).filter((g) => dayKey(new Date(g.startsAt)) === activeKey);
@@ -455,20 +484,36 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       setAllDayGames({ games: merged, unreadable: failed });
     });
     return () => { cancelled = true; };
-  }, [sport, activeKey]);
+  }, [sport, activeKey, nflCalendar]);
+
+  // The calendar first -- it is what says which weeks exist and which one is
+  // on. Fetched for the All tab too, because All folds the NFL into its own
+  // day and would otherwise have no week to fold.
+  useEffect(() => {
+    if (sport !== "nfl" && sport !== ALL_SPORT.id) return undefined;
+    if (nflCalendar) return undefined;
+    let cancelled = false;
+    fetchNflCalendar().then((cal) => {
+      if (!cancelled && cal) setNflCalendar(cal);
+    });
+    return () => { cancelled = true; };
+  }, [sport, nflCalendar]);
 
   useEffect(() => {
     if (sport !== "nfl") return undefined;
+    // No calendar, no week to ask for. The effect above is still out; this
+    // leaves `nflWeek` null, which the page already renders as loading.
+    if (!nflWeekId || !nflCalendar) return undefined;
     let cancelled = false;
     setNflWeek(null);
     setLoadError(null);
-    fetchNflWeekOneSlate().then((res) => {
+    fetchNflWeekSlate(nflWeekId, nflCalendar.season).then((res) => {
       if (cancelled) return;
       if (res) setNflWeek(res);
       else setLoadError("nfl");
     });
     return () => { cancelled = true; };
-  }, [sport]);
+  }, [sport, nflWeekId, nflCalendar]);
 
   // Loading first, then whatever the feed actually returns. An empty games
   // array is a real answer ("no games today"); null from the fetcher is a
@@ -838,7 +883,12 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         note: live ? "Live scoring from the provider."
           : done ? "Finished — props on this game are settled."
             : `${aw.full || aw.abbr} at ${hm.full || hm.abbr}`,
-        cta: live ? "GAMECAST →" : done ? "SEE RESULTS →" : "OPEN BOARD →",
+        // Each of these names where the card actually goes. The third read
+        // "OPEN BOARD →" — the mock's own word — but the card opens the
+        // Matchup page, and The Board is a different screen in this app's
+        // nav. The other two were already right, which is what made the odd
+        // one out worth fixing rather than matching.
+        cta: live ? "GAMECAST →" : done ? "SEE RESULTS →" : "OPEN MATCHUP →",
         teams: [
           { side: "away", abbr: aw.abbr, name: aw.name || aw.full, record: aw.record, score: live || done ? aw.score : null, winning: lead === "away" },
           { side: "home", abbr: hm.abbr, name: hm.name || hm.full, record: hm.record, score: live || done ? hm.score : null, winning: lead === "home" },
@@ -857,6 +907,13 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       dates: tabs.map((t) => ({ key: t.key, ...dow(t.key), count: tabCounts[t.key] ?? null })),
       activeDate: activeKey,
       onSetDate: (k) => { setPickedKey(k); setShowAll(false); },
+      // The NFL alone, because the NFL alone schedules by week. Empty for
+      // every other league, which is how both frames know not to draw the
+      // control -- rather than each of them testing the sport itself.
+      weeks: sport === "nfl" ? (nflCalendar?.weeks || []) : [],
+      activeWeek: sport === "nfl" ? nflWeekId : null,
+      currentWeek: sport === "nfl" ? (nflCalendar?.currentId || null) : null,
+      onSetWeek: (id) => { setPickedWeekId(id); setPickedKey(null); setShowAll(false); },
       states: [
         { id: "all", label: "All games", tone: null },
         { id: "live", label: "Live", tone: "var(--neg)" },

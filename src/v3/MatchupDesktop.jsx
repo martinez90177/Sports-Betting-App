@@ -1,5 +1,6 @@
 import React from "react";
 import { crest } from "./FormPlot.jsx";
+import H2HMeetings from "./H2HMeetings.jsx";
 
 // A transcription of frame `2f` in `v3 Mocks/PropPalace Desktop v3.dc.html`.
 //
@@ -45,6 +46,7 @@ export default function MatchupDesktop({
   onSetDepth,
   form = [],
   h2h = null,
+  onLoadMeeting,
   reads,
   readScope = null,
   onOpenRead,
@@ -112,7 +114,11 @@ export default function MatchupDesktop({
             onKeyDown={(e) => { if (e.key === "Enter") onOpenBoard(); }}
             style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
           >
-            OPEN BOARD →
+            {/* Says where it goes. It went to the Prop Feed and was labelled
+                "OPEN BOARD", which is a different screen in this app's own
+                nav — and now that it lands there filtered to this one game,
+                the wrong destination was the smaller half of the problem. */}
+            OPEN PROP FEED →
           </span>
         )}
       </div>
@@ -165,9 +171,21 @@ export default function MatchupDesktop({
                   <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "13px 15px", borderBottom: "1px solid var(--line)" }}>
                     <span role="img" style={crest(fm.abbr, sport, 20)} />
                     <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 15 }}>{fm.abbr}</span>
+                    {/* Set only when these games are not from the season in
+                        progress — a Week 1 panel is showing last season, and
+                        an unlabelled one would be claiming otherwise. */}
+                    {fm.season && (
+                      <span style={{
+                        marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em",
+                        padding: "3px 7px", borderRadius: 5,
+                        border: "1px solid var(--line)", color: "var(--text-2)",
+                      }}>
+                        {fm.season}
+                      </span>
+                    )}
                     {/* The record over the window the chips name, not the
                         season's — the label above says which. */}
-                    <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{fm.record}</span>
+                    <span style={{ marginLeft: fm.season ? 0 : "auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{fm.record}</span>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column" }}>
                     {(fm.games || []).map((g, i) => (
@@ -185,8 +203,13 @@ export default function MatchupDesktop({
                         <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{g.score}</span>
                       </div>
                     ))}
+                    {/* Two sentences, not one: "still looking" and "there are
+                        none" are different claims, and the panel used to make
+                        the second one while the fetch was still out. */}
                     {(!fm.games || fm.games.length === 0) && (
-                      <div style={{ padding: "14px 15px", fontSize: 12, color: "var(--dim)" }}>No finished games in this window.</div>
+                      <div style={{ padding: "14px 15px", fontSize: 12, color: "var(--dim)" }}>
+                        {fm.loading ? "Reading the schedule…" : "No finished games on record for this team."}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -199,23 +222,35 @@ export default function MatchupDesktop({
         <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14, alignItems: "start" }}>
           <div style={{ ...card, padding: "14px 16px", gap: 12 }}>
             <span style={micro}>HEAD TO HEAD</span>
-            {h2h && h2h.cells ? (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: `repeat(${h2h.cells.length}, minmax(0, 1fr))`, gap: 10 }}>
-                  {h2h.cells.map((c) => (
-                    <div key={c.label} style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
-                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>{c.label}</span>
-                      <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700 }}>{c.value}</span>
-                    </div>
-                  ))}
-                </div>
-                {/* Why last year is not folded in, said rather than assumed. */}
-                <span style={{ fontSize: 11.5, lineHeight: 1.45, color: "var(--dim)" }}>{h2h.note}</span>
-              </>
-            ) : (
-              <span style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--dim)" }}>
-                These two have not met this season, so there is nothing to count.
-              </span>
+            {h2h && h2h.cells && (
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${h2h.cells.length}, minmax(0, 1fr))`, gap: 10 }}>
+                {h2h.cells.map((c) => (
+                  <div key={c.label} style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>{c.label}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700 }}>{c.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Which season this is, and why it is that one, said rather than
+                assumed. This branch used to print one hardcoded sentence —
+                "these two have not met this season" — for every state the
+                lookup could return, including the two that mean the opposite:
+                a series it had loaded but could not fit in cells, and a
+                lookup that had not run at all because the sport was not
+                supported. The note the caller built was thrown away. */}
+            <span style={{ fontSize: h2h && h2h.cells ? 11.5 : 12.5, lineHeight: 1.5, color: "var(--dim)" }}>
+              {h2h ? h2h.note : "Reading the season series…"}
+            </span>
+            {/* The scorelines the three cells above are a count of, each
+                opening its own box score. See H2HMeetings. */}
+            {h2h && h2h.meetings && h2h.meetings.length > 0 && (
+              <H2HMeetings
+                meetings={h2h.meetings}
+                awayAbbr={away.abbr}
+                homeAbbr={home.abbr}
+                loadBox={onLoadMeeting}
+              />
             )}
           </div>
 

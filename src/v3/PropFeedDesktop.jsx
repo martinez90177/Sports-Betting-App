@@ -59,6 +59,7 @@ export default function PropFeedDesktop({
   // ---- the count / sort bar ----
   countLabel = null,
   benchedLabel = null,
+  narrowedTo = null,        // { label, onClear } -- see the note at its render site
   sortNote = null,
   sorts = [],
 
@@ -187,10 +188,14 @@ export default function PropFeedDesktop({
                     one-column group is a flex column, so its pills keep
                     their natural height instead of being stretched by a
                     grid row. */}
+                {/* A group whose control is not a row of pills renders its
+                    own node. The frame stays generic — it does not know what
+                    a game picker is, only that this group brought one. */}
+                {fg.node}
                 <div style={fg.cols === 1
                   ? { display: "flex", flexDirection: "column", gap: 6 }
                   : { display: "grid", gridTemplateColumns: `repeat(${fg.cols || 2}, minmax(0, 1fr))`, gap: 6 }}>
-                  {fg.items.map((it) => (
+                  {(fg.items || []).map((it) => (
                     <div key={it.id || it.label} style={{ position: "relative" }}>
                       <div
                         role="button"
@@ -285,6 +290,30 @@ export default function PropFeedDesktop({
           <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 8, padding: "12px 20px", borderBottom: "1px solid var(--line)" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
               {countLabel && <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--text-2)", whiteSpace: "nowrap" }}>{countLabel}</span>}
+              {/* Says why the feed is short, and undoes it. Arriving here from
+                  one game's Matchup page narrows the list to that game, and a
+                  count that dropped from 2,793 to 2 with nothing on screen
+                  naming the cause is exactly the silent filter this app does
+                  not ship. The Games multi-select in the Filters panel is the
+                  same state, two panels away and closed by default. */}
+              {narrowedTo && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={narrowedTo.onClear}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); narrowedTo.onClear && narrowedTo.onClear(); } }}
+                  title="Show the whole slate"
+                  style={{
+                    flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 7,
+                    fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", whiteSpace: "nowrap",
+                    padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                    border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)",
+                  }}
+                >
+                  {narrowedTo.label}
+                  <span style={{ color: "var(--dim)" }}>×</span>
+                </span>
+              )}
               {benchedLabel && <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)", whiteSpace: "nowrap" }}>{benchedLabel}</span>}
               <span style={{ marginLeft: "auto", flex: "1 1 auto", textAlign: "right", fontFamily: MONO, fontSize: 10, color: "var(--amber-ink)", minWidth: 0 }}>
                 {`sorted by ${sortNote}`}

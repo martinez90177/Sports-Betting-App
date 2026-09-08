@@ -53,6 +53,10 @@ export default function GamesDesktop({
   dates = [],
   activeDate,
   onSetDate,
+  weeks = [],
+  activeWeek = null,
+  currentWeek = null,
+  onSetWeek,
   states = [],
   state,
   onSetState,
@@ -132,6 +136,45 @@ export default function GamesDesktop({
               ))}
             </div>
           </div>
+
+          {/* Only football has weeks, so only football gets this control —
+              the caller sends an empty list for every other league rather
+              than this frame deciding for itself which sport is which.
+
+              A select rather than a column of pills: there are 22 of them,
+              and 22 pills is the rail twice over. THIS WEEK is marked in the
+              option itself, so a reader who has clicked into November can see
+              where they came from without a second control. */}
+          {weeks.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              <span style={railLabel}>WEEK</span>
+              <select
+                value={activeWeek || ""}
+                onChange={(e) => onSetWeek && onSetWeek(e.target.value)}
+                aria-label="NFL week"
+                style={{
+                  minHeight: 34, padding: "0 9px", borderRadius: 7,
+                  border: "1px solid var(--line)", background: "var(--surface-1)",
+                  color: "var(--text)", fontFamily: MONO, fontSize: 12, width: "100%", boxSizing: "border-box",
+                }}
+              >
+                {weeks.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.id === currentWeek ? `${w.label} · this week` : w.label}
+                  </option>
+                ))}
+              </select>
+              {/* The dates the week covers, from the provider's own calendar
+                  — so the date tabs below can never claim a day this week
+                  does not contain. */}
+              {(() => {
+                const w = weeks.find((x) => x.id === activeWeek);
+                return w && w.detail
+                  ? <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{w.detail}</span>
+                  : null;
+              })()}
+            </div>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             <span style={railLabel}>DATE</span>

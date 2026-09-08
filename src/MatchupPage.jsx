@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { teamLogo, dayLabel, timeLabel, fetchRecentForm, fetchHeadToHead } from "./lib/gamesData.js";
+import { teamLogo, dayLabel, timeLabel, fetchRecentForm, fetchHeadToHead, fetchGamecastDetail } from "./lib/gamesData.js";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { MLB_TEAM_COLORS } from "./lib/teamColors.js";
 import { MLB_ABBR_TEAM_ID, fetchMLBTeamRosterStatus, mlbAvailability, mlbHeadshot } from "./lib/mlbStatus.js";
@@ -240,7 +240,11 @@ function ProbablePitchers({ game, status }) {
 export default function MatchupPage({ game, isMobile, embedded, onBack, onViewProps, getTopProps, onOpenProp }) {
   const isPhone = useIsPhone();
   const [depth, setDepth] = useState(10);
-  const [form, setForm] = useState({ away: [], home: [] });
+  // null while the fetch is out, [] once it has answered with nothing. Both
+  // used to be [], so "loading" and "there are no games" were the same value
+  // and the phone panel said "Loading…" forever on a team that genuinely had
+  // none.
+  const [form, setForm] = useState({ away: null, home: null });
   const [h2h, setH2h] = useState(null);
   // "Props with a read" (card 138) -- a handful of notable props for this
   // game, computed by PropLedger (see getTopPropsForMatchup) and handed down
@@ -253,6 +257,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
 
   useEffect(() => {
     let cancelled = false;
+    setForm({ away: null, home: null });
     Promise.all([
       fetchRecentForm(game.sport, game.away.abbr, depth),
       fetchRecentForm(game.sport, game.home.abbr, depth),
@@ -264,6 +269,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
 
   useEffect(() => {
     let cancelled = false;
+    setH2h(null);
     fetchHeadToHead(game.sport, game.away.abbr, game.home.abbr).then((r) => {
       if (!cancelled) setH2h(r);
     });
@@ -312,7 +318,12 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
         record: games.length ? `${won}-${games.length - won - tied}${tied ? `-${tied}` : ""}` : "—",
         wonPct: games.length ? (won / games.length) * 100 : 0,
         tiedPct: games.length ? (tied / games.length) * 100 : 0,
-        loading: !rows || !rows.length,
+        loading: rows === null,
+        // Set only when these games are not from the season in progress --
+        // Week 1, an October NBA slate. The panel prints it beside the
+        // record, because ten games from last January are recent form only
+        // if the screen says which January.
+        season: games.find((g) => g.season)?.season || null,
         error: false,
         games: games.map((g) => ({
           date: g.date, opp: g.opp, home: g.home, res: g.result,
@@ -360,25 +371,47 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
         })
       : null;
 
-    // Three states, the same three the desktop panel below has: no season
-    // series this app can read at all (drop the section), one it could not
-    // load, and a real one. The mock draws only the third; the other two are
-    // the app being honest about its own data.
+    // A drawn meeting sits in neither of the two win cells, so three cells
+    // that no longer add up to the meeting count say so rather than leaving
+    // the reader to find the gap.
+    const tieClause = h2h && h2h.ties > 0
+      ? ` ${h2h.ties === 1 ? "One meeting was drawn" : `${h2h.ties} meetings were drawn`}, which is why the two counts do not add up to the total.`
+      : "";
+
+    // Four states, the same four the panels below have: still looking (drop
+    // the section rather than assert anything), one it could not load, a
+    // search that came back empty, and a real series -- from this season, or
+    // from the most recent one these two met in. The mock draws only the
+    // last; the rest are the app being honest about its own data.
     const h2hBlock = !h2h
       ? null
       : h2h.error
         ? { cells: null, note: "Couldn't load the season series for these two right now." }
         : h2h.games === 0
-          ? { cells: null, note: `${game.away.name} and ${game.home.name} haven't met yet this season.` }
+          ? {
+              cells: null,
+              note: `${game.away.name} and ${game.home.name} have not met in the ${(h2h.searched || []).length} seasons back to ${(h2h.searched || []).slice(-1)[0] || h2h.season}.`,
+            }
           : {
+              meetings: h2h.meetings || [],
               cells: [
                 { label: "MEETINGS", value: String(h2h.games) },
                 { label: game.away.abbr, value: String(h2h.awayWins) },
                 { label: game.home.abbr, value: String(h2h.homeWins) },
               ],
-              note: h2h.games === 1
-                ? "This season's meetings only, and one game is a result rather than a pattern."
-                : "This season's meetings only. Last year's series is a different roster on both sides, so it is not folded in.",
+              // The scoreline the note used to carry is in the meetings list
+              // under it now, so the sentence is left to do the one job the
+              // list cannot: say which season these are and why it is that
+              // one.
+              note: !h2h.current
+                // Not this season's, and the panel says so before it says
+                // anything else. Last year's roster was the original reason
+                // this block refused to look back at all; it looks now, and
+                // carries the caveat on screen instead.
+                ? `They have not met yet this season, so these are the ${h2h.season} meetings. Both rosters have turned over since, so read them as history rather than form.${tieClause}`
+                : h2h.games === 1
+                  ? "This season's meetings only, and one game is a result rather than a pattern."
+                  : `This season's meetings only. Last year's series is a different roster on both sides, so it is not folded in.${tieClause}`,
             };
 
     const v3Shared = {
@@ -396,6 +429,11 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
       onSetDepth: setDepth,
       form: [formFor(game.away, form.away), formFor(game.home, form.home)],
       h2h: h2hBlock,
+      // The box score behind one past meeting, from the same fetcher the
+      // Gamecast uses -- so a meeting opened here and the same game opened
+      // from the slate cannot show two different linescores. Each meeting
+      // already carries the provider id its detail lives behind.
+      onLoadMeeting: (m) => fetchGamecastDetail(m),
       reads: topProps === undefined ? undefined : (topProps || []).map((r) => ({
         key: r.playerId,
         name: r.name,
@@ -407,6 +445,14 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
         hits: r.gamesOver,
         n: r.gamesCounted,
         thin: r.thin,
+        // Rule 1: a named player travels with their face and their
+        // availability. getTopPropsForMatchup has resolved both per sport
+        // since it was written; this mapping was dropping them on the floor,
+        // so four named players sat behind four blank team-coloured discs.
+        headshotSrc: r.headshotSrc,
+        fallbackSrc: r.fallbackSrc,
+        espnId: r.espnId,
+        status: r.status,
       })),
       readScope: "FROM TONIGHT'S SLATE",
       onOpenRead: (r) => onOpenProp && onOpenProp(r.sport, r.key, r.market, { name: r.name, team: r.team }),
@@ -419,7 +465,8 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
           renderAvatar={(x, size) => (
             <PlayerAvatar
               name={x.name} alt={x.name} sport={x.sport || game.sport} team={x.team}
-              headshotSrc={x.headshotSrc} status={x.status}
+              headshotSrc={x.headshotSrc} fallbackSrc={x.fallbackSrc} espnId={x.espnId}
+              status={x.status}
               size={size} inset={2} surface="var(--surface-1)"
             />
           )}
@@ -487,12 +534,12 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
       <div style={{ padding: isMobile ? "0 12px" : 0, display: "flex", flexDirection: "column", gap: 14, marginTop: 16 }}>
         {/* Primary action -- the whole point of the page is to hand off into
             the props experience for this matchup. */}
-        {/* Copy is "all props", not "props for this game", because that is what
-            it does: goToGameProps switches sport and page without narrowing to
-            this matchup (see the comment on it in PropLedger). Promising the
-            game and delivering the slate is the same silent overpromise as a
-            row that quietly renders a different player. Narrowing the feed is
-            real work and belongs with the props-panel pass. */}
+        {/* goToGameProps narrows the feed to this matchup now (see the
+            comment on it in PropLedger), so this says which props it opens.
+            It read "View all props" for as long as the narrowing did not
+            happen — promising the game and delivering the slate is the same
+            silent overpromise as a row that quietly renders a different
+            player. */}
         <div
           className="gm-cta pp-mono"
           role="button"
@@ -509,7 +556,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
             fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase",
           }}
         >
-          View all props
+          This game’s props
         </div>
 
         {/* Team strip: full names + records, the detail the card only had room
@@ -576,13 +623,13 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
             gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
             paddingTop: 12,
           }}>
-            <FormColumn sport={game.sport} team={game.away} rows={form.away} />
+            <FormColumn sport={game.sport} team={game.away} rows={form.away || []} />
             <div style={{
               borderLeft: isMobile ? "none" : "1px solid var(--line)",
               borderTop: isMobile ? "1px solid var(--line)" : "none",
               paddingTop: isMobile ? 12 : 0,
             }}>
-              <FormColumn sport={game.sport} team={game.home} rows={form.home} />
+              <FormColumn sport={game.sport} team={game.home} rows={form.home || []} />
             </div>
           </div>
         </div>

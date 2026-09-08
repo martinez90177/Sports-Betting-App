@@ -1,6 +1,7 @@
 import React from "react";
 import PlayerAvatar from "../PlayerAvatar.jsx";
 import { crest } from "./FormPlot.jsx";
+import H2HMeetings from "./H2HMeetings.jsx";
 
 // A transcription of frame `3c` in `v3 Mocks/PropPalace Mobile v3.dc.html`.
 //
@@ -9,15 +10,19 @@ import { crest } from "./FormPlot.jsx";
 // because this app reads no odds feed and a number borrowed from somewhere
 // else is worse than an absent one.
 //
-// Two sections drop rather than render empty, which is what the desktop page
-// already does and for the same reasons:
+// One section drops rather than renders empty, which is what the desktop page
+// already does and for the same reason:
 //
 //   PROBABLE PITCHERS  only MLB publishes them, and only `game.probables`
 //                      carries them. A sport without them is a finished page,
 //                      not a page with a hole in it.
-//   HEAD TO HEAD       `fetchHeadToHead` answers for MLB alone. Where it does
-//                      answer, every outcome gets a line -- a real record,
-//                      "they have not met", or "we could not check".
+//
+// HEAD TO HEAD used to be the second of those, because `fetchHeadToHead`
+// answered for MLB alone. It answers for all four sports now, and walks back
+// through past seasons when the current one has no meeting, so the section is
+// present on every game -- with a line for each outcome: a real series, which
+// season it is from, "they have not met in N seasons", or "we could not
+// check". It is absent only while the lookup is still out.
 //
 // The mock's own form rows are seeded arithmetic (`us = 1 + ((i * 5 + seed) %
 // 9)`), a placeholder for real results. They come from `fetchRecentForm` here.
@@ -42,7 +47,8 @@ export default function MatchupMobile({
   depths = [],
   onSetDepth,
   form = [],               // [{ abbr, record, wonPct, loading, error, games: [...] }]
-  h2h = null,              // { cells: [{label, value}], note } or null
+  h2h = null,              // { cells: [{label, value}], note, meetings } or null
+  onLoadMeeting,           // (meeting) => Promise<box score | null>
   reads = null,            // undefined = loading, null = unsupported, [] = none
   readScope,
   onOpenRead,
@@ -93,7 +99,7 @@ export default function MatchupMobile({
               color: "var(--amber-ink)", whiteSpace: "nowrap", cursor: "pointer",
             }}
           >
-            BOARD →
+            PROP FEED →
           </span>
         )}
       </div>
@@ -182,7 +188,13 @@ export default function MatchupMobile({
               <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <span role="img" style={crest(t.abbr, sport, 16)} />
                 <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)" }}>{t.abbr}</span>
-                <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, fontWeight: 700 }}>{t.record}</span>
+                {/* Set only when these games are not from the season in
+                    progress — a Week 1 panel is showing last season, and an
+                    unlabelled one would be claiming otherwise. */}
+                {t.season && (
+                  <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: "var(--dim)" }}>{t.season}</span>
+                )}
+                <span style={{ marginLeft: t.season ? 0 : "auto", fontFamily: MONO, fontSize: 11, fontWeight: 700 }}>{t.record}</span>
               </div>
               {/* The bar and the log under it are the same rows counted twice,
                   so they can never disagree. No rows means no bar -- an empty
@@ -201,7 +213,7 @@ export default function MatchupMobile({
               <div style={{ display: "flex", flexDirection: "column" }}>
                 {t.games.length === 0 && (
                   <span style={{ fontFamily: MONO, fontSize: 10.5, lineHeight: 1.6, color: "var(--dim)" }}>
-                    {t.loading ? "Loading…" : t.error ? "Couldn't load recent results." : "No finished games yet."}
+                    {t.loading ? "Reading the schedule…" : t.error ? "Couldn't load recent results." : "No finished games on record for this team."}
                   </span>
                 )}
                 {t.games.map((g, i) => (
@@ -232,8 +244,9 @@ export default function MatchupMobile({
         </div>
       </div>
 
-      {/* MLB alone has a season series this app can read. A sport without one
-          drops the section rather than heading blank space. */}
+      {/* Present on every game now (see the note at the top of the file), and
+          absent only while the lookup is still out — a heading over blank
+          space is worse than no heading. */}
       {h2h && (
         <div style={{ padding: "16px 16px 0", display: "flex", flexDirection: "column", gap: 9 }}>
           <span style={sectionLabel}>HEAD TO HEAD</span>
@@ -257,6 +270,17 @@ export default function MatchupMobile({
             <div style={{ padding: "12px 13px", borderTop: h2h.cells ? "1px solid var(--line)" : "none", fontSize: 12.5, lineHeight: 1.5, color: "var(--dim)" }}>
               {h2h.note}
             </div>
+            {/* The scorelines the three cells above are a count of, each
+                opening its own box score. See H2HMeetings. */}
+            {h2h.meetings && h2h.meetings.length > 0 && (
+              <H2HMeetings
+                meetings={h2h.meetings}
+                awayAbbr={sides[0]?.abbr}
+                homeAbbr={sides[1]?.abbr}
+                loadBox={onLoadMeeting}
+                compact
+              />
+            )}
           </div>
         </div>
       )}
@@ -287,7 +311,8 @@ export default function MatchupMobile({
               <span style={{ position: "relative", flex: "0 0 auto" }}>
                 <PlayerAvatar
                   name={r.name} alt={r.name} sport={r.sport || sport} team={r.team}
-                  headshotSrc={r.headshotSrc} status={r.status}
+                  headshotSrc={r.headshotSrc} fallbackSrc={r.fallbackSrc} espnId={r.espnId}
+                  status={r.status}
                   size={34} inset={2} surface="var(--surface-1)"
                 />
               </span>
