@@ -112,7 +112,38 @@ export default function PropFeedDesktop({
       }}
     >
       {/* ---- market tabs, direction pair, filters button ----------------- */}
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 26, padding: "0 32px", borderBottom: "1px solid var(--line)", minWidth: 0 }}>
+      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 18, padding: "0 32px 0 18px", borderBottom: "1px solid var(--line)", minWidth: 0 }}>
+        {/* FILTERS on the left, over the rail it opens.
+            It sat at the far right of this row, and the panel it toggles
+            slides in on the far left — Alex: *"the filters button being on
+            the right side for a filter pop out on the left is messy."* A
+            control belongs on the side of the thing it moves; at 1440 the two
+            were about 1200px apart, so the eye had to cross the whole table
+            to see what the click had done. Its 218px well is the rail's own
+            width, so open or closed the button sits directly over the column
+            it governs and the market tabs start at the same x either way. */}
+        <div style={{ flex: "0 0 auto", width: 218 - 18, display: "flex", alignItems: "center" }}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={onToggleFilters}
+            onKeyDown={(e) => { if (e.key === "Enter") onToggleFilters && onToggleFilters(); }}
+            style={{
+              minHeight: 30, display: "flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 7,
+              fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer",
+              border: `1px solid ${filtersOpen ? "var(--amber)" : "var(--line)"}`,
+              background: filtersOpen ? "var(--amber-dim)" : "transparent",
+              color: filtersOpen ? "var(--amber-ink)" : "var(--dim)",
+            }}
+          >
+            {filtersOpen ? "◀ FILTERS" : "FILTERS ▶"}
+            {filterCount > 0 && (
+              <span style={{ minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "var(--amber)", color: "#fff", fontSize: 9.5 }}>
+                {filterCount}
+              </span>
+            )}
+          </div>
+        </div>
         <div className="nsb" style={{ display: "flex", alignItems: "center", gap: 26, overflowX: "auto", minWidth: 0, flex: "1 1 auto" }}>
         {marketTabs.map((m) => (
           <div
@@ -151,26 +182,6 @@ export default function PropFeedDesktop({
               {d.label}
             </div>
           ))}
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={onToggleFilters}
-            onKeyDown={(e) => { if (e.key === "Enter") onToggleFilters && onToggleFilters(); }}
-            style={{
-              minHeight: 30, display: "flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 7,
-              fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer",
-              border: `1px solid ${filtersOpen ? "var(--amber)" : "var(--line)"}`,
-              background: filtersOpen ? "var(--amber-dim)" : "transparent",
-              color: filtersOpen ? "var(--amber-ink)" : "var(--dim)",
-            }}
-          >
-            FILTERS
-            {filterCount > 0 && (
-              <span style={{ minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "var(--amber)", color: "#fff", fontSize: 9.5 }}>
-                {filterCount}
-              </span>
-            )}
-          </div>
         </span>
       </div>
 

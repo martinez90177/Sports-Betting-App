@@ -145,9 +145,22 @@ export function seedSampleValue(sport, carried) {
   }
   const stops = stopValues(sport);
   if (!stops.includes(carried)) {
+    // Falls back to this sport's own floor rather than keeping the number.
+    //
+    // It used to carry it, and the number it carried was a different sport's
+    // idea of a sample. MLB's floor is 15 of 162; football's season is 17, so
+    // 15 arrives *legal* (under NFL's max of 17) and lands above every chip on
+    // the scale — nothing lights up, and the feed quietly demands 15 of a
+    // 17-game season. Every NFL row with a normal starter's log then read
+    // "too few", which is what Alex was looking at: 3 of 4 and 5 of 7 with no
+    // rate and no visible reason.
+    //
+    // A value that is not a stop on this scale is not a choice anybody made
+    // *for this sport*, so it is not honoured as one. The note says what
+    // happened instead of moving silently.
     return {
-      value: carried,
-      note: `${carried}+ carried over. This season counts in ${stops.join(", ")}.`,
+      value: floor,
+      note: `${carried}+ does not sit on a ${season}-game season — set to this sport's ${floor}+.`,
     };
   }
   return { value: carried, note: null };

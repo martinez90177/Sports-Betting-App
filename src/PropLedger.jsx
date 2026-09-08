@@ -41,6 +41,7 @@ import useMyPicks from "./v3/useMyPicks.js";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import { venueWord } from "./lib/venue.js";
+import { fetchNflStarters } from "./lib/nflDepth.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { usagePills, roleSentence } from "./lib/usagePills.js";
 import { fetchStatcast } from "./lib/statcast.js";
@@ -3952,6 +3953,10 @@ let NFL_ROSTER_COVERAGE = null;
 // absent teammate can be anyone, and the availability dot on a roster rail is
 // asked about players this app prices nothing for.
 let NFL_ROSTER_STATUS = {};
+// Who is listed as starting, by ESPN id, and which teams that answer covers.
+// Null until the depth charts land, which is the state that means "do not
+// filter" -- see feedRowPlaysEnough.
+let NFL_STARTERS = null;
 
 // Only the positions this app prices. An ESPN NFL roster is ~96 athletes
 // including the offensive line and the whole defense, none of whom have a prop
@@ -4235,8 +4240,25 @@ NFL_MATCHUPS.forEach((m) => {
   NFL_SLATE_BY_TEAM[away] = { opp: home, home: false, date: m.date };
   NFL_SLATE_BY_TEAM[home] = { opp: away, home: true, date: m.date };
 });
+// The same map, but read from ESPN's own scoreboard for whichever week is
+// actually current. Null until fetchNflCurrentWeekSlate answers.
+//
+// NFL_SLATE_BY_TEAM above is a frozen snapshot of Week 1 2026. Every one of
+// its 16 pairings and kickoff times is correct -- and correct for one week
+// only. From Week 2 it would hand the feed, the player pages, the defence
+// badge, the H2H column and the weather block last week's opponent, all
+// stated with the confidence of a fact.
+let NFL_LIVE_SLATE_BY_TEAM = null;
+
+// Live first, hand-typed second. The fallback is the point: an unanswered or
+// failed schedule fetch leaves the page exactly as it is today rather than
+// emptying the opponent column, which is the same direction NFL_STARTERS
+// takes -- a fixture we could not read is not a claim that there is no game.
 function nflNextGameForTeam(abbr) {
-  return (abbr && NFL_SLATE_BY_TEAM[abbr]) || null;
+  if (!abbr) return null;
+  return (NFL_LIVE_SLATE_BY_TEAM && NFL_LIVE_SLATE_BY_TEAM[abbr])
+    || NFL_SLATE_BY_TEAM[abbr]
+    || null;
 }
 
 // ESPN's schedule endpoint takes each team's slug in the URL -- identical to
@@ -4276,7 +4298,10 @@ async function fetchNFLTeamNextGame(abbr) {
   } catch {}
 
   const res = await fetch(
-    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${nflEspnSlug(abbr)}/schedule?season=2026`
+    // Derived, never typed: a hardcoded year here is right until 1 January and
+    // silently wrong after it -- the exact trap noted for the NBA standings
+    // call further down this file.
+    `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${nflEspnSlug(abbr)}/schedule?season=${currentNFLSeason()}`
   );
   const data = await res.json();
   const events = data?.events || [];
@@ -4687,6 +4712,24 @@ function normalizeNFLGame(g, player) {
 // page never has to show a loading state.
 const NFL_REAL_GAME_LOGS = {};
 
+// The season BEFORE the one NFL_REAL_GAME_LOGS holds, for the feed's rolling
+// windows only. Raw ESPN rows, keyed by our slug, normalised at read time by
+// nflFeedGames exactly as getNFLGames normalises the current season.
+//
+// Why the feed needs this and the player pages don't: a player page already
+// folds last season in through usePriorSeasonLog + mergeSeasonLogs, and it
+// asks per player because only one is on screen. The feed has ~800 of them,
+// so the fetch is gated (see the loading effect) to the one case that needs
+// it -- an IN-PROGRESS season, where the log is short because the year has
+// barely started rather than because the player is thin.
+//
+// Without it, Week 1 is a cliff: fetchNFLPlayerGameLogForDisplay prefers the
+// current season the moment ESPN has anything in it, so the first Thursday
+// night game turns every Patriot and Seahawk from a 17-game log into a
+// one-game log. L5/L10/L20 all fall under MINIMUM SAMPLE at once, H2H empties,
+// and the sort that orders the whole feed has nothing left to rank on.
+const NFL_PRIOR_GAME_LOGS = {};
+
 // Maps the flat "names" keys ESPN's gamelog endpoint returns to the field
 // names statValueNFL/normalizeNFLGame already expect.
 const NFL_STAT_NAME_MAP = {
@@ -4885,6 +4928,26 @@ function getNFLGames(player) {
   // Kelce among them: ESPN's event log for them is an empty stub while a
   // teammate's carries 17 games). Those ten are dropped, not filled in.
   return [];
+}
+
+// What the FEED counts, as opposed to what the player page shows: the current
+// log with last season merged in behind it when one was fetched.
+//
+// The two are deliberately different shapes. getNFLGames stays one season, so
+// the player pages keep folding the prior year in themselves through
+// usePriorSeasonLog -- widening getNFLGames would hand them a log that already
+// contained the season they are about to fetch, and mergeSeasonLogs
+// concatenates, so every prior game would appear twice.
+//
+// Rolling windows (L5/L10/L20, H2H, form, variance, the line and the sort)
+// read this. The season column does not -- see buildNFLFeedRows, which narrows
+// it back to the newest season so a column headed 2026 never counts a 2025
+// game.
+function nflFeedGames(player) {
+  const current = getNFLGames(player);
+  const prior = NFL_PRIOR_GAME_LOGS[player?.id];
+  if (!prior || !prior.length) return current;
+  return mergeSeasonLogs(current, prior.map((g) => normalizeNFLGame(g, player)));
 }
 
 const statValueNFL = (g, market) => {
@@ -17597,7 +17660,7 @@ function GameSelect({ groups, value, onChange, logoFn, compact, emptyLabel, vari
 // beside them in the v2 panel's Oswald. Same component, same state, same
 // dropdown panel: a second game picker built to match the rail is how two
 // controls for one filter start disagreeing.
-function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill = false, variant = "panel" }) {
+function GamesMultiSelect({ options, selected, onChange, allLabel, panelAllLabel, logoFn, fill = false, variant = "panel" }) {
   const [open, setOpen] = useState(false);
   const panelRef = React.useRef(null);
   const { floatRef, anchorStyle } = useCenteredPanel(open, panelRef);
@@ -17654,7 +17717,7 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, logoFn, fill 
               borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)",
             }}
           >
-            {allLabel}
+            {panelAllLabel || allLabel}
             {selected.size === 0 && <SelectedCheck />}
           </div>
           {options.map((o) => {
@@ -18905,20 +18968,44 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={feedWindowFloor(minGames, "l5")} active={sampleWindow === "l5"} />
         <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={feedWindowFloor(minGames, "l10")} active={sampleWindow === "l10"} />
         <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={feedWindowFloor(minGames, "l20")} active={sampleWindow === "l20"} />
-        {/* Five meetings, not the page's minimum sample. That minimum is set
-             against a season -- 17 on the NFL -- and two teams meet twice a
-             year, so applying it here would blank the column on every row in
-             the league forever. Five is the support band this app already
-             uses as the floor below which a rate is not stated at all. */}
+        {/* No floor on this column: one meeting is still a meeting.
+             It used to suppress the rate under five and print "1 meeting vs
+             SEA" instead, on the support band this app uses everywhere else.
+             Alex, 2026-09-07: *"i dont care if its only 1 meeting show the %
+             and data, seems very stupid to not show it just because it's a
+             low sample, it's still data."*
+
+             The suppression was arguing that a rate over one game overclaims.
+             It does — but the count sitting directly under it says `1/1 vs
+             SEA`, which is the disclosure every other column on this row gets
+             to make for itself, and a dash discloses nothing at all. The
+             five-meeting band still governs the *sort* (see the h2h key in
+             sortedRows), where a lone 100% really would displace a twenty-
+             meeting record. */}
         <FeedPctCell
-          v={r.h2h} n={r.nH2h} minSample={5} unit="meetings" active={false} opp={r.opp}
+          v={r.h2h} n={r.nH2h} minSample={1} unit="meetings" active={false} opp={r.opp}
           emptyTitle={r.opp ? `No meetings with ${r.opp} in this log` : "No opponent scheduled yet"}
         />
-        <FeedPctCell v={r.all} n={r.nAll} minSample={minGames} active={sampleWindow === "all"} />
+        {/* The two season columns state a rate over whatever the player
+             actually played, with no minimum.
+
+             An L-window column promises a game count -- "last ten" -- so it
+             has something to fall short of, and MINIMUM SAMPLE governs it.
+             A season column promises a season, and however many games a
+             player logged *is* his season: there is no shortfall to report,
+             only a smaller season. Alex, 2026-09-07, looking at 3 of 4 and
+             5 of 7 held back: *"there's no reason to be excluding data if
+             theres enough games for data. of course if its for like L10 and
+             they only played 7 games thats different."* That distinction is
+             this line.
+
+             The count under each figure carries the caveat, the same way it
+             does on H2H. */}
+        <FeedPctCell v={r.all} n={r.nAll} minSample={1} active={sampleWindow === "all"} />
         {/* Last season, graded against tonight's line. Three states, and none
              of them is a silent blank: still being fetched, fetched and there
              is none, or a real record. */}
-        <PriorSeasonCell prior={prior} minSample={minGames} />
+        <PriorSeasonCell prior={prior} minSample={1} />
       </div>
     </div>
   );
@@ -19278,7 +19365,25 @@ function teamGamesPlayed(rows) {
 // row's removal.
 const FEED_PARTICIPATION = 0.5;
 
-function feedRowPlaysEnough(r, teamGames) {
+function feedRowPlaysEnough(r, teamGames, sport) {
+  // NFL answers this from the published depth chart rather than by inference.
+  //
+  // The rule below is a good one for basketball and baseball, where minutes
+  // and lineups move game to game and there is no single "starter" list. It
+  // is a poor one for football, and it failed in a specific way: a team's
+  // game count is taken as the largest log among that team's *own rows*, so
+  // on a team whose starters are thin in the pool the bar sinks to the
+  // backup's own total and he clears it. That is how Minnesota's third
+  // quarterback ranked beside starters.
+  //
+  // Null while the charts are still out, and a team that did not answer is
+  // not filtered at all -- showing a backup is a smaller error than hiding a
+  // starter, and "we could not read the chart" is not a claim about a player.
+  if (sport === "nfl" && NFL_STARTERS) {
+    if (!NFL_STARTERS.teams.has(r.team)) return true;
+    if (!r.logId) return true;
+    return NFL_STARTERS.starters.has(String(r.logId));
+  }
   const total = teamGames.get(r.team);
   if (!total || r.nAll == null) return true;
   return r.nAll >= total * FEED_PARTICIPATION;
@@ -19831,7 +19936,10 @@ function buildNFLFeedRows() {
   resetFeedSkips("nfl");
   const rows = [];
   nflPlayerPool().forEach((player) => {
-    const games = getNFLGames(player);
+    // Two seasons when the current one is still being played -- see
+    // nflFeedGames. Every rolling window below reads this; the season column
+    // narrows back out of it via seasonOnly.
+    const games = nflFeedGames(player);
     // `liveOnly` is the honest half of this: the live roster named him and
     // no log exists yet. Kept distinct from a plain empty log so the chip
     // can say which, rather than implying he has been dropped (mock 3g).
@@ -19846,9 +19954,17 @@ function buildNFLFeedRows() {
     const nextOpp = nextGame ? nextGame.opp : null;
     const gameDate = nextGame ? nextGame.date : null;
     const applicableMarkets = NFL_MARKETS.filter((m) => m.pos.includes(player.pos));
+    // Which of `games` belong to the year the season column is headed by. A
+    // one-season log answers "all of them" and the column is unchanged; a
+    // merged one answers "the newest slice", so a cell headed 2026 counts 2026
+    // games only however many 2025 games sit behind it in the window columns.
+    const feedSeason = newestSeason(games);
+    const seasonOnly = (arr) =>
+      feedSeason == null ? arr : arr.filter((_, i) => games[i].season === feedSeason);
     applicableMarkets.forEach((m) => {
       const isBinary = false;
       const values = games.map((g) => statValueNFL(g, m.id));
+      const seasonValues = seasonOnly(values);
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = isBinary ? 0.5 : fairFeedLine(values);
       const hit = isBinary ? (v) => v === 1 : (v) => v > line;
@@ -19873,16 +19989,18 @@ function buildNFLFeedRows() {
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
-        all: hitRateWindow(values, "all", hit),
+        // The season column promises a season, so it counts that season alone
+        // -- not the prior-year games the windows above are free to reach into.
+        all: hitRateWindow(seasonValues, "all", hit),
         // Counts alongside the rates: values.slice(-20) on a nine game log
         // returns nine, so a cell labelled L20 can be a nine game sample.
         n5: hitRateCount(values, 5),
         n10: hitRateCount(values, 10),
         n20: hitRateCount(values, 20),
-        nAll: hitRateCount(values, "all"),
+        nAll: hitRateCount(seasonValues, "all"),
         // Tonight's opponent, every meeting of them this log holds.
         ...h2hSplit(games, values, nextOpp, hit),
-        logId: NFL_ESPN_ID[player.id] || player.espnId || null, logSeason: newestSeason(games),
+        logId: NFL_ESPN_ID[player.id] || player.espnId || null, logSeason: feedSeason,
         // Per-game venue, parallel to `values`. The Findings screen splits a
         // log by home and away, and `recent` only carries the last ten -- a
         // split taken off that would silently be a last-ten split wearing a
@@ -21201,7 +21319,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // schedule. How long a slate lasts depends on the league -- see
     // feedSlateWindow.
     if (slateScope === "near" && !feedRowIsNear(r, slateWindow)) return false;
-    if (regularsOnly && !feedRowPlaysEnough(r, teamGames)) return false;
+    if (regularsOnly && !feedRowPlaysEnough(r, teamGames, sport)) return false;
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
     // The Role floor. A row whose role could not be measured passes rather
@@ -21373,12 +21491,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       const { key, dir } = columnSort;
       const val = (r) => (key === "line" ? r.line
         : key === "odds" ? (r[sampleWindow] == null ? null : probToAmericanOdds(r[sampleWindow]))
-        // H2H sorts only over meetings the column is willing to state a rate
-        // for. Without this, one meeting cleared is 100% and outranks every
-        // real record in the league -- the same overclaiming-at-the-weak-end
-        // bug the board's verdict was rebuilt to remove, arriving through a
-        // different door. A thin row sorts as null and parks at the bottom,
-        // which is where "we do not know" belongs.
+        // The H2H column states a rate at any sample now (Alex asked for it;
+        // see the cell), but the *sort* keeps the five-meeting floor. These
+        // are different jobs: displaying 100% beside "1/1 vs MIA" shows the
+        // reader what there is and lets them weigh it, while ranking on that
+        // same 100% puts one meeting above every twenty-meeting record in the
+        // league and hides them -- the overclaiming-at-the-weak-end bug the
+        // board's verdict was rebuilt to remove. A thin row sorts as null and
+        // parks at the bottom, which is where "we do not know" belongs.
         : key === "h2h" ? (r.nH2h >= 5 ? r.h2h : null)
         : r[key]);
       copy.sort((a, b) => {
@@ -21392,12 +21512,32 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       });
       return copy;
     }
+    // A rate the app will not state cannot outrank one it will.
+    //
+    // Alex: *"these too few guys should not be popping up at the top as much
+    // as they are."* Malik Willis is Miami's listed starter, so the depth
+    // chart keeps him -- correctly -- but his log is four games, and 3 of 4
+    // is 75%, which sorted him above every seventeen-game starter in the
+    // league. The cell beside him already refuses to print that 75%; the sort
+    // was ranking on it anyway, so the feed's own top was made of the rows it
+    // had just declined to speak for.
+    //
+    // Thin rows keep their place in the list and their numbers -- they are
+    // pushed below the rows with a real sample, not dropped. Same rule as the
+    // H2H column's sort, applied to the one that orders the whole feed.
+    const thinSort = (r) => {
+      const n = r[`n${sampleWindow === "all" ? "All" : sampleWindow.slice(1)}`];
+      return n != null && n < feedWindowFloor(minGames, sampleWindow) ? 1 : 0;
+    };
+
     // A mode marked `primary` leads the sort instead of breaking hit rate's
     // ties. Only "Biggest role" is: every other mode is a research axis you
     // want *within* a hit rate, while role is the one thing that has to
     // outrank it or it has no effect at all.
     if (activeSortMode.primary) {
       copy.sort((a, b) => {
+        const at = thinSort(a), bt = thinSort(b);
+        if (at !== bt) return at - bt;
         const av = activeSortMode.metric(a, sampleWindow);
         const bv = activeSortMode.metric(b, sampleWindow);
         if (bv !== av) return sortDir === "desc" ? bv - av : av - bv;
@@ -21412,6 +21552,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return copy;
     }
     copy.sort((a, b) => {
+      const at = thinSort(a), bt = thinSort(b);
+      if (at !== bt) return at - bt;
       const aHit = a[sampleWindow], bHit = b[sampleWindow];
       if (aHit == null && bHit != null) return 1;
       if (bHit == null && aHit != null) return -1;
@@ -21421,7 +21563,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return sortDir === "desc" ? bv - av : av - bv;
     });
     return copy;
-  }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort]);
+  }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort, minGames]);
 
   // Renders a growing slice rather than the full (sometimes 2,000+ row) list
   // at once -- MLB in particular mounts a DOM row per player x market, and
@@ -21609,7 +21751,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // by teams that are not playing.
     const benched = marketRows.filter((r) =>
       (slateScope !== "near" || feedRowIsNear(r, slateWindow))
-      && !feedRowPlaysEnough(r, teamGames)).length;
+      && !feedRowPlaysEnough(r, teamGames, sport)).length;
     const key = sampleWindow;
     const nKey = key === "l5" ? "n5" : key === "l20" ? "n20" : key === "all" ? "nAll" : "n10";
     const floor = feedWindowFloor(minGames, key);
@@ -22058,7 +22200,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           options={activeMatchupOptions}
           selected={selectedGameIds}
           onChange={setSelectedGameIds}
-          allLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
+          // "All games" on the control, the long form inside the panel.
+          // The rail is 218px and "All of this week's games" truncated on the
+          // button itself to "All of this week's…", which is a label that has
+          // stopped being one. Which slate is meant is already on this rail
+          // twice over -- the SLATE group two below it, and the panel's own
+          // first row, which keeps the sentence because it has the width.
+          allLabel="All games"
+          panelAllLabel={sport === "nfl" ? "All of this week's games" : "All of today's games"}
           logoFn={gamesStripLogoFn}
           variant="rail"
           fill
@@ -22641,10 +22790,22 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     },
     {
       key: "sample", label: "MINIMUM SAMPLE", cols: 2,
-      value: minGames >= MIN_SAMPLE_ALL ? "All" : `${minGames}+`,
+      // `<=`, not `>=`. MIN_SAMPLE_ALL is 1 -- the *floor* of the scale, not
+      // the top of it -- so `minGames >= MIN_SAMPLE_ALL` is true of every
+      // value the control can hold. The rail therefore printed "All" and lit
+      // the All chip on every load whatever the real floor was, while the
+      // cells went on suppressing rates against a floor of 9. A control that
+      // reports a setting it is not applying is worse than no control:
+      // Alex set All, saw "too few" on 3 of 4, and reasonably read it as the
+      // feed refusing to show data it had.
+      //
+      // MinSampleControl -- the same control on the phone and in the panel --
+      // has always tested `value <= MIN_SAMPLE_ALL`. This is now the same test
+      // in both places.
+      value: minGames <= MIN_SAMPLE_ALL ? "All" : `${minGames}+`,
       note: "Below this a prop shows without a rate rather than being dropped.",
       items: sampleScale(sport).presets.map((v) => feedChip(String(v), `${v}+`, minGames === v, () => changeMinGames(v)))
-        .concat([feedChip("all", "All", minGames >= MIN_SAMPLE_ALL, () => changeMinGames(MIN_SAMPLE_ALL))]),
+        .concat([feedChip("all", "All", minGames <= MIN_SAMPLE_ALL, () => changeMinGames(MIN_SAMPLE_ALL))]),
     },
     {
       key: "slate", label: "SLATE", cols: 1,
@@ -22719,15 +22880,18 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           canClear: feedCustomCol != null,
         }}
         toggles={[
-          { id: "regulars", label: "Regulars only", on: regularsOnly, onToggle: () => setRegularsOnly((v) => !v) },
+          { id: "regulars", label: sport === "nfl" ? "Starters only" : "Regulars only", on: regularsOnly, onToggle: () => setRegularsOnly((v) => !v) },
         ].concat(sport === "mlb" ? [{ id: "posted", label: "Posted lineups only", on: postedLineupsOnly, onToggle: () => setPostedLineupsOnly((v) => !v) }] : [])}
         toggleNote={regularsOnly
-          ? "A reserve clears a low line more easily than a starter does. Off, they are back in."
+          ? (sport === "nfl"
+            // Says which rule is running, because they are different claims.
+            ? "Off the published depth chart — three receivers, one tight end, one of everything else. Off, the whole roster is back in."
+            : "A reserve clears a low line more easily than a starter does. Off, they are back in.")
           : "Reserves included."}
         countLabel={`${filteredRows.length} of ${rows.length} props`}
         narrowedTo={narrowedToGame}
         benchedLabel={regularsOnly && feedSummary.benched > 0
-          ? `${feedSummary.benched} hidden · under half their team's games`
+          ? `${feedSummary.benched} hidden · ${sport === "nfl" ? "not on the depth chart's starting side" : "under half their team's games"}`
           : null}
         sortNote={activeSortMode ? activeSortMode.label.toLowerCase() : "hit rate"}
         sorts={FEED_SORT_MODES.map((mo) => ({
@@ -25025,6 +25189,52 @@ export default function PropLedger() {
       bumpNflRefresh();
     });
 
+    // This week's real fixtures. One request for the whole slate, through the
+    // same calendar-anchored mechanism the Board and the player pages already
+    // use (fetchNflCurrentWeekSlate) -- not 32 per-team schedule lookups.
+    fetchNflCurrentWeekSlate().then((slate) => {
+      if (cancelled || !slate) return;
+      const byTeam = {};
+      (slate.games || []).forEach((g) => {
+        const away = g.away?.abbr;
+        const home = g.home?.abbr;
+        if (!away || !home) return;
+        byTeam[away] = { opp: home, home: false, date: g.startsAt };
+        byTeam[home] = { opp: away, home: true, date: g.startsAt };
+      });
+      // An empty answer is not a week with no games -- it is a week we could
+      // not read, and the hand-typed map is a better answer than none.
+      if (!Object.keys(byTeam).length) return;
+      NFL_LIVE_SLATE_BY_TEAM = byTeam;
+      bumpNflRefresh();
+    }).catch(() => {});
+
+    // Stores a player's log, and behind it last season's -- but only when the
+    // log just stored is an IN-PROGRESS season.
+    //
+    // That gate is the whole cost control. Before Week 1,
+    // fetchNFLPlayerGameLogForDisplay has already fallen back to a complete
+    // 2025, so newest (2025) !== current (2026) and not one extra request is
+    // made for ~800 players. From the first 2026 game onward the same test
+    // fires for exactly the players whose windows would otherwise collapse to
+    // a single game, and never for a season that is already whole.
+    const storeNflLog = (player, espnId, games) => {
+      if (cancelled || !games) return;
+      NFL_REAL_GAME_LOGS[player.id] = games;
+      bumpNflRefresh();
+      const newest = newestSeason(games);
+      if (newest == null || newest !== currentNFLSeason()) return;
+      fetchNFLPlayerGameLog(espnId, newest - 1)
+        .then((prior) => {
+          if (cancelled || !prior || !prior.length) return;
+          NFL_PRIOR_GAME_LOGS[player.id] = prior;
+          bumpNflRefresh();
+        })
+        // A missing prior season is not an error worth surfacing -- the feed
+        // simply keeps the shorter log, exactly as it does today.
+        .catch(() => {});
+    };
+
     // Live rosters first. Every sport has to reflect trades and signings, and
     // that is a property of fetching rather than hard-coding -- see
     // lib/rosters.js. The hand-written arrays stay as the cold-start fallback.
@@ -25059,22 +25269,29 @@ export default function PropLedger() {
       // the hand-written pool already had keeps the id his saved picks use.
       runPooled(NFL_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, (player) => {
         if (NFL_REAL_GAME_LOGS[player.id] || !player.espnId) return;
-        return fetchNFLPlayerGameLogForDisplay(player.espnId, player.name).then((games) => {
-          if (cancelled || !games) return;
-          NFL_REAL_GAME_LOGS[player.id] = games;
-          bumpNflRefresh();
-        });
+        return fetchNFLPlayerGameLogForDisplay(player.espnId, player.name).then(
+          (games) => storeNflLog(player, player.espnId, games)
+        );
       });
     });
+
+    // The depth charts, for "starters only". One request per team, cached
+    // for six hours -- a depth chart moves on transaction days, not on the
+    // hour. A failure leaves NFL_STARTERS null and the feed unfiltered, which
+    // is the safe direction: showing a backup is a smaller error than hiding
+    // a starter.
+    fetchNflStarters(currentNFLSeason()).then((res) => {
+      if (cancelled || !res) return;
+      NFL_STARTERS = res;
+      bumpNflRefresh();
+    }).catch(() => {});
 
     runPooled(ALL_NFL_PLAYERS, LOG_FETCH_CONCURRENCY, (player) => {
       const espnId = NFL_ESPN_ID[player.id];
       if (!espnId) return;
-      return fetchNFLPlayerGameLogForDisplay(espnId, player.name).then((games) => {
-        if (cancelled || !games) return;
-        NFL_REAL_GAME_LOGS[player.id] = games;
-        bumpNflRefresh();
-      });
+      return fetchNFLPlayerGameLogForDisplay(espnId, player.name).then(
+        (games) => storeNflLog(player, espnId, games)
+      );
     });
 
     return () => { cancelled = true; };

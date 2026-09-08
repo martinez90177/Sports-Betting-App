@@ -1031,6 +1031,208 @@ Bases on the same log: a clean staircase to 11. Goff, Completions, 17 games —
 still `14 16 18 19 20 ×3 23 ×2 25 ×4 27 28 31 34` with gaps between every bar
 and the four winners above 26.5, which is the read the chart was built for.
 
+
+## Two feed marks, changed on the merits — 2026-09-07
+
+### H2H states a rate at any sample
+
+The column suppressed its percentage under five meetings and printed
+`1 meeting vs SEA` instead, on the support band `lib/findings.js` uses
+everywhere. Alex: *"i dont care if its only 1 meeting show the % and data,
+seems very stupid to not show it just because it's a low sample, it's still
+data."*
+
+The suppression was arguing that a rate over one game overclaims. It does —
+but the count sits directly under the figure and reads `1/1 vs MIA`, which
+is the disclosure every other column on the row makes for itself, and a dash
+discloses nothing at all. `minSample` on that cell is 1 now.
+
+**The sort keeps the five-meeting floor**, deliberately, because displaying
+and ranking are different jobs: 100% beside "1/1 vs MIA" lets a reader weigh
+it, while *sorting* on that same 100% puts one meeting above every
+twenty-meeting record in the league and hides them. That is the
+overclaiming-at-the-weak-end bug the board's verdict was rebuilt to remove,
+and it arrives through a different door here.
+
+### Playoff games: dots, then bands, then a rule
+
+Three attempts, and the two rejected ones are worth keeping because each
+failed for a different reason.
+
+**Dots** — a 3px neutral dot per playoff game, on a track of its own. Alex:
+*"the dots is a little silly."* Fair: a dot is a mark you have to already know
+the meaning of, the track cost every affected row 6px, and nothing on screen
+said what it was for.
+
+**A tinted band behind the columns** — the standard "this stretch is a
+different phase" device, and wrong here. On a single-game run it is a
+full-height grey rectangle sitting behind one bar, and in a chart where a
+rectangle already means a number that reads as a second bar: Alex, of Trevor
+Lawrence's last game, *"what is that giant black bar?"* Anything drawn **in**
+this plot competes with the bars.
+
+**A 2px rule under the columns**, which is where it is now. Under the plot,
+where nothing else lives, on the same grid as the bars so it sits exactly
+beneath them, and the caption names it in words — `7 of 10 · 1 PO`. The rule
+says which games, the caption says what the rule means, and neither costs a
+pixel the dots were not already costing.
+
+Built as **runs**, not one span: a window reaching back across a season
+boundary can hold two separate postseasons, and one rule stretched over the
+regular-season games between them would be a claim about games that were not
+playoff games.
+
+### "no games yet" left the plot
+
+The shortfall region — the columns a window asks for and the log does not have
+— printed `no games yet` across itself. Alex: *"the no games yet being on the
+chart like that is kinda dumb."* It is: the words sit inside the plot at a
+size nothing else there uses, competing with the bars, to state a fact the
+caption directly underneath already states exactly (`3 of 4`). The reserved
+space and its dashed edge say "nothing here" on their own; the count says how
+much is missing. The space is still **held open** — collapsing it would hide
+the very thing the minimum-sample rule exists to make visible — and the region
+carries the sentence as a hover title.
+
+### Why the H2H column is blank so often — it is not a bug
+
+Alex, seeing many blanks: *"the H2H areas need to have data if the teams
+played each other at any point in 2025."* Checked against ESPN rather than
+assumed, and the blanks are all real. Two causes compound:
+
+**Most NFL pairs never meet.** A 17-game schedule against 31 possible
+opponents means the majority of pairings do not happen in a given season.
+Verified for every blank pair sampled: DET-NO, MIA-LV, CIN-TB and JAX-CLE all
+genuinely never met in 2025, regular season or postseason.
+
+**A player who missed the meeting has no row for it.** This column is a
+*player* stat — how this player has done against this opponent — so even
+divisional pairs who met twice come back empty when the player did not play.
+Brock Purdy's 2025 log is 11 games and contains no Rams game at all; Jayden
+Daniels' is 7 and contains no Eagles game. Both teams met their rival twice.
+The cell's own tooltip already says it: "No meetings with LAR **in this log**".
+
+So there is nothing to widen without inventing coverage. The one thing that
+would genuinely reduce blanks is folding in the **prior** season, which the
+feed's log does not hold — `fetchNFLPlayerGameLogForDisplay` returns the
+current season and only falls back to the previous one when the current is
+empty. It would fill some (MIA-LV and JAX-CLE met in 2024) and not others
+(DET-NO, CIN-TB did not), and it would need its own fetch rather than widening
+`games`, since every other column on the row counts that array. Offered, not
+built.
+
+
+## "too few" everywhere on the NFL feed — 2026-09-07
+
+Alex, on 3 of 4 and 5 of 7 held back from the season columns: *"there's no
+reason to be excluding data if theres enough games for data. of course if its
+for like L10 and they only played 7 games thats different."* Two causes, and
+the first is a plain bug.
+
+### MLB's minimum followed you into football
+
+`minGames` is remembered per sport and re-seeded on every switch by
+`seedSampleValue(sport, carried)`. It clamps a carried value that exceeds the
+new sport's **max** — and MLB's floor of 15 is under NFL's max of 17, so it
+sailed through. Fifteen of a 162-game season is a reasonable floor; fifteen of
+a **17**-game season is nearly the whole year, and it sits above every chip on
+the NFL scale (5, 9, 12), so nothing lit up either. The feed silently demanded
+15 games of every quarterback in the league.
+
+A value that is not a stop on the new sport's scale is not a choice anybody
+made *for that sport*, so it is no longer honoured as one: it falls back to
+that sport's floor and the control says what happened. NFL now seeds at 9+,
+with the 9+ chip lit. "too few" across the visible feed went from 78 cells
+to 17 — and those 17 are all L-window columns on players with fewer games
+than the window, which is the case Alex explicitly excluded.
+
+### The rail's All chip was lying
+
+Separately: the feed rail tested `minGames >= MIN_SAMPLE_ALL`, and
+`MIN_SAMPLE_ALL` is **1** — the floor of the scale, not the top. That is true
+of every value the control can hold, so the rail printed "All" and lit the All
+chip on every load whatever the real floor was. `MinSampleControl` — the same
+control on the phone and in the panel — has always tested `value <=
+MIN_SAMPLE_ALL`. Both now agree.
+
+A control reporting a setting it is not applying is worse than no control: it
+is why "All" was selected on screen while the cells suppressed against 15.
+
+### Season columns take no minimum
+
+An L-window column promises a game count — "last ten" — so it has something to
+fall short of, and MINIMUM SAMPLE governs it. A season column promises a
+season, and however many games a player logged **is** his season: there is no
+shortfall to report, only a smaller season. So `2025` and `2024` state a rate
+at any sample, with the count underneath carrying the caveat, exactly as the
+H2H column now does.
+
+### FILTERS moved to the left
+
+The button sat at the far right of the market-tab row and the panel it toggles
+slides in on the far left — about 1200px apart at 1440. *"the filters button
+being on the right side for a filter pop out on the left is messy."* It is now
+first in that row, in a 200px well matching the rail's own width, so open or
+closed it sits directly over the column it governs and the market tabs start
+at the same x either way. It reads `FILTERS ▶` closed and `◀ FILTERS` open.
+
+
+## Starters only, off the depth chart — 2026-09-07
+
+Alex: *"only have prop feed players appear if they are starting. for example,
+get brosmer's bum ass off my prop feed."* Max Brosmer is Minnesota's third
+quarterback. Nobody prices his passing yards, and a feed that ranks him beside
+starters is ranking something that will not be played.
+
+### Why the filter already there could not see him
+
+`feedRowPlaysEnough` kept anyone with at least half their team's games — and
+took the team's game count as **the largest log among that team's own rows in
+the feed**. It is self-referential, so on a team whose starters are thin in the
+pool the bar sinks to the backup's own total and he clears it. That rule is
+fine for basketball and baseball, where minutes move game to game and there is
+no published starter list. Football has one.
+
+### The depth chart
+
+`sports.core.api.espn.com/v2/.../seasons/{season}/teams/{id}/depthcharts`,
+one request per team, cached six hours. Three groups per team, and the
+offensive group's **name** is what makes it readable: "3WR 1TE" is the count of
+each position on the field, so it says how far down each slot the starters run.
+Rank 1 everywhere, except that the formation's own numbers govern WR and TE —
+rank 1 alone would drop WR2 and WR3, who play most snaps and carry real props.
+The counts are parsed from the name, so a team listed "2WR 2TE" reads as what
+it says. Checked on all 32 teams for 2026: every one answers.
+
+**It never guesses.** A team whose chart cannot be read is absent from the
+answer and its players are left alone; `NFL_STARTERS` stays null until the
+charts land, and null means no filtering. Hiding a starter is a worse error
+than showing a backup, and "we could not read the chart" is not a claim about
+a player.
+
+The toggle reads **Starters only** on NFL and keeps **Regulars only**
+elsewhere, because they are different claims and the note says which is
+running.
+
+### The other half: thin samples were topping the sort
+
+Removing backups did not remove the complaint — *"these too few guys should
+not be popping up at the top as much as they are."* Malik Willis is Miami's
+listed QB1, so the depth chart keeps him, correctly. But his log is four
+games, and 3 of 4 is 75%, which sorted him above every seventeen-game starter
+in the league.
+
+So the feed's top was built from the rows it had just declined to speak for:
+the cell beside Willis refuses to print that 75% as "too few", while the sort
+ranked on it anyway. A rate the app will not state cannot outrank one it will.
+Thin rows keep their place and their numbers — they sink below the rows with a
+real sample, they are not dropped. Same rule as the H2H column's sort, applied
+to the one that orders the whole feed.
+
+Verified on the NFL feed: Brosmer gone, 37 props hidden as "not on the depth
+chart's starting side", and the top of Pass Yds now Dart, Goff, Lawrence,
+Prescott, Cousins — all on 8-10 game samples — with Willis far below the fold.
+
 ## The repo lives inside OneDrive — 2026-08-31
 
 `C:\Users\GamerX\OneDrive\Desktop\Sports Betting App` is a synced folder, and
@@ -1092,3 +1294,98 @@ after the `node_modules` move.
 
 If a gc prompt is ever unwelcome later, the checkbox in the dialog ("Don't ask
 again for large numbers of deletes") ends it permanently.
+
+## Week 1 was a cliff, and the slate was a snapshot — 2026-09-08
+
+Found the day before the 2026 opener (NE @ SEA, 2026-09-09 20:20 ET), while
+comparing the site against PropsMadness and Outlier. Neither defect was visible
+on screen: the feed looked correct and would have stayed correct until roughly
+the moment the first game ended.
+
+### The season rollover
+
+`fetchNFLPlayerGameLogForDisplay` prefers the current season and falls back to
+the prior one **only while the current is empty**. That is the right rule in
+August and a trap in September. ESPN's 2026 gamelog was empty for every player
+on 2026-09-08 — 2026 was not yet in its own season-options list — so the feed
+was correctly serving full 17-game 2025 seasons.
+
+The first 2026 game changes the answer for the players in it. A Patriot goes
+from a 17-game log to a one-game log, and with him:
+
+- L5, L10 and L20 all fall under MINIMUM SAMPLE (seeded at 9+ for the NFL) and
+  print "too few" — the exact complaint fixed the day before, arriving again by
+  a different route
+- the season column reads `1 of 1`
+- H2H empties, having no meetings left in the log
+- `fairFeedLine` takes a median of one game
+- the sort that orders the whole feed has nothing to rank on
+
+By Sunday evening it is the whole league.
+
+### Rolling windows now span seasons; season columns do not
+
+The fix is the one the player pages have always used — `mergeSeasonLogs` from
+`LogScope.jsx` — applied to the feed, which was the only builder that never
+folded a prior season in.
+
+`NFL_PRIOR_GAME_LOGS` holds last season's raw rows; `nflFeedGames` merges them
+behind the current log at read time. **`getNFLGames` deliberately still returns
+one season.** Widening it would have handed the player pages a log that already
+contained the season `usePriorSeasonLog` is about to fetch, and `mergeSeasonLogs`
+concatenates — every prior game would have appeared twice.
+
+The split inside `buildNFLFeedRows` is the point of the whole change:
+
+| reads the merged log | reads the newest season only |
+|---|---|
+| L5 / L10 / L20 / custom window | the season column (`all`, `nAll`) |
+| H2H, form strip, variance, role | |
+| `fairFeedLine`, and the sort | |
+
+A column headed 2026 counts 2026 games however many 2025 games sit behind it in
+the window columns.
+
+### The gate is the cost control
+
+The prior season is fetched only when the log just stored is an **in-progress**
+season — `newestSeason(games) === currentNFLSeason()`. Before Week 1 the display
+fetcher has already fallen back to a complete 2025, so newest (2025) never equals
+current (2026) and **not one extra request** is made across ~800 players. From
+the first 2026 game onward it fires for exactly the players whose windows would
+otherwise collapse, and never for a season that is already whole.
+
+Verified by forcing the gate open: Goff's L20 went 9/17 → 10/20 (a real
+twenty-game window), his 2025 column stayed at 17 games, and the 2024 column was
+untouched. Malik Willis — four 2025 games, the thin-sample case — merged to 11
+and his L10 populated instead of reading "too few". Trevor Lawrence gained a real
+`0/1 vs CLE` where the H2H cell had been blank.
+
+One consequence worth knowing: merging moves `fairFeedLine`, because the line is
+a median of whatever log the feed holds. Goff's line went 257.5 → 278.5 under the
+forced merge, which moved his 2025 rate on unchanged games. That is inherent to a
+derived line and is an argument for a real one.
+
+### The slate was sixteen hand-typed fixtures
+
+`NFL_SLATE_BY_TEAM` is built from `NFL_MATCHUPS` — every Week 1 2026 pairing and
+kickoff typed out by hand. Checked against ESPN: all sixteen were **exactly
+right**, which is the problem. It is right for one week, and from Week 2 it would
+have handed the feed, the player pages, the defence badge, the H2H opponent and
+the weather block last week's fixture, stated as fact.
+
+`nflNextGameForTeam` now prefers `NFL_LIVE_SLATE_BY_TEAM`, filled from
+`fetchNflCurrentWeekSlate()` — one request for the whole week, through the same
+calendar-anchored mechanism the Board and the player pages already used, rather
+than 32 per-team schedule lookups. The hand-typed map stays as the fallback: a
+schedule we could not read is not a claim that there is no game.
+
+Verified by **disabling the fallback** and reloading. Every opponent still
+rendered and every one matched ESPN — Goff `vs NO`, Lawrence `vs CLE`, Cousins
+`vs MIA`, Stafford `vs SF`, Prescott `@ NYG` — home and away correct throughout.
+A fallback that is never exercised proves nothing; the only way to know the live
+path works is to take the fallback away.
+
+Also removed a hardcoded `season=2026` from `fetchNFLTeamNextGame`'s URL, the
+same trap already noted against the NBA standings call: right until 1 January,
+silently wrong after it.
