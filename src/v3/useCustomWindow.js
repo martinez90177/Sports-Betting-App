@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { SEASON_LENGTH, DEFAULT_WINDOW } from "./playerDetailProps.js";
+import { WINDOW_MAX, DEFAULT_WINDOW } from "./playerDetailProps.js";
 
 // The custom-window stepper's own state, and the windows the reader has saved.
 //
@@ -18,7 +18,7 @@ function load(sport) {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    const max = SEASON_LENGTH[sport] || 82;
+    const max = WINDOW_MAX[sport] || 82;
     // A stored value past this league's season length cannot mean anything --
     // dropped on read rather than offered as a window nobody can fill.
     return parsed.map(Number).filter((n) => Number.isFinite(n) && n >= 2 && n <= max);

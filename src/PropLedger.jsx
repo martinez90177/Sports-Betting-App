@@ -27,7 +27,7 @@ import NavBar, { NAV_TABS } from "./NavBar.jsx";
 // The v3 router: below 900px this is the mobile mock, above it still the v2
 // desktop transcription. See src/v3/PlayerDetail.jsx.
 import PlayerDetailV2 from "./v3/PlayerDetail.jsx";
-import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW, SEASON_LENGTH } from "./v3/playerDetailProps.js";
+import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW, WINDOW_MAX } from "./v3/playerDetailProps.js";
 import useCustomWindow from "./v3/useCustomWindow.js";
 import PropFeedMobile from "./v3/PropFeedMobile.jsx";
 import PropFeedDesktop from "./v3/PropFeedDesktop.jsx";
@@ -18014,6 +18014,33 @@ function feedRateColor(v) {
   return "var(--text-2, var(--text))";
 }
 
+// The same verdict as feedRateColor, as a wash behind the cell instead of a
+// colour on the figure -- so a column of thirty rows can be read down without
+// reading any of the numbers.
+//
+// Outlier shades its rate cells this way and it is the one piece of their
+// table that is easier to scan than ours. Kept deliberately faint: the ceiling
+// is 16%, which is under --amber-dim's 14%..(the active window's own tint) plus
+// its border, so the scored column stays the most prominent thing in the group.
+//
+// Strength tracks distance past the threshold rather than distance from 50%,
+// so it agrees with the figure above it: nothing tinted green is printed in
+// --text, and a cell sitting between the two thresholds gets no wash at all
+// rather than a faint one that would read as a weak verdict where the design
+// intends none.
+function feedRateWash(v) {
+  if (v == null) return "transparent";
+  if (v > FEED_RATE_HOT) {
+    const pct = 6 + Math.min(1, (v - FEED_RATE_HOT) / (1 - FEED_RATE_HOT)) * 10;
+    return `color-mix(in srgb, var(--pos) ${pct.toFixed(1)}%, transparent)`;
+  }
+  if (v < FEED_RATE_COLD) {
+    const pct = 6 + Math.min(1, (FEED_RATE_COLD - v) / FEED_RATE_COLD) * 10;
+    return `color-mix(in srgb, var(--neg) ${pct.toFixed(1)}%, transparent)`;
+  }
+  return "transparent";
+}
+
 // The matchup in one word, for the feed's proposition line. Three things
 // have to be right at once and each of them inverts something:
 //
@@ -18097,6 +18124,10 @@ function PriorSeasonCell({ prior, minSample = 10 }) {
 
 function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", emptyTitle = "No games in this window", opp = null }) {
   const one = unit === "meetings" ? "meeting" : "game";
+  // Hoisted above `shell` because the wash depends on it: a cell whose rate the
+  // app will not state must not be shaded as though it had one. Re-stated in
+  // the same terms further down, where it decides the text.
+  const washTooFew = n != null && n < minSample;
   const shell = {
     ...feedRateCell,
     display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
@@ -18109,8 +18140,22 @@ function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", empt
     // (see its isNarrow branch), so nothing here ever renders narrow. The
     // border track is kept transparent so the tint does not change the cell's
     // height when it appears.
-    background: active ? "var(--amber-dim)" : "transparent",
-    border: "1px solid transparent",
+    // One channel, one meaning. **Fill is how the rate reads; the border is
+    // which window is being scored.**
+    //
+    // They were both fills for an afternoon and it was genuinely unreadable --
+    // Alex: *"why are some of these green numbering but blue box background?
+    // whats the difference?"* Fair question with no good answer: a good rate in
+    // the active column came out green-on-accent while the same rate one column
+    // over came out green-on-green, so the reader had to know which column was
+    // active before they could tell what either colour meant.
+    //
+    // The accent moving to the border is also what CLAUDE.md already says --
+    // blue means selected, never health -- and it keeps the scored column
+    // findable down thirty rows without spending the fill to do it. The header
+    // bolds that column's label too, so it is marked twice.
+    background: washTooFew ? "transparent" : feedRateWash(v),
+    border: `1px solid ${active ? "var(--amber)" : "transparent"}`,
   };
   if (v == null) {
     return (
@@ -18125,7 +18170,7 @@ function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", empt
   // `minSample` is 10 everywhere except L5, whose five games are the whole
   // sample it claims -- without that exemption the L5 column would read
   // `too few` on every row in the feed.
-  const tooFew = n != null && n < minSample;
+  const tooFew = washTooFew;
   // Green/red kept deliberately, against the handoff, which strips these
   // cells to a neutral figure: Alex asked for the good-rate tinting to stay.
   // The percentage carries it; the track below stays --accent, so a
@@ -20317,14 +20362,25 @@ const FEED_SPORTS = [
   { id: "wnba", label: "WNBA", available: true },
 ];
 
-// Prop Feed opens on MLB until the real NFL Week 1 opener kicks off (the
-// earliest date in NFL_MATCHUPS), then flips to NFL by default -- there's no
-// NFL slate worth landing on before the season actually starts. Only used
-// for the very first load; once the user picks a sport that choice sticks
-// for the rest of the session (see feedSport/setFeedSport in PropLedger).
+// Prop Feed opens on NFL. Alex, 2026-09-09.
+//
+// It used to open on MLB and flip at the Week 1 kickoff, on the reasoning that
+// there was no NFL slate worth landing on before the season started. That was
+// right in August and wrong on opening day itself: the books had been pricing
+// Week 1 for a fortnight, the feed had 2,826 NFL props ready, and the site was
+// still landing everyone on baseball a few hours before kickoff.
+//
+// A fixed answer also matches the rest of the site -- the landing page has
+// always built its rows from buildNFLFeedRows unconditionally, so opening the
+// feed on anything else made the first click contradict the page it came from.
+//
+// Only used for the very first load; once the user picks a sport that choice
+// sticks for the rest of the session (see feedSport/setFeedSport in
+// PropLedger). Out of season the feed does not go blank -- it names the next
+// kickoff and offers the slate (see the empty state) -- so this stays honest
+// in February too.
 function defaultFeedSport() {
-  const week1Kickoff = Math.min(...NFL_MATCHUPS.map((m) => new Date(m.date).getTime()));
-  return Date.now() >= week1Kickoff ? "nfl" : "mlb";
+  return "nfl";
 }
 
 // How many teams' worth of defensive ranks exist for each sport -- sets the
@@ -22459,7 +22515,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // FeedRow the old layout drew -- this is the chassis around them, not a
   // second table -- and everything above this line (the filtering, the sort,
   // the counts, the empty note) is untouched and shared with the phone.
-  const seasonCap = SEASON_LENGTH[sport] || 82;
+  const seasonCap = WINDOW_MAX[sport] || 82;
   // Unsettled legs only. A graded pick belongs to the Ledger, not the slip.
   // Memoised so its identity is stable: it is the dependency the dock's read
   // is memoised on, and a fresh array every render would defeat all of them.
@@ -23021,7 +23077,19 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         benchedLabel={regularsOnly && feedSummary.benched > 0
           ? `${feedSummary.benched} hidden · ${sport === "nfl" ? "not on the depth chart's starting side" : "under half their team's games"}`
           : null}
-        sortNote={activeSortMode ? activeSortMode.label.toLowerCase() : "hit rate"}
+        // The real ordering, in the order it is applied. "Biggest role" is the
+        // one mode that outranks hit rate (see FEED_SORT_MODES.primary), so it
+        // gets its own sentence; every other mode is a tiebreak under the role
+        // band and the hit rate, and saying otherwise made a correct sort look
+        // broken.
+        sortNote={
+          !activeSortMode
+            ? "sorted by hit rate"
+            : activeSortMode.primary
+              ? `sorted by ${activeSortMode.label.toLowerCase()}, ties by hit rate`
+              // "ALL hit rate" is not a phrase; the season window says season.
+              : `starters first · ${sampleWindow === "all" ? "season" : String(sampleWindow).toUpperCase()} hit rate · ties by ${activeSortMode.label.toLowerCase()}`
+        }
         sorts={FEED_SORT_MODES.map((mo) => ({
           id: mo.id, label: mo.label, description: mo.description,
           active: sortMode === mo.id && !columnSort,

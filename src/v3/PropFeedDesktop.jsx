@@ -327,7 +327,13 @@ export default function PropFeedDesktop({
               )}
               {benchedLabel && <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)", whiteSpace: "nowrap" }}>{benchedLabel}</span>}
               <span style={{ marginLeft: "auto", flex: "1 1 auto", textAlign: "right", fontFamily: MONO, fontSize: 10, color: "var(--amber-ink)", minWidth: 0 }}>
-                {`sorted by ${sortNote}`}
+                {/* The whole chain, not just the dropdown's name for its own
+                    tiebreak. `sorted by easiest matchup` beside a list whose
+                    top row faced a mid defence reads as a broken sort -- Alex,
+                    2026-09-09 -- when what is actually happening is that hit
+                    rate ranks first and the matchup only separates rows that
+                    tie on it. The caller now sends the sentence. */}
+                {sortNote}
               </span>
             </div>
             {sorts.length > 0 && (

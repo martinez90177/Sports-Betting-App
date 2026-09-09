@@ -202,6 +202,16 @@ export default function PlayerDetailDesktop({
 
   const [picked, setPicked] = React.useState(null);
 
+  // The alt-line ladder, folded away by default so the graph owns the screen.
+  //
+  // Alex, 2026-09-09: *"make the alt lines section underneath it collapsable so
+  // that the graph can take up more space on the page."* Seven rungs is a tall
+  // card, and it answers a second question -- "what about a different number" --
+  // that only gets asked after the first one. Collapsed it costs one row and
+  // still says how many rungs are behind it, so it reads as folded rather than
+  // missing.
+  const [ladderOpen, setLadderOpen] = React.useState(false);
+
   // The alt-line ladder's own width, so it can drop columns it has no room
   // for rather than overflowing the card it lives in.
   const ladderRef = React.useRef(null);
@@ -439,29 +449,58 @@ export default function PlayerDetailDesktop({
     </div>
   );
 
+  // ---- market tabs: a strip across the top, not a column in the rail ------
+  //
+  // Markets are the one control you move through while reading rather than set
+  // once and leave, so they sit in the reading area instead of the filter rail.
+  // Both PropsMadness and Outlier run them as a horizontal strip above the
+  // chart for the same reason; stacked vertically, a quarterback's eight
+  // markets pushed WINDOW and SPLITS below the fold on a laptop, so the two
+  // controls you actually combine were never on screen together.
+  //
+  // Same railPill the rail uses -- this is a move, not a restyle -- and the
+  // strip scrolls sideways rather than wrapping, so the chart underneath never
+  // shifts down when a position carries more markets than fit.
+  const marketTabs = markets.length > 0 ? (
+    <div
+      className="nsb"
+      style={{
+        flex: "0 0 auto", display: "flex", gap: 6, alignItems: "center",
+        padding: "10px 18px", borderBottom: "1px solid var(--line)",
+        overflowX: "auto", background: "var(--bg)",
+      }}
+    >
+      <span style={{ ...railLabel, flex: "0 0 auto", marginRight: 4 }}>MARKET</span>
+      {markets.map((m) => (
+        <div
+          key={m.id}
+          role="button"
+          tabIndex={0}
+          onClick={m.onPick}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); m.onPick(); } }}
+          style={{ ...railPill(m.active), flex: "0 0 auto", whiteSpace: "nowrap" }}
+        >
+          {m.label}
+        </div>
+      ))}
+      {/* The shortcut, said once where the thing it drives lives. A keyboard
+          affordance nobody is told about is a keyboard affordance nobody uses,
+          and this is the legend PropsMadness prints on its own chart. Pushed
+          right so it reads as a note on the strip rather than another tab. */}
+      <span
+        style={{
+          fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: "var(--dim)",
+          flex: "0 0 auto", marginLeft: "auto", paddingLeft: 14, whiteSpace: "nowrap",
+        }}
+      >
+        ←→ PLAYERS · ↑↓ MARKETS
+      </span>
+    </div>
+  ) : null;
+
   // ---- left rail: what filters the page -----------------------------------
   const leftRail = (
     <div className="nsb" style={{ borderRight: "1px solid var(--line)", overflowY: "auto", minHeight: 0, padding: "20px 18px 28px", display: "flex", flexDirection: "column", gap: 22 }}>
-      {markets.length > 0 && (
-        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
-          <span style={railLabel}>MARKET</span>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {markets.map((m) => (
-              <div
-                key={m.id}
-                role="button"
-                tabIndex={0}
-                onClick={m.onPick}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); m.onPick(); } }}
-                style={railPill(m.active)}
-              >
-                {m.label}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {seasons && seasons.length > 0 && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
           <span style={railLabel}>SEASON</span>
@@ -660,7 +699,25 @@ export default function PlayerDetailDesktop({
   const centre = (
     <div className="nsb" style={{ overflowY: "auto", minHeight: 0, padding: "26px 26px 40px", display: "flex", flexDirection: "column", gap: 18 }}>
       {crumbSelect ? (
-        <div style={{ flex: "0 0 auto", alignSelf: "center" }}>{crumbSelect}</div>
+        // The fixture picker inherited the body face, which is 'PP At' -- a
+        // monospace, set at heading size and centred over the page. Alex,
+        // 2026-09-09: *"this font for the game dropdown is ugly."* Mono is
+        // right for a number in a column and wrong for the one line of prose
+        // at the top of the screen, so it takes the display face the player's
+        // own name uses, in a bordered control that reads as clickable rather
+        // than as a stray title. GameSelect's crumb variant is `font: inherit`,
+        // so styling the wrapper is all this needs.
+        <div
+          style={{
+            flex: "0 0 auto", alignSelf: "center", display: "inline-flex", alignItems: "center",
+            padding: "7px 14px", border: "1px solid var(--line)", borderRadius: 999,
+            background: "var(--surface-1)",
+            fontFamily: DISPLAY, fontWeight: 600, fontSize: 15, letterSpacing: "0.01em",
+            color: "var(--text)",
+          }}
+        >
+          {crumbSelect}
+        </div>
       ) : crumbFixture ? (
         <div style={{ flex: "0 0 auto", alignSelf: "center", display: "inline-flex", alignItems: "center", gap: 9, padding: "7px 13px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface-1)", fontFamily: MONO, fontSize: 12, color: "var(--text)" }}>
           {crumbFixture}
@@ -799,14 +856,28 @@ export default function PlayerDetailDesktop({
           number the games produced. */}
       {rungs.length > 0 && (
         <div ref={ladderRef} style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "14px 18px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", flexWrap: "wrap" }}>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-expanded={ladderOpen}
+            onClick={() => setLadderOpen((v) => !v)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setLadderOpen((v) => !v); } }}
+            style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "14px 18px", background: "var(--surface-2)", borderBottom: ladderOpen ? "1px solid var(--line)" : "none", flexWrap: "wrap", cursor: "pointer" }}
+          >
+            <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)", alignSelf: "center" }}>{ladderOpen ? "▾" : "▸"}</span>
             <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 16 }}>Alt lines</span>
             <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>
-              {`${rungs[0].gamesCounted} games counted${rungs[0].thin ? " · too few to lean on" : ""}`}
+              {/* Folded, the count of rungs is what says there is something
+                  here; open, the games behind them is the caveat that matters. */}
+              {ladderOpen
+                ? `${rungs[0].gamesCounted} games counted${rungs[0].thin ? " · too few to lean on" : ""}`
+                : `${rungs.length} rungs · ${rungs[0].gamesCounted} games counted`}
             </span>
             {/* Read-only, so a pill. */}
-            <span style={{ marginLeft: "auto", ...pill("var(--dim)", "transparent"), border: "1px solid var(--line)" }}>NO BOOK PRICED THESE</span>
+            {ladderOpen && <span style={{ marginLeft: "auto", ...pill("var(--dim)", "transparent"), border: "1px solid var(--line)" }}>NO BOOK PRICED THESE</span>}
           </div>
+          {ladderOpen && (
+          <>
           <div style={{ display: "grid", gridTemplateColumns: ladderWide ? LADDER_COLS : LADDER_COLS_TIGHT, alignItems: "center", padding: ladderWide ? "10px 18px" : "10px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
             <span>LINE</span>
             <span style={{ textAlign: "right" }}>HIT RATE</span>
@@ -857,6 +928,8 @@ export default function PlayerDetailDesktop({
               )}
             </div>
           ))}
+          </>
+          )}
         </div>
       )}
 
@@ -879,6 +952,85 @@ export default function PlayerDetailDesktop({
   const rails = [ownRail && { key: "own", rail: ownRail }, oppRail && { key: "opp", rail: oppRail }].filter(Boolean);
   const [rosterTeam, setRosterTeam] = React.useState("own");
   const activeRail = (rails.find((r) => r.key === rosterTeam) || rails[0] || {}).rail;
+
+  // ---- keyboard: walk players and markets without the mouse ---------------
+  //
+  // Left/right steps through the roster rail currently on screen, up/down
+  // through the market strip. Both rivals do this (PropsMadness prints the
+  // legend on its chart) and it is the difference between comparing six
+  // receivers in six clicks-and-scrolls and comparing them in six keystrokes.
+  //
+  // Bound to the document rather than to the frame: the reader's focus is
+  // wherever they last clicked, and requiring them to click the chart first
+  // would make the shortcut something you have to know twice.
+  //
+  // Three guards, each for a real way this goes wrong:
+  //   * a typed field -- the watch box, the custom-window stepper -- must keep
+  //     its own arrow keys, or the page steals the caret
+  //   * any modifier means the browser's shortcut wins (cmd+left is Back)
+  //   * an inner handler that already consumed the key wins outright. The
+  //     line-drag handle nudges the line by 0.5 on the arrows and calls
+  //     preventDefault (see its handleKeyDown); React's own listener sits on
+  //     the app root, which is INSIDE document, so it runs first and this one
+  //     would otherwise fire too -- moving the line and the player on one
+  //     press. Reading defaultPrevented defers to it without having to know
+  //     it exists.
+  //   * preventDefault only once a move is actually made, so arrows still
+  //     scroll the page when there is nothing to step to
+  //
+  // The list is the rail holding the player currently on screen, not the rail
+  // currently displayed. They are usually different: rosterTeam defaults to
+  // "own", which is the AWAY side, so on a home player's page the visible rail
+  // is the opposition and stepping through it would walk away from the player
+  // being read rather than across his own team.
+  const navPlayers = React.useMemo(() => {
+    const lists = [
+      (activeRail && activeRail.players) || [],
+      (ownRail && ownRail.players) || [],
+      (oppRail && oppRail.players) || [],
+    ];
+    return lists.find((ps) => ps.some((p) => p.active)) || [];
+  }, [activeRail, ownRail, oppRail]);
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.defaultPrevented) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const el = e.target;
+      const tag = el && el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el && el.isContentEditable)) return;
+
+      const step = (list, isActive, pick, delta) => {
+        if (!list || list.length < 2) return false;
+        const i = list.findIndex(isActive);
+        // The active row is not in this list -- the reader is looking at the
+        // other team's rail. Stepping from a guessed index would jump
+        // somewhere they did not ask for.
+        if (i < 0) return false;
+        const next = list[(i + delta + list.length) % list.length];
+        if (!next || !pick(next)) return false;
+        return true;
+      };
+
+      let moved = false;
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        moved = step(
+          navPlayers, (p) => p.active,
+          (p) => (p.onSelect ? (p.onSelect(), true) : false),
+          e.key === "ArrowRight" ? 1 : -1
+        );
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        moved = step(
+          markets, (m) => m.active,
+          (m) => (m.onPick ? (m.onPick(), true) : false),
+          e.key === "ArrowDown" ? 1 : -1
+        );
+      }
+      if (moved) e.preventDefault();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [navPlayers, markets]);
 
   const lineupGroup = (title, scope, cards, note) => (cards && cards.length > 0) && (
     <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
@@ -1095,6 +1247,7 @@ export default function PlayerDetailDesktop({
     >
       {nav}
       {crumb}
+      {marketTabs}
 
       <div style={{ flex: "1 1 auto", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr)", gridTemplateColumns: cols }}>
         {leftRail}

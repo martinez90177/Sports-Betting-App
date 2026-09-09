@@ -21,15 +21,20 @@ const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 // The floor under a bar, shared by both sizes in the mock's `h()`.
 export const PEDESTAL = 9;
 
+// `axisW` is a left gutter for the value scale, and only the desktop plot has
+// one -- the two phone sizes have no width to spend on it.
 export const PLOT = {
   // Player Detail (frame 1c): a 176px box over a 146px span, 52px gutter.
-  player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261 },
+  player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261, axisW: 0 },
   // A Prop Feed row (frame 1b): 74px box, 52px span, 46px gutter.
-  feed: { plotH: 74, span: 52, gutter: 46, handleW: 42, handleH: 28, trackW: 265 },
-  // Desktop Player Detail (`PropPalace Desktop v3.dc.html` frame 1a): a
-  // 268px box in a 1fr centre column, so the track measures far wider than
-  // either phone size and the label thresholds pass at much longer windows.
-  desktop: { plotH: 268, span: 224, gutter: 58, handleW: 52, handleH: 32, trackW: 780 },
+  feed: { plotH: 74, span: 52, gutter: 46, handleW: 42, handleH: 28, trackW: 265, axisW: 0 },
+  // Desktop Player Detail (`PropPalace Desktop v3.dc.html` frame 1a).
+  //
+  // Taller than the handoff's 268/224 on Alex's read (2026-09-09): the labels
+  // underneath cost ~53px, which left the bars a short box for the one thing
+  // the page is about. 330 over a 250 span gives the graph the room and still
+  // leaves headroom above the tallest bar for the hover card.
+  desktop: { plotH: 330, span: 250, gutter: 58, handleW: 52, handleH: 32, trackW: 780, axisW: 34 },
 };
 
 export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);
@@ -38,13 +43,32 @@ export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);
 // A kind that fits for some columns and not others is the overlap the desktop
 // graph shows at 100 games, so it is dropped for every column instead.
 // Thresholds from player-detail-handoff.md section 3.
+// What each label actually occupies, so labelH can be the real height rather
+// than an estimate of it.
+//
+// It was an estimate -- 20 + 14 + 15 = 49 -- and the column it was measuring
+// renders 3px of flex gap between every child plus a 2px offset over the crest,
+// which comes to 53. The axis line is positioned at `bottom: labelH`, so those
+// four missing pixels put the rule straight through the top of the team logos.
+// Alex, 2026-09-09: *"there's a gray line separating the bottom of the bars and
+// the logos/abbreviations, but its actually colliding."*
+const COL_GAP = 3;
+const CREST_PX = 16;
+const CREST_MT = 2;
+const LABEL_LINE = 13;
+
 export function layFor(n, trackW) {
   const gap = gapFor(n);
   const per = n > 0 ? (trackW - gap * (n - 1)) / n : 0;
   const crest = per >= 20;
   const abbr = per >= 34;
   const date = per >= 44;
-  return { crest, abbr, date, val: per >= 20, labelH: (crest ? 20 : 0) + (abbr ? 14 : 0) + (date ? 15 : 0) };
+  // The leading COL_GAP is the gap between the bar and the first label, so the
+  // rule lands on the bars' own baseline and everything below it clears.
+  const stack = (crest ? CREST_MT + CREST_PX : 0)
+    + (abbr ? COL_GAP + LABEL_LINE : 0)
+    + (date ? COL_GAP + LABEL_LINE : 0);
+  return { crest, abbr, date, val: per >= 20, labelH: stack ? stack + COL_GAP : 0 };
 }
 
 // Same URL pattern as lib/gamesData.js teamLogo(), drawn as a background so no
@@ -113,6 +137,31 @@ export default function FormPlot({
   const recent = React.useMemo(() => games.map((x) => ({ v: x.v })), [games]);
   const scale = feedFormScale(recent, line, isBinary, { height: g.span + PEDESTAL, pedestal: PEDESTAL });
   const hit = (v) => (direction === "under" ? v < line : v > line);
+
+  // Three marks on the value scale: the axis top, its middle and its floor.
+  //
+  // Read off the same `scale` the bars are drawn with rather than off the raw
+  // games, so a tick always sits where a bar of that value would end. Snapped
+  // to the axis's own step (5 above 100, 1 below), and de-duplicated -- a flat
+  // log with a 0.6 pad can land all three on the same number, and printing it
+  // three times reads as a broken axis rather than a short one.
+  //
+  // The outer two round INWARD -- floor the top, ceil the floor -- because
+  // nearest-rounding pushes them off the end of a padded axis and they then get
+  // filtered away. Measured: Goff's window runs 166.9 to 394.1, where nearest-5
+  // gives 395 and 165, both outside, leaving a scale with one mark on it.
+  const axisTicks = React.useMemo(() => {
+    if (isBinary || !(g.axisW > 0)) return [];
+    const lo = scale.axisMin;
+    const hi = scale.axisMin + scale.span;
+    const s = scale.step >= 5 ? 5 : 1;
+    const ticks = [
+      Math.floor(hi / s) * s,
+      Math.round((lo + (hi - lo) / 2) / s) * s,
+      Math.ceil(lo / s) * s,
+    ];
+    return [...new Set(ticks)].filter((t) => t >= lo && t <= hi);
+  }, [isBinary, g.axisW, scale.axisMin, scale.span, scale.step]);
   const canDrag = !isBinary && marketLine != null && typeof onDragLine === "function";
 
   const posLine = rawLine != null ? rawLine : line;
@@ -183,7 +232,7 @@ export default function FormPlot({
           window.addEventListener("pointerup", up);
         } : undefined}
         style={{
-          position: "absolute", left: 0, right: g.gutter, top: 0, bottom: 0,
+          position: "absolute", left: g.axisW || 0, right: g.gutter, top: 0, bottom: 0,
           display: "flex", gap: gapFor(n), alignItems: "flex-end", overflow: "hidden",
           // Without this the browser paints its own text selection over the
           // plot the moment a drag starts -- the blue smear.
@@ -246,32 +295,55 @@ export default function FormPlot({
               {lay.abbr && (
                 <span
                   style={{
-                    fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", whiteSpace: "nowrap",
+                    fontFamily: MONO, fontSize: 10, lineHeight: `${LABEL_LINE}px`, letterSpacing: "0.06em", whiteSpace: "nowrap",
                     color: away ? "var(--text-2)" : "var(--dim)", fontWeight: away ? 700 : 400,
                   }}
                 >
                   {away ? "@ " : ""}{String(gm.opp || "").toUpperCase()}
                 </span>
               )}
+              {/* Explicit line boxes, because layFor above budgets for them.
+                  Left to the font's own metrics these drift a pixel or two per
+                  face and the axis rule stops meeting the bars. */}
               {lay.date && (
-                <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{gm.date}</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, lineHeight: `${LABEL_LINE}px`, color: "var(--dim)", whiteSpace: "nowrap" }}>{gm.date}</span>
               )}
             </div>
           );
         })}
       </div>
 
+      {/* The value scale, where there is a gutter to put it in.
+          Three marks: the top of the axis, its midpoint and its floor -- enough
+          to read a bar's height without counting, which is all a scale on a
+          ten-column plot needs to do. Rounded to the axis's own step so the
+          numbers are the ones the bars are drawn against, and the whole thing
+          is skipped on a binary market, where the only values are 0 and 1. */}
+      {g.axisW > 0 && !isBinary && axisTicks.map((t) => (
+        <span
+          key={t}
+          style={{
+            position: "absolute", left: 0, width: g.axisW - 6, textAlign: "right",
+            bottom: scale.y(t) + lay.labelH - 6,
+            fontFamily: MONO, fontSize: 9.5, lineHeight: "12px", color: "var(--dim)",
+            pointerEvents: "none", zIndex: 1, whiteSpace: "nowrap",
+          }}
+        >
+          {t}
+        </span>
+      ))}
+
       {/* The axis the bars stand on. Without it an open-bottomed miss reads as
           a bar continuing below the frame. */}
       <span
         style={{
-          position: "absolute", left: 0, right: g.gutter, bottom: lay.labelH,
+          position: "absolute", left: g.axisW || 0, right: g.gutter, bottom: lay.labelH,
           borderTop: "1px solid #3a4048", pointerEvents: "none", zIndex: 1,
         }}
       />
       <span
         style={{
-          position: "absolute", left: 0, right: g.gutter, bottom: scale.y(posLine) + lay.labelH,
+          position: "absolute", left: g.axisW || 0, right: g.gutter, bottom: scale.y(posLine) + lay.labelH,
           borderTop: "1.5px dashed var(--text)", pointerEvents: "none", zIndex: 2,
         }}
       />
@@ -296,7 +368,10 @@ export default function FormPlot({
         <div
           style={{
             position: "absolute", zIndex: 4, pointerEvents: "none",
-            left: `calc(${((hover + 0.5) / (n || 1)) * 100}% )`,
+            // Measured across the track, not the box: the axis gutter and the
+            // handle gutter are both outside the columns, so a plain percentage
+            // of the container drifts the hint off its own bar.
+            left: `calc(${g.axisW || 0}px + ${((hover + 0.5) / (n || 1))} * (100% - ${(g.axisW || 0) + g.gutter}px))`,
             transform: "translateX(-50%)", bottom: g.plotH - 8,
             display: "flex", flexDirection: "column", gap: 3, whiteSpace: "nowrap",
             padding: "8px 11px", borderRadius: 8, border: "1px solid var(--line)",

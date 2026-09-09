@@ -35,6 +35,25 @@ export const DEFAULT_WINDOW = { mlb: 10, nfl: 10, nba: 10, wnba: 10 };
 // The ceiling the custom stepper counts to, per league season length.
 export const SEASON_LENGTH = { mlb: 162, nfl: 17, nba: 82, wnba: 44 };
 
+// How far the custom-window stepper counts, which is no longer the same thing
+// as a season.
+//
+// It used to be SEASON_LENGTH, and for the NFL that meant 17 -- so the rail
+// offered an L20 column the stepper could not reach, and the rolling windows
+// now span the season boundary anyway (see nflFeedGames), so a window longer
+// than one season is a real question with a real answer. Alex, 2026-09-09:
+// *"being that L20 is a choice for sorting, 'your own window' shouldnt be
+// limited to 17."*
+//
+// 34 is two seventeen-game regular seasons: the most the merged log holds, and
+// a number that means something rather than a round one. Past it the window
+// would be asking for games that cannot exist.
+//
+// The other three are unchanged. Their seasons are long enough that the
+// ceiling was never the thing in the way, and doubling 162 would give MLB a
+// stepper nobody can drive.
+export const WINDOW_MAX = { ...SEASON_LENGTH, nfl: 34 };
+
 const windowLabel = (w) => (w === "all" ? "Season" : `L${w}`);
 
 // The pill row: the sport's own four, then any window the reader saved, then
@@ -65,7 +84,7 @@ export function buildWindows({ sport, lastN, setLastN, saved = [], onSave, custo
           value: custom,
           // 2 is the floor a window can mean anything at; the ceiling is the
           // league's own season length.
-          onUp: () => setCustom(Math.min(SEASON_LENGTH[sport] || 82, custom + 1)),
+          onUp: () => setCustom(Math.min(WINDOW_MAX[sport] || 82, custom + 1)),
           onDown: () => setCustom(Math.max(2, custom - 1)),
           // SAVE selects it *and* keeps it on the bar for later. Apply-only is
           // the sheet's DONE button, which commits whatever is showing.
