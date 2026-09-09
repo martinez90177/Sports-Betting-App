@@ -19264,33 +19264,50 @@ function feedTeamCount(sport) {
 // research axes (opponent matchup, consistency, momentum) rather than
 // full replacements for the hit-rate ordering. defaultDir is applied
 // whenever the user switches modes, then the direction chip can flip it.
+// The sort the reader picked is the sort they get.
+//
+// Every mode used to break ties under hit rate instead of leading, so choosing
+// "Easiest Matchup" left a #5-of-32 defence on top and looked broken -- Alex
+// called it twice. Hit rate is now a mode of its own and the default, which
+// keeps the screen arguing what it always argued, and picking anything else
+// actually reorders the list. Hit rate stays the tiebreak underneath.
+//
+// **Every mode has an opposite**, reached by clicking the active one again.
+// Alex, 2026-09-09: *"those sort buttons should all have an opposite too ...
+// i dont want this site to only be overs and not catered towards under
+// research either."* Right: a volatile player and a cold streak are edges too,
+// and there was no way to ask for either. `flip` is the label in the other
+// direction, so one control does both jobs and the row of chips does not
+// double in length.
 const FEED_SORT_MODES = [
   {
-    // Offered, not defaulted: it reorders the feed away from hit rate, which
-    // is the ordering the screen is built to argue for. Alex, 2026-08-23.
-    //
-    // The one mode that overrides the hit-rate primary rather than breaking
-    // its ties -- see sortedRows. As a tiebreak it would do nothing at all:
-    // reserves reach 100% more easily than starters, so they hold the top of
-    // the list before any tiebreak is consulted.
-    id: "role", label: "Biggest role", metric: (r) => (r.role ?? -1), defaultDir: "desc",
-    primary: true,
-    description: "Ranks by how much of the game the player actually plays -- minutes in basketball, plate appearances in baseball, touches in football. This is the one sort that outranks hit rate, because a bench player beats his own line more consistently than a star does and would otherwise lead every list. It is a measure of role, not of betting popularity: no wagering data exists here.",
+    // The default, and the ordering the screen is built to argue for.
+    id: "hit", label: "Best hit rate", flip: "Worst hit rate",
+    metric: (r, win) => r[win], defaultDir: "desc",
+    description: "Ranks by the hit rate in whichever window is selected. Click again for the worst -- a line a player almost never clears is an edge on the Under, not an absence of one.",
+  },
+  {
+    id: "role", label: "Biggest role", flip: "Smallest role",
+    metric: (r) => (r.role ?? -1), defaultDir: "desc",
+    description: "Ranks by how much of the game the player actually plays -- minutes in basketball, plate appearances in baseball, touches in football. A measure of role, not of betting popularity: no wagering data exists here. Click again for the smallest roles.",
   },
   {
     // matchupScore, not rank: it's negated on Under rows (see
     // flipFeedRowToUnder) so "easiest" keeps meaning "best for the side
     // you're looking at" -- a soft defense helps an Over and hurts an Under.
-    id: "matchup", label: "Easiest Matchup", metric: (r) => (r.matchupScore ?? r.rank), defaultDir: "desc",
-    description: "Ranks by how vulnerable the opponent is in that specific stat (not their overall record) -- e.g. a team can be a bottom-5 defense vs. 3PM but still be tough against rebounds. #1 is the toughest matchup for this stat, higher numbers are easier.",
+    id: "matchup", label: "Easiest matchup", flip: "Toughest matchup",
+    metric: (r) => (r.matchupScore ?? r.rank), defaultDir: "desc",
+    description: "Ranks by how vulnerable the opponent is in that specific stat, not by their overall record -- a team can be bottom-five against passing yards and top-five against the run. Click again for the toughest, which is where an Under starts.",
   },
   {
-    id: "variance", label: "Most Consistent", metric: (r) => r.variance, defaultDir: "asc",
-    description: "Ranks by how little a player's results swing game to game. Low variance means steady, predictable output -- useful if you want to avoid boom-or-bust props even if the average hit rate is similar.",
+    id: "variance", label: "Most consistent", flip: "Most volatile",
+    metric: (r) => r.variance, defaultDir: "asc",
+    description: "Ranks by how little a player's results swing game to game. Click again for the most volatile -- boom-or-bust is exactly what you want on a long alt line, and exactly what you don't on a short one.",
   },
   {
-    id: "trend", label: "Trending Up", metric: (r) => (r.l5 == null || r.l20 == null ? null : r.l5 - r.l20), defaultDir: "desc",
-    description: "Ranks by recent form (L5) compared to season-long form (L20) -- surfaces players heating up right now relative to their own baseline, not just whoever has the highest raw hit rate.",
+    id: "trend", label: "Trending up", flip: "Trending down",
+    metric: (r) => (r.l5 == null || r.l20 == null ? null : r.l5 - r.l20), defaultDir: "desc",
+    description: "Ranks by recent form (L5) against season-long form (L20) -- who is heating up relative to their own baseline. Click again for who is cooling off.",
   },
 ];
 
@@ -19683,7 +19700,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the exact reason roleTier defaults to "all" a few lines above. Raised
   // with Alex rather than assumed.
   const [hitFloor, setHitFloor] = useState(null);
-  const [sortMode, setSortMode] = useState("matchup");
+  // Hit rate, which is what the screen argues. It used to default to "matchup"
+  // while hit rate ordered the list underneath, so the chip said one thing and
+  // the list did another.
+  const [sortMode, setSortMode] = useState("hit");
   // The Role floor. "all" always, until asked: a filter that hides rows by
   // default would make the feed answer "there is nothing here" when what it
   // means is "I hid it".
@@ -20552,40 +20572,42 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return r.role >= c.featured ? 0 : r.role >= c.rotation ? 1 : 2;
     };
 
-    // A mode marked `primary` leads the sort instead of breaking hit rate's
-    // ties. Only "Biggest role" is: every other mode is a research axis you
-    // want *within* a hit rate, while role is the one thing that has to
-    // outrank it or it has no effect at all.
-    if (activeSortMode.primary) {
-      copy.sort((a, b) => {
-        const at = thinSort(a), bt = thinSort(b);
-        if (at !== bt) return at - bt;
-        const av = activeSortMode.metric(a, sampleWindow);
-        const bv = activeSortMode.metric(b, sampleWindow);
-        if (bv !== av) return sortDir === "desc" ? bv - av : av - bv;
-        // Hit rate still decides among equal roles, so the list reads the way
-        // it always did once role is level.
-        const aHit = a[sampleWindow], bHit = b[sampleWindow];
-        if (aHit == null && bHit != null) return 1;
-        if (bHit == null && aHit != null) return -1;
-        if (aHit == null || bHit == null) return 0;
-        return bHit - aHit;
-      });
-      return copy;
-    }
+    // One order, and the mode the reader picked leads it.
+    //
+    //   1. a rate the app will not state sinks       (thinSort)
+    //   2. role band                                  (roleTier)
+    //   3. the selected mode, in the selected direction
+    //   4. hit rate, as the tiebreak
+    //
+    // Steps 1 and 2 stay above the mode on purpose: neither is a research axis,
+    // they are both "is this row worth ranking at all". Everything below them
+    // is the reader's question, and asking for easiest matchup now returns
+    // easiest matchup rather than the easiest among the highest hit rates,
+    // which is what made the control look broken.
+    const nullsLast = (av, bv) => {
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return null;
+    };
     copy.sort((a, b) => {
       const at = thinSort(a), bt = thinSort(b);
       if (at !== bt) return at - bt;
-      // Role band leads hit rate -- see roleTier above.
       const ar = roleTier(a), br = roleTier(b);
       if (ar !== br) return ar - br;
-      const aHit = a[sampleWindow], bHit = b[sampleWindow];
-      if (aHit == null && bHit != null) return 1;
-      if (bHit == null && aHit != null) return -1;
-      if (aHit != null && bHit != null && bHit !== aHit) return bHit - aHit;
+
       const av = activeSortMode.metric(a, sampleWindow);
       const bv = activeSortMode.metric(b, sampleWindow);
-      return sortDir === "desc" ? bv - av : av - bv;
+      const anull = nullsLast(av, bv);
+      if (anull !== null) { if (anull !== 0) return anull; }
+      else if (bv !== av) return sortDir === "desc" ? bv - av : av - bv;
+
+      const aHit = a[sampleWindow], bHit = b[sampleWindow];
+      const hnull = nullsLast(aHit, bHit);
+      if (hnull !== null) return hnull;
+      // The tiebreak follows the direction too: asking for the worst hit rates
+      // and getting the best ones among equals reads as the sort ignoring you.
+      return sortDir === "desc" ? bHit - aHit : aHit - bHit;
     });
     return copy;
   }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort, minGames]);
@@ -21823,6 +21845,22 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
 
   const feedChip = (id, label, active, onPick) => ({ id, label, active, onPick });
 
+  // The button that opens the rest of the filters, kept near the top.
+  //
+  // It sat last, under six groups of chips, which on a laptop put the control
+  // that reveals defence tier, role and odds range below the fold -- so the
+  // filters a reader has not found yet were hidden behind a button they could
+  // not see either. Alex, 2026-09-09. Directly under LEAGUE now: it is a way
+  // in, not an afterthought.
+  const feedMoreGroup = {
+    key: "more", label: "EVERYTHING ELSE", cols: 1,
+    // Games left this list when the picker came back up to the rail. The
+    // note is the only description of what is behind that button, so
+    // listing something it no longer holds sends the reader looking.
+    note: "Defence tier, role, odds range and saved screens.",
+    items: [feedChip("more", "MORE FILTERS", feedFiltersOpen, () => setFeedFiltersOpen((v) => !v))],
+  };
+
   const feedRailGroups = [
     {
       key: "league", label: "LEAGUE", cols: 2,
@@ -21831,6 +21869,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       items: FEED_SPORTS.filter((sp) => sp.available)
         .map((sp) => feedChip(sp.id, sp.label, sport === sp.id, () => setSport(sp.id))),
     },
+    feedMoreGroup,
     feedGamesGroup,
     {
       key: "window", label: "YOUR OWN WINDOW", cols: 2, custom: true,
@@ -21872,14 +21911,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         feedChip("main", "Main only", linesMode === "main", () => setLinesMode("main")),
         feedChip("alt", "Show alt lines", linesMode === "alt", () => setLinesMode("alt")),
       ],
-    },
-    {
-      key: "more", label: "EVERYTHING ELSE", cols: 1,
-      // Games left this list when the picker came back up to the rail. The
-      // note is the only description of what is behind that button, so
-      // listing something it no longer holds sends the reader looking.
-      note: "Defence tier, role, odds range and saved screens.",
-      items: [feedChip("more", "MORE FILTERS", feedFiltersOpen, () => setFeedFiltersOpen((v) => !v))],
     },
   ];
 
@@ -21950,19 +21981,38 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         // gets its own sentence; every other mode is a tiebreak under the role
         // band and the hit rate, and saying otherwise made a correct sort look
         // broken.
-        sortNote={
-          !activeSortMode
-            ? "sorted by hit rate"
-            : activeSortMode.primary
-              ? `sorted by ${activeSortMode.label.toLowerCase()}, ties by hit rate`
-              // "ALL hit rate" is not a phrase; the season window says season.
-              : `starters first · ${sampleWindow === "all" ? "season" : String(sampleWindow).toUpperCase()} hit rate · ties by ${activeSortMode.label.toLowerCase()}`
-        }
-        sorts={FEED_SORT_MODES.map((mo) => ({
-          id: mo.id, label: mo.label, description: mo.description,
-          active: sortMode === mo.id && !columnSort,
-          onPick: () => { setColumnSort(null); setSortMode(mo.id); },
-        }))}
+        // The real chain, in the order it is applied: starters band, then the
+        // mode the reader chose, then hit rate as the tiebreak. Written out
+        // because a one-word note beside a list that is doing three things is
+        // how the last one came to be wrong.
+        sortNote={(() => {
+          if (!activeSortMode) return "sorted by hit rate";
+          // "ALL hit rate" is not a phrase; the season window says season.
+          const win = sampleWindow === "all" ? "season" : String(sampleWindow).toUpperCase();
+          const flipped = sortDir !== activeSortMode.defaultDir;
+          const name = (flipped && activeSortMode.flip ? activeSortMode.flip : activeSortMode.label).toLowerCase();
+          if (activeSortMode.id === "hit") return `starters first · ${name} (${win})`;
+          return `starters first · ${name} · ties by ${win} hit rate`;
+        })()}
+        // Clicking the active mode flips it rather than doing nothing, so each
+        // chip carries its own opposite and the row does not double in length.
+        // The label follows the direction, so the control always reads as the
+        // question currently being asked.
+        sorts={FEED_SORT_MODES.map((mo) => {
+          const on = sortMode === mo.id && !columnSort;
+          const flipped = on && sortDir !== mo.defaultDir;
+          return {
+            id: mo.id,
+            label: flipped && mo.flip ? mo.flip : mo.label,
+            description: mo.description,
+            active: on,
+            onPick: () => {
+              setColumnSort(null);
+              if (on) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+              else { setSortMode(mo.id); setSortDir(mo.defaultDir); }
+            },
+          };
+        })}
         header={<FeedTableHeader columnSort={columnSort} onSort={onSortColumn} seasonLabels={seasonLabels} customWin={feedCustomCol} sampleWindow={sampleWindow} />}
         rows={feedTable}
         picks={{
