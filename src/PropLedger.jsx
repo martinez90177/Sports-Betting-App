@@ -3354,7 +3354,92 @@ let nflTeamDefReal = null;
 // number with nothing behind it. There is now exactly one source -- ESPN's
 // real season standings, ranked by points allowed per game -- and no rank at
 // all until it lands. Callers drop the badge rather than fill the space.
+// Per-market defence, measured rather than bought.
+//
+// The comment above says a per-category "defence vs pass/rush/receptions"
+// split is not in any free API, and that is still true -- nobody publishes
+// one. But the games do: every log in the pool carries the opponent it was
+// played against, so what a defence concedes in a market is a sweep over logs
+// already in memory. The same mechanism Similar Players uses, aggregated one
+// level up.
+//
+// **What this is and is not.** It is the average of what THIS POOL's players
+// produced against each defence, per game, ranked across the 32. It is not the
+// league's official yards-allowed table: a receiver who has since left the
+// league is not in the pool and his yards are not counted. That is why the
+// number surfaced is a RANK rather than a total -- a rank is robust to a few
+// missing rows in a way "412 yards allowed" would not be, and stating a total
+// we cannot vouch for is the thing this app does not do.
+//
+// Rank 1 is the toughest defence in that market, matching every other OPP RANK
+// badge in the app and defTier's thirds.
+const NFL_DEF_MIN_TEAMS = 24;
+const NFL_DEF_REBUILD_MS = 1500;
+let nflDefByMarket = null;
+let nflDefBuiltAt = 0;
+let nflDefBuiltVersion = -1;
+
+function buildNflDefenceByMarket() {
+  // market -> opp -> { total, events:Set }
+  const acc = new Map();
+  nflPlayerPool().forEach((p) => {
+    const markets = NFL_MARKETS.filter((m) => m.pos.includes(p.pos));
+    if (!markets.length) return;
+    nflFeedGames(p).forEach((g) => {
+      if (!g.opp || !g.eventId) return;
+      markets.forEach((m) => {
+        const v = statValueNFL(g, m.id);
+        if (v == null || !Number.isFinite(v)) return;
+        let byTeam = acc.get(m.id);
+        if (!byTeam) { byTeam = new Map(); acc.set(m.id, byTeam); }
+        let rec = byTeam.get(g.opp);
+        if (!rec) { rec = { total: 0, events: new Set() }; byTeam.set(g.opp, rec); }
+        rec.total += v;
+        rec.events.add(g.eventId);
+      });
+    });
+  });
+
+  const out = {};
+  acc.forEach((byTeam, marketId) => {
+    const rows = [];
+    byTeam.forEach((rec, abbr) => {
+      if (!rec.events.size) return;
+      rows.push({ abbr, perGame: rec.total / rec.events.size });
+    });
+    // A market only a handful of defences have been measured in cannot be
+    // ranked out of 32 -- the badge would read "#3 of 32" off six teams. Left
+    // out entirely, and the caller falls back to points allowed.
+    if (rows.length < NFL_DEF_MIN_TEAMS) return;
+    rows.sort((a, b) => a.perGame - b.perGame);
+    const table = {};
+    rows.forEach((r, i) => {
+      table[r.abbr] = { rank: i + 1, rating: Math.round(r.perGame * 10) / 10, of: rows.length };
+    });
+    out[marketId] = table;
+  });
+  return out;
+}
+
+// Rebuilt when the pool's logs have moved, and at most every 1.5s -- the logs
+// land 800 times across a cold load and this walks every one of them, so an
+// unguarded rebuild-per-render is quadratic on exactly the slowest path.
+function nflDefTableFor(market) {
+  const now = Date.now();
+  if (nflDefBuiltVersion !== NFL_LOG_REVISION && now - nflDefBuiltAt > NFL_DEF_REBUILD_MS) {
+    nflDefByMarket = buildNflDefenceByMarket();
+    nflDefBuiltVersion = NFL_LOG_REVISION;
+    nflDefBuiltAt = now;
+  }
+  return (nflDefByMarket && nflDefByMarket[market]) || null;
+}
+
+// Per-market first, points allowed second. The fallback matters on a market
+// too thin to rank and before the logs land, and it is the reason
+// nflDefCategoryLabel has to ask which one answered.
 function getNFLDefRank(market, pos, opp) {
+  const table = market ? nflDefTableFor(market) : null;
+  if (table && table[opp]) return table[opp];
   if (nflTeamDefReal && nflTeamDefReal[opp]) return nflTeamDefReal[opp];
   return null;
 }
@@ -3411,15 +3496,23 @@ async function fetchNFLTeamDefense() {
 // getNFLDefRank returns the same points-allowed figure whatever the market is,
 // so anything that puts a label next to that number has to say what it
 // actually is rather than claiming a per-market split the data doesn't have.
-function nflDefIsPointsAllowed(opp) {
+function nflDefIsPointsAllowed(opp, market) {
+  // Per-market answered, so the label must not say points.
+  if (market && nflDefTableFor(market) && nflDefTableFor(market)[opp]) return false;
   return !!(nflTeamDefReal && nflTeamDefReal[opp]);
 }
 
-// The rank is always points allowed per game now, for every market, so the
-// label says that rather than naming a per-market split the number is not.
-// NFL_MARKET_DEF_BASE_LABEL / NFL_POS_QUALIFIER went with the seeded tables
-// they described.
-function nflDefCategoryLabel() {
+// Names whichever measure actually answered, because they are different
+// claims. Two markets on the same opponent can now legitimately show different
+// ranks -- New Orleans is near the top against passing yards and middling on
+// points -- and a label that said "points allowed" on both would make the
+// difference look like a bug.
+function nflDefCategoryLabel(market, pos, opp) {
+  const table = market ? nflDefTableFor(market) : null;
+  if (table && (!opp || table[opp])) {
+    const label = NFL_MARKETS.find((m) => m.id === market)?.label;
+    return label ? `${label.toLowerCase()} allowed per game` : "allowed per game";
+  }
   return "points allowed per game";
 }
 
@@ -4733,6 +4826,14 @@ const NFL_REAL_GAME_LOGS = {};
 // one-game log. L5/L10/L20 all fall under MINIMUM SAMPLE at once, H2H empties,
 // and the sort that orders the whole feed has nothing left to rank on.
 const NFL_PRIOR_GAME_LOGS = {};
+
+// Bumped whenever either log store gains a player. Module-level rather than
+// React state because the things that read it -- the per-market defence table
+// especially -- are plain functions called from builders, not hooks, and they
+// need to know the pool has moved without being handed a version by every
+// caller.
+let NFL_LOG_REVISION = 0;
+const bumpNflLogRevision = () => { NFL_LOG_REVISION += 1; };
 
 // Maps the flat "names" keys ESPN's gamelog endpoint returns to the field
 // names statValueNFL/normalizeNFLGame already expect.
@@ -8226,7 +8327,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // badge has to be labelled for what the number actually is. Only while the
   // mock per-category fallback is in play does a market-specific label
   // ("pass yards defense vs WR") describe the figure next to it.
-  const gameDefLabel = nflDefIsPointsAllowed(gameOppAbbr) ? "points allowed" : defCategoryLabel;
+  const gameDefLabel = nflDefIsPointsAllowed(gameOppAbbr, market) ? "points allowed" : defCategoryLabel;
 
   // Detailed rate-stat row: the same columns computed twice, once over the
   // filtered sample the chart is showing and once over the full season, so
@@ -8261,9 +8362,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // gameDefLabel already reads. Before that (or if it never loads), no
   // allows-sentence prints -- the ranked pill is still real either way,
   // it is drawn from the same table.
-  const gameAllowsLine = gameOppDef && nflDefIsPointsAllowed(gameOppAbbr)
-    ? `${gameOppAbbr} ALLOWS ${gameOppDef.rating} PTS/G`
-    : null;
+  // Points-allowed says PTS/G; a per-market figure names its own market, since
+  // "ALLOWS 231.4 PTS/G" for passing yards would be nonsense.
+  const gameAllowsLine = !gameOppDef
+    ? null
+    : nflDefIsPointsAllowed(gameOppAbbr, market)
+      ? `${gameOppAbbr} ALLOWS ${gameOppDef.rating} PTS/G`
+      : `${gameOppAbbr} ALLOWS ${gameOppDef.rating} ${String(marketLabel || "").toUpperCase()}/G`;
   const gameInfoBadge = gameOppDef && (
     <>
       <span style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
@@ -25574,6 +25679,7 @@ export default function PropLedger() {
     const storeNflLog = (player, espnId, games) => {
       if (cancelled || !games) return;
       NFL_REAL_GAME_LOGS[player.id] = games;
+      bumpNflLogRevision();
       bumpNflRefresh();
       const newest = newestSeason(games);
       if (newest == null || newest !== currentNFLSeason()) return;
@@ -25581,6 +25687,7 @@ export default function PropLedger() {
         .then((prior) => {
           if (cancelled || !prior || !prior.length) return;
           NFL_PRIOR_GAME_LOGS[player.id] = prior;
+          bumpNflLogRevision();
           bumpNflRefresh();
         })
         // A missing prior season is not an error worth surfacing -- the feed
