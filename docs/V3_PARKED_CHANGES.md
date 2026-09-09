@@ -86,15 +86,28 @@ describe what Alex wants, not how it should look; the v3 frame decides that.
 13. **MORE FILTERS** moved from last in the rail to directly under LEAGUE.
 14. **Rate cells washed by value**; the accent moved to the border so fill
     means the rate and the border means the scored window.
-15. **Alt lines as rows, Outlier-style** — measured: their toggle takes the row
-    set from 4,233 to 13,652, every alt line its own row with its own line,
-    odds and hit rates, and Over/Under as separate rows. Yours expands a ladder
-    inside one row. *(asked for, never built.)*
-16. **Sort modes** — hit rate is its own mode and the default; the chosen mode
-    leads instead of breaking ties; every mode has an opposite on a second
-    click (best/worst hit rate, easiest/toughest matchup, most consistent/most
-    volatile, trending up/down). Alex: *"i dont want this site to only be overs
-    and not catered towards under research either."*
+15. **Alt lines as rows, Outlier-style** — ~~parked~~ **build this during the 1c
+    transcription; it is not a deviation.** Frame 1c's rows already read
+    `Over 1.5 Total Bases` / `Over 0.5 Hits`, with the side and the line inside
+    the proposition, so an alt line is simply another row. Its slip confirms it:
+    legs carry `MAIN` and `ALT` badges and read `74% · 8 of 10 · one rung up`.
+    Outlier's own toggle takes their row set from 4,233 to 13,652 and lists
+    Over and Under separately, which is the same model. Alex, 2026-09-09:
+    *"remember how we switched it from the ladder to actual alt lines on the
+    prop feed? thats what i want still."*
+16. **Sort modes — CONFLICTS WITH THE FRAME, needs a decision.** What was built
+    today: hit rate as its own mode and the default, the chosen mode leading
+    rather than breaking ties, and an opposite on a second click. What frame 1c
+    draws: **`SORT · Matchup · Trend · Cushion · Streak`**, with the caption
+    *"sorted by nothing — click a column to rank by its rate"* — so the v3
+    default is **no sort at all**, ranking comes from clicking a column header,
+    and the four chips are a different set entirely (Cushion and Streak do not
+    exist in the app; Best hit rate, Biggest role and Most consistent do not
+    exist in the frame).
+    Alex's intent underneath it stands and has to survive: *"i dont want this
+    site to only be overs and not catered towards under research either."*
+    Ask before transcribing 1c: keep the v3 chips and add direction-flipping to
+    them, or keep today's set. Do not silently pick one.
 
 ---
 
