@@ -49,6 +49,7 @@ import { MatchupBand, PlayerHeaderCard, GameByGameChart, ReadingTheGraph } from 
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, seedSampleValue, saveSampleValue, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import SupportingStats from "./v3/SupportingStats.jsx";
+import SimilarPlayers from "./v3/SimilarPlayers.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters, fetchEspnJersey, jerseyFor } from "./lib/rosters.js";
@@ -4986,6 +4987,54 @@ function buildNflTeamTotals() {
   return byKey;
 }
 
+// How players like this one have done against this defence.
+//
+// PropsMadness runs the same idea and it is the one section of theirs that
+// needs no data we lack: every pooled player's log carries the opponent, so
+// "what have receivers done against New England" is a sweep over logs already
+// in memory.
+//
+// One honest difference from theirs, and it is stated on screen. They grade
+// each of those past games against *that game's own closing line*, which needs
+// historical odds. We have no such thing, so every comparable game is graded
+// against the line being read right now. That is a different question -- "if
+// tonight's number had been posted for them, how often would it have cleared"
+// -- and it is the one this data can actually answer.
+//
+// `mode` is "position" (everyone at the spot) or "role" (only players carrying
+// a comparable workload, within a band of this player's own role figure). The
+// second is the more honest reading of the word "similar": a WR3 and a WR1 both
+// play wide receiver and are not the same bet.
+const SIMILAR_ROLE_LO = 0.6;
+const SIMILAR_ROLE_HI = 1.6;
+function buildNflSimilarGames({ position, opp, market, excludeId, subjectRole, mode }) {
+  if (!opp || !position) return [];
+  const out = [];
+  nflPlayerPool().forEach((p) => {
+    if (p.pos !== position || p.id === excludeId) return;
+    const games = nflFeedGames(p);
+    if (!games.length) return;
+    if (mode === "role" && subjectRole) {
+      const theirs = roleValue({ sport: "nfl", games, position });
+      // No role figure means nothing measured to compare, so the row is left
+      // out of the narrower list rather than assumed comparable.
+      if (theirs == null) return;
+      const ratio = theirs / subjectRole;
+      if (ratio < SIMILAR_ROLE_LO || ratio > SIMILAR_ROLE_HI) return;
+    }
+    games.forEach((g) => {
+      if (g.opp !== opp) return;
+      const v = statValueNFL(g, market);
+      if (v == null || !Number.isFinite(v)) return;
+      out.push({
+        key: `${p.id}:${g.eventId || g.date}`,
+        name: p.name, team: g.team, date: g.date, season: g.season, home: g.home, v,
+      });
+    });
+  });
+  return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
 const statValueNFL = (g, market) => {
   switch (market) {
     case "passYds": return g.passYds;
@@ -8771,6 +8820,28 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // games this reader is looking at.
   const nflTeamTotals = useMemo(() => buildNflTeamTotals(), [dataVersion]);
 
+  // Comparable players against tonight's defence -- the question H2H cannot
+  // answer, because most NFL pairs never meet. See buildNflSimilarGames.
+  const [similarMode, setSimilarMode] = useState("position");
+  const nflSubjectRole = useMemo(
+    () => roleValue({ sport: "nfl", games: allGames, position: player?.pos }),
+    [allGames, player]
+  );
+  const nflSimilarRows = useMemo(
+    () => buildNflSimilarGames({
+      position: player?.pos,
+      opp: nflNext ? nflNext.opp : null,
+      market,
+      excludeId: player?.id,
+      subjectRole: nflSubjectRole,
+      mode: similarMode,
+    }),
+    // dataVersion, because the pool's logs land asynchronously and this reads
+    // every one of them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [player, market, nflNext && nflNext.opp, similarMode, nflSubjectRole, dataVersion]
+  );
+
   const matchupBins = useMemo(() => {
     if (!NFL_COUNTABLE_MARKETS.has(market)) return null;
     const counts = new Map();
@@ -9149,12 +9220,24 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       // draws. See SupportingStats -- nothing in it needs a feed this app does
       // not already have.
       extraBlocks={
-        <SupportingStats
-          games={filtered}
-          position={player.pos}
-          teamTotals={nflTeamTotals}
-          opp={nflNext ? nflNext.opp : null}
-        />
+        <>
+          <SupportingStats
+            games={filtered}
+            position={player.pos}
+            teamTotals={nflTeamTotals}
+            opp={nflNext ? nflNext.opp : null}
+          />
+          <SimilarPlayers
+            rows={nflSimilarRows}
+            line={v2LiveLine}
+            marketLabel={marketLabel}
+            opp={nflNext ? nflNext.opp : null}
+            position={player.pos}
+            mode={similarMode}
+            onMode={setSimilarMode}
+            roleUnitLabel={roleUnit("nfl")}
+          />
+        </>
       }
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
       pickAdded={isPagePickAdded}
