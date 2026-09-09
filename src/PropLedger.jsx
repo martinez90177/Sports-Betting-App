@@ -48,6 +48,7 @@ import { fetchStatcast } from "./lib/statcast.js";
 import { MatchupBand, PlayerHeaderCard, GameByGameChart, ReadingTheGraph } from "./PlayerDetail.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, seedSampleValue, saveSampleValue, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
+import SupportingStats from "./v3/SupportingStats.jsx";
 import LandingPage from "./LandingPage.jsx";
 import BoardPage from "./BoardPage.jsx";
 import { fetchLeagueRosters, fetchEspnJersey, jerseyFor } from "./lib/rosters.js";
@@ -4952,6 +4953,39 @@ function nflFeedGames(player) {
   return mergeSeasonLogs(current, prior.map((g) => normalizeNFLGame(g, player)));
 }
 
+// What a whole team did in one game, summed out of the player logs already in
+// memory. Keyed `TEAM|eventId`.
+//
+// This is what makes a share possible without a new data source. Target share
+// is targets divided by the team's pass attempts, and the team's pass attempts
+// for a given game are the quarterback's `att` in that same game -- a number
+// this app already has, in the same log, stamped with the same event id. Same
+// for a back's carry share against the team's rush attempts.
+//
+// Summed across every pooled player rather than read off the quarterback alone,
+// because a trick-play pass by a receiver is a team pass attempt too, and two
+// quarterbacks in one game are common enough to matter.
+//
+// One caveat is deliberate and is stated on screen: this counts attempts, not
+// plays. A sack is a pass play and appears as neither an attempt nor a carry,
+// so "attempts" is what the label says. Naming it "plays" would claim a number
+// nothing here measures.
+function buildNflTeamTotals() {
+  const byKey = new Map();
+  nflPlayerPool().forEach((p) => {
+    getNFLGames(p).forEach((g) => {
+      if (!g.eventId || !g.team) return;
+      const k = `${g.team}|${g.eventId}`;
+      const rec = byKey.get(k) || { passAtt: 0, rushAtt: 0, targets: 0 };
+      rec.passAtt += g.att || 0;
+      rec.rushAtt += g.rushAtt || 0;
+      rec.targets += g.tgt || 0;
+      byKey.set(k, rec);
+    });
+  });
+  return byKey;
+}
+
 const statValueNFL = (g, market) => {
   switch (market) {
     case "passYds": return g.passYds;
@@ -8729,6 +8763,14 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // only for the market families where "how often does this total come up"
   // is a real, readable question.
   const NFL_COUNTABLE_MARKETS = new Set(["rec", "rushAtt", "comp", "passAtt", "int", "passTd", "anytimeTd", "fgm", "xpm"]);
+
+  // Team volume per game, for the share figures in Supporting Stats. Built off
+  // the whole pool rather than this player, which is the point -- a share needs
+  // the denominator his teammates supply. Rebuilt when the pool's logs land,
+  // not on every filter change, since the team's totals do not depend on which
+  // games this reader is looking at.
+  const nflTeamTotals = useMemo(() => buildNflTeamTotals(), [dataVersion]);
+
   const matchupBins = useMemo(() => {
     if (!NFL_COUNTABLE_MARKETS.has(market)) return null;
     const counts = new Map();
@@ -9103,6 +9145,17 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
       footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      // The volume behind the prop, off the same filtered games the chart
+      // draws. See SupportingStats -- nothing in it needs a feed this app does
+      // not already have.
+      extraBlocks={
+        <SupportingStats
+          games={filtered}
+          position={player.pos}
+          teamTotals={nflTeamTotals}
+          opp={nflNext ? nflNext.opp : null}
+        />
+      }
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
       pickAdded={isPagePickAdded}
     />
