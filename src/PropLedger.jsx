@@ -45,7 +45,10 @@ import { fetchNflStarters } from "./lib/nflDepth.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { usagePills, roleSentence } from "./lib/usagePills.js";
 import { fetchStatcast } from "./lib/statcast.js";
-import { MatchupBand, PlayerHeaderCard, GameByGameChart, ReadingTheGraph } from "./PlayerDetail.jsx";
+// Two of the four this used to name -- MatchupBand and ReadingTheGraph -- went
+// with the pre-v2 page they belonged to. What is left is used by the MLB page
+// alone; the other three sports draw their chart and hero through the v3 frame.
+import { PlayerHeaderCard, GameByGameChart } from "./PlayerDetail.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, seedSampleValue, saveSampleValue, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
 import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
 import SupportingStats from "./v3/SupportingStats.jsx";
@@ -1832,8 +1835,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [teammateDataWanted, setTeammateDataWanted] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
-  const chartWidth = useElementWidth(chartRef);
-  const isNarrow = useIsNarrow();
+    const isNarrow = useIsNarrow();
 
   // What a jump asked for, held so the slate-arrival effect below can tell
   // "the slate moved under the current selection" apart from "the feed named
@@ -2131,9 +2133,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // date labels instead (see DateAxisTick). Desktop has enough width for
   // logo+abbr+date per bar at any sample size -- axisTickInterval already
   // caps the number of ticks actually drawn, so it never needs this fallback.
-  const manyGames = isNarrow && filtered.length > 10;
-
-  const isBinary = market === "dd" || market === "td";
+    const isBinary = market === "dd" || market === "td";
   const values = filtered.map((g) => statValue(g, market, rebSplit));
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   // Binary props (DD/TD) have a fixed 0.5 threshold — achieved (1) counts as a
@@ -2160,10 +2160,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
 
   // Said once, whether or not anyone is out: the reader needs to know the
   // without-side counts games from before a teammate joined as well.
-  const nbaAvailabilityNote = absentTeammates.length
-    ? `Everyone on this player's team currently listed out or questionable on ESPN's report. A rate is shown only where at least ${ABSENCE_MIN_GAMES} finished games were played without that teammate, and each one names the games it came from. ${ABSENCE_WINDOW_CAVEAT}`
-    : "Nobody on this player's team is currently listed out or questionable on ESPN's report.";
-  // Axis ceiling + evenly spaced tick marks: pick a "nice" step (1, 2, 5, 10, 20...)
+    // Axis ceiling + evenly spaced tick marks: pick a "nice" step (1, 2, 5, 10, 20...)
   // so the y-axis always shows regular, evenly spaced whole numbers instead of
   // an uneven jump like 0, 9, 30.
   // Deliberately keyed off `line` (only non-null once the user has actually
@@ -2176,22 +2173,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // tallest bar, but once a real line is set the axis stays put and the
   // handle simply can't be dragged above it.
   const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
-  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
-  const niceStep = (() => {
-    if (isBinary) return 1;
-    const targetTicks = 5;
-    const roughStep = rawMax / targetTicks;
-    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
-    const norm = roughStep / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
-    return Math.max(1, step);
-  })();
-  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
-  const chartTicks = isBinary
-    ? [0, 1]
-    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
-
-  // Filters-panel wiring. Picking an opponent here switches the page into a
+          // Filters-panel wiring. Picking an opponent here switches the page into a
   // different mode (see the oppView switch in the `filtered` memo), where Game
   // location and Sample size stop applying entirely -- so the count below
   // only ever tallies the controls that are actually live in the current
@@ -2227,9 +2209,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
 
   const hits = values.filter((v) => v > effectiveLine).length;
   const hitRate = values.length ? hits / values.length : 0;
-  const edge = avg - effectiveLine;
-
-  const marketLabel = market === "reb"
+    const marketLabel = market === "reb"
     ? `${REB_SPLITS.find((r) => r.id === rebSplit)?.label ?? "Total"} Reb.`
     : MARKETS.find((m) => m.id === market)?.label ?? "";
 
@@ -2238,12 +2218,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // minutes/sample-size filters have narrowed the chart down to). This is what
   // lets the metric rail show "Season Avg" and "Graph Avg" as two genuinely
   // different numbers instead of the same value twice.
-  const seasonValuesForMarket = allGames.map((g) => statValue(g, market, rebSplit));
-  const seasonAvgForMarket = seasonValuesForMarket.length
-    ? seasonValuesForMarket.reduce((a, b) => a + b, 0) / seasonValuesForMarket.length
-    : 0;
-
-  // Who this player actually lines up against in the selected matchup -- read
+      // Who this player actually lines up against in the selected matchup -- read
   // off the *other* roster, not the `opponent` filter, so the Game Info badge
   // always describes tonight's game rather than whatever historical opponent
   // the filters happen to be zoomed into. Which roster is "other" depends on
@@ -2262,22 +2237,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // Once the real points-allowed table has loaded the rank is that, whatever
   // market is selected, so the label has to say so rather than naming a
   // per-market defensive category the number is not measuring.
-  const defCategoryLabel = nbaDefIsPointsAllowed(gameOppAbbr) ? "points allowed" : nbaDefCategoryLabel(market);
-
-  // Detailed rate-stat row: the same columns computed twice, once over the
+    // Detailed rate-stat row: the same columns computed twice, once over the
   // filtered sample the chart is showing and once over the full season, so
   // every cell can carry a "how is he trending" delta underneath it.
-  const rateWindow = useMemo(() => hoopsRateAgg(filtered), [filtered]);
-  const rateSeason = useMemo(() => hoopsRateAgg(allGames), [allGames]);
-  const rateCards = HOOPS_RATE_COLUMNS.map((c) => ({
-    key: c.key,
-    label: c.label,
-    value: `${rateWindow[c.key].toFixed(c.decimals)}${c.suffix || ""}`,
-    delta: fmtStatDelta(rateWindow[c.key] - rateSeason[c.key], c.decimals, c.better, c.suffix || ""),
-  }));
-  const rateGlossary = HOOPS_RATE_COLUMNS.map((c) => ({ key: c.key, ...HOOPS_RATE_GLOSSARY[c.key] }));
-
-  // Game Info's right-hand context slot. MLB fills this with a live forecast
+          // Game Info's right-hand context slot. MLB fills this with a live forecast
   // and park-factor swings; there is no weather or venue-effect data for an
   // indoor sport, so the equivalent pre-game read here is how the opponent
   // ranks defensively in whichever market is selected -- the same numbers the
@@ -2289,38 +2252,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // never allow for generated data. It is shown now, gated on
   // nbaDefIsPointsAllowed -- so it appears only when the number behind it came
   // from ESPN's standings, and the fallback stays silent exactly as before.
-  const gameAllowsLine = gameOppDef && nbaDefIsPointsAllowed(gameOppAbbr)
-    ? `${gameOppAbbr} ALLOWS ${gameOppDef.rating} PTS/G`
-    : null;
-  const gameInfoBadge = gameOppDef && (
-    <>
-      <span style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
-        {gameAllowsLine || `vs ${gameOppAbbr} ${defCategoryLabel}`}
-      </span>
-      <span className="mono tnum" style={{ fontWeight: 600, fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>
-        {gameOppDef.rating}
-      </span>
-      <span className="status-pill" style={{ color: tierColor(gameOppTier), whiteSpace: "nowrap" }}>
-        #{gameOppDef.rank} {gameOppTier === "soft" ? "Favorable" : gameOppTier === "tough" ? "Tough" : "Neutral"}
-      </span>
-    </>
-  );
-
-  const gameInfoDetails = gameOppDef && (
-    <>
-      <div style={{ marginBottom: 4 }}>
-        {gameOppRoster.label} rank #{gameOppDef.rank} of {TEAMS.length} in {defCategoryLabel} ({gameOppDef.rating}) —
-        {gameOppTier === "soft"
-          ? " one of the softer matchups in the league for this market, which nudges toward the over."
-          : gameOppTier === "tough"
-            ? " one of the tougher matchups in the league for this market, which nudges toward the under."
-            : " a middle-of-the-pack matchup, so the defense isn't the deciding factor here."}
-      </div>
-      <div>{matchup.venue}{matchup.city ? ` — ${matchup.city}` : ""}</div>
-    </>
-  );
-
-  // Player identity: avatar + name/team/pos + season snapshot. Now the top of
+        // Player identity: avatar + name/team/pos + season snapshot. Now the top of
   // the graph card rather than its own bordered panel beside the matchup
   // selector, so it carries only a bottom divider against the detailed stat
   // row underneath. paddingRight reserves room for the Filters button, which
@@ -2331,42 +2263,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // every prop, so `player.team` below throws before any later guard can run --
   // the same crash the WNBA page shipped, from the same shape. Live rosters
   // make it reachable: playerId can name someone the pool does not have.
-  const playerIdentityRow = !player ? null : (
-    <PlayerIdentityRow
-      compact={compact}
-      team={player.team}
-      pos={player.pos}
-      name={player.name}
-      // No status: the NBA has no player availability feed (see pickStatus), so
-      // there is nothing real to put in the dot's corner.
-      avatar={
-        <PlayerAvatar
-          key={player.id}
-          name={player.name}
-          alt={player.name}
-          sport="nba"
-          team={player.team}
-          colorMap={NBA_TEAM_COLORS}
-          headshotSrc={espnHeadshot(player.espnId)}
-          fallbackSrc={nbaHeadshot(player.nbaId)}
-          surface="var(--panel)"
-          size={compact ? 48 : 76}
-          inset={compact ? 3 : 5}
-          imgBorder="1px solid var(--line)"
-          fadeIn
-          shadow={`0 4px 14px ${(NBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
-        />
-      }
-      stats={[
-        { label: "PTS", value: seasonAvg.pts.toFixed(1) },
-        { label: "REB", value: seasonAvg.reb.toFixed(1) },
-        { label: "AST", value: seasonAvg.ast.toFixed(1) },
-        { label: "MIN", value: seasonAvg.min.toFixed(1) },
-      ]}
-    />
-  );
-
-  const teammateModeSummary = teammateChips.length
+    const teammateModeSummary = teammateChips.length
     ? `${teammateChips.filter((c) => c.mode === "with").length} with · ${teammateChips.filter((c) => c.mode === "without").length} without`
     : "Tap to cycle";
 
@@ -2512,179 +2409,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // CHART_HEIGHT: the card now carries the game-info, identity, market,
   // detail-stat and metric rows above the plot, so a shorter chart keeps the
   // whole stack visible together instead of pushing the bars off-screen.
-  const NBA_GRAPH_CHART_HEIGHT = isNarrow ? 340 : 600;
-
-  const chartBlock = (
-    <div
-      ref={chartRef}
-      style={{
-        position: "relative", boxSizing: "border-box", height: NBA_GRAPH_CHART_HEIGHT,
-        // A nested strip, not a second card: the graph card's own wrapper
-        // already supplies the border/shadow, so this only needs a subtle
-        // background to read as its own section without a competing outline.
-        background: "var(--surface-2)", borderRadius: "var(--r-md)",
-        padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
-      }}
-    >
-      {/* The launcher owns the popover, bottom sheet, click-outside and
-           Escape handling (shared with the other sports pages). Lives inside
-           the chart's own container (not the identity/header card) so it
-           reads as part of the chart -- anchored to this div's top-right
-           corner, in the empty space above the bars, on both mobile and
-           desktop alike. */}
-      <FilterPanelLauncher
-        open={filtersOpen}
-        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
-        activeCount={activeFilterCount}
-        compact={compact}
-        anchored
-      >
-        {filtersBody}
-      </FilterPanelLauncher>
-      <ContextStatToggle stat={NBA_CONTEXT_STAT} value={showContext} onChange={setShowContext} compact={isNarrow} />
-      <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={filtered.map((g, i) => ({
-            idx: i + 1,
-            opp: g.opp,
-            home: g.home,
-            // The playoff and venue marks ride in the axis key's third and
-            // fourth `__` segments, read by TeamAxisTick. Recharts keys a
-            // category axis by this string, so anything a tick draws has to
-            // travel inside it: the tick component is handed the axis value,
-            // not the row.
-            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
-            value: statValue(g, market, rebSplit),
-            date: g.date,
-            minutes: g.minutes,
-            home: g.home,
-            playoff: isPlayoffGame(g),
-            defRank: (getNBADefRank(market, g.opp) || {}).rank ?? null,
-          }))}
-          // right clears LineHandle, which anchors to the container's right
-          // edge: it needs right:8 + its 52px minimum, less the 6px the
-          // narrow chart wrapper already pads, so 54 is the floor. 30 left
-          // the pill sitting on top of the last bar.
-          margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
-          barCategoryGap={isNarrow ? "4%" : "6%"}
-        >
-          {/* Invisible (stroke="transparent"), not removed: rendered fully
-               open per the PropsMadness reference (no grid lines, just
-               floating y-tick labels), but LineHandle's drag math
-               (getPlotBoundsY, above) measures the plot's top/bottom by
-               querying this component's own rendered .recharts-cartesian-
-               grid-horizontal line elements -- removing the component
-               entirely would silently break the drag handle instead of
-               just hiding a visual grid. */}
-          <CartesianGrid stroke="transparent" vertical={false} />
-          <XAxis
-            dataKey={manyGames ? "date" : "axisKey"}
-            interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
-            tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nbaTeamLogo} compact={isNarrow} />}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            domain={[0, chartMax]}
-            ticks={chartTicks}
-            tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            allowDecimals={false}
-            width={isNarrow ? 32 : 60}
-            label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
-          />
-          <Tooltip
-            content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={nbaTeamLogo} teams={TEAMS.length} />}
-            cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
-          />
-          <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
-            {filtered.map((g, i) => {
-              const v = statValue(g, market, rebSplit);
-              const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-              // Decision 1: a playoff game has to look like one. An outline
-              // rather than a colour, because every colour here is spoken for
-              // -- green/red already mean cleared/missed, and a playoff game is
-              // neither good nor bad, it is a different kind of game.
-              return isPlayoffGame(g)
-                ? <Cell key={i} fill={fill} stroke="var(--chart-ink)" strokeWidth={1.5} strokeDasharray="2 2" />
-                : <Cell key={i} fill={fill} />;
-            })}
-            <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
-          </Bar>
-          {contextStatChartParts(NBA_CONTEXT_STAT, showContext, isNarrow)}
-          {/* Rendered after Bar (not before) so the dashed threshold line
-               draws on top of the bars instead of being clipped underneath
-               them -- later JSX = higher SVG paint order in Recharts. */}
-          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-        </ComposedChart>
-      </ResponsiveContainer>
-      </div>
-      {!isBinary && (
-        <LineHandle
-          value={effectiveLine}
-          onChange={(v) => setLine(v)}
-          onDragValue={setDragLine}
-          min={0}
-          max={chartMax}
-          containerRef={chartRef}
-        />
-      )}
-    </div>
-  );
-
-  // Game-log ledger table -- behind the same "▸ Game Logs (n)" disclosure the
+      // Game-log ledger table -- behind the same "▸ Game Logs (n)" disclosure the
   // MLB and NFL pages use. Its own storageKey, so collapsing it here doesn't
   // also collapse theirs.
-  const ledgerTable = (
-    <CollapsibleSection title={`Game Logs (${filtered.length})`} storageKey="nba_game_logs_open">
-      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <div style={{ minWidth: 580 }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
-              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Min</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
-            </div>
-            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
-              {filtered.slice().reverse().map((g, i) => {
-                const v = statValue(g, market, rebSplit);
-                const over = v > effectiveLine;
-                const push = !isBinary && v === effectiveLine;
-                const def = getNBADefRank(market, g.opp);
-                const tier = def ? defTier(def.rank, TEAMS.length) : null;
-                return (
-                  <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
-                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>
-                      {g.date}
-                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
-                    </div>
-                    <div>{g.opp}</div>
-                    {/* No rank until the real ranking has loaded -- an em
-                        dash, never an invented number. */}
-                    <div style={{ color: def ? tierColor(tier) : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
-                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
-                    <div>{g.minutes}</div>
-                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
-                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
-                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
-                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </CollapsibleSection>
-  );
-
-  const centerBreadcrumbLabel = matchup
-    ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "PTS").toUpperCase()}`
-    : "";
-
-  // Same id format family as feedPickId so a prop saved from the feed and
+      // Same id format family as feedPickId so a prop saved from the feed and
   // from this page don't double-enter the slip under different keys.
   // When the user has dragged the line handle (`line != null`), the ~suffix
   // marks an alt; otherwise the id matches the feed's main-line id.
@@ -2753,86 +2481,16 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const matchupValues = useMemo(() => matchupWindow.map((g) => statValue(g, market, rebSplit)), [matchupWindow, market, rebSplit]);
   const matchupOutcomes = matchupValues.map((v) => v > effectiveLine);
   const matchupHits = matchupOutcomes.filter(Boolean).length;
-  const matchupPct = matchupWindow.length ? Math.round((matchupHits / matchupWindow.length) * 100) : 0;
-  const matchupSentence = `Over in ${matchupHits} of the last ${matchupWindow.length} games.`;
-
-  // Both from lib/support.js, so this block and the board's verdict pill
+      // Both from lib/support.js, so this block and the board's verdict pill
   // cannot disagree about the same prop -- see readFor.
   const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
-  const matchupHomeGames = matchupWindow.filter((g) => g.home);
-  const matchupAwayGames = matchupWindow.filter((g) => !g.home);
-  const rateOf = (games) => {
-    const vals = games.map((g) => statValue(g, market, rebSplit));
-    return vals.length ? vals.filter((v) => v > effectiveLine).length / vals.length : null;
-  };
-  const matchupHomeRate = matchupHomeGames.length >= 2 ? rateOf(matchupHomeGames) : null;
-  const matchupAwayRate = matchupAwayGames.length >= 2 ? rateOf(matchupAwayGames) : null;
-  const matchupConsistencyClause = matchupHomeRate === null || matchupAwayRate === null
-    ? "Too few home or road games in this window to compare the two."
-    : Math.abs(matchupHomeRate - matchupAwayRate) <= 0.2
-    ? "The rate holds up both home and away."
-    : matchupHomeRate > matchupAwayRate
-    ? "The rate is stronger at home than on the road."
-    : "The rate is stronger on the road than at home.";
-  const matchupReadSentence = `${matchupWindow.length} games is enough for a lean, not enough for certainty. ${matchupConsistencyClause}`;
-  const matchupConfidenceNote = matchupWindow.length < 25
-    ? `Based on ${matchupWindow.length} finished game${matchupWindow.length === 1 ? "" : "s"}. Grows to strong at 25.`
-    : null;
-
-  // Context column per market family -- basketball's own box-score columns,
+                  // Context column per market family -- basketball's own box-score columns,
   // not football's. Markets with no hand-picked context still show
   // opponent/value/result, nothing fabricated to fill the gap.
-  const NBA_TABLE_CONTEXT = {
-    pts: { label: "MINUTES", get: (g) => g.minutes },
-    reb: { label: "MINUTES", get: (g) => g.minutes },
-    ast: { label: "MINUTES", get: (g) => g.minutes },
-    stl: { label: "MINUTES", get: (g) => g.minutes },
-    blk: { label: "MINUTES", get: (g) => g.minutes },
-    "3pm": { label: "3PA", get: (g) => g.fg3a },
-    ftm: { label: "FTA", get: (g) => g.fta },
-    pra: { label: "MINUTES", get: (g) => g.minutes },
-  };
-  const matchupContext = NBA_TABLE_CONTEXT[market];
-  const matchupPrimaryLabel = (MARKETS.find((m) => m.id === market)?.label || market).toUpperCase();
-  const matchupTableColumns = [
-    { key: "opponent", label: "OPPONENT", width: "1.3fr" },
-    { key: "primary", label: matchupPrimaryLabel, align: "right" },
-    ...(matchupContext ? [{ key: "context", label: matchupContext.label, align: "right" }] : []),
-    { key: "result", label: "RESULT", align: "right", width: "1.4fr" },
-  ];
-  const matchupTableRows = matchupWindow.map((g, i) => ({
-    opponent: `${g.home ? "vs" : "at"} ${g.opp}`,
-    primary: isBinary ? (matchupValues[i] ? "Yes" : "No") : matchupValues[i],
-    context: matchupContext ? matchupContext.get(g) : undefined,
-    result: matchupOutcomes[i] ? "OVER" : "UNDER",
-  }));
-
-  const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
-  const gamesWithRest = allGames.map((g, i, arr) => ({ ...g, restDays: i > 0 ? daysBetween(arr[i - 1].date, g.date) : null }));
-  const restedGames = gamesWithRest.filter((g) => g.restDays !== null && g.restDays >= 2);
-  const homeGamesAll = allGames.filter((g) => g.home);
-  const awayGamesAll = allGames.filter((g) => !g.home);
-  const vsOppGamesAll = allGames.filter((g) => g.opp === gameOppAbbr);
-  const splitRow = (label, games) => {
-    if (!games.length) return null;
-    const rate = rateOf(games);
-    return {
-      label,
-      rate: games.length >= 2 ? rate : null,
-      count: games.length === 1 ? "1 game only" : `${Math.round(rate * games.length)} of ${games.length}`,
-    };
-  };
-  // NBA plays every 1-3 days, not weekly -- "6+ days rest" (the NFL threshold,
+                          // NBA plays every 1-3 days, not weekly -- "6+ days rest" (the NFL threshold,
   // where that's a bye week) would almost never fire here. 2+ days is the
   // equivalent "genuinely rested" cut for this sport's schedule.
-  const matchupSplitRows = [
-    splitRow("At home", homeGamesAll),
-    splitRow("On the road", awayGamesAll),
-    splitRow("With 2+ days rest", restedGames),
-    splitRow(`Against ${gameOppAbbr}`, vsOppGamesAll),
-  ].filter(Boolean);
-
-  // Binary markets (dd/td) are already 0/1 -- a histogram of two bars is not
+    // Binary markets (dd/td) are already 0/1 -- a histogram of two bars is not
   // a useful "how often does this total come up" read, so they're excluded
   // the same way NFL excludes continuous yardage markets.
   const NBA_COUNTABLE_MARKETS = new Set(["pts", "reb", "ast", "stl", "blk", "stk", "3pm", "3pa", "ftm", "fta", "pra", "ra", "pr", "pa"]);
@@ -7966,8 +7624,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [teammateDataWanted, setTeammateDataWanted] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
-  const chartWidth = useElementWidth(chartRef);
-  const isNarrow = useIsNarrow();
+    const isNarrow = useIsNarrow();
 
   // Same breakpoint the roster columns collapse at (see .roster-layout in
   // index.css). Above it the graph card sits in the narrow center column with
@@ -8084,9 +7741,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // Per-game historical line for the ledger table's Line/Result columns —
   // computed off the full unfiltered game log so it stays anchored to
   // chronological order regardless of the active filters.
-  const historicalLines = useMemo(() => computeNFLHistoricalLines(allGames, market), [allGames, market]);
-
-  // Whenever the selected player (and thus position) changes, make sure the
+    // Whenever the selected player (and thus position) changes, make sure the
   // active market is still one that applies to them.
   React.useEffect(() => {
     if (playerMarkets.length && !playerMarkets.some((m) => m.id === market)) {
@@ -8193,9 +7848,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // date labels instead (see DateAxisTick). Desktop has enough width for
   // logo+abbr+date per bar at any sample size -- axisTickInterval already
   // caps the number of ticks actually drawn, so it never needs this fallback.
-  const manyGames = isNarrow && filtered.length > 10;
-
-  // Anytime TD is a normal counting stat (a player can score more than once
+    // Anytime TD is a normal counting stat (a player can score more than once
   // in a game), not a milestone/binary market -- unlike NBA's dd/td props.
   const isBinary = false;
   const values = filtered.map((g) => statValueNFL(g, market));
@@ -8219,10 +7872,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     [absentTeammates, allGames, teammateSplits.byEvent, teammateValueOf, effectiveLine]
   );
 
-  const nflAvailabilityNote = absentTeammates.length
-    ? `Everyone on this player's team currently listed out or questionable on ESPN's report. A rate is shown only where at least ${ABSENCE_MIN_GAMES} finished games were played without that teammate, and each one names the games it came from. ${ABSENCE_WINDOW_CAVEAT}`
-    : "Nobody on this player's team is currently listed out or questionable on ESPN's report.";
-  // Deliberately keyed off `line` (only non-null once the user has actually
+    // Deliberately keyed off `line` (only non-null once the user has actually
   // dragged the handle to a custom value), not `effectiveLine` -- including
   // the live drag position here made the axis grow a step every time the
   // handle crossed a half-point while dragging, since a taller axis raised
@@ -8232,22 +7882,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // tallest bar, but once a real line is set the axis stays put and the
   // handle simply can't be dragged above it.
   const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
-  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
-  const niceStep = (() => {
-    if (isBinary) return 1;
-    const targetTicks = 5;
-    const roughStep = rawMax / targetTicks;
-    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
-    const norm = roughStep / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
-    return Math.max(1, step);
-  })();
-  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
-  const chartTicks = isBinary
-    ? [0, 1]
-    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
-
-  // Filters-panel wiring, mirroring the MLB/WNBA pages. Opponent is a
+          // Filters-panel wiring, mirroring the MLB/WNBA pages. Opponent is a
   // dropdown here rather than a single scheduled matchup, so the H2H cell is
   // dropped and the grid renders six sample-size windows instead of seven.
   const activeFilterCount = useMemo(() => {
@@ -8277,8 +7912,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
 
   const hits = values.filter((v) => v > effectiveLine).length;
   const hitRate = values.length ? hits / values.length : 0;
-  const edge = avg - effectiveLine;
-  const marketLabel = NFL_MARKETS.find((m) => m.id === market)?.label ?? "";
+    const marketLabel = NFL_MARKETS.find((m) => m.id === market)?.label ?? "";
   const defCategoryLabel = nflDefCategoryLabel(market, player.pos);
 
   // Season-wide average for the *currently selected market*, distinct from
@@ -8286,12 +7920,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // snap-share/sample-size filters have narrowed the chart down to). This is
   // what lets the metric rail show "Season Avg" and "Graph Avg" as two
   // genuinely different numbers instead of the same value twice.
-  const seasonValuesForMarket = allGames.map((g) => statValueNFL(g, market));
-  const seasonAvgForMarket = seasonValuesForMarket.length
-    ? seasonValuesForMarket.reduce((a, b) => a + b, 0) / seasonValuesForMarket.length
-    : 0;
-
-  // Who this player actually lines up against in the selected matchup --
+      // Who this player actually lines up against in the selected matchup --
   // read off the *other* roster, not the `opponent` filter, so the Game Info
   // badge always describes tonight's game rather than whatever historical
   // opponent the filters happen to be zoomed into. Which roster is "other"
@@ -8332,26 +7961,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // Detailed rate-stat row: the same columns computed twice, once over the
   // filtered sample the chart is showing and once over the full season, so
   // every cell can carry a "how is he trending" delta underneath it.
-  const rateColumns = NFL_RATE_COLUMNS[player.pos] || [];
-  const rateWindow = useMemo(() => nflRateAgg(filtered), [filtered]);
-  const rateSeason = useMemo(() => nflRateAgg(allGames), [allGames]);
-  const rateCards = rateColumns.map((c) => ({
-    key: c.key,
-    label: c.label,
-    // An em dash where the source carries no such column, never a 0.0 -- see
-    // nflRateAgg on targets.
-    value: rateWindow[c.key] == null
-      ? "—"
-      : `${rateWindow[c.key].toFixed(c.decimals)}${c.suffix || ""}`,
-    delta: rateWindow[c.key] == null || rateSeason[c.key] == null
-      ? null
-      : fmtStatDelta(rateWindow[c.key] - rateSeason[c.key], c.decimals, c.better, c.suffix || ""),
-  }));
-  const rateGlossary = rateColumns
-    .map((c) => ({ key: c.key, ...NFL_RATE_GLOSSARY[c.key] }))
-    .filter((g) => g.label);
-
-  // Game Info's right-hand context slot. MLB fills this with a live forecast
+            // Game Info's right-hand context slot. MLB fills this with a live forecast
   // and park-factor swings; there is no weather or venue-effect data for the
   // NFL slate, so the equivalent pre-game read here is how the opponent's
   // defense ranks against this exact market and position -- the same
@@ -8364,80 +7974,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // it is drawn from the same table.
   // Points-allowed says PTS/G; a per-market figure names its own market, since
   // "ALLOWS 231.4 PTS/G" for passing yards would be nonsense.
-  const gameAllowsLine = !gameOppDef
-    ? null
-    : nflDefIsPointsAllowed(gameOppAbbr, market)
-      ? `${gameOppAbbr} ALLOWS ${gameOppDef.rating} PTS/G`
-      : `${gameOppAbbr} ALLOWS ${gameOppDef.rating} ${String(marketLabel || "").toUpperCase()}/G`;
-  const gameInfoBadge = gameOppDef && (
-    <>
-      <span style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
-        {gameAllowsLine || `vs ${gameOppAbbr} ${gameDefLabel}`}
-      </span>
-      <span className="mono tnum" style={{ fontWeight: 600, fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>
-        {gameOppDef.rating}
-      </span>
-      <span className="status-pill" style={{ color: tierColor(gameOppTier), whiteSpace: "nowrap" }}>
-        #{gameOppDef.rank} {gameOppTier === "soft" ? "Favorable" : gameOppTier === "tough" ? "Tough" : "Neutral"}
-      </span>
-    </>
-  );
-
-  const gameInfoDetails = gameOppDef && (
-    <>
-      <div style={{ marginBottom: 4 }}>
-        {gameOppRoster.label} rank #{gameOppDef.rank} of {NFL_TEAMS.length} in {gameDefLabel} ({gameOppDef.rating}) —
-        {gameOppTier === "soft"
-          ? " one of the softer matchups in the league for this market, which nudges toward the over."
-          : gameOppTier === "tough"
-            ? " one of the tougher matchups in the league for this market, which nudges toward the under."
-            : " a middle-of-the-pack matchup, so the defense isn't the deciding factor here."}
-      </div>
-      <div>{matchup.venue}{matchup.city ? ` — ${matchup.city}` : ""}</div>
-    </>
-  );
-
-  // Player identity: avatar + name/team/pos + season snapshot. Now the top of
+        // Player identity: avatar + name/team/pos + season snapshot. Now the top of
   // the graph card rather than its own bordered panel beside the matchup
   // selector, so it carries only a bottom divider against the detailed stat
   // row underneath. paddingRight reserves room for the Filters button, which
   // floats in the card's absolute top-right corner on desktop.
-  const playerIdentityRow = (
-    <PlayerIdentityRow
-      compact={compact}
-      team={player.team}
-      pos={player.pos}
-      name={player.name}
-      // No status: the NFL has no player availability feed (see pickStatus).
-      avatar={
-        <PlayerAvatar
-          key={player.id}
-          name={player.name}
-          alt={player.name}
-          sport="nfl"
-          team={player.team}
-          colorMap={NFL_TEAM_COLORS}
-          headshotSrc={nflHeadshot(player)}
-          surface="var(--panel)"
-          size={compact ? 48 : 76}
-          inset={compact ? 3 : 5}
-          imgBorder="1px solid var(--line)"
-          fadeIn
-          shadow={`0 4px 14px ${(NFL_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
-        />
-      }
-      // Fixed per-tile width no matter how many stats this position actually
-      // has, so the row doesn't reflow when switching between a QB (four) and
-      // anyone else.
-      stats={seasonAvg.map((s) => ({
-        label: s.label,
-        value: s.value.toFixed(s.decimals),
-        width: compact ? undefined : 62,
-      }))}
-    />
-  );
-
-  const teammateModeSummary = teammateChips.length
+    const teammateModeSummary = teammateChips.length
     ? `${teammateChips.filter((c) => c.mode === "with").length} with · ${teammateChips.filter((c) => c.mode === "without").length} without`
     : "Tap to cycle";
 
@@ -8550,192 +8092,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // CHART_HEIGHT: the card now carries the game-info, identity, market,
   // detail-stat and metric rows above the plot, so a shorter chart keeps the
   // whole stack visible together instead of pushing the bars off-screen.
-  const NFL_GRAPH_CHART_HEIGHT = isNarrow ? 340 : 600;
-
-  const chartBlock = (
-    <div
-      ref={chartRef}
-      style={{
-        position: "relative", boxSizing: "border-box", height: NFL_GRAPH_CHART_HEIGHT,
-        // A nested strip, not a second card: the graph card's own wrapper
-        // already supplies the border/shadow, so this only needs a subtle
-        // background to read as its own section without a competing outline.
-        background: "var(--surface-2)", borderRadius: "var(--r-md)",
-        padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
-      }}
-    >
-      {/* The launcher owns the popover, bottom sheet, click-outside and
-           Escape handling (shared with the other sports pages). Lives inside
-           the chart's own container (not the identity/header card) so it
-           reads as part of the chart -- anchored to this div's top-right
-           corner, in the empty space above the bars, on both mobile and
-           desktop alike. */}
-      <FilterPanelLauncher
-        open={filtersOpen}
-        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
-        activeCount={activeFilterCount}
-        compact={compact}
-        anchored
-      >
-        {filtersBody}
-      </FilterPanelLauncher>
-      <ContextStatToggle stat={NFL_CONTEXT_STAT} value={showContext} onChange={setShowContext} compact={isNarrow} />
-      <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={filtered.map((g, i) => ({
-            idx: i + 1,
-            opp: g.opp,
-            home: g.home,
-            // The playoff and venue marks ride in the axis key's third and
-            // fourth `__` segments, read by TeamAxisTick. Recharts keys a
-            // category axis by this string, so anything a tick draws has to
-            // travel inside it: the tick component is handed the axis value,
-            // not the row.
-            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
-            value: statValueNFL(g, market),
-            date: g.date,
-            snapPct: g.snapPct,
-            home: g.home,
-            playoff: isPlayoffGame(g),
-            defRank: (getNFLDefRank(market, player.pos, g.opp) || {}).rank ?? null,
-          }))}
-          // right clears LineHandle, which anchors to the container's right
-          // edge: it needs right:8 + its 52px minimum, less the 6px the
-          // narrow chart wrapper already pads, so 54 is the floor. 30 left
-          // the pill sitting on top of the last bar.
-          margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
-          barCategoryGap={isNarrow ? "4%" : "6%"}
-        >
-          {/* Invisible (stroke="transparent"), not removed: rendered fully
-               open per the PropsMadness reference (no grid lines, just
-               floating y-tick labels), but LineHandle's drag math
-               (getPlotBoundsY, above) measures the plot's top/bottom by
-               querying this component's own rendered .recharts-cartesian-
-               grid-horizontal line elements -- removing the component
-               entirely would silently break the drag handle instead of
-               just hiding a visual grid. */}
-          <CartesianGrid stroke="transparent" vertical={false} />
-          <XAxis
-            dataKey={manyGames ? "date" : "axisKey"}
-            interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
-            tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={nflTeamLogo} compact={isNarrow} />}
-            axisLine={false}
-            tickLine={false}
-          />
-          {/* The narrow width is 32 rather than 24 because a 3-digit tick
-               ("400") at fontSize 11 plus recharts' default 5px tickMargin
-               needs ~30px -- at 24 the axis band clipped the leading digit,
-               so passing yardage totals rendered as "!00" on a phone. */}
-          <YAxis
-            domain={[0, chartMax]}
-            ticks={chartTicks}
-            tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            allowDecimals={false}
-            width={isNarrow ? 32 : 60}
-            label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
-          />
-          <Tooltip
-            content={
-              <ChartTooltip
-                effectiveLine={effectiveLine}
-                isBinary={isBinary}
-                marketLabel={marketLabel}
-                footerLabel={(d) => (d.snapPct == null ? "no offensive snaps" : `${d.snapPct}% offensive snaps`)}
-                logoFn={nflTeamLogo}
-                teams={NFL_TEAMS.length}
-              />
-            }
-            cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
-          />
-          <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
-            {filtered.map((g, i) => {
-              const v = statValueNFL(g, market);
-              const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-              // Decision 1: a playoff game has to look like one. An outline
-              // rather than a colour, because every colour here is spoken for
-              // -- green/red already mean cleared/missed, and a playoff game is
-              // neither good nor bad, it is a different kind of game.
-              return isPlayoffGame(g)
-                ? <Cell key={i} fill={fill} stroke="var(--chart-ink)" strokeWidth={1.5} strokeDasharray="2 2" />
-                : <Cell key={i} fill={fill} />;
-            })}
-            <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
-          </Bar>
-          {contextStatChartParts(NFL_CONTEXT_STAT, showContext, isNarrow)}
-          {/* Rendered after Bar (not before) so the dashed threshold line
-               draws on top of the bars instead of being clipped underneath
-               them -- later JSX = higher SVG paint order in Recharts. */}
-          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-        </ComposedChart>
-      </ResponsiveContainer>
-      </div>
-      {!isBinary && (
-        <LineHandle
-          value={effectiveLine}
-          onChange={(v) => setLine(v)}
-          onDragValue={setDragLine}
-          min={0}
-          max={chartMax}
-          containerRef={chartRef}
-        />
-      )}
-    </div>
-  );
-
-  // Game-log ledger table -- behind the same "▸ Game Logs (n)" disclosure the
+      // Game-log ledger table -- behind the same "▸ Game Logs (n)" disclosure the
   // MLB page uses, so the long table doesn't push the news module and the rest
   // of the page down by default. Its own storageKey, so collapsing it here
   // doesn't also collapse MLB's.
-  const ledgerTable = (
-    <CollapsibleSection title={`Game Logs (${filtered.length})`} storageKey="nfl_game_logs_open">
-      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <div style={{ minWidth: 580 }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
-              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Snap %</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
-            </div>
-            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
-              {filtered.slice().reverse().map((g, i) => {
-                const v = statValueNFL(g, market);
-                const rowLine = isBinary ? 0.5 : historicalLines[allGames.indexOf(g)];
-                const over = v > rowLine;
-                const push = !isBinary && v === rowLine;
-                const def = getNFLDefRank(market, player.pos, g.opp);
-                const tier = def ? nflDefTier(def.rank) : null;
-                return (
-                  <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
-                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>
-                      {g.date}
-                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
-                    </div>
-                    <div>{g.opp}</div>
-                    <div style={{ color: def ? tierColor(tier) : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
-                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
-                    <div>{g.snapPct == null ? "—" : `${g.snapPct}%`}</div>
-                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
-                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : rowLine}</div>
-                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
-                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </CollapsibleSection>
-  );
-
-  const centerBreadcrumbLabel = matchup
-    ? `${teamRoster.abbr || teamRoster.label} @ ${oppRoster.abbr || oppRoster.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
-    : "";
-
-  const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
+      const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
   const pagePickId = playerPagePickId(
     "nfl", playerId, market,
     line != null ? effectiveLine : null,
@@ -8806,10 +8167,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const matchupValues = useMemo(() => matchupWindow.map((g) => statValueNFL(g, market)), [matchupWindow, market]);
   const matchupOutcomes = matchupValues.map((v) => v > effectiveLine);
   const matchupHits = matchupOutcomes.filter(Boolean).length;
-  const matchupPct = matchupWindow.length ? Math.round((matchupHits / matchupWindow.length) * 100) : 0;
-  const matchupSentence = `Over in ${matchupHits} of the last ${matchupWindow.length} games.`;
-
-  // THE READ -- lean and confidence are both read straight off the numbers
+      // THE READ -- lean and confidence are both read straight off the numbers
   // above; no modelled probability, nothing this page decides on its own.
   // "STRONG/FAIR/THIN" is the exact tiering MetricRail's sampleLabel already
   // uses elsewhere on this page (>=25 strong, >=10 fair), so the word means
@@ -8819,98 +8177,21 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // Both from lib/support.js, so this block and the board's verdict pill
   // cannot disagree about the same prop -- see readFor.
   const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
-  const matchupHomeGames = matchupWindow.filter((g) => g.home);
-  const matchupAwayGames = matchupWindow.filter((g) => !g.home);
-  const rateOf = (games) => {
-    const vals = games.map((g) => statValueNFL(g, market));
-    return vals.length ? vals.filter((v) => v > effectiveLine).length / vals.length : null;
-  };
-  const matchupHomeRate = matchupHomeGames.length >= 2 ? rateOf(matchupHomeGames) : null;
-  const matchupAwayRate = matchupAwayGames.length >= 2 ? rateOf(matchupAwayGames) : null;
-  const matchupConsistencyClause = matchupHomeRate === null || matchupAwayRate === null
-    ? "Too few home or road games in this window to compare the two."
-    : Math.abs(matchupHomeRate - matchupAwayRate) <= 0.2
-    ? "The rate holds up both home and away."
-    : matchupHomeRate > matchupAwayRate
-    ? "The rate is stronger at home than on the road."
-    : "The rate is stronger on the road than at home.";
-  const matchupReadSentence = `${matchupWindow.length} games is enough for a lean, not enough for certainty. ${matchupConsistencyClause}`;
-  const matchupConfidenceNote = matchupWindow.length < 25
-    ? `Based on ${matchupWindow.length} finished game${matchupWindow.length === 1 ? "" : "s"}. Grows to strong at 25.`
-    : null;
-
-  // Per-game table. Context column varies by market family -- CATCHES/TARGETS
+                  // Per-game table. Context column varies by market family -- CATCHES/TARGETS
   // for a receiving market means something different from COMP/ATT for a
   // passing one. Markets without a hand-picked context column still show
   // opponent, the plotted value, snap %, and result -- nothing is fabricated
   // to fill the gap, the column is just narrower for those.
-  const NFL_TABLE_CONTEXT = {
-    rec: { label: "TARGETS", get: (g) => g.tgt },
-    recYds: { label: "CATCHES", get: (g) => g.rec },
-    longRec: { label: "CATCHES", get: (g) => g.rec },
-    rushYds: { label: "ATTEMPTS", get: (g) => g.rushAtt },
-    rushAtt: { label: "RUSH YDS", get: (g) => g.rushYds },
-    scrim: { label: "TOUCHES", get: (g) => g.rushAtt + g.rec },
-    passYds: { label: "COMP / ATT", get: (g) => `${g.comp}/${g.att}` },
-    passRushYds: { label: "COMP / ATT", get: (g) => `${g.comp}/${g.att}` },
-    comp: { label: "ATTEMPTS", get: (g) => g.att },
-    passAtt: { label: "COMPLETIONS", get: (g) => g.comp },
-    passTd: { label: "PASS YDS", get: (g) => g.passYds },
-    int: { label: "ATTEMPTS", get: (g) => g.att },
-    anytimeTd: { label: "SCRIM YDS", get: (g) => g.rushYds + g.recYds },
-    fgm: { label: "ATTEMPTS", get: (g) => g.fga },
-    xpm: { label: "ATTEMPTS", get: (g) => g.xpa },
-  };
-  const matchupContext = NFL_TABLE_CONTEXT[market];
-  const matchupPrimaryLabel = (marketLabel || market).toUpperCase();
-  const matchupTableColumns = [
-    { key: "opponent", label: "OPPONENT", width: "1.3fr" },
-    { key: "primary", label: matchupPrimaryLabel, align: "right" },
-    ...(matchupContext ? [{ key: "context", label: matchupContext.label, align: "right" }] : []),
-    { key: "snap", label: "SNAP %", align: "right" },
-    { key: "result", label: "RESULT", align: "right", width: "1.4fr" },
-  ];
-  const matchupTableRows = matchupWindow.map((g, i) => ({
-    opponent: `${g.home ? "vs" : "at"} ${g.opp}`,
-    primary: matchupValues[i],
-    context: matchupContext ? matchupContext.get(g) : undefined,
-    snap: g.snapPct == null ? "—" : Math.round(g.snapPct),
-    result: matchupOutcomes[i] ? "OVER" : "UNDER",
-  }));
-
-  // Splits -- computed off the full season log, same convention HitRateSplits
+            // Splits -- computed off the full season log, same convention HitRateSplits
   // documents ("percentages are computed off the full game log, not the
   // chart's filtered view"), not just the display window above.
-  const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
-  const gamesWithRest = allGames.map((g, i, arr) => ({ ...g, restDays: i > 0 ? daysBetween(arr[i - 1].date, g.date) : null }));
-  const restedGames = gamesWithRest.filter((g) => g.restDays !== null && g.restDays >= 6);
-  const homeGamesAll = allGames.filter((g) => g.home);
-  const awayGamesAll = allGames.filter((g) => !g.home);
-  // Team objects in NFL_MATCHUPS carry no `abbr` field of their own -- the
+            // Team objects in NFL_MATCHUPS carry no `abbr` field of their own -- the
   // established convention elsewhere on this page (see gameOppAbbr above) is
   // to read it off any roster player instead. Falling back to oppRoster.label
   // (the full team name) here meant g.opp (an abbreviation like "NYG") could
   // never match it, so this split silently computed zero games every time
   // and the whole row vanished rather than showing a wrong number.
-  const vsOppAbbr = oppRoster.players[0]?.team || oppRoster.label;
-  const vsOppGamesAll = allGames.filter((g) => g.opp === vsOppAbbr);
-  const splitRow = (label, games) => {
-    if (!games.length) return null;
-    const rate = rateOf(games);
-    return {
-      label,
-      rate: games.length >= 2 ? rate : null,
-      count: games.length === 1 ? "1 game only" : `${Math.round(rate * games.length)} of ${games.length}`,
-    };
-  };
-  const matchupSplitRows = [
-    splitRow("At home", homeGamesAll),
-    splitRow("On the road", awayGamesAll),
-    splitRow("With 6+ days rest", restedGames),
-    splitRow(`Against ${vsOppAbbr}`, vsOppGamesAll),
-  ].filter(Boolean);
-
-  // Distribution histogram only makes sense for a market with a small,
+          // Distribution histogram only makes sense for a market with a small,
   // repeating set of integer outcomes (receptions, attempts, TDs) -- a
   // yardage market's values are near-continuous, so a bar per distinct
   // yardage total would be one bar per game, not a real distribution. Shown
@@ -10369,8 +9650,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const [teammateDataWanted, setTeammateDataWanted] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
-  const chartWidth = useElementWidth(chartRef);
-  const isNarrow = useIsNarrow();
+    const isNarrow = useIsNarrow();
 
   // Same breakpoint the roster columns collapse at (see .roster-layout in
   // index.css). Above it the graph card sits in the narrow center column with
@@ -10596,9 +9876,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // date labels instead (see DateAxisTick). Desktop has enough width for
   // logo+abbr+date per bar at any sample size -- axisTickInterval already
   // caps the number of ticks actually drawn, so it never needs this fallback.
-  const manyGames = isNarrow && filtered.length > 10;
-
-  const isBinary = market === "dd" || market === "td";
+    const isBinary = market === "dd" || market === "td";
   const values = filtered.map((g) => statValue(g, market, rebSplit));
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
   const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
@@ -10612,22 +9890,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // tallest bar, but once a real line is set the axis stays put and the
   // handle simply can't be dragged above it.
   const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
-  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
-  const niceStep = (() => {
-    if (isBinary) return 1;
-    const targetTicks = 5;
-    const roughStep = rawMax / targetTicks;
-    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
-    const norm = roughStep / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
-    return Math.max(1, step);
-  })();
-  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
-  const chartTicks = isBinary
-    ? [0, 1]
-    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
-
-  // Filters-panel wiring, mirroring the MLB page. There's no single "next
+          // Filters-panel wiring, mirroring the MLB page. There's no single "next
   // opponent" here -- the opponent is picked from a dropdown -- so the H2H
   // cell is dropped rather than rendered permanently disabled, leaving six
   // sample-size cells instead of seven.
@@ -10658,8 +9921,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
 
   const hits = values.filter((v) => v > effectiveLine).length;
   const hitRate = values.length ? hits / values.length : 0;
-  const edge = avg - effectiveLine;
-  const marketLabel = WNBA_MARKETS.find((m) => m.id === market)?.label ?? "";
+    const marketLabel = WNBA_MARKETS.find((m) => m.id === market)?.label ?? "";
 
   // What this player's market did in the games each absent teammate missed.
   // Counted over their whole real log rather than `filtered`, so the split
@@ -10705,12 +9967,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // minutes/sample-size filters have narrowed the chart down to). This is what
   // lets the metric rail show "Season Avg" and "Graph Avg" as two genuinely
   // different numbers instead of the same value twice.
-  const seasonValuesForMarket = allGames.map((g) => statValue(g, market, rebSplit));
-  const seasonAvgForMarket = seasonValuesForMarket.length
-    ? seasonValuesForMarket.reduce((a, b) => a + b, 0) / seasonValuesForMarket.length
-    : 0;
-
-  // Who this player actually lines up against in the selected matchup -- read
+      // Who this player actually lines up against in the selected matchup -- read
   // off the *other* roster, not the `opponent` filter, so the Game Info badge
   // always describes tonight's game rather than whatever historical opponent
   // the filters happen to be zoomed into. Which roster is "other" depends on
@@ -10731,24 +9988,12 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // badge has to be labelled for what the number actually is. Only while the
   // mock per-category fallback is in play does "rebounds allowed" describe the
   // figure sitting next to it.
-  const defCategoryLabel = wnbaDefIsPointsAllowed(gameOppAbbr) ? "points allowed" : wnbaDefCategoryLabel(market);
-
-  // Detailed rate-stat row: the same columns computed twice, once over the
+    // Detailed rate-stat row: the same columns computed twice, once over the
   // filtered sample the chart is showing and once over the full season, so
   // every cell can carry a "how is she trending" delta underneath it. Shares
   // hoopsRateAgg with the NBA page -- the two leagues' game logs carry the
   // same fields.
-  const rateWindow = useMemo(() => hoopsRateAgg(filtered), [filtered]);
-  const rateSeason = useMemo(() => hoopsRateAgg(allGames), [allGames]);
-  const rateCards = HOOPS_RATE_COLUMNS.map((c) => ({
-    key: c.key,
-    label: c.label,
-    value: `${rateWindow[c.key].toFixed(c.decimals)}${c.suffix || ""}`,
-    delta: fmtStatDelta(rateWindow[c.key] - rateSeason[c.key], c.decimals, c.better, c.suffix || ""),
-  }));
-  const rateGlossary = HOOPS_RATE_COLUMNS.map((c) => ({ key: c.key, ...HOOPS_RATE_GLOSSARY[c.key] }));
-
-  // Game Info's right-hand context slot. MLB fills this with a live forecast
+          // Game Info's right-hand context slot. MLB fills this with a live forecast
   // and park-factor swings; there is no weather or venue-effect data for an
   // indoor sport, so the equivalent pre-game read here is how the opponent
   // ranks defensively in whichever market is selected -- the same numbers the
@@ -10757,38 +10002,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // per game once wnbaDefIsPointsAllowed is true, and the ALLOWS sentence
   // only prints then -- never for the (currently unused, would-be seeded)
   // per-market path this function still supports for NBA's sake.
-  const gameAllowsLine = gameOppDef && wnbaDefIsPointsAllowed(gameOppAbbr)
-    ? `${gameOppAbbr} ALLOWS ${gameOppDef.rating} PTS/G`
-    : null;
-  const gameInfoBadge = gameOppDef && (
-    <>
-      <span style={{ fontSize: 11.5, color: "var(--dim)", whiteSpace: "nowrap" }}>
-        {gameAllowsLine || `vs ${gameOppAbbr} ${defCategoryLabel}`}
-      </span>
-      <span className="mono tnum" style={{ fontWeight: 600, fontSize: 11, color: "var(--text)", whiteSpace: "nowrap" }}>
-        {gameOppDef.rating}
-      </span>
-      <span className="status-pill" style={{ color: tierColor(gameOppTier), whiteSpace: "nowrap" }}>
-        #{gameOppDef.rank} {gameOppTier === "soft" ? "Favorable" : gameOppTier === "tough" ? "Tough" : "Neutral"}
-      </span>
-    </>
-  );
-
-  const gameInfoDetails = gameOppDef && (
-    <>
-      <div style={{ marginBottom: 4 }}>
-        {gameOppRoster.label} rank #{gameOppDef.rank} of {WNBA_TEAMS.length} in {defCategoryLabel} ({gameOppDef.rating}) —
-        {gameOppTier === "soft"
-          ? " one of the softer matchups in the league for this market, which nudges toward the over."
-          : gameOppTier === "tough"
-            ? " one of the tougher matchups in the league for this market, which nudges toward the under."
-            : " a middle-of-the-pack matchup, so the defense isn't the deciding factor here."}
-      </div>
-      {matchup.venue && <div>{matchup.venue}{matchup.city ? ` — ${matchup.city}` : ""}</div>}
-    </>
-  );
-
-  // Player identity: avatar + name/team/pos + season snapshot. Now the top of
+        // Player identity: avatar + name/team/pos + season snapshot. Now the top of
   // the graph card rather than its own bordered panel beside the matchup
   // selector, so it carries only a bottom divider against the detailed stat
   // row underneath. paddingRight reserves room for the Filters button, which
@@ -10796,40 +10010,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // Built only when there is a player. Both places that read it render below
   // the `if (!player)` guard, but constructing the element evaluates every prop
   // eagerly right here -- which is what used to throw before the guard ran.
-  const playerIdentityRow = !player ? null : (
-    <PlayerIdentityRow
-      compact={compact}
-      team={player.team}
-      pos={player.pos}
-      name={player.name}
-      avatar={
-        <PlayerAvatar
-          key={player.id}
-          name={player.name}
-          alt={player.name}
-          sport="wnba"
-          team={player.team}
-          colorMap={WNBA_TEAM_COLORS}
-          headshotSrc={wnbaHeadshot(player.espnId)}
-          status={statusOf(player)}
-          surface="var(--panel)"
-          size={compact ? 48 : 76}
-          inset={compact ? 3 : 5}
-          imgBorder="1px solid var(--line)"
-          fadeIn
-          shadow={`0 4px 14px ${(WNBA_TEAM_COLORS[player.team] || {}).primary || "#000"}40`}
-        />
-      }
-      stats={[
-        { label: "PTS", value: seasonAvg.pts.toFixed(1) },
-        { label: "REB", value: seasonAvg.reb.toFixed(1) },
-        { label: "AST", value: seasonAvg.ast.toFixed(1) },
-        { label: "MIN", value: seasonAvg.min.toFixed(1) },
-      ]}
-    />
-  );
-
-  const teammateModeSummary = teammateChips.length
+    const teammateModeSummary = teammateChips.length
     ? `${teammateChips.filter((c) => c.mode === "with").length} with · ${teammateChips.filter((c) => c.mode === "without").length} without`
     : "Tap to cycle";
 
@@ -10932,172 +10113,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // CHART_HEIGHT: the card now carries the game-info, identity, market,
   // detail-stat and metric rows above the plot, so a shorter chart keeps the
   // whole stack visible together instead of pushing the bars off-screen.
-  const WNBA_GRAPH_CHART_HEIGHT = isNarrow ? 340 : 600;
-
-  const chartBlock = (
-    <div
-      ref={chartRef}
-      style={{
-        position: "relative", boxSizing: "border-box", height: WNBA_GRAPH_CHART_HEIGHT,
-        // A nested strip, not a second card: the graph card's own wrapper
-        // already supplies the border/shadow, so this only needs a subtle
-        // background to read as its own section without a competing outline.
-        background: "var(--surface-2)", borderRadius: "var(--r-md)",
-        padding: isNarrow ? "16px 6px 10px" : "16px 16px 8px",
-      }}
-    >
-      {/* The launcher owns the popover, bottom sheet, click-outside and
-           Escape handling (shared with the other sports pages). Lives inside
-           the chart's own container (not the identity/header card) so it
-           reads as part of the chart -- anchored to this div's top-right
-           corner, in the empty space above the bars, on both mobile and
-           desktop alike. */}
-      <FilterPanelLauncher
-        open={filtersOpen}
-        onOpenChange={(v) => { setFiltersOpen(v); if (v) setTeammateDataWanted(true); }}
-        activeCount={activeFilterCount}
-        compact={compact}
-        anchored
-      >
-        {filtersBody}
-      </FilterPanelLauncher>
-      <ContextStatToggle stat={NBA_CONTEXT_STAT} value={showContext} onChange={setShowContext} compact={isNarrow} />
-      <div style={{ height: "100%", width: "100%", touchAction: "pan-y" }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={filtered.map((g, i) => ({
-            idx: i + 1,
-            opp: g.opp,
-            home: g.home,
-            // The playoff and venue marks ride in the axis key's third and
-            // fourth `__` segments, read by TeamAxisTick. Recharts keys a
-            // category axis by this string, so anything a tick draws has to
-            // travel inside it: the tick component is handed the axis value,
-            // not the row.
-            axisKey: `${g.opp}__${g.date}__${isPlayoffGame(g) ? "po" : ""}__${g.home === false ? "@" : ""}`,
-            value: statValue(g, market, rebSplit),
-            date: g.date,
-            minutes: g.minutes,
-            home: g.home,
-            playoff: isPlayoffGame(g),
-          }))}
-          // right clears LineHandle, which anchors to the container's right
-          // edge: it needs right:8 + its 52px minimum, less the 6px the
-          // narrow chart wrapper already pads, so 54 is the floor. 30 left
-          // the pill sitting on top of the last bar.
-          margin={{ top: 10, right: isNarrow ? 64 : 60, bottom: manyGames ? 30 : (isNarrow ? 42 : 78), left: isNarrow ? 0 : 20 }}
-          barCategoryGap={isNarrow ? "4%" : "6%"}
-        >
-          {/* Invisible (stroke="transparent"), not removed: rendered fully
-               open per the PropsMadness reference (no grid lines, just
-               floating y-tick labels), but LineHandle's drag math
-               (getPlotBoundsY, above) measures the plot's top/bottom by
-               querying this component's own rendered .recharts-cartesian-
-               grid-horizontal line elements -- removing the component
-               entirely would silently break the drag handle instead of
-               just hiding a visual grid. */}
-          <CartesianGrid stroke="transparent" vertical={false} />
-          <XAxis
-            dataKey={manyGames ? "date" : "axisKey"}
-            interval={manyGames ? Math.max(0, Math.ceil(filtered.length / (isNarrow ? 5 : 8)) - 1) : axisTickInterval(filtered.length, isNarrow, chartWidth)}
-            tick={manyGames ? (props) => <DateAxisTick {...props} compact={isNarrow} /> : (props) => <TeamAxisTick {...props} logoFn={wnbaTeamLogo} compact={isNarrow} />}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            domain={[0, chartMax]}
-            ticks={chartTicks}
-            tick={{ fill: "var(--chart-ink)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            allowDecimals={false}
-            width={isNarrow ? 32 : 60}
-            label={isNarrow ? undefined : { value: marketLabel, angle: -90, position: "insideLeft", offset: 10, style: { textAnchor: "middle", fill: "var(--chart-ink)", fontSize: 11, fontWeight: 600 } }}
-          />
-          <Tooltip
-            content={<ChartTooltip effectiveLine={effectiveLine} isBinary={isBinary} marketLabel={marketLabel} logoFn={wnbaTeamLogo} teams={WNBA_TEAMS.length} />}
-            cursor={{ fill: "var(--surface-3)", opacity: 0.5 }}
-          />
-          <Bar dataKey="value" radius={[3, 3, 0, 0]} minPointSize={(v) => (v === 0 ? 3 : 0)}>
-            {filtered.map((g, i) => {
-              const v = statValue(g, market, rebSplit);
-              const fill = isBinary ? (v === 1 ? CHART_GREEN : "transparent") : (v > effectiveLine ? CHART_GREEN : CHART_RED);
-              // Decision 1: a playoff game has to look like one. An outline
-              // rather than a colour, because every colour here is spoken for
-              // -- green/red already mean cleared/missed, and a playoff game is
-              // neither good nor bad, it is a different kind of game.
-              return isPlayoffGame(g)
-                ? <Cell key={i} fill={fill} stroke="var(--chart-ink)" strokeWidth={1.5} strokeDasharray="2 2" />
-                : <Cell key={i} fill={fill} />;
-            })}
-            <LabelList dataKey="value" content={(props) => <BarValueLabel {...props} isBinary={isBinary} />} />
-          </Bar>
-          {contextStatChartParts(NBA_CONTEXT_STAT, showContext, isNarrow)}
-          {/* Rendered after Bar (not before) so the dashed threshold line
-               draws on top of the bars instead of being clipped underneath
-               them -- later JSX = higher SVG paint order in Recharts. */}
-          {!isBinary && <ReferenceLine y={dragLine !== null ? dragLine : effectiveLine} stroke="var(--amber)" strokeDasharray="4 4" />}
-        </ComposedChart>
-      </ResponsiveContainer>
-      </div>
-      {!isBinary && (
-        <LineHandle
-          value={effectiveLine}
-          onChange={(v) => setLine(v)}
-          onDragValue={setDragLine}
-          min={0}
-          max={chartMax}
-          containerRef={chartRef}
-        />
-      )}
-    </div>
-  );
-
-  // Game-log ledger table -- behind the same "▸ Game Logs (n)" disclosure the
+      // Game-log ledger table -- behind the same "▸ Game Logs (n)" disclosure the
   // MLB, NFL and NBA pages use. Its own storageKey, so collapsing it here
   // doesn't also collapse theirs.
-  const ledgerTable = (
-    <CollapsibleSection title={`Game Logs (${filtered.length})`} storageKey="wnba_game_logs_open">
-      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <div style={{ minWidth: 580 }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
-              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>Min</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
-            </div>
-            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
-              {filtered.slice().reverse().map((g, i) => {
-                const v = statValue(g, market, rebSplit);
-                const over = v > effectiveLine;
-                const push = !isBinary && v === effectiveLine;
-                const def = getWNBADefRank(market, g.opp);
-                const tier = def ? defTier(def.rank, WNBA_TEAMS.length) : null;
-                return (
-                  <div key={g.date} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
-                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>
-                      {g.date}
-                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
-                    </div>
-                    <div>{g.opp}</div>
-                    <div style={{ color: def ? tierColor(tier) : "var(--dim)" }}>{def ? `#${def.rank}` : "—"}</div>
-                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
-                    <div>{g.minutes}</div>
-                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
-                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : effectiveLine}</div>
-                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
-                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </CollapsibleSection>
-  );
-
-  // A slate item we cannot render has to say so. Returning null here, or
+    // A slate item we cannot render has to say so. Returning null here, or
   // quietly omitting the game from the list, is the failure mode this page
   // used to have: four of seven games vanished with no indication anything
   // was missing.
@@ -11120,11 +10139,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   ) : null;
 
 
-  const centerBreadcrumbLabel = matchup
-    ? `${matchup.teamA.abbr || matchup.teamA.label} @ ${matchup.teamB.abbr || matchup.teamB.label} · ${new Date(matchup.date).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`
-    : "";
-
-  const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
+    const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
   const pagePickId = playerPagePickId(
     "wnba", playerId, market,
     line != null ? effectiveLine : null,
@@ -11187,79 +10202,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const matchupValues = useMemo(() => matchupWindow.map((g) => statValue(g, market, rebSplit)), [matchupWindow, market, rebSplit]);
   const matchupOutcomes = matchupValues.map((v) => v > effectiveLine);
   const matchupHits = matchupOutcomes.filter(Boolean).length;
-  const matchupPct = matchupWindow.length ? Math.round((matchupHits / matchupWindow.length) * 100) : 0;
-  const matchupSentence = `Over in ${matchupHits} of the last ${matchupWindow.length} games.`;
-
-  // Both from lib/support.js, so this block and the board's verdict pill
+      // Both from lib/support.js, so this block and the board's verdict pill
   // cannot disagree about the same prop -- see readFor.
   const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
-  const matchupHomeGames = matchupWindow.filter((g) => g.home);
-  const matchupAwayGames = matchupWindow.filter((g) => !g.home);
-  const rateOf = (games) => {
-    const vals = games.map((g) => statValue(g, market, rebSplit));
-    return vals.length ? vals.filter((v) => v > effectiveLine).length / vals.length : null;
-  };
-  const matchupHomeRate = matchupHomeGames.length >= 2 ? rateOf(matchupHomeGames) : null;
-  const matchupAwayRate = matchupAwayGames.length >= 2 ? rateOf(matchupAwayGames) : null;
-  const matchupConsistencyClause = matchupHomeRate === null || matchupAwayRate === null
-    ? "Too few home or road games in this window to compare the two."
-    : Math.abs(matchupHomeRate - matchupAwayRate) <= 0.2
-    ? "The rate holds up both home and away."
-    : matchupHomeRate > matchupAwayRate
-    ? "The rate is stronger at home than on the road."
-    : "The rate is stronger on the road than at home.";
-  const matchupReadSentence = `${matchupWindow.length} games is enough for a lean, not enough for certainty. ${matchupConsistencyClause}`;
-  const matchupConfidenceNote = matchupWindow.length < 25
-    ? `Based on ${matchupWindow.length} finished game${matchupWindow.length === 1 ? "" : "s"}. Grows to strong at 25.`
-    : null;
-
-  const WNBA_TABLE_CONTEXT = {
-    pts: { label: "MINUTES", get: (g) => g.minutes },
-    reb: { label: "MINUTES", get: (g) => g.minutes },
-    ast: { label: "MINUTES", get: (g) => g.minutes },
-    stl: { label: "MINUTES", get: (g) => g.minutes },
-    blk: { label: "MINUTES", get: (g) => g.minutes },
-    "3pm": { label: "3PA", get: (g) => g.fg3a },
-    ftm: { label: "FTA", get: (g) => g.fta },
-  };
-  const matchupContext = WNBA_TABLE_CONTEXT[market];
-  const matchupPrimaryLabel = (marketLabel || market).toUpperCase();
-  const matchupTableColumns = [
-    { key: "opponent", label: "OPPONENT", width: "1.3fr" },
-    { key: "primary", label: matchupPrimaryLabel, align: "right" },
-    ...(matchupContext ? [{ key: "context", label: matchupContext.label, align: "right" }] : []),
-    { key: "result", label: "RESULT", align: "right", width: "1.4fr" },
-  ];
-  const matchupTableRows = matchupWindow.map((g, i) => ({
-    opponent: `${g.home ? "vs" : "at"} ${g.opp}`,
-    primary: isBinary ? (matchupValues[i] ? "Yes" : "No") : matchupValues[i],
-    context: matchupContext ? matchupContext.get(g) : undefined,
-    result: matchupOutcomes[i] ? "OVER" : "UNDER",
-  }));
-
-  const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
-  const gamesWithRest = allGames.map((g, i, arr) => ({ ...g, restDays: i > 0 ? daysBetween(arr[i - 1].date, g.date) : null }));
-  const restedGames = gamesWithRest.filter((g) => g.restDays !== null && g.restDays >= 2);
-  const homeGamesAll = allGames.filter((g) => g.home);
-  const awayGamesAll = allGames.filter((g) => !g.home);
-  const vsOppGamesAll = allGames.filter((g) => g.opp === gameOppAbbr);
-  const splitRow = (label, games) => {
-    if (!games.length) return null;
-    const rate = rateOf(games);
-    return {
-      label,
-      rate: games.length >= 2 ? rate : null,
-      count: games.length === 1 ? "1 game only" : `${Math.round(rate * games.length)} of ${games.length}`,
-    };
-  };
-  const matchupSplitRows = [
-    splitRow("At home", homeGamesAll),
-    splitRow("On the road", awayGamesAll),
-    splitRow("With 2+ days rest", restedGames),
-    splitRow(`Against ${gameOppAbbr}`, vsOppGamesAll),
-  ].filter(Boolean);
-
-  const WNBA_COUNTABLE_MARKETS = new Set(["pts", "reb", "ast", "stl", "blk", "3pm", "ftm"]);
+                                            const WNBA_COUNTABLE_MARKETS = new Set(["pts", "reb", "ast", "stl", "blk", "3pm", "ftm"]);
   const matchupBins = useMemo(() => {
     if (!WNBA_COUNTABLE_MARKETS.has(market)) return null;
     const counts = new Map();
@@ -11275,43 +10221,6 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // `useMemo` renders fewer hooks than the previous pass and React throws
   // "Rendered fewer hooks than expected" instead of showing this message. The
   // guard was unreachable for exactly that reason.
-  if (!player) {
-    const missedName = jumpMissed ? (jumpRequest.current && jumpRequest.current.name) || "That player" : null;
-    const firstOnSlate = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
-    return (
-      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
-        {slateBanner}
-        <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
-          {jumpMissed ? (
-            <>
-              <div style={{ color: "var(--text)", marginBottom: 6 }}>
-                {missedName} isn&rsquo;t on a WNBA game we can read today.
-              </div>
-              <div style={{ lineHeight: 1.5 }}>
-                They were in the feed, so their game log loaded there, but no game on today&rsquo;s
-                slate lists them and there is no season log for them here. Nothing has been
-                substituted &mdash; another player&rsquo;s chart under their name would be worse
-                than this message.
-              </div>
-              {firstOnSlate && (
-                <button
-                  type="button"
-                  className="chip"
-                  style={{ marginTop: 12 }}
-                  onClick={() => selectPlayer(firstOnSlate.id)}
-                >
-                  Show {firstOnSlate.name} instead
-                </button>
-              )}
-            </>
-          ) : (
-            "No WNBA player game logs have loaded yet."
-          )}
-        </div>
-      </div>
-    );
-  }
-
 
 
 
@@ -11526,6 +10435,56 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       onOpen: () => setTeammateDataWanted(true),
     });
   }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates]);
+
+  // Below the last hook, which is the whole point of where it sits.
+  //
+  // It used to sit above absenceEffectById and v3Lineups, so a render that
+  // could not resolve the player ran two fewer hooks than the render before it
+  // and React threw "Rendered fewer hooks than expected" -- straight to the
+  // error boundary, on any WNBA player page reached from the feed. The other
+  // three sport pages already put their guard last and carry a note saying so;
+  // this one had drifted above two hooks that were added later.
+  //
+  // Neither hook needs a player: one indexes `absences` by id, the other builds
+  // the lineup sheet from teammateSplits. Both are safe to run on the way to
+  // the not-found message.
+  if (!player) {
+    const missedName = jumpMissed ? (jumpRequest.current && jumpRequest.current.name) || "That player" : null;
+    const firstOnSlate = (matchup?.teamA?.players || [])[0] || (matchup?.teamB?.players || [])[0];
+    return (
+      <div className="page-shell" style={{ maxWidth: 1920, margin: "0 auto", boxSizing: "border-box" }}>
+        {slateBanner}
+        <div className="panel" style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+          {jumpMissed ? (
+            <>
+              <div style={{ color: "var(--text)", marginBottom: 6 }}>
+                {missedName} isn&rsquo;t on a WNBA game we can read today.
+              </div>
+              <div style={{ lineHeight: 1.5 }}>
+                They were in the feed, so their game log loaded there, but no game on today&rsquo;s
+                slate lists them and there is no season log for them here. Nothing has been
+                substituted &mdash; another player&rsquo;s chart under their name would be worse
+                than this message.
+              </div>
+              {firstOnSlate && (
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ marginTop: 12 }}
+                  onClick={() => selectPlayer(firstOnSlate.id)}
+                >
+                  Show {firstOnSlate.name} instead
+                </button>
+              )}
+            </>
+          ) : (
+            "No WNBA player game logs have loaded yet."
+          )}
+        </div>
+      </div>
+    );
+  }
+
 
   const v2Page = (
     <PlayerDetailV2
@@ -14758,8 +13717,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   React.useEffect(() => { setDragLine(null); }, [market, playerId]);
   const [showStatInfo, setShowStatInfo] = useState(false);
   const chartRef = React.useRef(null);
-  const chartWidth = useElementWidth(chartRef);
-  const isNarrow = useIsNarrow();
+    const isNarrow = useIsNarrow();
   // Same breakpoint the roster columns collapse to a single stack at (see
   // .roster-layout in index.css) -- once that happens, everything used to
   // render in one long column with the tab content at the very bottom, so
@@ -14967,9 +13925,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // Same chart field either way (see the MLB chartData mapper), but it means
   // plate appearances for a batter and innings for a starter, so the axis
   // label and its decimal handling follow whoever is mounted.
-  const mlbContextStat = isPitcher ? MLB_PITCHER_CONTEXT_STAT : MLB_BATTER_CONTEXT_STAT;
-
-  // Which side of the matchup the currently selected player is on -- lets
+    // Which side of the matchup the currently selected player is on -- lets
   // the Bullpen tab below pick the correct "opposing" bullpen regardless of
   // whether the player came from the home roster or its live opponent's.
   const playerOnOppSide = !!(liveOppRoster && liveOppRoster.players.some((p) => p.id === playerId));
@@ -15218,22 +14174,16 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // and the line underneath is that same rate stat's full-season baseline
   // for comparison, the same "your current view vs. the season" framing the
   // line/edge numbers below already use.
-  const battingWindow = useMemo(() => (isPitcher ? null : battingRateAgg(filtered)), [filtered, isPitcher]);
-  const battingSeason = useMemo(() => (isPitcher ? null : battingRateAgg(allGames)), [allGames, isPitcher]);
+    const battingSeason = useMemo(() => (isPitcher ? null : battingRateAgg(allGames)), [allGames, isPitcher]);
 
   // Pitcher rate-stat bar equivalent (IP/K/ERA/WHIP/H9/BB9) -- same "current
   // filtered view vs. full-season baseline" framing as the batter bar above.
-  const pitchingWindow = useMemo(() => (isPitcher ? pitchingRateAgg(filtered) : null), [filtered, isPitcher]);
-  const pitchingSeason = useMemo(() => (isPitcher ? pitchingRateAgg(allGames) : null), [allGames, isPitcher]);
-
-  // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
+      // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
   // date labels instead (see DateAxisTick). Desktop has enough width for
   // logo+abbr+date per bar at any sample size -- axisTickInterval already
   // caps the number of ticks actually drawn, so it never needs this fallback.
-  const manyGames = isNarrow && filtered.length > 10;
-
-  const isBinary = false;
+    const isBinary = false;
   // Filtered to finite numbers -- for one render right after switching
   // between a batter and the starting pitcher, `allGames`/`market` can still
   // be the previous player's (the game-log fetch and the market-reset effect
@@ -15246,8 +14196,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     .map((g) => (isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market)))
     .filter((v) => Number.isFinite(v));
   const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-  const med = median(values);
-  const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
+    const effectiveLine = isBinary ? 0.5 : (line === null ? ceilToHalfOdd(avg) : line);
   // Deliberately keyed off `line` (only non-null once the user has actually
   // dragged the handle to a custom value), not `effectiveLine` -- including
   // the live drag position here made the axis grow a step every time the
@@ -15258,21 +14207,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // tallest bar, but once a real line is set the axis stays put and the
   // handle simply can't be dragged above it.
   const topValue = Math.max(...values, line === null ? ceilToHalfOdd(avg) : 0, 1);
-  const rawMax = isBinary ? 1 : topValue + Math.max(1, Math.ceil(topValue * 0.05));
-  const niceStep = (() => {
-    if (isBinary) return 1;
-    const targetTicks = 5;
-    const roughStep = rawMax / targetTicks;
-    const mag = Math.pow(10, Math.floor(Math.log10(roughStep || 1)));
-    const norm = roughStep / mag;
-    const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 3 ? 3 : norm <= 5 ? 5 : 10) * mag;
-    return Math.max(1, step);
-  })();
-  const chartMax = isBinary ? 1 : Math.ceil(rawMax / niceStep) * niceStep;
-  const chartTicks = isBinary
-    ? [0, 1]
-    : Array.from({ length: chartMax / niceStep + 1 }, (_, i) => i * niceStep);
-  // The line the page is currently *reading against*, which is the dragged one
+          // The line the page is currently *reading against*, which is the dragged one
   // while the reader is exploring and the posted one otherwise. Everything
   // derived from a comparison uses this; `effectiveLine` stays the market
   // reference, so the verdict row can say which number was actually posted and
@@ -15556,182 +14491,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // IP/K/ERA/WHIP/H9/BB9) + its info-glossary toggle -- same data/markup as
   // before, just recessed into the graph card's header instead of standing
   // as its own bordered panel below the chart.
-  const sampleStatsRow = !isPitcher
-    ? (battingWindow && battingSeason && (() => {
-        const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
-          const sign = diff < 0 ? "-" : "+";
-          const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
-          const rounded = parseFloat(diff.toFixed(decimals));
-          const color = rounded === 0 || higherIsBetter === null
-            ? "var(--dim)"
-            : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
-          return { text, color };
-        };
-        const cards = [
-          { key: "pa", label: "PA", value: battingWindow.pa.toFixed(1), delta: fmtDelta(battingWindow.pa - battingSeason.pa, 1, null) },
-          { key: "hits", label: "Hits", value: battingWindow.hits.toFixed(1), delta: fmtDelta(battingWindow.hits - battingSeason.hits, 1, true) },
-          { key: "avg", label: "AVG", value: battingWindow.avg.toFixed(3), delta: fmtDelta(battingWindow.avg - battingSeason.avg, 3, true) },
-          { key: "obp", label: "OBP", value: battingWindow.obp.toFixed(3), delta: fmtDelta(battingWindow.obp - battingSeason.obp, 3, true) },
-          { key: "babip", label: "BABIP", value: battingWindow.babip.toFixed(3), delta: fmtDelta(battingWindow.babip - battingSeason.babip, 3, true) },
-          { key: "kpct", label: "K%", value: `${battingWindow.kpct.toFixed(1)}%`, delta: fmtDelta(battingWindow.kpct - battingSeason.kpct, 1, false, "%") },
-        ];
-        const glossary = [
-          { key: "pa", label: "PA — Plate Appearances", body: "Every time a player completes a turn at bat — including walks and getting hit by a pitch, not just official at-bats. It's basically \"how many chances did they get.\" More PA usually means more opportunities to rack up hits, RBIs, etc." },
-          { key: "hits", label: "Hits", body: "How many times the player got a hit (single, double, triple, or home run) per game in the sample shown." },
-          { key: "avg", label: "AVG — Batting Average", body: "Hits divided by at-bats. The classic \"batting average\" you've probably heard on a broadcast — shown here as 0.300 instead of the usual \".300\". Around 0.250 is roughly average for MLB, 0.300+ is very good." },
-          { key: "obp", label: "OBP — On-Base Percentage", body: "How often a player reaches base by any means — hit, walk, or hit-by-pitch — not just hits. Many bettors and analysts consider it a better gauge of a hitter's value than AVG, since it also credits players who draw a lot of walks." },
-          { key: "babip", label: "BABIP — Batting Average on Balls In Play", body: "Batting average counting only balls the player actually put in play (strikeouts and home runs don't count). It's a useful \"regression\" signal — if it's way above or below a player's normal range, their recent hot or cold streak may not last much longer." },
-          { key: "kpct", label: "K% — Strikeout Rate", body: "The percentage of plate appearances that end in a strikeout. Lower is better for a hitter — a high K% means they're missing a lot, which can make Over bets on contact-based props (hits, total bases) riskier." },
-        ];
-        return (
-          <div style={{ position: "relative", background: "rgba(0,0,0,0.16)", borderBottom: "1px solid var(--line)" }}>
-            <div style={{
-              display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
-              padding: compact ? "6px 10px" : "8px 20px",
-            }}>
-              {cards.map((c) => (
-                <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
-                  <div className="micro-label" style={{ fontSize: compact ? 9.5 : 10.5, marginBottom: 2 }}>
-                    {c.label}
-                  </div>
-                  <div className="mono stat-value" style={{ fontSize: compact ? 14 : 17, color: "var(--text)" }}>{c.value}</div>
-                  <div className="mono tnum" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
-                </div>
-              ))}
-              <div
-                onClick={() => setShowStatInfo((v) => !v)}
-                title="What do these stats mean?"
-                role="button"
-                aria-expanded={showStatInfo}
-                className="mono"
-                style={{
-                  position: "absolute", top: 8, right: 10,
-                  cursor: "pointer",
-                  width: 18, height: 18, borderRadius: "50%",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 11, fontWeight: 700,
-                  border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
-                  color: showStatInfo ? "var(--amber)" : "var(--dim)",
-                  background: showStatInfo ? "var(--amber-dim)" : "transparent",
-                }}
-              >
-                i
-              </div>
-            </div>
-            {showStatInfo && (
-              <div style={{ padding: "12px 14px", background: "var(--panel2)", borderTop: "1px solid var(--line)" }}>
-                <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
-                  A quick guide to these stats, if you're newer to baseball props. One thing that trips people up:
-                  the small card above (H/HR/RBI/R) is always the <strong>full season</strong> average, while the
-                  numbers below are for whatever your filters are currently showing — so "Hits" here and "H" up
-                  there can show different values for the same player at the same time.
-                </div>
-                {glossary.map((g) => (
-                  <div key={g.key} style={{ marginBottom: 10 }}>
-                    <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
-                      {g.label}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
-                      {g.body}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })())
-    : (pitchingWindow && pitchingSeason && (() => {
-        const fmtDelta = (diff, decimals, higherIsBetter, suffix = "") => {
-          const sign = diff < 0 ? "-" : "+";
-          const text = `${sign}${Math.abs(diff).toFixed(decimals)}${suffix}`;
-          const rounded = parseFloat(diff.toFixed(decimals));
-          const color = rounded === 0 || higherIsBetter === null
-            ? "var(--dim)"
-            : (rounded > 0) === higherIsBetter ? "var(--green)" : "var(--red)";
-          return { text, color };
-        };
-        const cards = [
-          { key: "ip", label: "IP", value: pitchingWindow.ip.toFixed(1), delta: fmtDelta(pitchingWindow.ip - pitchingSeason.ip, 1, null) },
-          { key: "k", label: "K", value: pitchingWindow.k.toFixed(1), delta: fmtDelta(pitchingWindow.k - pitchingSeason.k, 1, true) },
-          { key: "era", label: "ERA", value: pitchingWindow.era.toFixed(2), delta: fmtDelta(pitchingWindow.era - pitchingSeason.era, 2, false) },
-          { key: "whip", label: "WHIP", value: pitchingWindow.whip.toFixed(2), delta: fmtDelta(pitchingWindow.whip - pitchingSeason.whip, 2, false) },
-          { key: "h9", label: "H/9", value: pitchingWindow.h9.toFixed(1), delta: fmtDelta(pitchingWindow.h9 - pitchingSeason.h9, 1, false) },
-          { key: "bb9", label: "BB/9", value: pitchingWindow.bb9.toFixed(1), delta: fmtDelta(pitchingWindow.bb9 - pitchingSeason.bb9, 1, false) },
-        ];
-        const glossary = [
-          { key: "ip", label: "IP — Innings Pitched", body: "How many innings the pitcher worked, on average, in the games shown. More innings usually means a start went deep and went well; a short outing usually means they got pulled early (hit hard, high pitch count, etc.)." },
-          { key: "k", label: "K — Strikeouts", body: "Strikeouts recorded per game in the sample shown. Higher is generally better for a pitcher — more swings and misses, less contact for the opposing lineup." },
-          { key: "er", label: "ER — Earned Runs (in the card above)", body: "A raw count of earned runs allowed per game — runs that scored without help from a fielding error. It's not adjusted for how long the pitcher was out there, which is exactly what ERA (below) fixes." },
-          { key: "era", label: "ERA — Earned Run Average", body: "Earned runs allowed per 9 innings pitched — ER × 9 ÷ IP. This is the standardized version of ER above: 3 earned runs in a 3-inning start (bad) and 3 earned runs in a 7-inning start (fine) both just say \"ER: 3\", but they produce very different ERAs. Lower is better; under ~4.00 is solid, under 3.00 is excellent." },
-          { key: "whip", label: "WHIP — Walks + Hits per Inning Pitched", body: "How many baserunners (via walk or hit) a pitcher allows per inning, on average. Lower is better — a quick read on how often they're letting hitters reach base, independent of whether those runners actually score." },
-          { key: "h9", label: "H/9 — Hits Allowed per 9", body: "Hits allowed per 9 innings pitched. Lower is better — a good gauge of how hittable a pitcher has been lately, useful context for Over/Under bets on the opposing lineup's hits props too." },
-          { key: "bb9", label: "BB/9 — Walks Allowed per 9", body: "Walks allowed per 9 innings pitched. Lower is better — a pitcher walking a lot of batters is giving up free baserunners, and it's often a sign their command is off that night." },
-        ];
-        return (
-          <div style={{ position: "relative", background: "rgba(0,0,0,0.16)", borderBottom: "1px solid var(--line)" }}>
-            <div style={{
-              display: "flex", justifyContent: "center", gap: compact ? 14 : 26, flexWrap: "wrap",
-              padding: compact ? "6px 10px" : "8px 20px",
-            }}>
-              {cards.map((c) => (
-                <div key={c.key} style={{ textAlign: "center", minWidth: compact ? 42 : 52 }}>
-                  <div className="micro-label" style={{
-                    fontSize: compact ? 9.5 : 10.5, marginBottom: 2,
-                    textDecoration: c.key === "k" && market === "p_k" ? "underline var(--amber)" : "none",
-                    textUnderlineOffset: 3,
-                  }}>
-                    {c.label}
-                  </div>
-                  <div className="mono stat-value" style={{ fontSize: compact ? 14 : 17, color: "var(--text)" }}>{c.value}</div>
-                  <div className="mono tnum" style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: c.delta.color }}>{c.delta.text}</div>
-                </div>
-              ))}
-              <div
-                onClick={() => setShowStatInfo((v) => !v)}
-                title="What do these stats mean?"
-                role="button"
-                aria-expanded={showStatInfo}
-                className="mono"
-                style={{
-                  position: "absolute", top: 8, right: 10,
-                  cursor: "pointer",
-                  width: 18, height: 18, borderRadius: "50%",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 11, fontWeight: 700,
-                  border: `1px solid ${showStatInfo ? "var(--amber)" : "var(--line)"}`,
-                  color: showStatInfo ? "var(--amber)" : "var(--dim)",
-                  background: showStatInfo ? "var(--amber-dim)" : "transparent",
-                }}
-              >
-                i
-              </div>
-            </div>
-            {showStatInfo && (
-              <div style={{ padding: "12px 14px", background: "var(--panel2)", borderTop: "1px solid var(--line)" }}>
-                <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10, fontStyle: "italic" }}>
-                  A quick guide to these stats, if you're newer to baseball props. Two things that trip people up:
-                  the small card above (K/ER/BB/H) is always the <strong>full season</strong> average, while the
-                  numbers below are for whatever your filters are currently showing — and "ER" up there is a
-                  different kind of stat than "ERA" below (see those two entries first if that's what brought you here).
-                </div>
-                {glossary.map((g) => (
-                  <div key={g.key} style={{ marginBottom: 10 }}>
-                    <div className="oswald" style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>
-                      {g.label}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4 }}>
-                      {g.body}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })());
-
-  // Line hero row -- replaces the old stacked "line value" block plus its
+    // Line hero row -- replaces the old stacked "line value" block plus its
   // separate 3-box Hit Rate / Average / Edge grid with one inline strip:
   // Hit Rate on the left, the draggable line value centered and large,
   // Average + Edge on the right.
@@ -16021,57 +14781,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   );
 
   // Game-log ledger table -- unchanged, still directly under the graph card.
-  const ledgerTable = (
-    <CollapsibleSection title={`Game Logs (${filtered.length})`} storageKey="mlb_game_logs_open">
-      <div style={{ border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <div style={{ minWidth: 580 }}>
-            <div className="mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "10px 14px", fontSize: 11, color: "var(--dim)", borderBottom: "1px solid var(--line)", textTransform: "uppercase", textAlign: "center" }}>
-              <div>#</div><div>Date</div><div>Opp</div><div>Def#</div><div>Loc</div><div>{isPitcher ? "IP" : "PA"}</div><div>{marketLabel}</div><div>Line</div><div>Result</div>
-            </div>
-            <div style={{ maxHeight: 300, overflowY: "auto", overflowX: "hidden" }}>
-              {filtered.slice().reverse().map((g, i) => {
-                const v = isPitcher ? statValueMLBPitcher(g, market) : statValueMLB(g, market);
-                const over = v > liveLine;
-                const push = !isBinary && v === liveLine;
-                const def = mlbDefForMarket(g.opp, market);
-                const tier = def ? mlbDefTier(def.rank) : null;
-                return (
-                  <div key={`${g.date}-${i}`} className="ledger-row mono" style={{ display: "grid", gridTemplateColumns: "5fr 9fr 6fr 6fr 6fr 6fr 7fr 6fr 7fr", padding: "9px 14px", fontSize: 12.5, textAlign: "center" }}>
-                    <div style={{ color: "var(--dim)" }}>{filtered.length - i}</div>
-                    <div>
-                      {g.date}
-                      {isPlayoffGame(g) && <PlayoffTag compact style={{ marginLeft: 5 }} />}
-                    </div>
-                    <div>{g.opp}</div>
-                    <div
-                      title={def ? `#${def.rank} of ${def.of} in ${def.label} (${def.value})` : undefined}
-                      style={{ color: tier === "soft" ? "var(--green)" : tier === "tough" ? "var(--red)" : "var(--dim)" }}
-                    >{def ? `#${def.rank}` : "—"}</div>
-                    <div style={{ color: "var(--dim)" }}>{g.home ? "Home" : "Away"}</div>
-                    <div>{isPitcher ? formatOuts(g.outs) : g.pa}</div>
-                    <div style={{ color: "var(--text)" }}>{isBinary ? (v === 1 ? "Yes" : "No") : v}</div>
-                    <div style={{ color: "var(--dim)" }}>{isBinary ? "—" : liveLine}</div>
-                    <div style={{ color: push ? "var(--dim)" : over ? "var(--green)" : "var(--red)", fontWeight: 600 }}>
-                      {isBinary ? (v === 1 ? "YES" : "NO") : (push ? "PUSH" : over ? "OVER" : "UNDER")}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 20, fontSize: 12, color: "var(--dim)" }}>
-        Live 2026 regular-season game logs (MLB Stats API) for the {teamRoster.label}{oppRoster ? ` and ${oppRoster.label}` : ""} lineups shown above, refreshed on load and every 15 minutes
-        {gameLogUpdatedAt ? ` — data as of ${new Date(gameLogUpdatedAt).toLocaleTimeString()}` : ""}.
-        Defensive matchup ranks are real team ERA, refreshed nightly.
-      </div>
-    </CollapsibleSection>
-  );
-
-  // Matchup + market selectors -- picking one of today's real games
+    // Matchup + market selectors -- picking one of today's real games
   // (see fetchMLBDaySlate) sets the "our side" team, and its real next
   // scheduled opponent (see fetchMLBTeamNextGame) populates the other
   // roster panel -- the same "pick a matchup, see its two rosters"
@@ -16110,25 +14820,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   const matchupGroups = matchupOptions.length ? [{ label: mlbSlateDayLabel, matchups: matchupOptions }] : [];
   const matchupEmptyLabel = mlbSlate ? "No games today" : "Loading today's games…";
 
-  const matchupSelectorBlock = (
-    <div style={{ display: "flex", justifyContent: "center", marginBottom: 8, marginTop: compact ? 14 : 20, width: compact ? "100%" : "auto" }}>
-      {/* GameSelect rather than a native <select>: this was the only sport
-          page still on the plain control, so it was the only one whose game
-          dropdown showed no team logos. Grouped under a single day heading
-          because this slate is always exactly one day (fetchMLBDaySlate), as
-          opposed to NFL/WNBA which span a week. */}
-      <GameSelect
-        groups={matchupGroups}
-        value={activeMatchupId}
-        logoFn={mlbTeamLogo}
-        compact={compact}
-        emptyLabel={matchupEmptyLabel}
-        onChange={pickMatchup}
-      />
-    </div>
-  );
-
-  // Player identity row: avatar + name/team/pos + season snapshot
+    // Player identity row: avatar + name/team/pos + season snapshot
   // (H/HR/RBI/R, or K/ER/BB/H for pitchers) -- now the top of the blended
   // graph card (see graphCard) instead of its own bordered panel next to
   // the matchup selector, so it no longer carries its own background/
@@ -16362,16 +15054,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // against Toronto got a breadcrumb reading "NYY @ TORONTO BLUE JAYS" over a
   // page whose venue cell said Yankee Stadium. nextGame.home has always known
   // the answer (see fetchMLBTeamNextGame); the label just never asked.
-  const centerBreadcrumbLabel = nextGame
-    ? (() => {
-        const us = teamAbbr || "TEAM";
-        const them = (liveOppRoster && (liveOppRoster.abbr || liveOppRoster.label)) || "OPP";
-        const fixture = nextGame.home ? `${them} @ ${us}` : `${us} @ ${them}`;
-        return `${fixture} · ${new Date(nextGame.date || Date.now()).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${(market || "").toUpperCase()}`;
-      })()
-    : (market || "").toUpperCase();
-
-  const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
+    const pageMainLine = isBinary ? 0.5 : ceilToHalfOdd(avg);
   const pagePickId = playerPagePickId(
     "mlb", playerId, market,
     line != null ? effectiveLine : null,
@@ -16439,92 +15122,15 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   const matchupValues = useMemo(() => matchupWindow.map(mlbStatValue), [matchupWindow, market, isPitcher]);
   const matchupOutcomes = matchupValues.map((v) => v > effectiveLine);
   const matchupHits = matchupOutcomes.filter(Boolean).length;
-  const matchupPct = matchupWindow.length ? Math.round((matchupHits / matchupWindow.length) * 100) : 0;
-  const matchupSentence = `Over in ${matchupHits} of the last ${matchupWindow.length} games.`;
-
-  // Both from lib/support.js, so this block and the board's verdict pill
+      // Both from lib/support.js, so this block and the board's verdict pill
   // cannot disagree about the same prop -- see readFor.
   const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
-  const matchupHomeGames = matchupWindow.filter((g) => g.home);
-  const matchupAwayGames = matchupWindow.filter((g) => !g.home);
-  const rateOf = (games) => {
-    const vals = games.map(mlbStatValue);
-    return vals.length ? vals.filter((v) => v > effectiveLine).length / vals.length : null;
-  };
-  const matchupHomeRate = matchupHomeGames.length >= 2 ? rateOf(matchupHomeGames) : null;
-  const matchupAwayRate = matchupAwayGames.length >= 2 ? rateOf(matchupAwayGames) : null;
-  const matchupConsistencyClause = matchupHomeRate === null || matchupAwayRate === null
-    ? "Too few home or road games in this window to compare the two."
-    : Math.abs(matchupHomeRate - matchupAwayRate) <= 0.2
-    ? "The rate holds up both home and away."
-    : matchupHomeRate > matchupAwayRate
-    ? "The rate is stronger at home than on the road."
-    : "The rate is stronger on the road than at home.";
-  const matchupReadSentence = `${matchupWindow.length} games is enough for a lean, not enough for certainty. ${matchupConsistencyClause}`;
-  const matchupConfidenceNote = matchupWindow.length < 25
-    ? `Based on ${matchupWindow.length} finished game${matchupWindow.length === 1 ? "" : "s"}. Grows to strong at 25.`
-    : null;
-
-  // Context column per market -- batters and pitchers each get their own set,
+                  // Context column per market -- batters and pitchers each get their own set,
   // matching the two different field shapes statValueMLB/statValueMLBPitcher
   // read from.
-  const MLB_BATTER_TABLE_CONTEXT = {
-    h: { label: "AB", get: (g) => g.ab },
-    hr: { label: "AB", get: (g) => g.ab },
-    rbi: { label: "AB", get: (g) => g.ab },
-    r: { label: "AB", get: (g) => g.ab },
-    tb: { label: "AB", get: (g) => g.ab },
-    bb: { label: "PA", get: (g) => g.pa },
-    so: { label: "AB", get: (g) => g.ab },
-    sb: { label: "AB", get: (g) => g.ab },
-  };
-  const MLB_PITCHER_TABLE_CONTEXT = {
-    p_k: { label: "IP", get: (g) => g.ip },
-    p_outs: { label: "IP", get: (g) => g.ip },
-    p_er: { label: "IP", get: (g) => g.ip },
-    p_h: { label: "IP", get: (g) => g.ip },
-    p_bb: { label: "IP", get: (g) => g.ip },
-  };
-  const matchupContext = (isPitcher ? MLB_PITCHER_TABLE_CONTEXT : MLB_BATTER_TABLE_CONTEXT)[market];
-  const matchupPrimaryLabel = (marketLabel || market).toUpperCase();
-  const matchupTableColumns = [
-    { key: "opponent", label: "OPPONENT", width: "1.3fr" },
-    { key: "primary", label: matchupPrimaryLabel, align: "right" },
-    ...(matchupContext ? [{ key: "context", label: matchupContext.label, align: "right" }] : []),
-    { key: "result", label: "RESULT", align: "right", width: "1.4fr" },
-  ];
-  const matchupTableRows = matchupWindow.map((g, i) => ({
-    opponent: `${g.home ? "vs" : "at"} ${g.opp}`,
-    primary: matchupValues[i],
-    context: matchupContext ? matchupContext.get(g) : undefined,
-    result: matchupOutcomes[i] ? "OVER" : "UNDER",
-  }));
-
-  // MLB plays close to daily -- "6+ days rest" almost never fires; a real
+              // MLB plays close to daily -- "6+ days rest" almost never fires; a real
   // rest day (no game the day before) is the meaningful MLB equivalent.
-  const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 86400000);
-  const gamesWithRest = allGames.map((g, i, arr) => ({ ...g, restDays: i > 0 ? daysBetween(arr[i - 1].date, g.date) : null }));
-  const restedGames = gamesWithRest.filter((g) => g.restDays !== null && g.restDays >= 2);
-  const homeGamesAll = allGames.filter((g) => g.home);
-  const awayGamesAll = allGames.filter((g) => !g.home);
-  const vsOppGamesAll = nextGame ? allGames.filter((g) => g.opp === nextGame.opp) : [];
-  const splitRow = (label, games) => {
-    if (!games.length) return null;
-    const rate = rateOf(games);
-    return {
-      label,
-      rate: games.length >= 2 ? rate : null,
-      count: games.length === 1 ? "1 game only" : `${Math.round(rate * games.length)} of ${games.length}`,
-    };
-  };
-  const matchupSplitRows = [
-    splitRow("At home", homeGamesAll),
-    splitRow("On the road", awayGamesAll),
-    splitRow("With a day off before", restedGames),
-    ...(nextGame ? [splitRow(`Against ${nextGame.opp}`, vsOppGamesAll)] : []),
-  ].filter(Boolean);
-
-  // p_outs (Outs Recorded) and p_er (Earned Runs, wide range including 0
+                  // p_outs (Outs Recorded) and p_er (Earned Runs, wide range including 0
   // often) still read fine as a small-integer histogram; excluded only where
   // a market has no realistic repeat structure -- none of MLB's markets are
   // continuous the way football yardage is, so nothing is excluded here.
