@@ -20,7 +20,24 @@ screen and is not the target.
 
 ---
 
-## A. Keep — carry these into the v3 build
+## When this gets applied
+
+**After v3 ships everywhere, not during.** Alex, 2026-09-09: *"all changes made
+today i still want to be done to the logic of the site, they can go on after v3
+is fully shipped onto here to prevent issues."*
+
+So the transcription is done straight, against the mocks, without trying to
+carry today's work along inside it. Sections A and B are then re-applied on top
+of the finished v3 screens. Attempting both at once is how a screen ends up
+neither.
+
+**One exception, applied during transcription:** the `Last 3 games` split stays
+removed. Alex: *"make sure 'last 3' split is removed."* The v3 mock draws it, so
+this is a standing deviation — see A3.
+
+---
+
+## A. Keep — re-apply on top of the finished v3 screens
 
 Alex: *"i made those changes because i want them and didnt realize you never did
 v3 so i want them on the new model too."*
@@ -32,7 +49,7 @@ placed into the v3 player detail rather than dropped.
 |---|---|---|
 | **Supporting stats** | `src/v3/SupportingStats.jsx`, NFL only | Attempts / completion rate / yards per attempt / team pass rate for a QB; receptions-targets, target share, yards per reception, longest for a receiver. All counted off the same games as the graph. Target share is exact — a team's pass attempts for a game are the QB's attempts in that same game. Needs a home in the v3 centre column. |
 | **Similar players** | `src/v3/SimilarPlayers.jsx`, NFL only | How comparable players have done against tonight's defence, graded against tonight's line, with an ALL-position / SIMILAR-ROLE toggle. Answers what H2H cannot, because most NFL pairs never meet. |
-| **"Last 3 games" removed from SPLITS** | `src/v3/playerDetailProps.js` | **This one contradicts the mock — deliberately.** The v3 SPLITS row reads `Season · Home only · Away only · Last 3 games · vs this pitcher`. Alex: *"seems like a silly split when a custom window is possible."* Build the v3 splits row **without** Last 3, and do not "correct" it back during transcription. |
+| **A3 — "Last 3 games" removed from SPLITS** | `src/v3/playerDetailProps.js` | **The one item applied DURING transcription, and it contradicts the mock deliberately.** The v3 SPLITS row reads `Season · Home only · Away only · Last 3 games · vs this pitcher`. Alex: *"seems like a silly split when a custom window is possible"* and, on 2026-09-09, *"make sure 'last 3' split is removed."* Build the v3 splits row **without** Last 3. A careful transcriber will otherwise put it straight back, because the mock draws it. |
 
 ---
 
