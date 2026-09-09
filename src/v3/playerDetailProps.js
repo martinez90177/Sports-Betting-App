@@ -20,7 +20,17 @@ export const WINDOWS = {
   wnba: [5, 10, 15, "all"],
 };
 
-export const DEFAULT_WINDOW = { mlb: 10, nfl: 5, nba: 10, wnba: 10 };
+// NFL was 5, and five of a seventeen-game season is a sample the app itself
+// refuses to speak for: the feed's NFL minimum is 9, so the player page opened
+// on a window the feed would decline to state a rate for. On screen that read
+// as an argument with itself -- "LINE 308.5 · IMPLIED -400 · FROM 5 GAMES" above
+// the words "5 games counted · too few to lean on" -- and it flattened the alt
+// line ladder, where four consecutive rungs all showed 80% (4 of 5) because
+// five games cannot tell them apart.
+//
+// Ten clears the minimum, matches every other sport, and is still well inside a
+// seventeen-game season. For reference PropsMadness opens on twenty.
+export const DEFAULT_WINDOW = { mlb: 10, nfl: 10, nba: 10, wnba: 10 };
 
 // The ceiling the custom stepper counts to, per league season length.
 export const SEASON_LENGTH = { mlb: 162, nfl: 17, nba: 82, wnba: 44 };

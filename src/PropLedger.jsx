@@ -4964,10 +4964,25 @@ const statValueNFL = (g, market) => {
     case "scrim": return g.rushYds + g.recYds;
     case "longRec": return g.long;
     case "passAtt": return g.att;
+    // Touchdowns this player SCORED -- rushing and receiving. Passing is
+    // deliberately not in here.
+    //
+    // It was, and it made every quarterback row wrong. "Anytime TD" means the
+    // player reaches the end zone; a quarterback who throws four touchdown
+    // passes has scored none of them. The Findings page was stating "Trevor
+    // Lawrence has cleared 1.5 Anytime TD in 9 straight games, averaging 3.0",
+    // which is his passing line wearing a market name that means something
+    // else -- and anyone betting it off this page loses. Passing TDs already
+    // have their own market (`passTd`), so they were double-counted too.
+    //
+    // A quarterback keeps the market: he can score on a sneak, and that is
+    // exactly what the number now says. Positions other than QB are unchanged,
+    // their passTd being zero.
+    //
     // Not a milestone/binary market -- a player can score more than once in a
-    // game, so this is the actual total (rush + rec + pass TDs that game),
-    // rendered as a normal counting bar chart like every other market.
-    case "anytimeTd": return g.rushTd + g.recTd + g.passTd;
+    // game, so this is the actual total, rendered as a normal counting bar
+    // chart like every other market.
+    case "anytimeTd": return g.rushTd + g.recTd;
     case "fgm": return g.fgm;
     case "fga": return g.fga;
     case "xpm": return g.xpm;
@@ -7817,7 +7832,16 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const priorSeasonLog = usePriorSeasonLog(
     currentSeasonLog,
     player && NFL_ESPN_ID[player.id] ? NFL_ESPN_ID[player.id] : player && player.espnId,
-    (season) => fetchNFLPlayerGameLog(NFL_ESPN_ID[player.id] || player.espnId, season)
+    // Same one-season-back cap the feed's prior column now applies (see
+    // seasonLabels). Before Week 1 this page's "current" log is already 2025,
+    // so the season behind it is 2024 -- which would put a 2024 chip on the
+    // SEASON rail. Refusing the fetch keeps the rail to seasons we are willing
+    // to show, and the moment 2026 has games the same test starts allowing
+    // 2025 through.
+    (season) =>
+      season < currentNFLSeason() - 1
+        ? null
+        : fetchNFLPlayerGameLog(NFL_ESPN_ID[player.id] || player.espnId, season)
   );
   const logGames = useMemo(
     // normalizeNFLGame is what turns an ESPN row into the shape this page
@@ -17897,7 +17921,12 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, s
         {col("L20", "l20", { window: sampleWindow === "l20" })}
         {col("H2H", "h2h")}
         {col(seasonLabels?.current || "Season", "all", { window: sampleWindow === "all" })}
-        {col(seasonLabels?.prior || "Last", "prior", { sortable: false })}
+        {/* Suppressed entirely when the season behind this one is older than
+             last season -- see seasonLabels. The cells are flex `1 1 0`, so the
+             remaining five simply take the space back and nothing misaligns. */}
+        {seasonLabels && seasonLabels.showPrior === false
+          ? null
+          : col(seasonLabels?.prior || "Last", "prior", { sortable: false })}
       </span>
     </div>
   );
@@ -18321,7 +18350,7 @@ function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status })
   };
 }
 
-const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder, prior = null, customWin = null }) {
+const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder, prior = null, showPrior = true, customWin = null }) {
   // Read from context rather than passed down: this component is memo'd, and
   // a context read still re-renders it when the format changes (memo only
   // short-circuits prop changes), so the whole feed reformats without adding
@@ -19005,7 +19034,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         {/* Last season, graded against tonight's line. Three states, and none
              of them is a silent blank: still being fetched, fetched and there
              is none, or a real record. */}
-        <PriorSeasonCell prior={prior} minSample={1} />
+        {showPrior ? <PriorSeasonCell prior={prior} minSample={1} /> : null}
       </div>
     </div>
   );
@@ -19155,11 +19184,16 @@ async function fetchPriorSeasonLog(sport, row) {
 // Fills the prior-season cache for the rows on screen, and re-renders as each
 // one lands. Returns a getter rather than a map so the caller reads through
 // the cache and a row shared with an earlier page is answered instantly.
-function usePriorSeasonColumn(sport, visibleRows) {
+function usePriorSeasonColumn(sport, visibleRows, enabled = true) {
   const [, bump] = React.useReducer((n) => n + 1, 0);
 
   React.useEffect(() => {
     let cancelled = false;
+    // No column to fill, no reason to ask. Before Week 1 the NFL's prior season
+    // would be 2024, which the header now suppresses (see seasonLabels), and
+    // fetching it anyway would be a request per visible player for a number
+    // nothing renders.
+    if (!enabled) return undefined;
     // Distinct players, not rows: one player carries every market on the page.
     const wanted = new Map();
     (visibleRows || []).forEach((r) => {
@@ -19190,7 +19224,7 @@ function usePriorSeasonColumn(sport, visibleRows) {
     // what actually decide the work. Keys are re-derived inside either way, and
     // anything already cached or in flight is skipped.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sport, visibleRows.length, visibleRows[0] && visibleRows[0].key, visibleRows[visibleRows.length - 1] && visibleRows[visibleRows.length - 1].key]);
+  }, [sport, enabled, visibleRows.length, visibleRows[0] && visibleRows[0].key, visibleRows[visibleRows.length - 1] && visibleRows[visibleRows.length - 1].key]);
 
   return React.useCallback((row) => {
     const k = priorSeasonKey(sport, row);
@@ -19906,6 +19940,10 @@ function buildNBAFeedRows() {
         // Tonight's opponent, every meeting of them this log holds.
         ...h2hSplit(games, values, nextOpp, hit),
         logId: player.espnId || null, logSeason: newestSeason(games),
+        // The availability dot's key -- same omission the NFL builder had.
+        // NBA_ROSTER_STATUS is fetched on mount and was unreachable from a feed
+        // row without this.
+        espnId: player.espnId || null,
         // Per-game venue, parallel to `values`. The Findings screen splits a
         // log by home and away, and `recent` only carries the last ten -- a
         // split taken off that would silently be a last-ten split wearing a
@@ -20001,6 +20039,19 @@ function buildNFLFeedRows() {
         // Tonight's opponent, every meeting of them this log holds.
         ...h2hSplit(games, values, nextOpp, hit),
         logId: NFL_ESPN_ID[player.id] || player.espnId || null, logSeason: feedSeason,
+        // The availability dot's key. Without it resolveRowStatus had nothing
+        // to look NFL_ROSTER_STATUS up by, so every NFL feed row drew an avatar
+        // with no status -- against rule 1 of the avatar rules, which says a
+        // named player carries their availability everywhere -- and every saved
+        // NFL pick was persisted with espnId: null, so the slip and the Ledger
+        // could never resolve one either. The status itself was already
+        // fetched; only this field was missing.
+        espnId: player.espnId || NFL_ESPN_ID[player.id] || null,
+        // Position, so the default sort can compare a player's role against
+        // others at his own position rather than across the whole market --
+        // Receptions carries backs, receivers and tight ends, whose target
+        // counts are not on the same scale. See feedRoleTier.
+        pos: player.pos,
         // Per-game venue, parallel to `values`. The Findings screen splits a
         // log by home and away, and `recent` only carries the last ten -- a
         // split taken off that would silently be a last-ten split wearing a
@@ -21530,6 +21581,53 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return n != null && n < feedWindowFloor(minGames, sampleWindow) ? 1 : 0;
     };
 
+    // How featured this player is, in three bands, compared against others at
+    // his own position in the same market.
+    //
+    // Alex, 2026-09-08: *"put the more popular starting QBs towards the top of
+    // the prop feed default view … no reason for malik willis, max brosmer and
+    // sheduer sanders to be atop the list"*, extended to every offensive
+    // position.
+    //
+    // The cause is structural and this file already named it (FEED_SORT_MODES):
+    // "reserves reach 100% more easily than starters, so they hold the top of
+    // the list before any tiebreak is consulted." fairFeedLine sets each line
+    // from the player's OWN median, so a low-volume player gets a low line he
+    // clears constantly -- volume and hit rate pull against each other, and a
+    // sort led by hit rate alone is led by the players nobody is betting.
+    //
+    // Bands rather than a raw role sort, because sorting on role outright
+    // reorders the feed into "who plays most" and buries the good spots -- the
+    // reason role was left off the default on 2026-08-23. Inside a band the
+    // ordering is still hit rate, so the top of the list is the best spots
+    // among players who actually play. Nothing is filtered; a WR3 at 100% still
+    // appears, under the featured receivers.
+    //
+    // Grouped by market and position so a tight end is measured against tight
+    // ends. A row with no role figure (no log yet) sorts last: that is a rookie
+    // with nothing measured, not a player we are claiming is marginal.
+    const roleBands = new Map();
+    filteredRows.forEach((r) => {
+      if (r.role == null) return;
+      const k = `${r.marketId}|${r.pos || ""}`;
+      if (!roleBands.has(k)) roleBands.set(k, []);
+      roleBands.get(k).push(r.role);
+    });
+    const bandCuts = new Map();
+    roleBands.forEach((vals, k) => {
+      const s = vals.slice().sort((x, y) => x - y);
+      const at = (q) => s[Math.min(s.length - 1, Math.floor(q * s.length))];
+      bandCuts.set(k, { featured: at(0.6), rotation: at(0.25) });
+    });
+    const roleTier = (r) => {
+      if (r.role == null) return 3;
+      const c = bandCuts.get(`${r.marketId}|${r.pos || ""}`);
+      // One player in his group has nobody to be compared against; treat him as
+      // mid rather than inventing a verdict either way.
+      if (!c) return 1;
+      return r.role >= c.featured ? 0 : r.role >= c.rotation ? 1 : 2;
+    };
+
     // A mode marked `primary` leads the sort instead of breaking hit rate's
     // ties. Only "Biggest role" is: every other mode is a research axis you
     // want *within* a hit rate, while role is the one thing that has to
@@ -21554,6 +21652,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     copy.sort((a, b) => {
       const at = thinSort(a), bt = thinSort(b);
       if (at !== bt) return at - bt;
+      // Role band leads hit rate -- see roleTier above.
+      const ar = roleTier(a), br = roleTier(b);
+      if (ar !== br) return ar - br;
       const aHit = a[sampleWindow], bHit = b[sampleWindow];
       if (aHit == null && bHit != null) return 1;
       if (bHit == null && aHit != null) return -1;
@@ -21579,10 +21680,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   }, [sport, selectedMarkets, sampleWindow, direction, oddsLoProb, oddsHiProb, rankLo, rankHi, selectedGameIds, teamFilter]);
   const visibleRows = sortedRows.slice(0, visibleCount);
 
-  // Last season, filled in for the rows on screen only -- see
-  // usePriorSeasonColumn for why it cannot be eager.
-  const priorFor = usePriorSeasonColumn(sport, visibleRows);
-
   // What to head the last two columns with. Taken from the rows rather than
   // from the calendar: the NFL log falls back to last season when the new
   // one has no games yet, so "2026" would be a wrong label on a real 2025
@@ -21598,9 +21695,39 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     if (!counts.size) return null;
     let best = null, bestN = -1;
     counts.forEach((n, season) => { if (n > bestN) { bestN = n; best = season; } });
-    return { current: seasonLabel(best, sport), prior: seasonLabel(best - 1, sport) };
+
+    // Never reach further back than LAST season, measured against the calendar
+    // rather than against whatever season our logs happen to hold.
+    //
+    // Alex, 2026-09-08: *"remove the 2024 slot for stats, that's too far out."*
+    // The prior column is `best - 1`, and before Week 1 `best` is itself a
+    // fallback -- fetchNFLPlayerGameLogForDisplay drops to 2025 while 2026 is
+    // empty -- so the column was rendering 2024, two seasons back.
+    //
+    // The cap is a date test rather than a deletion on purpose. From the first
+    // 2026 game `best` becomes 2026 and this same column becomes 2025, which is
+    // the season that keeps the feed readable while the new one is one game
+    // long. Deleting the column would have thrown that away exactly when it
+    // matters most.
+    //
+    // NFL only: it is the sole league whose current log runs a season behind
+    // the calendar, because it is the only one whose season had not started.
+    const oldestAllowed = sport === "nfl" ? currentNFLSeason() - 1 : null;
+    const showPrior = oldestAllowed == null || best - 1 >= oldestAllowed;
+    return {
+      current: seasonLabel(best, sport),
+      prior: showPrior ? seasonLabel(best - 1, sport) : null,
+      showPrior,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sport, visibleRows.length, visibleRows[0] && visibleRows[0].key]);
+
+  // Last season, filled in for the rows on screen only -- see
+  // usePriorSeasonColumn for why it cannot be eager. Declared after
+  // seasonLabels because it reads whether that column is being drawn at all.
+  const priorFor = usePriorSeasonColumn(
+    sport, visibleRows, seasonLabels ? seasonLabels.showPrior !== false : true
+  );
 
   // Phone-only: the legend and the "+ adds a prop" explainer are one-time
   // reading, but they were sitting between the controls and the data on every
@@ -22733,6 +22860,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               onTogglePick={onTogglePick} onOpenProp={onOpenProp}
               isLast={i === visibleRows.length - 1}
               prior={priorFor(r)}
+              showPrior={seasonLabels ? seasonLabels.showPrior !== false : true}
               showLadder={linesMode === "alt"}
               expanded={expanded}
               onToggleLadder={() => setExpandedKey((k) => (k === r.key ? null : r.key))}

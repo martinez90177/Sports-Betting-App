@@ -48,10 +48,29 @@ function currentStreak(values, line, isBinary) {
 // one value has nothing to say about the player -- and the same market can be
 // structural for one player and live for another, which a blacklist could not
 // express.
+// Ten games, and the floor was lowered to six once and put straight back.
+//
+// The idea was that the 0.5 test only asks "did the value ever land on the
+// other side", which looks like it needs less evidence than a spread does, and
+// that lowering it would catch the home/away findings -- those cap out around
+// nine games in a seventeen-game season, so they were never being tested at
+// all.
+//
+// Measured on the real page it suppressed 769 findings instead of 226 and left
+// 760 of 1,303 standing. The reason is that "never crossed" over eight games is
+// not evidence the crossing cannot happen: a batter goes hitless often enough
+// that Over 0.5 Hits is a genuine read on him, and eight clean games in a row
+// says nothing about the ninth. Ten is where "it never happens" starts being
+// about the market rather than about a short run of luck.
+//
+// So the split findings keep leaking the odd 0.5-line row, and that is the
+// cheaper error.
+const STRUCTURAL_MIN = 10;
+
 function isStructural(values, line, isBinary, rate) {
   if (isBinary) return false;
   if (rate < 0.95 && rate > 0.05) return false;
-  if (!values || values.length < 10) return false;
+  if (!values || values.length < STRUCTURAL_MIN) return false;
 
   // The test that matters: a half-point line that the log never crosses.
   //
@@ -170,7 +189,23 @@ function findingsForRow(row, sport) {
       hits: cleared ? runLen : 0,
       n: runLen,
       bars: run,
-      pool: values,
+      // The run, not the season -- this is what makes isStructural work here.
+      //
+      // A streak finding claims something about the run, so the run is what
+      // has to be tested. Passing the whole log let one blank game undo the
+      // 0.5-line rule: a kicker with a single no-attempt game in September has
+      // a season minimum of 0, so "never crosses 0.5" came back false, and the
+      // fallback deviation test cannot catch him either -- field-goal attempts
+      // run 1 to 4, so the variance is wide while the outcome never changes.
+      // That is the exact failure the 0.5 rule was written to replace, and it
+      // put "Jake Elliott has cleared 0.5 FG Attempts in 15 straight games" at
+      // the top of the NFL findings list, above every real one.
+      //
+      // Judged on the run itself, the fifteen games never go below one attempt,
+      // the rule fires, and the row is held back with the other near-certain
+      // ones. Findings whose line is above 0.5 are untouched: "cleared 2.5
+      // receptions in 14 straight" is a real read on a player and stays.
+      pool: run,
       sentence: cleared
         ? `${name} has cleared ${prop.replace(/^Over\s+/i, "")} in ${plural(runLen, `straight ${one}`, `straight ${many}`)}, averaging ${avg.toFixed(1)} over the run.`
         : `${name} has fallen short of ${prop.replace(/^Over\s+/i, "")} in ${plural(runLen, `straight ${one}`, `straight ${many}`)}, averaging ${avg.toFixed(1)} over the run.`,

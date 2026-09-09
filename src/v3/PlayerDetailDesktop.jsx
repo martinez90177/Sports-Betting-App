@@ -986,17 +986,29 @@ export default function PlayerDetailDesktop({
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
           <span style={railLabel}>{`CONDITIONS${conditions.venue ? ` · ${conditions.venue}` : ""}`}</span>
 
-          {/* Indoors is a fact about the venue, not a missing forecast, so
-              it is stated rather than left as an empty weather row. */}
-          {conditions.noForecastReason === "indoor" && (
-            <span style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.45 }}>Indoors — no weather or park factor applies.</span>
-          )}
+          {/* Why there is no forecast, in the reader's terms -- never a blank
+              chip row that reads like a calm night.
 
-          {/* Any other reason there is no forecast is named, never drawn as
-              a blank chip row that reads like a calm night. */}
-          {conditions.noForecastReason && conditions.noForecastReason !== "indoor" && (
+              "dome" and "indoor" are the same fact under two names: the NFL
+              hook emits `dome` (useNFLKickoffWeather) and the MLB path emits
+              `indoor`. This branch used to test only `indoor`, so every NFL
+              dome fell through to the generic line and Ford Field sat under
+              "Forecast still pending for this game" -- waiting on weather that
+              is never coming. The phone has always tested both; this is the
+              desktop catching up.
+
+              `retractable` is separated out rather than folded into the dome
+              case, because a roof that can open is a real unknown and saying
+              "indoors" would be a claim we cannot make. */}
+          {conditions.noForecastReason && (
             <span style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.45 }}>
-              {conditions.noForecastReason === "pregame"
+              {conditions.noForecastReason === "dome" || conditions.noForecastReason === "indoor"
+                ? "Played indoors — no weather applies."
+                : conditions.noForecastReason === "retractable"
+                ? "Retractable roof — no forecast, because whether it is open is not published."
+                : conditions.noForecastReason === "horizon"
+                ? "Too far out for a forecast — check back closer to kickoff."
+                : conditions.noForecastReason === "pregame"
                 ? "No forecast published for this game yet."
                 : "Forecast still pending for this game."}
             </span>
