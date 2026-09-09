@@ -31,9 +31,15 @@ carry today's work along inside it. Sections A and B are then re-applied on top
 of the finished v3 screens. Attempting both at once is how a screen ends up
 neither.
 
-**One exception, applied during transcription:** the `Last 3 games` split stays
-removed. Alex: *"make sure 'last 3' split is removed."* The v3 mock draws it, so
-this is a standing deviation — see A3.
+**Two exceptions, applied during transcription.** Both contradict the mock on
+purpose, and a careful transcriber will undo both unless they read this first.
+
+1. The `Last 3 games` split stays removed. Alex: *"make sure 'last 3' split is
+   removed."* The v3 mock draws it — see A3.
+2. **No alt-line ladder is built.** Frame 1a draws an open ladder with
+   `+ ADD LEG` beneath the graph. Alex, 2026-09-09: *"i do not want the alt
+   line ladder, dont add it."* Transcribe 1a without it, and give the room it
+   took to the graph — see B15.
 
 ---
 
@@ -86,15 +92,43 @@ describe what Alex wants, not how it should look; the v3 frame decides that.
 13. **MORE FILTERS** moved from last in the rail to directly under LEAGUE.
 14. **Rate cells washed by value**; the accent moved to the border so fill
     means the rate and the border means the scored window.
-15. **Alt lines as rows, Outlier-style** — ~~parked~~ **build this during the 1c
-    transcription; it is not a deviation.** Frame 1c's rows already read
-    `Over 1.5 Total Bases` / `Over 0.5 Hits`, with the side and the line inside
-    the proposition, so an alt line is simply another row. Its slip confirms it:
-    legs carry `MAIN` and `ALT` badges and read `74% · 8 of 10 · one rung up`.
+15. **Alt lines — parked again, and the last thing to raise.** Alex,
+    2026-09-09: *"i do not want the alt line ladder, dont add it, i want the
+    alt lines to show like how we planned to set it up just today and similar
+    to outlier's system … if needed hold off on the alt line prop feed stuff
+    for now and remember to bring this up once youve finished with everything
+    so we dont forget."*
+
+    **So build no alt-line surface during the transcription — not frame 1a's
+    ladder, not frame 1c's rows — and reopen this item once v3 has shipped on
+    every screen.** It is the standing item to raise at the end.
+
+    *What is wanted when it is raised.* Alt lines as **rows**, Outlier-style,
+    with the side and the line inside the proposition. Frame 1c happens to draw
+    exactly that (`Over 1.5 Total Bases`, `Over 0.5 Hits`; slip legs badged
+    `MAIN` / `ALT` reading `74% · 8 of 10 · one rung up`), so the frame and
+    Alex agree here — it is held back for sequencing, not because it conflicts.
     Outlier's own toggle takes their row set from 4,233 to 13,652 and lists
-    Over and Under separately, which is the same model. Alex, 2026-09-09:
-    *"remember how we switched it from the ladder to actual alt lines on the
-    prop feed? thats what i want still."*
+    Over and Under separately. Alex, 2026-09-08: *"draftkings for passing yards
+    does increments of 10 starting with 150+ then 160+ etc, all the way to
+    400+, but the odds are what separates them."*
+
+    *Why it was not built on 2026-09-08/09, since Alex asked.* It simply never
+    was. It was requested, written down as this item, and then the v3 gap was
+    found the same evening and every layout-shaped change was parked. The odds
+    tier did not stop it. The ladder still on the feed today
+    (`FeedRowLadder`, `PropLedger.jsx:17908`, mounted at `:21764`) is the
+    **old** surface, present only because its replacement was never made — last
+    touched by `3bce162`, long before any of this.
+
+    *The one thing the free tier does limit* is the column that makes a rung
+    worth reading. `src/lib/altLines.js` is explicit that no book prices these
+    rungs: every price it returns is the sample's own hit rate run through
+    `probToAmericanOdds` (`altLines.js:102`). Real per-rung prices need an
+    alt-line odds feed, which the free tier does not carry. A row set can be
+    built without one, with a derived price column that says so. That trade is
+    the decision to take when this item is reopened.
+
 16. **Sort modes — CONFLICTS WITH THE FRAME, needs a decision.** What was built
     today: hit rate as its own mode and the default, the chosen mode leading
     rather than breaking ties, and an opposite on a second click. What frame 1c
@@ -157,7 +191,11 @@ Player detail, live app against the v3 mock, left rail:
 
 Also off: weather belongs on one line beside the game menu, not in the right
 rail; the right rail wants OPPOSING LINEUP, and a PARK FACTOR block that is
-MLB-only.
+MLB-only. The frame's alt lines sit **open** under the graph as a ladder with
+`+ ADD LEG` — deliberately **not** transcribed, per the second exception above.
+The frame caption also specifies `← → step the line`, which collides with the
+←/→ player-stepping added on 2026-09-09 (B7); the frame wins on 1a, so the
+player walk needs another home.
 
 The other 23 frames have not been audited yet. `public/__mockcheck/` is
 gitignored and serves the mock files through the dev server, which is how to
