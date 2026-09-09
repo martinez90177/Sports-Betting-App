@@ -1818,6 +1818,8 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  // See the NFL page: a dragged line dies with its market and its player.
+  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
   // With/Without teammate chips. Each is { pid, name, mode } where pid is the
   // ESPN athlete id -- the same shape MLB's chips use, so LineupTiles is one
   // component rather than four.
@@ -7757,6 +7759,21 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  // A dragged line belongs to one market on one player, and dies with either.
+  //
+  // `line` was already reset everywhere the market changes, but `dragLine` is a
+  // second, separate state -- the chart reads `v2LiveLine`, which prefers it --
+  // and nothing cleared it. So a line nudged to 294.0 on Pass Yds followed the
+  // reader onto a receiver's Receptions page, where the header read "LINE 294.0
+  // RECEPTIONS" and the distribution underneath said "0 of 17 games clear 294"
+  // against a log whose best game was 13. Alex, 2026-09-09: *"i think youre
+  // measuring something wrong here."* He was right -- every number on that
+  // screen was being graded against another market's line.
+  //
+  // Keyed on both, and on the state rather than in the pick handlers, so every
+  // route that changes either -- the market strip, the roster rail, the
+  // keyboard walk, the position guard below -- is covered by one rule.
+  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
   // With/Without teammate chips, keyed on the ESPN athlete id. See
   // useEspnTeammateSplits -- the NFL's participation record comes from each
   // game's dressed roster rather than its boxscore, because a receiver who
@@ -10104,6 +10121,8 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  // See the NFL page: a dragged line dies with its market and its player.
+  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
   // With/Without teammate chips, keyed on the ESPN athlete id.
   const [teammateChips, setTeammateChips] = useState([]);
   const [teammateDataWanted, setTeammateDataWanted] = useState(false);
@@ -14494,6 +14513,8 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   const [paRangeEnabled, setPaRangeEnabled] = useState(false);
   const [line, setLine] = useState(null);
   const [dragLine, setDragLine] = useState(null);
+  // See the NFL page: a dragged line dies with its market and its player.
+  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
   const [showStatInfo, setShowStatInfo] = useState(false);
   const chartRef = React.useRef(null);
   const chartWidth = useElementWidth(chartRef);

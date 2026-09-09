@@ -949,9 +949,33 @@ export default function PlayerDetailDesktop({
   );
 
   // ---- right rail: what contextualises it ---------------------------------
-  const rails = [ownRail && { key: "own", rail: ownRail }, oppRail && { key: "opp", rail: oppRail }].filter(Boolean);
-  const [rosterTeam, setRosterTeam] = React.useState("own");
-  const activeRail = (rails.find((r) => r.key === rosterTeam) || rails[0] || {}).rail;
+  // The player's own team leads, and is the tab you land on.
+  //
+  // `own`/`opp` name the fixture's sides, not the reader's -- ownRail is always
+  // the away roster -- so opening a home player put his opponent's team first
+  // and selected, and his own name was one tab away on his own page. Alex,
+  // 2026-09-09: *"when viewing a player, his team should be the top team on the
+  // switch player tab."*
+  //
+  // Found by looking for the active row rather than by comparing team
+  // abbreviations, which is the same test the keyboard walk uses and needs no
+  // knowledge of how either rail was built.
+  const railsBySide = [
+    ownRail && { key: "own", rail: ownRail },
+    oppRail && { key: "opp", rail: oppRail },
+  ].filter(Boolean);
+  const subjectKey = (railsBySide.find((r) => ((r.rail.players || []).some((p) => p.active))) || {}).key || null;
+  const rails = subjectKey
+    ? [...railsBySide].sort((a, b) => (a.key === subjectKey ? -1 : b.key === subjectKey ? 1 : 0))
+    : railsBySide;
+
+  // Null means "follow the player". A click sets it, so browsing the other
+  // team's roster stays put -- and picking someone from it changes the subject,
+  // which clears the override and hands the lead back to his team.
+  const [rosterTeam, setRosterTeam] = React.useState(null);
+  React.useEffect(() => { setRosterTeam(null); }, [subjectKey]);
+  const shownTeam = rosterTeam || subjectKey || (rails[0] || {}).key;
+  const activeRail = (rails.find((r) => r.key === shownTeam) || rails[0] || {}).rail;
 
   // ---- keyboard: walk players and markets without the mouse ---------------
   //
@@ -1103,7 +1127,7 @@ export default function PlayerDetailDesktop({
             {rails.map((r) => (
               <div key={r.key} role="button" tabIndex={0} onClick={() => setRosterTeam(r.key)}
                 onKeyDown={(e) => { if (e.key === "Enter") setRosterTeam(r.key); }}
-                style={{ ...rosterTabStyle(rosterTeam === r.key), flex: "1 1 auto", minWidth: 0, justifyContent: "center", overflow: "hidden", textOverflow: "ellipsis" }}>
+                style={{ ...rosterTabStyle(shownTeam === r.key), flex: "1 1 auto", minWidth: 0, justifyContent: "center", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {r.rail.label}
               </div>
             ))}
