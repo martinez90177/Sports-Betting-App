@@ -68,6 +68,7 @@ import {
   usePriorSeasonLog, mergeSeasonLogs, seasonLabel, newestSeason,
 } from "./LogScope.jsx";
 import PlayerDetailBreadcrumb from "./player/PlayerDetailBreadcrumb.jsx";
+import usePlayerPageState from "./player/usePlayerPageState.js";
 import { GameLogTable } from "./player/MatchupPlayerBlocks.jsx";
 import { InjuryAndNews, MissingAround, MatchupContextRow } from "./PlayerContextBlocks.jsx";
 import { fetchNews, timeAgo } from "./lib/newsdata.js";
@@ -1765,7 +1766,6 @@ function PlayerPropContextBlocks({
 }
 
 function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
-  const [showContext, setShowContext] = useState(false);
 
   // The real schedule, over the invented pairings. NBA_MATCHUPS stays as the
   // cold-start fallback only -- it is what is on screen for the one frame
@@ -1802,15 +1802,22 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
 
   const [matchupId, setMatchupId] = useState(NBA_MATCHUPS[0].id);
   const matchup = matchups.find((m) => m.id === matchupId) || matchups[0];
-  const [playerId, setPlayerId] = useState(NBA_MATCHUPS[0].teamA.players[0].id);
-  const [market, setMarket] = useState("pts");
+
+  // Shared with the other three sport pages -- see
+  // src/player/usePlayerPageState.js. Everything below is basketball's own.
+  const {
+    playerId, setPlayerId, market, setMarket,
+    side, setSide, lastN, setLastN, logScope, setLogScope,
+    line, setLine, dragLine, setDragLine,
+    teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
+    filtersOpen, setFiltersOpen, showContext, setShowContext,
+  } = usePlayerPageState({
+    sport: "nba",
+    initialPlayerId: NBA_MATCHUPS[0].teamA.players[0].id,
+    initialMarket: "pts",
+  });
   // for why this isn't a real route yet.
   const [rebSplit, setRebSplit] = useState("total");
-  const [side, setSide] = useState("all");
-  // L10, per the v3 handoff's per-league window table
-  // (`v3 Mocks/player-detail-handoff.md` section 4), which supersedes the v2
-  // handoff's L20 for basketball.
-  const [lastN, setLastN] = useState(DEFAULT_WINDOW.nba);
   const v3Custom = useCustomWindow("nba");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
@@ -1818,22 +1825,6 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [minMinutes, setMinMinutes] = useState(0);
   const [maxMinutes, setMaxMinutes] = useState(42);
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
-  // The one control over the game log itself -- season, season type, team.
-  // Everything else on this page filters the games this leaves behind.
-  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
-  const [line, setLine] = useState(null);
-  const [dragLine, setDragLine] = useState(null);
-  // See the NFL page: a dragged line dies with its market and its player.
-  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
-  // With/Without teammate chips. Each is { pid, name, mode } where pid is the
-  // ESPN athlete id -- the same shape MLB's chips use, so LineupTiles is one
-  // component rather than four.
-  const [teammateChips, setTeammateChips] = useState([]);
-  // Flipped the first time the Filters panel opens and left true, so the
-  // participation record is demand-driven rather than fetched on every page
-  // load, but the tile faces have their numbers before a chip is set.
-  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
     const isNarrow = useIsNarrow();
 
@@ -2539,8 +2530,6 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       </div>
     );
   }
-
-
 
 
   // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
@@ -4456,7 +4445,6 @@ function normalizeNFLGame(g, player) {
   const long = g.long != null ? g.long : estimateLongReception(full.rec, full.recYds);
   return { ...full, snapPct: estimateSnapPct(player, full), long };
 }
-
 
 
 // Populated in place by fetchNFLPlayerGameLog once each player's real 2025
@@ -7535,7 +7523,6 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
 }
 
 function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
-  const [showContext, setShowContext] = useState(false);
   const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
   const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
   // Memoised so the objects stay stable across renders: playerSide below
@@ -7543,8 +7530,21 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // make it think the player belongs to neither side.
   const teamRoster = useMemo(() => nflLiveSide(matchup.teamA), [matchup.teamA, dataVersion]);
   const oppRoster = useMemo(() => nflLiveSide(matchup.teamB), [matchup.teamB, dataVersion]);
-  const [playerId, setPlayerId] = useState(matchup.teamA.players[0].id);
-  const [market, setMarket] = useState("passYds");
+
+  // The eleven pieces of state all four sport pages hold, and the effect that
+  // has to run with them. See src/player/usePlayerPageState.js -- everything
+  // below this line is football's own.
+  const {
+    playerId, setPlayerId, market, setMarket,
+    side, setSide, lastN, setLastN, logScope, setLogScope,
+    line, setLine, dragLine, setDragLine,
+    teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
+    filtersOpen, setFiltersOpen, showContext, setShowContext,
+  } = usePlayerPageState({
+    sport: "nfl",
+    initialPlayerId: matchup.teamA.players[0].id,
+    initialMarket: "passYds",
+  });
   // Screen #2 (card 248), a separate render of this same page state -- reached
   // from a game rather than the prop feed. A mode flip rather than a route:
   // MatchupPage.jsx (the team-level summary reached from Games) has no
@@ -7578,17 +7578,6 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
-  const [side, setSide] = useState("all");
-  // L5, per the v3 handoff's per-league window table
-  // (`v3 Mocks/player-detail-handoff.md` section 4).
-  //
-  // This reverses a documented decision, deliberately and with the reason
-  // recorded: the previous default was Season, on the grounds that a 17-game
-  // NFL season is already a smaller sample than L20 means anywhere else. The
-  // v3 handoff names L5 for the NFL explicitly, and where the app and the
-  // design disagree the design wins. Raised with Alex rather than swapped in
-  // quietly -- see the batch 1 notes.
-  const [lastN, setLastN] = useState(DEFAULT_WINDOW.nfl);
   const v3Custom = useCustomWindow("nfl");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
@@ -7599,30 +7588,6 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const [minSnapPct, setMinSnapPct] = useState(1);
   const [maxSnapPct, setMaxSnapPct] = useState(100);
   const [snapRangeEnabled, setSnapRangeEnabled] = useState(false);
-  const [line, setLine] = useState(null);
-  const [dragLine, setDragLine] = useState(null);
-  // A dragged line belongs to one market on one player, and dies with either.
-  //
-  // `line` was already reset everywhere the market changes, but `dragLine` is a
-  // second, separate state -- the chart reads `v2LiveLine`, which prefers it --
-  // and nothing cleared it. So a line nudged to 294.0 on Pass Yds followed the
-  // reader onto a receiver's Receptions page, where the header read "LINE 294.0
-  // RECEPTIONS" and the distribution underneath said "0 of 17 games clear 294"
-  // against a log whose best game was 13. Alex, 2026-09-09: *"i think youre
-  // measuring something wrong here."* He was right -- every number on that
-  // screen was being graded against another market's line.
-  //
-  // Keyed on both, and on the state rather than in the pick handlers, so every
-  // route that changes either -- the market strip, the roster rail, the
-  // keyboard walk, the position guard below -- is covered by one rule.
-  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
-  // With/Without teammate chips, keyed on the ESPN athlete id. See
-  // useEspnTeammateSplits -- the NFL's participation record comes from each
-  // game's dressed roster rather than its boxscore, because a receiver who
-  // played and was never targeted does not appear in an NFL boxscore at all.
-  const [teammateChips, setTeammateChips] = useState([]);
-  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
     const isNarrow = useIsNarrow();
 
@@ -7635,9 +7600,6 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // about how much room the *chart* has for per-bar labels.
   const compact = useIsNarrow(1100);
 
-  // The one control over the game log itself -- season, season type, team.
-  // Everything else on this page filters the games this leaves behind.
-  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
 
   const resetFilters = () => {
     setLogScope(LOG_SCOPE_DEFAULT);
@@ -8237,8 +8199,6 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));
   }, [allGames, market, effectiveLine]);
-
-
 
 
   // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
@@ -9466,9 +9426,6 @@ function wnbaPlayerMarkets(player) {
 }
 
 function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
-  // Same volume stat as the NBA page -- minutes are the input almost every
-  // basketball prop scales with, so the two pages share NBA_CONTEXT_STAT.
-  const [showContext, setShowContext] = useState(false);
   // Starts from the static fallback slate, then swaps to ESPN's live
   // scoreboard once it resolves (see fetchWNBALiveSlate) -- keeps the page
   // usable immediately and offline-safe if the fetch ever fails, while still
@@ -9512,8 +9469,19 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
 
   const [matchupId, setMatchupId] = useState(WNBA_MATCHUPS[0].id);
   const matchup = matchups.find((m) => m.id === matchupId) || matchups[0];
-  const [playerId, setPlayerId] = useState(WNBA_MATCHUPS[0].teamA.players[0].id);
-  const [market, setMarket] = useState("pts");
+  // Shared with the other three sport pages -- see
+  // src/player/usePlayerPageState.js. Everything below is the WNBA's own.
+  const {
+    playerId, setPlayerId, market, setMarket,
+    side, setSide, lastN, setLastN, logScope, setLogScope,
+    line, setLine, dragLine, setDragLine,
+    teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
+    filtersOpen, setFiltersOpen, showContext, setShowContext,
+  } = usePlayerPageState({
+    sport: "wnba",
+    initialPlayerId: WNBA_MATCHUPS[0].teamA.players[0].id,
+    initialMarket: "pts",
+  });
   const [rebSplit, setRebSplit] = useState("total");
 
   // Availability for the two teams in view, refetched when the matchup changes.
@@ -9630,25 +9598,12 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
-  const [side, setSide] = useState("all");
-  // L10, per the v3 handoff's per-league window table
-  // (`v3 Mocks/player-detail-handoff.md` section 4), which supersedes the v2
-  // handoff's L20.
-  const [lastN, setLastN] = useState(DEFAULT_WINDOW.wnba);
   const v3Custom = useCustomWindow("wnba");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
   const [minMinutes, setMinMinutes] = useState(0);
   const [maxMinutes, setMaxMinutes] = useState(40);
   const [minutesRangeEnabled, setMinutesRangeEnabled] = useState(false);
-  const [line, setLine] = useState(null);
-  const [dragLine, setDragLine] = useState(null);
-  // See the NFL page: a dragged line dies with its market and its player.
-  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
-  // With/Without teammate chips, keyed on the ESPN athlete id.
-  const [teammateChips, setTeammateChips] = useState([]);
-  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const chartRef = React.useRef(null);
     const isNarrow = useIsNarrow();
 
@@ -9661,9 +9616,6 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // about how much room the *chart* has for per-bar labels.
   const compact = useIsNarrow(1100);
 
-  // The one control over the game log itself -- season, season type, team.
-  // Everything else on this page filters the games this leaves behind.
-  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
 
   const resetFilters = () => {
     setLogScope(LOG_SCOPE_DEFAULT);
@@ -10221,7 +10173,6 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // `useMemo` renders fewer hooks than the previous pass and React throws
   // "Rendered fewer hooks than expected" instead of showing this message. The
   // guard was unreachable for exactly that reason.
-
 
 
   // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
@@ -12944,8 +12895,6 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher, values }
 }
 
 
-
-
 // A deterministic 4-6 pitch subset per pitcher, with usage% summing to
 // ~100 and Overall + vs-RHP whiff/BA/SLG/wOBA (+ percentile) per pitch.
 
@@ -13487,16 +13436,28 @@ class MLBPageErrorBoundary extends React.Component {
 }
 
 function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
-  const [showContext, setShowContext] = useState(false);
   const [teamAbbr, setTeamAbbr] = useState(MLB_TEAM_ID_ABBR[YANKEES_TEAM_ID]);
   const teamRoster = MLB_TEAM_ROSTERS[teamAbbr];
-  const [playerId, setPlayerId] = useState(teamRoster.players[0].id);
-  const [market, setMarket] = useState("h");
+
+  // Shared with the other three sport pages -- see
+  // src/player/usePlayerPageState.js. Everything below is baseball's own, and
+  // this page has the most of it: batting hand, the boxscore lineup cache, the
+  // plate-appearance range and the pitcher/batter split all live here.
+  const {
+    playerId, setPlayerId, market, setMarket,
+    side, setSide, lastN, setLastN, logScope, setLogScope,
+    line, setLine, dragLine, setDragLine,
+    teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
+    filtersOpen, setFiltersOpen, showContext, setShowContext,
+  } = usePlayerPageState({
+    sport: "mlb",
+    initialPlayerId: teamRoster.players[0].id,
+    initialMarket: "h",
+  });
   // Which of the three side-panel tabs (see MLB_DETAIL_TABS) is showing
   // underneath the always-visible graph card -- null means none are open.
   // Clicking the already-active tab again closes it (see tabsBar below).
   const [view, setView] = useState(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Last player clicked in either roster panel, fed into
   // MLBMatchupAnalyzer so it auto-selects that batter/pitcher (nonce forces
@@ -13697,11 +13658,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo && jumpTo.nonce]);
-  const [side, setSide] = useState("all");
-  // L10, per the v3 handoff's per-league window table
-  // (`v3 Mocks/player-detail-handoff.md` section 4), which supersedes the v2
-  // handoff's L20.
-  const [lastN, setLastN] = useState(DEFAULT_WINDOW.mlb);
   const v3Custom = useCustomWindow("mlb");
   const { range, setRange, applyRange } = useGameRange(playerId);
   // Replaces the old "Any opponent" dropdown -- restricts the sample to
@@ -13711,10 +13667,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   const [minPA, setMinPA] = useState(0);
   const [maxPA, setMaxPA] = useState(6);
   const [paRangeEnabled, setPaRangeEnabled] = useState(false);
-  const [line, setLine] = useState(null);
-  const [dragLine, setDragLine] = useState(null);
-  // See the NFL page: a dragged line dies with its market and its player.
-  React.useEffect(() => { setDragLine(null); }, [market, playerId]);
   const [showStatInfo, setShowStatInfo] = useState(false);
   const chartRef = React.useRef(null);
     const isNarrow = useIsNarrow();
@@ -13772,11 +13724,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     // would leave this observing an already-unmounted node.
   }, [isNarrow, compact]);
 
-  // With/Without teammate splits -- each chip is {mlbId, name, mode}, mode
-  // "with" requires that teammate to have played (per the real boxscore) in
-  // a given game for it to count, "without" requires them to not have. See
-  // the "Teammates" filter group below and fetchMLBGameBoxscoreLineupIds.
-  const [teammateChips, setTeammateChips] = useState([]);
   const [boxscoreLineups, setBoxscoreLineups] = useState({});
   // gamePk -> { home, away } starter ids, and a counter that re-renders once
   // the batched hand lookup has answered (the cache itself is module state).
@@ -13786,12 +13733,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   const [handFilter, setHandFilter] = useState("all");
   const [pitchHandVersion, setPitchHandVersion] = useState(0);
   const [boxscoresLoading, setBoxscoresLoading] = useState(false);
-  // Boxscores used to be fetched only once a chip was already active, which
-  // is fine for filtering but leaves every chip's with/without differential
-  // blank on first open -- the number is the whole point of the chip. Flipped
-  // true the first time the Filters panel is opened (and stays true) so the
-  // fetch is still demand-driven rather than firing on every page load.
-  const [teammateDataWanted, setTeammateDataWanted] = useState(false);
   // The phone draws two things off the participation record without being
   // asked -- frame 1c's VS RHP block and the Lineups chip's counts -- so the
   // phone page wants it on arrival. The desktop keeps the demand-driven rule,
@@ -13943,7 +13884,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // rather than a memo, because MLB's is a live network fetch that re-polls
   // while the page is open.
   const [currentSeasonLog, setCurrentSeasonLog] = useState([]);
-  const [logScope, setLogScope] = useState(LOG_SCOPE_DEFAULT);
   const [gameLogUpdatedAt, setGameLogUpdatedAt] = useState(null);
 
   // Load the player's live game log on mount/player switch, then keep
@@ -15142,7 +15082,6 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));
   }, [allGames, market, isPitcher, effectiveLine]);
-
 
 
   // MobilePlayerNav, lifted out of the phone tree below so the v2 page can
