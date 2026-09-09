@@ -102,34 +102,38 @@ export function buildWindows({ sport, lastN, setLastN, saved = [], onSave, custo
 // pitcher" in baseball, "vs this defense" everywhere else. Omitted entirely
 // when the page has no opponent to compare against, rather than offered as a
 // control that filters to nothing.
-export function buildSplits({ side, setSide, lastN, setLastN, h2h, setH2h, starterLabel, defaultWindow }) {
-  const last3 = String(lastN) === "3";
+// "Last 3 games" is gone, and it should never have been here.
+//
+// It was a window wearing a split's clothes: the other four narrow *which*
+// games count -- home, away, against tonight's opponent -- while that one just
+// set lastN to 3, which is what the WINDOW rail and the custom stepper directly
+// above it already do, and do better. Alex, 2026-09-09: *"Last3 games seems
+// like a silly split when a custom window is possible."*
+//
+// Its removal takes `restore` with it. That helper existed only to undo the
+// side effect -- putting lastN back to the sport's default when the reader
+// moved off Last 3 -- and keeping it would mean picking "Home only" silently
+// resetting a window the reader had chosen themselves on the stepper.
+export function buildSplits({ side, setSide, h2h, setH2h, starterLabel }) {
   const clear = () => { if (setH2h) setH2h(false); };
-  const restore = () => { if (last3) setLastN(defaultWindow); };
   const out = [
     {
       id: "season",
       label: "All games",
-      active: side === "all" && !last3 && !h2h,
-      onPick: () => { setSide("all"); clear(); restore(); },
+      active: side === "all" && !h2h,
+      onPick: () => { setSide("all"); clear(); },
     },
     {
       id: "home",
       label: "Home only",
       active: side === "home" && !h2h,
-      onPick: () => { setSide("home"); clear(); restore(); },
+      onPick: () => { setSide("home"); clear(); },
     },
     {
       id: "away",
       label: "Away only",
       active: side === "away" && !h2h,
-      onPick: () => { setSide("away"); clear(); restore(); },
-    },
-    {
-      id: "last3",
-      label: "Last 3 games",
-      active: last3 && !h2h,
-      onPick: () => { setSide("all"); clear(); setLastN(3); },
+      onPick: () => { setSide("away"); clear(); },
     },
   ];
   if (starterLabel && setH2h) {
@@ -137,7 +141,7 @@ export function buildSplits({ side, setSide, lastN, setLastN, h2h, setH2h, start
       id: "vs",
       label: starterLabel,
       active: !!h2h,
-      onPick: () => { setSide("all"); restore(); setH2h(true); },
+      onPick: () => { setSide("all"); setH2h(true); },
     });
   }
   return out;

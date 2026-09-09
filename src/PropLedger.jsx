@@ -2661,7 +2661,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     onReset: () => { setLastN(DEFAULT_WINDOW.nba); setSide("all"); setOpponent("all"); },
   });
   const v3Splits = buildSplits({
-    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.nba,
+    side, setSide,
     h2h: opponent !== "all",
     setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
     starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
@@ -5159,14 +5159,23 @@ function LineHandle({ value, onChange, min, max, containerRef, onDragValue }) {
   // fires on this instance, which would otherwise leak the window listeners.
   React.useEffect(() => () => stopDrag(), [stopDrag]);
 
+  // One whole unit per press, not a half.
+  //
+  // A half-step off an X.5 line lands on a whole number, and a whole-number
+  // line is one this app never posts: every logged value is an integer, so a
+  // game landing exactly on the line is a push, and `1 - rate` stops being the
+  // exact Under rate that flipFeedRowToUnder depends on. Two presses of the
+  // arrow key were quietly producing exactly that -- 293.5 to 294.0 -- which is
+  // the same grid the drag handler goes to some length to stay on (see
+  // feedFormScale's step).
   const handleKeyDown = (e) => {
     const { value, min, max, onChange } = latestRef.current;
     if (e.key === "ArrowUp" || e.key === "ArrowRight") {
       e.preventDefault();
-      onChange(Math.min(max, value + 0.5));
+      onChange(Math.min(max, value + 1));
     } else if (e.key === "ArrowDown" || e.key === "ArrowLeft") {
       e.preventDefault();
-      onChange(Math.max(min, value - 0.5));
+      onChange(Math.max(min, value - 1));
     }
   };
 
@@ -8313,7 +8322,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     onReset: () => { setLastN(DEFAULT_WINDOW.nfl); setSide("all"); setOpponent("all"); },
   });
   const v3Splits = buildSplits({
-    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.nfl,
+    side, setSide,
     h2h: opponent !== "all",
     setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
     starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
@@ -10324,7 +10333,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     onReset: () => { setLastN(DEFAULT_WINDOW.wnba); setSide("all"); setOpponent("all"); },
   });
   const v3Splits = buildSplits({
-    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.wnba,
+    side, setSide,
     h2h: opponent !== "all",
     setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
     starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
@@ -15365,7 +15374,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [h2h, filtered, boxscoreStarters, pitchHandVersion, statValueFn, effectiveLine]);
   const v3Splits = buildSplits({
-    side, setSide, lastN, setLastN, defaultWindow: DEFAULT_WINDOW.mlb,
+    side, setSide,
     h2h, setH2h,
     starterLabel: nextGame && nextGame.opp ? `vs ${nextGame.opp}` : null,
   });

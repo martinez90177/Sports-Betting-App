@@ -154,14 +154,16 @@ export default function FormPlot({
     if (isBinary || !(g.axisW > 0)) return [];
     const lo = scale.axisMin;
     const hi = scale.axisMin + scale.span;
-    const s = scale.step >= 5 ? 5 : 1;
+    // The label grid, not the drag grid -- those parted company when the drag
+    // went to one unit so it could reach a line a book would post.
+    const s = scale.tickStep ?? (scale.step >= 5 ? 5 : 1);
     const ticks = [
       Math.floor(hi / s) * s,
       Math.round((lo + (hi - lo) / 2) / s) * s,
       Math.ceil(lo / s) * s,
     ];
     return [...new Set(ticks)].filter((t) => t >= lo && t <= hi);
-  }, [isBinary, g.axisW, scale.axisMin, scale.span, scale.step]);
+  }, [isBinary, g.axisW, scale.axisMin, scale.span, scale.step, scale.tickStep]);
   const canDrag = !isBinary && marketLine != null && typeof onDragLine === "function";
 
   const posLine = rawLine != null ? rawLine : line;

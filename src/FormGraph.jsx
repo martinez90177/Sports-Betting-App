@@ -127,15 +127,33 @@ export function feedFormScale(recent, line, isBinary, opts = {}) {
   const pad = Math.max((hi0 - lo0) * 0.18, 0.6);
   const axisMin = lo0 - pad;
   const span = (hi0 + pad) - axisMin;
-  // Whole numbers only, anchored on the market line -- see the note above.
-  const step = hi0 >= 100 ? 5 : 1;
+  // The drag grid: one unit, on every market.
+  //
+  // It was 5 above a hundred, and that made the control unable to reach the
+  // lines the market actually posts. Snapping is relative to the posted line
+  // (see the drag handlers) to keep every stop a half-value, so a step of 5 off
+  // 257.5 could only ever land on 252.5 or 262.5 -- while DraftKings, Outlier
+  // and PropsMadness all post 249.5 and 259.5. Alex, 2026-09-09: *"if a
+  // player's standard line is 257.5, the person is never able to drag it to
+  // 250 on the dot."* Quite -- nor to any number a book would price.
+  //
+  // Neither rival has a draggable line to copy; they offer discrete alt lines
+  // instead. What is copied is their convention: every line they post is a
+  // half-value, and a step of 1 off an X.5 line keeps every stop on that grid,
+  // which is also what preserves the no-push guarantee rungStep documents.
+  const step = 1;
+  // Axis labels keep the coarser grid -- a scale reading 394 / 281 / 167 is
+  // harder to read than 390 / 280 / 170, and nothing snaps to it.
+  const tickStep = hi0 >= 100 ? 5 : 1;
+  // Headroom above the best game, so the reader can ask "what if it were higher
+  // than he's ever gone" and see every bar go red. Kept off the drag step,
+  // which is now too fine to be worth a whole unit of reach.
+  const headroom = hi0 >= 100 ? 5 : 1;
   return {
-    axisMin, span, step,
+    axisMin, span, step, tickStep,
     unit: plot / span,
     y: (v) => pedestal + Math.round(((v - axisMin) / span) * plot),
-    // One step of headroom above the best game, so the reader can ask "what
-    // if it were higher than he's ever gone" and see every bar go red.
-    dragMax: (vals.length ? Math.max(...vals) : line) + step,
+    dragMax: (vals.length ? Math.max(...vals) : line) + headroom,
   };
 }
 

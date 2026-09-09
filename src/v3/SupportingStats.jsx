@@ -18,6 +18,7 @@
 // numbers would make the counted ones look like guesses too.
 
 import React from "react";
+import { crest } from "./FormPlot.jsx";
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -174,7 +175,11 @@ function statsFor(pos, teamOf) {
   return [];
 }
 
-export default function SupportingStats({ games, position, teamTotals, opp }) {
+// How tall the bar area is. The container sizes itself around this rather than
+// the bars being squeezed into a fixed container -- see the chart below.
+const BAR_BOX = 104;
+
+export default function SupportingStats({ games, position, teamTotals, opp, sport = "nfl" }) {
   const [mode, setMode] = React.useState("mean");
   const [tab, setTab] = React.useState(0);
 
@@ -253,11 +258,18 @@ export default function SupportingStats({ games, position, teamTotals, opp }) {
         })}
       </div>
 
-      <div style={{ padding: "16px 18px 14px", display: "flex", gap: 5, alignItems: "flex-end", height: 132 }}>
+      {/* The bars sit in a fixed box and the container sizes itself around it.
+          It used to be the other way round -- a 132px container over bars that
+          could reach 88px plus a value label and an opponent label -- so the
+          tallest columns pushed their percentages up through the tab row above.
+          A fixed BAR_BOX also means every column is the same height, so the
+          crests and abbreviations line up whatever the values do. */}
+      <div style={{ padding: "16px 18px 14px", display: "flex", gap: 5, alignItems: "flex-end" }}>
         {games.map((g, i) => {
           const v = perGame[i];
-          const h = v == null ? 0 : Math.max(3, Math.round((v / top) * 88));
+          const h = v == null ? 0 : Math.max(3, Math.round((v / top) * (BAR_BOX - 8)));
           const away = g.home === false;
+          const isNext = opp && g.opp === opp;
           return (
             <div
               key={`${g.eventId || g.date}-${i}`}
@@ -265,18 +277,31 @@ export default function SupportingStats({ games, position, teamTotals, opp }) {
               style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
             >
               <span style={{ fontFamily: MONO, fontSize: 9.5, color: "var(--text-2)", whiteSpace: "nowrap" }}>{fmt(v) ?? "—"}</span>
-              {/* A game the stat cannot be taken from -- no targets, so no catch
-                  rate -- draws nothing rather than a bar at zero, which would
-                  read as a game he was targeted and caught none. */}
+              <div style={{ height: BAR_BOX, width: "100%", display: "flex", alignItems: "flex-end" }}>
+                {/* A game the stat cannot be taken from -- no targets, so no
+                    catch rate -- draws nothing rather than a bar at zero, which
+                    would read as a game he was targeted and caught none. */}
+                <span
+                  style={{
+                    width: "100%", height: h, borderRadius: 2,
+                    background: v == null ? "transparent" : "var(--text-2)",
+                    border: v == null ? "1px dashed var(--line)" : "none",
+                    opacity: v == null ? 1 : 0.55,
+                  }}
+                />
+              </div>
+              {/* The crest, because reading a column of three-letter codes is
+                  work the logo does for free -- and it is the same crest the
+                  graph above the fold already draws under its bars, so the two
+                  charts identify an opponent the same way. */}
+              <span role="img" aria-hidden="true" style={crest(g.opp, sport, 14)} />
               <span
                 style={{
-                  width: "100%", height: h, borderRadius: 2,
-                  background: v == null ? "transparent" : "var(--text-2)",
-                  border: v == null ? "1px dashed var(--line)" : "none",
-                  opacity: v == null ? 1 : 0.55,
+                  fontFamily: MONO, fontSize: 9, whiteSpace: "nowrap",
+                  color: isNext ? "var(--amber-ink)" : "var(--dim)",
+                  fontWeight: isNext ? 700 : 400,
                 }}
-              />
-              <span style={{ fontFamily: MONO, fontSize: 9, color: opp && g.opp === opp ? "var(--amber-ink)" : "var(--dim)", whiteSpace: "nowrap" }}>
+              >
                 {away ? "@" : ""}{g.opp}
               </span>
             </div>
