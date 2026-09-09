@@ -36,10 +36,12 @@ purpose, and a careful transcriber will undo both unless they read this first.
 
 1. The `Last 3 games` split stays removed. Alex: *"make sure 'last 3' split is
    removed."* The v3 mock draws it — see A3.
-2. **No alt-line ladder is built.** Frame 1a draws an open ladder with
-   `+ ADD LEG` beneath the graph. Alex, 2026-09-09: *"i do not want the alt
-   line ladder, dont add it."* Transcribe 1a without it, and give the room it
-   took to the graph — see B15.
+2. **No new alt-line surface is built.** Alex, 2026-09-09: *"i do not want
+   the alt line ladder, dont add it … hold off on the alt line prop feed stuff
+   for now."* Frame 1a already has its ladder in the shipped component, so
+   this is not a thing to remove — it is a thing to stop working on. Leave
+   both alt-line surfaces exactly as they stand and raise the question at the
+   end — see B15.
 
 ---
 
@@ -175,28 +177,55 @@ app wins."* None of these are layout, and the v3 rebuild should inherit them.
 
 ---
 
-## D. The audit that prompted this
+## D. The audit that prompted this — and its correction
 
-Player detail, live app against the v3 mock, left rail:
+**The audit that opened this file was wrong, and the plan built on it was
+wrong.** Recorded here in full, because the wrong version was acted on for most
+of a day and would be acted on again by anyone reading only the top of this
+file.
 
-| v3 rail | Live |
+*What was claimed on 2026-09-09:* that v3 had never been applied; that the
+player detail left rail was missing four of its seven groups; and that all
+~24 frames needed transcribing from the mocks.
+
+*What the repository says.* Frame 1a was transcribed from the mock in
+`12cb60b Desktop Player Detail — frame 1a's chassis, rails and graph`, then
+audited twice more (`117e32c Frame 1a's last two regions, and four things the
+audit found`, `988f56a The rail pill I never transcribed, and a control that
+never rendered`). Every rail group is in `src/v3/PlayerDetailDesktop.jsx`
+today — MARKET, SEASON, WINDOW + YOUR OWN, WORKLOAD, OPPOSING STARTER, SPLITS,
+MINIMUM SAMPLE on the left; SWITCH PLAYER, TEAMMATES, OPPOSING LINEUP,
+INJURIES · THIS MATCHUP on the right. And all twelve desktop v3 components are
+imported and rendering: My Picks, Games, Findings, News, Injuries, Matchup,
+Gamecast, Settings, Landing, Player Detail, Prop Feed, Board.
+
+*Why the page still did not look like v3.* Because of the work done on
+2026-09-08/09. `git diff f212377..HEAD -- src/v3/PlayerDetailDesktop.jsx` is
+**+233 lines**: MARKET lifted out of the rail into a top strip, the graph grown
+from 268 to 330, the alt lines collapsed behind a disclosure, Supporting Stats
+and Similar Players inserted. Alex's observation — *"any reason you could tell
+me why this isnt the v3 version"* — was correct. The diagnosis of it was not.
+The page drifted off v3 on 2026-09-09; it did not fail to arrive there.
+
+*What that changes.* There is no ground-up rebuild to sequence behind, so the
+"after v3 ships everywhere" gate at the top of this file applies only to
+screens that genuinely still differ. The work is:
+
+1. **Restore fidelity** on the frames that drifted — 1a first, since every item
+   in Section B that was actually built was built on it.
+2. **Audit each frame's component against its own mock frame** for real gaps.
+   A component being wired is not evidence that it is faithful; that is exactly
+   the mistake this section records.
+3. **Re-express Section B inside the v3 layout**, which is what Alex asked for:
+   *"i want them applied to the way the v3 mock is."*
+
+*Confirmed gaps so far:*
+
+| Gap | Detail |
 |---|---|
-| MARKET | moved to a top strip on 2026-09-09 |
-| SEASON + "2026 to date…" | gone — removed by the two-season cap |
-| WINDOW + custom builder | present |
-| WORKLOAD slider (PA / MINUTES / SNAP SHARE) | missing |
-| OPPOSING STARTER | missing |
-| SPLITS | present |
-| MINIMUM SAMPLE | missing |
+| WORKLOAD slider absent on NFL and MLB | The component renders it whenever a `workload` prop arrives. NBA (`PropLedger.jsx:2894`) and WNBA (`:10617`) pass one; the NFL and MLB call sites do not. The mock labels it `PA / MINUTES / SNAP SHARE` — MLB wants PA, NFL wants snap share. Note that snap share is the column `SNAP_PROFILE` only covers for seven hand-listed players, so NFL needs a real source before it can have this control. |
+| SEASON group can vanish | It renders only when `seasons.length > 0`, and the two-season cap added on 2026-09-09 can empty it. |
 
-Also off: weather belongs on one line beside the game menu, not in the right
-rail; the right rail wants OPPOSING LINEUP, and a PARK FACTOR block that is
-MLB-only. The frame's alt lines sit **open** under the graph as a ladder with
-`+ ADD LEG` — deliberately **not** transcribed, per the second exception above.
-The frame caption also specifies `← → step the line`, which collides with the
-←/→ player-stepping added on 2026-09-09 (B7); the frame wins on 1a, so the
-player walk needs another home.
-
-The other 23 frames have not been audited yet. `public/__mockcheck/` is
-gitignored and serves the mock files through the dev server, which is how to
-put a frame and a screen side by side at the same width.
+`public/__mockcheck/` is gitignored and serves the mock files through the dev
+server, which is how to put a frame and a screen side by side at the same
+width. **Use it before declaring any frame unfaithful.**
