@@ -17,19 +17,39 @@ import PalaceMark from "./PalaceMark.jsx";
 // breadcrumb (`← PROP FEED | AWAY @ HOME · TIME · MARKET | + WATCH`) instead --
 // it is a drill-down reached from the feed, not a nav destination. See
 // NAV_PAGES in PropLedger.jsx for who gets one.
+// Ordered by how a session actually runs, not by how the surfaces explain each
+// other. This DIVERGES from the v3 mock, which lists Games first and the Feed
+// fourth; Alex asked for the order that suits researching, 2026-09-10.
+//
+// The earlier order put Findings between the Board and the Feed to tell a
+// story -- coarse, then mid, then raw. That optimises for a narrative nobody
+// reads. A tab's position should cost what pressing it is worth, and the Feed
+// is pressed every session while Findings is pressed occasionally.
 export const NAV_TABS = [
-  { id: "games", label: "Games" },
+  // The two destinations, adjacent and first: one hands you a shortlist, the
+  // other lets you hunt. The Board leads because the landing's own front door
+  // already says OPEN TONIGHT'S BOARD, so the CTA and the leftmost tab agree.
   { id: "board", label: "The Board" },
-  // Between the Board and the Feed, which is the reading order: the Board says
-  // which games are worth opening, Findings says what is true inside them, the
-  // Feed is the table both are built from.
-  { id: "findings", label: "Findings" },
+  // Second, not fourth. This is the table the Board and Findings are both
+  // built from, and the one carrying the filters, the sorts and the alt lines.
+  // At fourth it cost a click on every visit to the app's main workspace.
   { id: "feed", label: "Prop Feed" },
-  { id: "news", label: "News" },
+  { id: "findings", label: "Findings" },
+  // The three context surfaces, in decreasing order of how much they bind a
+  // decision. Games is where you go about a particular matchup, usually once
+  // you already have a name.
+  { id: "games", label: "Games" },
+  // Above News because availability decides whether a prop is worth anything
+  // and a headline does not -- the News page says so itself: no item moves a
+  // hit rate. Not higher than this, though: every feed row already carries its
+  // own availability dot, so this page is the deeper reference rather than a
+  // gate a reader has to pass through.
+  //
   // Its own destination rather than a rail on News. Sixty-nine players in a
   // 196px column is a scrollbox; the same list in its own page is readable and
   // can be filtered by league, which is what Alex asked for.
   { id: "injuries", label: "Injuries" },
+  { id: "news", label: "News" },
 ];
 
 // Both states share their type. Only colour and the underline differ, which is

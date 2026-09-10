@@ -28,9 +28,9 @@ import { NAV_TABS } from "../NavBar.jsx";
 // larger), which is 60px on a notchless phone -- still a 44px tap target,
 // which is the floor the size is actually constrained by. Alex, 2026-08-31.
 //
-// The nav is the app's own NAV_TABS, which already matches the mock's list
-// exactly: Games, The Board, Findings, Prop Feed, News, Injuries. The mock
-// shortens two of them to fit six tabs across 430px.
+// The nav is the app's own NAV_TABS. It no longer matches the mock's list
+// order -- see the note on NAV_TABS -- but it is the same six tabs, and the
+// mock's trick of shortening two of them to fit six across 430px still holds.
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 
