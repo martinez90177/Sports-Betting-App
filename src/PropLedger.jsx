@@ -2525,16 +2525,28 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
             Their game log hasn&rsquo;t loaded, or they are no longer on a roster this app can read.
             Nothing has been substituted in their place.
           </div>
-          {firstOnSlate && (
-            <button
-              type="button"
-              className="chip"
-              style={{ marginTop: 12 }}
-              onClick={() => { setPlayerId(firstOnSlate.id); setLine(null); setOpponent("all"); }}
-            >
-              Show {firstOnSlate.name} instead
+          {/* A way back, because this return skips the page's own chrome.
+
+              Both guards render a bare panel -- no header, no nav, no back
+              link -- so the whole screen was one card and a single button
+              offering somebody else's page. A reader who tapped this player
+              could leave only by accepting a different one or reaching for the
+              browser's back button. The message is right and stays; what was
+              missing is the door. */}
+          <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button type="button" className="chip" onClick={onBack}>
+              &larr; Back to the feed
             </button>
-          )}
+            {firstOnSlate && (
+              <button
+                type="button"
+                className="chip"
+                onClick={() => { setPlayerId(firstOnSlate.id); setLine(null); setOpponent("all"); }}
+              >
+                Show {firstOnSlate.name} instead
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -10513,20 +10525,28 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
                 substituted &mdash; another player&rsquo;s chart under their name would be worse
                 than this message.
               </div>
-              {firstOnSlate && (
-                <button
-                  type="button"
-                  className="chip"
-                  style={{ marginTop: 12 }}
-                  onClick={() => selectPlayer(firstOnSlate.id)}
-                >
-                  Show {firstOnSlate.name} instead
-                </button>
-              )}
             </>
           ) : (
             "No WNBA player game logs have loaded yet."
           )}
+          {/* A way back, because this return skips the page's own chrome.
+
+              Both guards render a bare panel -- no header, no nav, no back
+              link -- so the whole screen was one card and a single button
+              offering somebody else's page. A reader who tapped this player
+              could leave only by accepting a different one or reaching for the
+              browser's back button. The message is right and stays; what was
+              missing is the door. */}
+          <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+            <button type="button" className="chip" onClick={onBack}>
+              &larr; Back to the feed
+            </button>
+            {jumpMissed && firstOnSlate && (
+              <button type="button" className="chip" onClick={() => selectPlayer(firstOnSlate.id)}>
+                Show {firstOnSlate.name} instead
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -21371,6 +21391,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   );
 
 
+  // Each sport's own word for a game starting. The sentence below was written
+  // for the NFL and then shown to all four, so an out-of-season NBA feed
+  // announced its "next kickoff" -- football's word, on basketball, in the one
+  // sentence a reader sees when the screen is otherwise empty.
+  const FIRST_WHISTLE = { nfl: "kickoff", mlb: "first pitch", nba: "tip-off", wnba: "tip-off" };
+
   // The sentence an empty feed shows, built once. The phone renders the
   // same list through PropFeedMobile, and two copies of this would be two
   // chances for one of them to blame the wrong thing.
@@ -21386,7 +21412,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               ? (
                 <span>
                   No {sport.toUpperCase()} games {slateWord.none}, so there are no props to read yet.
-                  {" "}Next kickoff is{" "}
+                  {` Next ${FIRST_WHISTLE[sport] || "game"} is `}
                   <b style={{ color: "var(--text)" }}>
                     {new Date(nextKickoff).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
                   </b>.
