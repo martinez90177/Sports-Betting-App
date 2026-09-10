@@ -310,3 +310,34 @@ Right rail: SWITCH PLAYER, TEAMMATES and INJURIES · THIS MATCHUP all render.
 
 The eleven mobile frames and the two Board frames. Same method; it is cheap now
 that the scripts exist.
+
+### E4. Found by reading the frame's data, not its markup — the six-cell strip
+
+Frame 1a's strip under the graph is six rate cells: `LAST 5 · LAST 10 ·
+LAST 20 · 2026 · HOME · AWAY`, each a percentage over the sample behind it
+(`cellsOf` in the mock returns `{label, value: "62%", sub: "8/13"}`).
+
+The app was feeding it `seasonSplits()`, which returns `{label, rate, hits, n}`
+for **this season and last**. The strip reads `value` and `sub`. Neither exists
+on that shape, so every cell rendered its heading over two blanks — live, on
+any player with two seasons of log. An MLB page showed a box containing the
+words "2026" and "2025" and nothing else, and the frame's six cells were never
+more than two.
+
+Replaced by `frameSplitCells`, and `seasonSplits` deleted with it. Two
+deliberate departures from the mock, both recorded in the function's own
+comment: the rolling windows come from `WINDOWS[sport]` rather than the mock's
+literal 5/10/20 (that trio is its MLB subject's, and a `LAST 20` cell on a
+seventeen-game season is the season wearing a wrong label), and there are two
+colour tiers rather than three, because the mock's middle tier is amber and
+amber in this app means *questionable*.
+
+**The label sweep in E1 could never have found this.** Every string it looks
+for — `LAST 5`, `HOME`, `AWAY` — is generated at runtime from data, so there is
+nothing in the component to match against. Frames have to be read for what
+feeds them, not only for what they say.
+
+**And a build passing proves nothing here.** Deleting `seasonSplits` took
+`frameSplitCells` with it, `npm run build` passed clean, and the MLB page threw
+`frameSplitCells is not defined` into its error boundary. JavaScript has no
+compile-time check for an undefined identifier. Drive the page.

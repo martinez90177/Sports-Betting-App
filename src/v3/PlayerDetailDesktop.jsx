@@ -817,10 +817,10 @@ export default function PlayerDetailDesktop({
       {/* The frame's six-cell strip. Every cell states its own sample, and
           a cell with too few games behind it says so rather than showing a
           percentage the sample cannot carry. */}
-      {log && log.seasons && log.seasons.length > 0 && (
-        <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: `repeat(${Math.min(6, log.seasons.length)}, 1fr)`, border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
-          {log.seasons.slice(0, 6).map((c, i) => (
-            <div key={c.label} style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 3, borderRight: i < Math.min(6, log.seasons.length) - 1 ? "1px solid var(--line)" : "none" }}>
+      {log && log.splitCells && log.splitCells.length > 0 && (
+        <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: `repeat(${Math.min(6, log.splitCells.length)}, 1fr)`, border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
+          {log.splitCells.slice(0, 6).map((c, i) => (
+            <div key={c.label} style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 3, borderRight: i < Math.min(6, log.splitCells.length) - 1 ? "1px solid var(--line)" : "none" }}>
               <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)" }}>{c.label}</span>
               <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: c.tone || "var(--text)" }}>{c.value}</span>
               <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{c.sub}</span>

@@ -27,7 +27,7 @@ import NavBar, { NAV_TABS } from "./NavBar.jsx";
 // The v3 router: below 900px this is the mobile mock, above it still the v2
 // desktop transcription. See src/v3/PlayerDetail.jsx.
 import PlayerDetailV2 from "./v3/PlayerDetail.jsx";
-import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW, WINDOW_MAX } from "./v3/playerDetailProps.js";
+import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW, WINDOW_MAX, WINDOWS } from "./v3/playerDetailProps.js";
 import useCustomWindow from "./v3/useCustomWindow.js";
 import PropFeedMobile from "./v3/PropFeedMobile.jsx";
 import PropFeedDesktop from "./v3/PropFeedDesktop.jsx";
@@ -2889,7 +2889,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: nbaNextGameForTeam(player?.team),
-        seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba"),
+        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba"),
       }}
       workload={{
         // The frame draws a workload filter in the rail -- MINUTES on the two
@@ -6537,41 +6537,62 @@ function indoorConditions(slateGame) {
   };
 }
 
-// This season and last, as two separate records. Item 5 of the competitive
-// brief (mock 3d).
+// Frame 1a's six-cell strip: three rolling windows, the current season, then
+// home and away. Every cell carries a rate and the count behind it -- "62%"
+// over "8/13" -- because a percentage with its sample out of sight is the one
+// number this app will not show.
 //
-// Nothing is fetched for this. All four player pages already merge the prior
-// season into their log (see usePriorSeasonLog / mergeSeasonLogs) and then
-// scope the page down to the current one, so the second season has been in
-// memory all along with no way to see it whole.
+// This strip used to be fed the old seasonSplits(), which returned
+// {label, rate, hits, n} for this season and last while the strip reads
+// {label, value, sub, tone}. So every cell rendered its heading over two
+// blanks, and did it live: an MLB page showed a box containing the words
+// "2026" and "2025" and nothing else. It also meant the frame's six cells
+// were never more than two.
 //
-// Reads the MERGED log, not the scoped one -- `allGames` is the current season
-// by definition, so building this from it would always produce one cell.
+// The rolling windows come from WINDOWS[sport] rather than the mock's literal
+// LAST 5 / LAST 10 / LAST 20. That trio belongs to its MLB subject, and the
+// handoff's own per-league table -- which playerDetailProps already holds --
+// puts MLB at 10/20/30 and the NFL at 3/5/10. "LAST 20" on a seventeen-game
+// season is not a window, it is the season wearing a wrong label.
 //
-// Deliberately not on the prop feed, where the mock puts it. The feed builds
-// thousands of rows from single-season logs, and last season loads per player
-// on request: a column there would be one network request per row, or three
-// thousand dashes. The feed states that instead of leaving it as a gap.
-function seasonSplits(logGames, valueOf, hit, sport) {
-  const bySeason = new Map();
-  (logGames || []).forEach((g) => {
-    if (g == null || g.season == null) return;
-    const k = Number(g.season);
-    if (!Number.isFinite(k)) return;
-    if (!bySeason.has(k)) bySeason.set(k, []);
-    bySeason.get(k).push(valueOf(g));
-  });
-  const years = [...bySeason.keys()].sort((a, b) => b - a).slice(0, 2);
-  if (years.length < 2) return null;
-  return years.map((k, i) => {
-    const vals = bySeason.get(k);
+// Sorted here rather than trusted: "last five" has to mean the five most
+// recent games whichever order the caller's log arrived in.
+//
+// Two colour tiers, not the mock's three. The mock greens at 70% and ambers
+// at 55%, but amber in this app is an availability colour (CLAUDE.md rule 2)
+// and there is no rate-amber token -- a 60% cell tinted #e8b13a would read as
+// "questionable" beside avatars where that is exactly what it means.
+function frameSplitCells(logGames, valueOf, hit, sport) {
+  const games = (logGames || []).filter(Boolean);
+  if (!games.length) return null;
+  const recent = [...games].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+  const cell = (label, list) => {
+    const vals = list.map(valueOf).filter((v) => v != null && Number.isFinite(v));
     const hits = vals.filter(hit).length;
+    const rate = vals.length ? hits / vals.length : null;
     return {
-      label: seasonLabel(k, sport),
-      rate: vals.length ? hits / vals.length : null,
-      hits, n: vals.length, current: i === 0,
+      label,
+      value: rate == null ? "\u2014" : `${Math.round(rate * 100)}%`,
+      sub: `${hits}/${vals.length}`,
+      tone: rate != null && rate >= 0.7 ? "var(--pos)" : "var(--text-2)",
     };
-  });
+  };
+
+  const wins = (WINDOWS[sport] || WINDOWS.nba).filter((w) => typeof w === "number").slice(0, 3);
+  const cells = wins.map((w) => cell(`LAST ${w}`, recent.slice(0, w)));
+
+  // The current season, named the way every other season control names it.
+  const years = [...new Set(games.map((g) => Number(g.season)).filter(Number.isFinite))].sort((a, b) => b - a);
+  if (years.length) {
+    cells.push(cell(seasonLabel(years[0], sport), games.filter((g) => Number(g.season) === years[0])));
+  }
+
+  // Home and away read off the same boolean the SPLITS radio filters on, so
+  // the cell and the split can never disagree about which games are which.
+  cells.push(cell("HOME", games.filter((g) => g.home === true)));
+  cells.push(cell("AWAY", games.filter((g) => g.home === false)));
+  return cells;
 }
 
 // The whole log, each game marked with whether the active filters counted it.
@@ -8581,7 +8602,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValueNFL(g, market)),
         upcoming: nflNextGameForTeam(player?.team),
-        seasons: seasonSplits(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl"),
+        splitCells: frameSplitCells(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl"),
       }}
       valueOfMarket={(g, id) => statValueNFL(g, id)}
       chart={{
@@ -10634,7 +10655,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: wnbaNextGameForTeam(player?.team),
-        seasons: seasonSplits(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba"),
+        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba"),
       }}
       workload={{
         // The mock scales the WNBA 0-40, against the NBA 40-minute-plus 42.
@@ -15730,7 +15751,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
         rows: buildLogRows(allGames, filtered, statValueFn),
         upcoming: nextGame,
         unit: isPitcher ? "starts" : "games",
-        seasons: seasonSplits(logGames, statValueFn, (v) => v > liveLine, "mlb"),
+        splitCells: frameSplitCells(logGames, statValueFn, (v) => v > liveLine, "mlb"),
       }}
       valueOfMarket={(g, id) => (isPitcher ? statValueMLBPitcher(g, id) : statValueMLB(g, id))}
       chart={{
