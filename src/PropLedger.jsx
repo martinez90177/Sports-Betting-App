@@ -7764,6 +7764,28 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     [playerSide, playerId]
   );
 
+  // The other side of tonight's fixture, for frame 1a's OPPOSING LINEUP rail.
+  //
+  // This was `opps: []` -- a literal empty array -- so the rail's whole
+  // opposition half could never render on a football page, while TEAMMATES
+  // beside it worked. The frame draws both, headed "OPPOSING LINEUP · N".
+  //
+  // Taken as "the roster that is not the subject's", not as `oppRoster`:
+  // teamRoster/oppRoster name the fixture's two sides, so oppRoster is the
+  // subject's own team whenever he is the away player, and using it directly
+  // would list his teammates twice under two different headings.
+  //
+  // Filtered on an ESPN id for the same reason teammateCandidates is -- a
+  // player with no id has no log to fetch, and CLAUDE.md's rule is that such a
+  // player is dropped rather than shown with nothing behind him.
+  const opponentCandidates = useMemo(() => {
+    if (!playerSide) return [];
+    const other = playerSide === teamRoster ? oppRoster : teamRoster;
+    return (other?.players || [])
+      .filter((pl) => nflEspnId(pl))
+      .map((pl) => ({ ...pl, pid: String(nflEspnId(pl)) }));
+  }, [playerSide, teamRoster, oppRoster]);
+
   const absentTeammates = useMemo(
     () => teammateCandidates.filter((pl) => {
       const st = nflStatusOf(pl);
@@ -8386,13 +8408,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       games: allGames.filter((g) => g.eventId),
       playedInGame: (g, pid) => playedIn(teammateSplits.byEvent, g, pid),
       mates: teammateCandidates,
-      opps: [],
+      opps: opponentCandidates,
       teamLabel: (teammateCandidates[0] || {}).team || null,
-      oppLabel: ([][0] || {}).team || null,
+      oppLabel: (opponentCandidates[0] || {}).team || null,
       statusOf: nflStatusOf,
       onOpen: () => setTeammateDataWanted(true),
     });
-  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates]);
+  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates, opponentCandidates]);
 
   const v2Page = (
     <PlayerDetailV2
