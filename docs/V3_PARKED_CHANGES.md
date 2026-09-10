@@ -609,3 +609,57 @@ There is a real argument for Alex's side — the teammate chips genuinely filter
 the sample, which is the left rail's stated job, so the handoff's own
 categories are arguably inconsistent here. That makes this a design decision
 rather than a bug, and it is Alex's to take. **Ask before moving it.**
+
+---
+
+## I. The value plot was hidden on the market most people open first
+
+Alex, 2026-09-10, on seeing the sorted-distribution chart on a receiver's
+Receptions page: *"how come this type of thing is missing from QB's?"*
+
+**It was not missing from QBs.** On Jared Goff, Pass TD, Pass Attempts,
+Completions and INT all drew it. Only **yardage** markets did not — on every
+position, so a receiver lost it on Rec Yds too. Pass Yds is simply the market a
+quarterback's page opens on, which is what made it look positional.
+
+Three per-sport whitelists gated it (`NFL_COUNTABLE_MARKETS`,
+`NBA_COUNTABLE_MARKETS`, `WNBA_COUNTABLE_MARKETS`), on this reasoning:
+
+> a yardage market's values are near-continuous, so a bar per distinct yardage
+> total would be one bar per game, not a real distribution
+
+**That describes what `ValuePlot` does for every market.** It expands bins back
+out to one bar per game (`ValuePlot.jsx:104`) and always has — the chart's own
+caption says "One bar per game, sorted low to high". A yardage market draws
+seventeen bars each occurring once instead of blocks of repeats: still the
+spread, still the line rule, still *"6 of 17 games clear 293.5"*.
+
+Nor do the labels crowd. `ValuePlot` drops any label that would collide with
+the one before it, falls back to the bare value where `value ×count` will not
+fit, and gives up past `LABEL_LIMIT` runs — whose own comment is written about
+passing yards specifically. The component was hardened for this case; the gate
+in front of it was never updated.
+
+**And the whitelists had rotted, which is the real argument against them.**
+Football's omitted `fga` and `kickPts` — small integers, exactly what it
+claimed to be for. The WNBA's omitted all four combo markets (`pra`, `ra`,
+`pr`, `pa`). **MLB never had one at all**, and has shown the plot on every
+market the whole time, which is the proof the ungated path is fine.
+
+All three are gone. A gate that must be updated by hand whenever a market is
+added is a gate that will be forgotten, and it was, twice.
+
+Two fixes went with it:
+
+- **A non-finite value now produces no bar** rather than a `NaN`-keyed bin that
+  reaches the plot as a bar with no height. The whitelist hid that case by
+  accident; nothing hides it now.
+- **The "blocks" sentence only appears when there are blocks.** It keyed on how
+  many axis labels rendered, which says nothing about whether any value
+  repeats, so a yardage log explained a feature that was not on its chart. It
+  now keys on `mode.count > 1`, the exact test.
+
+Verified on Goff: Pass Yds, Pass TD, Rush Yds and Pass + Rush Yds all draw it;
+Anytime TD correctly does not, because his rushing and receiving touchdowns are
+zero in all seventeen games and the call site's `bins.length > 1` guard
+withholds a chart from a log with one distinct value.

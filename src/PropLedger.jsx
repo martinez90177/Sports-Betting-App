@@ -2488,12 +2488,17 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     // Binary markets (dd/td) are already 0/1 -- a histogram of two bars is not
   // a useful "how often does this total come up" read, so they're excluded
   // the same way NFL excludes continuous yardage markets.
-  const NBA_COUNTABLE_MARKETS = new Set(["pts", "reb", "ast", "stl", "blk", "stk", "3pm", "3pa", "ftm", "fta", "pra", "ra", "pr", "pa"]);
+  // No whitelist -- see the NFL page. A gate that has to be updated by hand
+  // every time a market is added is a gate that will be forgotten, and it was:
+  // football lost fga and kickPts, the WNBA lost all four combo markets.
   const matchupBins = useMemo(() => {
-    if (!NBA_COUNTABLE_MARKETS.has(market)) return null;
     const counts = new Map();
     allGames.forEach((g) => {
       const v = Math.round(statValue(g, market, rebSplit));
+      // A market this player has no measurement for produces no bar, rather
+      // than a NaN-keyed bin that reaches the plot as a bar with no height.
+      // The whitelist used to hide that case by accident; nothing hides it now.
+      if (!Number.isFinite(v)) return;
       counts.set(v, (counts.get(v) || 0) + 1);
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));
@@ -8217,13 +8222,29 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // (the full team name) here meant g.opp (an abbreviation like "NYG") could
   // never match it, so this split silently computed zero games every time
   // and the whole row vanished rather than showing a wrong number.
-          // Distribution histogram only makes sense for a market with a small,
-  // repeating set of integer outcomes (receptions, attempts, TDs) -- a
-  // yardage market's values are near-continuous, so a bar per distinct
-  // yardage total would be one bar per game, not a real distribution. Shown
-  // only for the market families where "how often does this total come up"
-  // is a real, readable question.
-  const NFL_COUNTABLE_MARKETS = new Set(["rec", "rushAtt", "comp", "passAtt", "int", "passTd", "anytimeTd", "fgm", "xpm"]);
+          // The value plot used to be gated to a whitelist of "countable" markets --
+  // rec, rushAtt, comp, passAtt, int, passTd, anytimeTd, fgm, xpm -- on the
+  // reasoning that "a yardage market's values are near-continuous, so a bar
+  // per distinct yardage total would be one bar per game, not a real
+  // distribution."
+  //
+  // That describes what ValuePlot does for *every* market. It expands bins
+  // back out to one bar per game (see its `games` array) and always has; the
+  // caption on the chart says so in as many words. A yardage market draws
+  // seventeen bars each occurring once instead of blocks of repeats, which is
+  // a sorted distribution with no repeats in it -- still the spread, still the
+  // line rule, still "8 of 17 games clear 257.5".
+  //
+  // Nor do the labels crowd. ValuePlot drops any label that would collide with
+  // the one before it, falls back to the bare value where "value ×count" will
+  // not fit, and gives up entirely past LABEL_LIMIT runs -- whose own comment
+  // is written about passing yards specifically.
+  //
+  // So the whitelist only ever hid the chart on the market most people open
+  // first. It also silently omitted fga and kickPts, which are small integers
+  // and exactly what it claimed to be for. Gone: every market gets the plot,
+  // and the `bins.length > 1` guard at the call site still withholds it from a
+  // log where every game landed on the same number.
 
   // Team volume per game, for the share figures in Supporting Stats. Built off
   // the whole pool rather than this player, which is the point -- a share needs
@@ -8255,10 +8276,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   );
 
   const matchupBins = useMemo(() => {
-    if (!NFL_COUNTABLE_MARKETS.has(market)) return null;
     const counts = new Map();
     allGames.forEach((g) => {
       const v = Math.round(statValueNFL(g, market));
+      // A market this player has no measurement for produces no bar, rather
+      // than a NaN-keyed bin that reaches the plot as a bar with no height.
+      // The whitelist used to hide that case by accident; nothing hides it now.
+      if (!Number.isFinite(v)) return;
       counts.set(v, (counts.get(v) || 0) + 1);
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));
@@ -10224,12 +10248,17 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       // Both from lib/support.js, so this block and the board's verdict pill
   // cannot disagree about the same prop -- see readFor.
   const { lean: matchupLean, tier: matchupConfidence } = readFor(matchupHits, matchupWindow.length);
-                                            const WNBA_COUNTABLE_MARKETS = new Set(["pts", "reb", "ast", "stl", "blk", "3pm", "ftm"]);
+  // No whitelist here either -- see the NFL page for why one was a mistake.
+  // MLB has never had one, and this list had quietly omitted every combo
+  // market (pra, ra, pr, pa) it claimed to be for.
   const matchupBins = useMemo(() => {
-    if (!WNBA_COUNTABLE_MARKETS.has(market)) return null;
     const counts = new Map();
     allGames.forEach((g) => {
       const v = Math.round(statValue(g, market, rebSplit));
+      // A market this player has no measurement for produces no bar, rather
+      // than a NaN-keyed bin that reaches the plot as a bar with no height.
+      // The whitelist used to hide that case by accident; nothing hides it now.
+      if (!Number.isFinite(v)) return;
       counts.set(v, (counts.get(v) || 0) + 1);
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));
@@ -15148,6 +15177,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     const counts = new Map();
     allGames.forEach((g) => {
       const v = Math.round(mlbStatValue(g));
+      // A market this player has no measurement for produces no bar, rather
+      // than a NaN-keyed bin that reaches the plot as a bar with no height.
+      // The whitelist used to hide that case by accident; nothing hides it now.
+      if (!Number.isFinite(v)) return;
       counts.set(v, (counts.get(v) || 0) + 1);
     });
     return [...counts.entries()].sort((a, b) => a[0] - b[0]).map(([value, count]) => ({ value, count, cleared: value > effectiveLine }));

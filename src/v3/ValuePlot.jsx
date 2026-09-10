@@ -280,11 +280,18 @@ export default function ValuePlot({
           ? `One bar per game, sorted low to high — but only ${total} in the log, too few to read a shape into. Bars ${direction === "under" ? "below" : "above"} the dashed line cleared ${line}.`
           : note || [
             `One bar per game, sorted low to high — taller is a bigger ${String(label || "total").toLowerCase()} total.`,
-            runLabels.length > 1
-              ? `A block of equal bars is a total he lands on repeatedly; the number under it reads value ×games.`
-              : mode && mode.count > 1
-                ? `A block of equal bars is a total he lands on repeatedly; the widest is ${mode.value}, in ${mode.count} of ${total} games.`
-                : null,
+            // The blocks sentence only when there are blocks.
+            //
+            // It used to key on how many labels rendered, which says nothing
+            // about whether any value repeats -- so a yardage log, where every
+            // game lands on its own number, described a feature of the chart
+            // that was not on the chart. `mode` is the widest run, so
+            // mode.count > 1 is the exact test for "does anything repeat".
+            !(mode && mode.count > 1)
+              ? null
+              : runLabels.length > 1
+                ? `A block of equal bars is a total he lands on repeatedly; the number under it reads value ×games.`
+                : `A block of equal bars is a total he lands on repeatedly; the widest is ${mode.value}, in ${mode.count} of ${total} games.`,
             zeros > 0 ? `The flat run on the axis is ${zeros} game${zeros === 1 ? "" : "s"} at nought.` : null,
             `Bars ${direction === "under" ? "below" : "above"} the dashed line cleared ${line}. Every game in the log, not the window above.`,
           ].filter(Boolean).join(" ")}
