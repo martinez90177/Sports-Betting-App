@@ -968,6 +968,7 @@ export default function PlayerDetailDesktop({
   // team's roster stays put -- and picking someone from it changes the subject,
   // which clears the override and hands the lead back to his team.
   const [rosterTeam, setRosterTeam] = React.useState(null);
+  const [benchOpen, setBenchOpen] = React.useState(false);
   React.useEffect(() => { setRosterTeam(null); }, [subjectKey]);
   const shownTeam = rosterTeam || subjectKey || (rails[0] || {}).key;
   const activeRail = (rails.find((r) => r.key === shownTeam) || rails[0] || {}).rail;
@@ -1061,8 +1062,34 @@ export default function PlayerDetailDesktop({
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {(activeRail.players || []).map((rp) => (
+          {/* Core players, then the rest behind a Bench disclosure.
+
+              Alex, 2026-09-09: *"the player list on the sides for NFL needs to
+              be separated by the core players and the bench … create a break
+              after Bates and put Bench, and then make it a dropdown."*
+
+              The split is measured rather than guessed, and rather than typed
+              into a list that would rot: railMeta gives a player a stat line
+              ("QB · 268.5 PASS YDS") only where there is a market and a number
+              behind him, and everyone else carries a bare position. On Detroit
+              that boundary falls exactly where Alex said it should -- Jake
+              Bates is the last man with a stat, Tyler Conklin begins the rest.
+
+              Two guards. With every player on one side of the line there is no
+              boundary to draw, so the list renders flat instead of growing a
+              control that separates nothing -- which is the case on any sport
+              whose rail passes no railMeta. And a subject who is himself on the
+              bench forces it open, because a rail that hides the player whose
+              page you are reading is worse than an unsplit one. */}
+          {(() => {
+            const roster = activeRail.players || [];
+            const hasStat = (p) => typeof p.meta === "string" && p.meta.includes("·");
+            const core = roster.filter(hasStat);
+            const bench = roster.filter((p) => !hasStat(p));
+            const split = core.length > 0 && bench.length > 0;
+            const subjectOnBench = split && bench.some((p) => p.active);
+            const benchShown = benchOpen || subjectOnBench;
+            const rosterRow = (rp) => (
               <div
                 key={rp.id}
                 role="button"
@@ -1071,15 +1098,73 @@ export default function PlayerDetailDesktop({
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); rp.onSelect && rp.onSelect(); } }}
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid #20242b", cursor: "pointer" }}
               >
+                {/* Two lines, because one could not hold them.
+
+                    The name, the status word and the meta ("QB · 260.5 PASS
+                    YDS") all shared a single 268px row, and only the name was
+                    allowed to shrink -- so it lost every pixel the other two
+                    wanted. Amon-Ra St. Brown rendered as "Amon-R…" beside an
+                    immense empty gap, and Sam LaPorta's name disappeared
+                    behind his QUEST badge entirely. Alex, 2026-09-09: *"the
+                    names aren't even fitting yet there is an immense amount of
+                    space to the right … and that mess with LaPorta's name
+                    being lost behind questionable, fix that too"*, and
+                    *"taller rows are acceptable"*.
+
+                    So the meta drops to its own line under the name, and the
+                    name shares the top line with the status pill alone. The
+                    ellipsis stays as a last resort for a genuinely long name
+                    rather than as the normal case. */}
                 <div style={{ position: "relative", flex: "0 0 auto" }}>{rp.avatar}</div>
-                <span style={{ fontSize: 13, color: rp.active ? "var(--amber-ink)" : "var(--text)", flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {rp.name}
-                </span>
-                {rp.statusWord && <span style={pill(STATUS[rp.status] ? STATUS[rp.status].dot : "var(--dim)", "color-mix(in srgb, currentColor 14%, transparent)")}>{STATUS[rp.status] ? STATUS[rp.status].label : rp.statusWord}</span>}
-                <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)", flex: "0 0 auto" }}>{rp.meta}</span>
+                <div style={{ flex: "1 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, color: rp.active ? "var(--amber-ink)" : "var(--text)", flex: "0 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {rp.name}
+                    </span>
+                    {rp.statusWord && (
+                      <span style={{ ...pill(STATUS[rp.status] ? STATUS[rp.status].dot : "var(--dim)", "color-mix(in srgb, currentColor 14%, transparent)"), flex: "0 0 auto" }}>
+                        {STATUS[rp.status] ? STATUS[rp.status].label : rp.statusWord}
+                      </span>
+                    )}
+                  </div>
+                  {rp.meta && (
+                    <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {rp.meta}
+                    </span>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
+            );
+            return (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {(split ? core : roster).map(rosterRow)}
+                {split && (
+                  <div
+                    role="button"
+                    tabIndex={subjectOnBench ? -1 : 0}
+                    aria-expanded={benchShown}
+                    onClick={subjectOnBench ? undefined : () => setBenchOpen((v) => !v)}
+                    onKeyDown={(e) => {
+                      if (subjectOnBench) return;
+                      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setBenchOpen((v) => !v); }
+                    }}
+                    title={subjectOnBench ? "Open, because the player on screen is one of them" : undefined}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "10px 0",
+                      borderBottom: "1px solid #20242b",
+                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em",
+                      color: "var(--dim)",
+                      cursor: subjectOnBench ? "default" : "pointer",
+                    }}
+                  >
+                    <span>{`BENCH · ${bench.length}`}</span>
+                    <span style={{ marginLeft: "auto" }}>{benchShown ? "▴" : "▾"}</span>
+                  </div>
+                )}
+                {split && benchShown && bench.map(rosterRow)}
+              </div>
+            );
+          })()}
           {activeRail.legend && <span style={railNote}>{activeRail.legend}</span>}
         </div>
       )}

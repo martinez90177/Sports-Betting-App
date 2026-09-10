@@ -533,3 +533,79 @@ separate legs reading `Over 247.5 Pass Yds · 9 of 10`.
 app's own hit rate through `probToAmericanOdds`, not a book's number. The feed
 says so under the table and the slip says so under the legs. The Odds API's
 $30/mo tier would make it real; the free 500/mo will not.
+
+---
+
+## H. Section B, the never-built four — 2026-09-09
+
+Alex: *"yes do the four open ones."* Three shipped; the fourth is a conflict
+with the design rather than a gap in it.
+
+### H1. B10 / B11 — rail names now fit ✅
+
+The name, the status word and the meta (`QB · 268.5 PASS YDS`) shared one
+268px row, and only the name could shrink — so it lost every pixel the other
+two wanted. `Amon-Ra St. Brown` rendered as `Amon-R…` beside an immense empty
+gap, and Sam LaPorta's name vanished behind his QUEST badge entirely.
+
+The meta drops to its own line under the name; the name shares the top line
+with the status pill alone. Alex sanctioned the height: *"taller rows are
+acceptable."* The ellipsis is now a last resort for a genuinely long name
+rather than the normal case.
+
+### H2. B8 — bench break ✅
+
+`BENCH · 15 ▾` after the last core player, collapsed, expanding in place.
+
+**The split is measured, not typed.** `railMeta` gives a player a stat line
+only where there is a market and a number behind him; everyone else carries a
+bare position. On Detroit that boundary lands exactly where Alex said it
+should — *"create a break after Bates"* — because Jake Bates is the last man
+with a stat and Tyler Conklin begins the rest. No hand-written roster list to
+rot, and it works on any sport whose rail passes a meta.
+
+Two guards: with everyone on one side of the line the list renders flat rather
+than growing a control that separates nothing, and a subject who is himself on
+the bench forces it open — a rail that hides the player whose page you are
+reading is worse than an unsplit one.
+
+### H3. B12 — the market strip says it scrolls ✅
+
+Frame 1c has nine baseball markets and they fit 1440px with room over. Football
+has seventeen and they do not: **668px sat past the right edge** with nothing
+on screen suggesting more existed.
+
+`‹` and `›` at either end, always rendered so the strip does not reflow, dimmed
+and inert at their edge. Selecting a market from the filters rail scrolls it
+back into view.
+
+**Not a deviation** — the frame simply never had a sport with enough markets to
+overflow, so the tabs keep its underline styling. Alex's *"box the markets on
+prop feed page like they are on player detail page"* was pinned to the
+player-detail top strip, which has since gone back into the rail (B1), so the
+comparison no longer holds. Offered back to Alex rather than taken silently.
+
+*One bug this introduced and driving it caught:* the scroll-into-view effect
+first depended on `marketTabs`, which is rebuilt every render — so it re-ran
+continuously and snapped the strip back the instant anyone scrolled, and the
+arrows appeared to do nothing. Keyed on the active market's **id** instead.
+
+### H4. B9 — teammate filter to the left rail — **conflicts with the design**
+
+Not done, and not silently either way. Alex asked for this on 2026-09-09, when
+the layout was the pre-v3 one.
+
+`desktop-handoff.md` §2 states the rule the whole desktop layout is built on:
+
+> **Left rail — what filters the page.** Market, season, window, splits,
+> workload, minimum sample, league, status, sort.
+> **Right rail — what contextualises it.** Roster, **teammates**, opposing
+> lineup, conditions, injuries, the read.
+
+So the design puts teammates on the right *by name*, and frame 1a draws it
+there. It is already where v3 wants it.
+
+There is a real argument for Alex's side — the teammate chips genuinely filter
+the sample, which is the left rail's stated job, so the handoff's own
+categories are arguably inconsistent here. That makes this a design decision
+rather than a bug, and it is Alex's to take. **Ask before moving it.**
