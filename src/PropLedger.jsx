@@ -19557,7 +19557,7 @@ function LinesModeSwitcher({ value, onChange, fill }) {
       titleFor={(label) =>
         label === "MAIN LINE ONLY"
           ? "One posted line per prop"
-          : "Add an OPEN LADDER control to every row -- alternate lines, each counted from the same finished games"
+          : "Every alternate line as its own row, each counted from the same finished games"
       }
     />
   );
@@ -21661,7 +21661,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} fill />
               </div>
             </div>
-            <LinesModeSwitcher value={linesMode} onChange={setLinesMode} fill />
+            {/* No lines control here any more. It is one switch in the feed
+                header now (see PropFeedDesktop's altLines) -- always on screen,
+                so a second copy behind MORE FILTERS would be two controls over
+                one boolean and one more place for them to disagree. */}
             <div style={{ marginTop: 8 }}>
               <MinSampleControl
                 sport={sport}
@@ -22046,13 +22049,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         feedChip("all", "Whole schedule", slateScope !== "near", () => setSlateScope("all")),
       ],
     },
-    {
-      key: "lines", label: "LINES", cols: 1,
-      items: [
-        feedChip("main", "Main only", linesMode === "main", () => setLinesMode("main")),
-        feedChip("alt", "Show alt lines", linesMode === "alt", () => setLinesMode("alt")),
-      ],
-    },
   ];
 
   return (
@@ -22087,6 +22083,11 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           { id: "over", label: "OVER", active: direction !== "under", onPick: () => setDirection("over") },
           { id: "under", label: "UNDER", active: direction === "under", onPick: () => setDirection("under") },
         ]}
+        altLines={{
+          on: linesMode === "alt",
+          onToggle: () => setLinesMode((m) => (m === "alt" ? "main" : "alt")),
+          note: "Every alternate line, each counted from the same finished games. The posted line stays in the list.",
+        }}
         filterCount={feedActiveFilterCount}
         filtersOpen={feedRailOpen}
         onToggleFilters={() => setFeedRailOpen((v) => !v)}

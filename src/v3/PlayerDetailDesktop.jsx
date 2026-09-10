@@ -83,12 +83,22 @@ const LADDER_COLS_TIGHT = "68px 70px 100px minmax(0, 1fr)";
 // no longer fit, so the grid overflows the card rather than compressing.
 const LADDER_WIDE_MIN = 620;
 
-// The rail's one control, transcribed from the mock's `railPill`. Every
-// group in the left rail uses it -- MARKET, WINDOW, SEASON, MINIMUM SAMPLE
-// -- and it is left-aligned.
+// The rail's one control, transcribed from the mock's `railPill` -- with one
+// deliberate change: the label is centred.
+//
+// The mock left-aligns it, and the app followed, so MARKET and WINDOW read
+// hard against the left edge of pills that are much wider than their text
+// while SEASON and MINIMUM SAMPLE (which used the centred variant) did not.
+// One rail, two alignments, for no reason a reader could see. Alex,
+// 2026-09-10: *"i would rather the market names be centered in the pill rather
+// than stuck left axis like that."*
+//
+// Centring all of them makes it one rule instead of two, which also retires
+// the variant that existed only to opt back out of the default.
 function railPill(on) {
   return {
-    minHeight: 34, display: "flex", alignItems: "center", padding: "0 11px",
+    minHeight: 34, display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "0 11px", textAlign: "center",
     borderRadius: 7, fontFamily: MONO, fontSize: 12, cursor: "pointer",
     border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
     background: on ? "var(--amber-dim)" : "var(--surface-1)",
@@ -96,10 +106,9 @@ function railPill(on) {
   };
 }
 
-// Centred, which the mock applies to exactly two things: the two-column
-// SEASON pair and the full-width H2H row. Both are short labels in a wide
-// box, where left-aligned text drifts away from its own control.
-const railPillC = (on) => ({ ...railPill(on), justifyContent: "center" });
+// Kept as a name because several call sites read better for saying so, but it
+// is now the same pill -- centring is the default.
+const railPillC = railPill;
 
 // The workload slider's two buttons and the roster rail's team tabs. Each
 // is its own style in the mock rather than a railPill variant, so each is

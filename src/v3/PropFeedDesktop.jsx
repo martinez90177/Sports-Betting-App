@@ -70,6 +70,10 @@ export default function PropFeedDesktop({
   // ---- the My Picks dock ----
   picks = null,
 
+  // ---- the alt-lines switch, in the header beside the side pills ----
+  // { on, onToggle, note } -- see PropLedger's feedAltSwitch.
+  altLines = null,
+
   // ---- anything the page draws over the frame (banners, sheets) ----
   overlays = null,
 }) {
@@ -246,6 +250,55 @@ export default function PropFeedDesktop({
         ))}
         </div>
         {stripArrow(1, stripEdge.right)}
+        {/* Alt lines: one switch, in the header, beside the side pills.
+
+            It was a two-pill radio ("Main only" / "Show alt lines") at the
+            bottom of the filters rail, which is both the least visible corner
+            of the page and two decisions for what is one. Alex, 2026-09-10:
+            *"i would like for my alt line button to work like outlier's and
+            also be in a similar position rather than bottom left rail … i
+            would rather it be a one click button."*
+
+            Off shows posted lines only; on shows the alt lines as well as the
+            posted ones, which is what the underlying expansion already did --
+            feedRowsWithAlts returns the main row first and its rungs after it.
+            So this is one switch over one boolean, not a mode with two names. */}
+        {altLines && (
+          <div
+            role="switch"
+            tabIndex={0}
+            aria-checked={!!altLines.on}
+            onClick={altLines.onToggle}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); altLines.onToggle(); } }}
+            title={altLines.note || undefined}
+            style={{
+              flex: "0 0 auto", display: "flex", alignItems: "center", gap: 9,
+              padding: "0 12px", minHeight: 30, cursor: "pointer",
+              fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em",
+              color: altLines.on ? "var(--amber-ink)" : "var(--dim)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span>ALT LINES</span>
+            {/* The track and its knob. A switch rather than a checkbox because
+                it takes effect immediately and has no third state. */}
+            <span
+              style={{
+                position: "relative", flex: "0 0 auto", width: 32, height: 18,
+                borderRadius: 999, transition: "background 120ms",
+                background: altLines.on ? "var(--amber)" : "var(--line-strong)",
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute", top: 2, left: altLines.on ? 16 : 2,
+                  width: 14, height: 14, borderRadius: 999, background: "var(--bg)",
+                  transition: "left 120ms",
+                }}
+              />
+            </span>
+          </div>
+        )}
         <span style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 10 }}>
           {directions.map((d) => (
             <div

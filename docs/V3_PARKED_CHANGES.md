@@ -663,3 +663,55 @@ Verified on Goff: Pass Yds, Pass TD, Rush Yds and Pass + Rush Yds all draw it;
 Anytime TD correctly does not, because his rushing and receiving touchdowns are
 zero in all seventeen games and the call site's `bins.length > 1` guard
 withholds a chart from a log with one distinct value.
+
+---
+
+## J. The alt-lines switch, and centred rail pills — 2026-09-10
+
+### J1. One switch, in the header
+
+Alex: *"i would like for my alt line button to work like outlier's and also be
+in a similar position rather than bottom left rail … I would rather main lines
+show unless alt lines is clicked, which then alt lines including the main lines
+will show, but i would rather it be a one click button."*
+
+**The behaviour was already right.** `feedRowsWithAlts` returns the posted line
+first and its rungs after it, so "alt lines including the main lines" is what
+the toggle has always produced. What was wrong was the control: a two-pill
+radio (`Main only` / `Show alt lines`) at the **bottom of the filters rail** —
+the least visible corner of the page, and two decisions for what is one
+boolean.
+
+Now a single `ALT LINES` switch in the feed header, beside the OVER / UNDER
+pills, `role="switch"` with `aria-checked`. Off shows posted lines; on adds
+the rungs.
+
+**The duplicate went too.** MORE FILTERS carried its own copy of the same
+control. One switch, always on screen, is better than two that can disagree.
+
+Verified: `30 of 2639 props` → `185 of 12115 props` on one click.
+
+*Position note:* Outlier puts theirs at the extreme right of its filter bar;
+this sits just inside the side pills, which keeps OVER / UNDER where it has
+always been. Say if it should go further right.
+
+### J2. Rail pills centre their labels
+
+Alex: *"i would rather the market names be centered in the pill rather than
+stuck left axis like that."*
+
+**A deviation from the mock, taken deliberately.** The mock's `railPill` is
+left-aligned (`PropPalace Desktop v3.dc.html:2450`, no `justifyContent`), and
+the app followed it — so MARKET and WINDOW read hard against the left edge of
+pills far wider than their text, while SEASON and MINIMUM SAMPLE used a centred
+variant and did not. One rail, two alignments, for no reason visible to a
+reader.
+
+Centring all of them makes it one rule instead of two, and retires the variant
+that existed only to opt back out of the default.
+
+### J3. Noted in passing
+
+`v2ControlBar` (`PropLedger.jsx:21220`) is dead — assembled in full and never
+rendered. Left alone rather than cut alongside a behaviour change; it is worth
+its own pass.
