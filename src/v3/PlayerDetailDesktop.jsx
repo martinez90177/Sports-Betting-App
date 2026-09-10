@@ -1051,7 +1051,16 @@ export default function PlayerDetailDesktop({
   );
 
   const rightRail = (
-    <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", minHeight: 0, padding: "20px 18px 30px", display: "flex", flexDirection: "column", gap: 22 }}>
+    // 124px of floor, not 30, because two buttons float in this corner.
+    //
+    // "+ ADD TO MY PICKS" sits at bottom: 76 and the app's My Picks launcher
+    // at bottom: 20, so between them they own the lowest 115px of this rail --
+    // and the rail scrolled to its end still left rows underneath. Scrolled
+    // all the way down at 1280px, Brock Rechsteiner's injury row was 77%
+    // covered and Audric Estime's 64%: named players, with a status, that no
+    // amount of scrolling could reveal. Nothing is silently dropped, and a row
+    // parked permanently under a button is dropped.
+    <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", minHeight: 0, padding: "20px 18px 124px", display: "flex", flexDirection: "column", gap: 22 }}>
       {/* SWITCH PLAYER sits above its tabs, not beside them.
           Side by side with `justify-content: space-between` and a nowrap tab
           row, two full club names — "New Orleans Saints", "Detroit Lions" —
