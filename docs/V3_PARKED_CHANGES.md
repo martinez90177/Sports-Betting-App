@@ -341,3 +341,52 @@ feeds them, not only for what they say.
 `frameSplitCells` with it, `npm run build` passed clean, and the MLB page threw
 `frameSplitCells is not defined` into its error boundary. JavaScript has no
 compile-time check for an undefined identifier. Drive the page.
+
+### E5. Both remaining 1a gaps closed — 2026-09-09
+
+**MINIMUM SAMPLE now exists, and it marks rather than hides.**
+
+The mock draws the control, defaults it to `15+` and never reads it, so what it
+*does* was this app's decision. The handoff calls the left rail "what filters
+the page", and on a page about one player the only thing a sample floor can
+filter is which rates the page will state plainly. So it flags every rate with
+fewer games behind it than the floor — in the six-cell strip (`4/5 · thin`) and
+in the alt-line ladder's header, which now grades itself against the reader's
+floor instead of `THIN_GAMES`, so the rail and the card cannot disagree.
+
+It marks and never hides, because that is the app's own published rule: the
+Findings header prints `A THIN SAMPLE IS MARKED, NEVER HIDDEN` across itself,
+and a blanked cell would leave a reader unable to tell a thin sample from a
+missing one — CLAUDE.md's fourth rule.
+
+Default is **10**, not the mock's 15, because 10 is already what this app calls
+thin (`THIN_GAMES`, `lib/altLines.js`). The state lives in
+`usePlayerPageState`, which is what that hook exists for.
+
+Verified on Goff: at `10+` the strip reads `LAST 3 2/3 · thin`, `LAST 5 4/5 ·
+thin`, `LAST 10 5/10` clean; at `30+` every cell is thin and the ladder says
+`10 games counted · too few to lean on`; at `All` every mark clears.
+
+**The MLB workload slider was already built.** `minPA` / `maxPA` existed on the
+page and already filtered the log (`PropLedger.jsx:14056`) — the control was
+just stranded in the old filters drawer, off the v3 rail. So the rail group the
+frame draws sat empty while the filter behind it worked. Wiring the existing
+state to `workload` is the whole fix; no second copy of a filter to keep in
+step. Scaled 0–6 because that is the scale already in use — the mock says 7,
+but seven plate appearances is an extra-innings game and changing the ceiling
+would silently redefine the existing "Any" in three other places.
+
+Withheld on pitchers, because a starter's plate appearances are not his
+workload — innings are — which is the call `lib/role.js` already makes.
+Verified: Bichette shows it, Robert Stock (SP) does not.
+
+**Frame 1a's left rail is now complete on MLB** — MARKET, SEASON, WINDOW,
+PLATE APPEARANCES, OPPOSING STARTER, SPLITS, MINIMUM SAMPLE, all seven.
+
+*Two mistakes worth keeping.* Both were caught by driving the page, neither by
+the build. `ladderThin` was first declared beside the other card state, 70
+lines above the `rungs` memo it reads — a clean build and
+`Cannot access 'rungs' before initialization` on load. And the MLB workload was
+first written with fresh `minPa`/`maxPa` state and a second copy of the filter,
+before finding that the page already had both. **Search for the state before
+adding it.**

@@ -25,7 +25,7 @@
 
 import { useState, useEffect } from "react";
 import { LOG_SCOPE_DEFAULT } from "../LogScope.jsx";
-import { DEFAULT_WINDOW } from "../v3/playerDetailProps.js";
+import { DEFAULT_WINDOW, DEFAULT_MIN_SAMPLE } from "../v3/playerDetailProps.js";
 
 export default function usePlayerPageState({ sport, initialPlayerId, initialMarket }) {
   // Which row of the log the page is about.
@@ -50,6 +50,19 @@ export default function usePlayerPageState({ sport, initialPlayerId, initialMark
   const [teammateChips, setTeammateChips] = useState([]);
   const [teammateDataWanted, setTeammateDataWanted] = useState(false);
 
+  // Frame 1a's MINIMUM SAMPLE. The floor below which a rate on this page is
+  // marked as one the sample cannot carry.
+  //
+  // Shared rather than per-sport for the reason this hook exists: it is the
+  // twelfth piece of state, every page has it, and three-of-four is how the
+  // last three bugs happened.
+  //
+  // It marks; it never hides. The Findings frame prints the rule on itself --
+  // "A THIN SAMPLE IS MARKED, NEVER HIDDEN" -- and a floor that blanked a cell
+  // would also break CLAUDE.md's fourth rule, where a thing that cannot render
+  // surfaces as a visible state rather than an absent one.
+  const [minSample, setMinSample] = useState(DEFAULT_MIN_SAMPLE);
+
   // Chrome.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showContext, setShowContext] = useState(false);
@@ -68,6 +81,7 @@ export default function usePlayerPageState({ sport, initialPlayerId, initialMark
     side, setSide,
     lastN, setLastN,
     logScope, setLogScope,
+    minSample, setMinSample,
     line, setLine,
     dragLine, setDragLine,
     teammateChips, setTeammateChips,

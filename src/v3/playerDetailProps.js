@@ -54,6 +54,41 @@ export const SEASON_LENGTH = { mlb: 162, nfl: 17, nba: 82, wnba: 44 };
 // stepper nobody can drive.
 export const WINDOW_MAX = { ...SEASON_LENGTH, nfl: 34 };
 
+// Frame 1a's MINIMUM SAMPLE group: 10+ / 15+ / 30+ / All.
+//
+// What it does is this app's decision, not the mock's -- the mock draws the
+// control, defaults it to "15+" and never reads it. The handoff calls the left
+// rail "what filters the page", and on a page about one player the only thing
+// a sample floor can filter is which rates the page is willing to state
+// plainly. So it marks every rate with fewer games behind it than the floor.
+//
+// It marks rather than hides, which is the app's own published rule -- the
+// Findings screen prints "A THIN SAMPLE IS MARKED, NEVER HIDDEN" across its
+// own header -- and hiding would leave a reader unable to tell a thin sample
+// from a missing one.
+//
+// "All" is a floor of zero: every rate stated, none of them flagged.
+export const SAMPLE_FLOORS = [10, 15, 30, "all"];
+
+// Ten, because that is already the number this app calls thin: THIN_GAMES in
+// lib/altLines.js, which the alt-line ladder has always graded itself against.
+// A rail control that disagreed with the card below it would be worse than no
+// control. The mock opens on 15+; matching the app's own constant matters more
+// than matching a mock's placeholder state.
+export const DEFAULT_MIN_SAMPLE = 10;
+
+export const sampleFloor = (minSample) =>
+  (minSample === "all" || minSample == null ? 0 : Number(minSample) || 0);
+
+export function buildSamples({ minSample, setMinSample }) {
+  return SAMPLE_FLOORS.map((v) => ({
+    id: String(v),
+    label: v === "all" ? "All" : `${v}+`,
+    active: String(minSample) === String(v),
+    onPick: () => setMinSample(v),
+  }));
+}
+
 const windowLabel = (w) => (w === "all" ? "Season" : `L${w}`);
 
 // The pill row: the sport's own four, then any window the reader saved, then

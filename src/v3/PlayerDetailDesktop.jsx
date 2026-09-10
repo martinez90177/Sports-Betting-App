@@ -189,6 +189,11 @@ export default function PlayerDetailDesktop({
   valueOfMarket = null,
   // Minimum-sample and workload controls, where the sport has them.
   samples = null,
+  // The MINIMUM SAMPLE floor, already resolved to a number ("All" is 0). The
+  // ladder grades itself against this rather than against altLines' own
+  // THIN_GAMES, so the rail control and the card below it cannot disagree
+  // about what thin means.
+  minSample = 0,
   workload = null,
 }) {
   const games = (chart && chart.games) || [];
@@ -277,6 +282,16 @@ export default function PlayerDetailDesktop({
     isBinary: !!(chart && chart.isBinary),
     direction: (chart && chart.direction) || "over",
   }), [shown, chart, line]);
+
+  // Thin by the reader's own MINIMUM SAMPLE floor when they have set one, and
+  // by lib/altLines' own THIN_GAMES when they have not -- never both at once.
+  //
+  // Declared here rather than beside the other card state: it reads `rungs`,
+  // which is the memo directly above, and a const that reaches backwards for a
+  // let-bound value throws before the page paints.
+  const ladderThin = rungs.length > 0 && (
+    minSample > 0 ? rungs[0].gamesCounted < minSample : !!rungs[0].thin
+  );
 
   // ---- the bar-detail card's two lower sections -------------------------
   //
@@ -850,7 +865,7 @@ export default function PlayerDetailDesktop({
               {/* Folded, the count of rungs is what says there is something
                   here; open, the games behind them is the caveat that matters. */}
               {ladderOpen
-                ? `${rungs[0].gamesCounted} games counted${rungs[0].thin ? " · too few to lean on" : ""}`
+                ? `${rungs[0].gamesCounted} games counted${ladderThin ? " · too few to lean on" : ""}`
                 : `${rungs.length} rungs · ${rungs[0].gamesCounted} games counted`}
             </span>
             {/* Read-only, so a pill. */}

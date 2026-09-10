@@ -27,7 +27,7 @@ import NavBar, { NAV_TABS } from "./NavBar.jsx";
 // The v3 router: below 900px this is the mobile mock, above it still the v2
 // desktop transcription. See src/v3/PlayerDetail.jsx.
 import PlayerDetailV2 from "./v3/PlayerDetail.jsx";
-import { buildWindows, buildSplits, buildSeasons, buildSlate, DEFAULT_WINDOW, WINDOW_MAX, WINDOWS } from "./v3/playerDetailProps.js";
+import { buildWindows, buildSplits, buildSeasons, buildSlate, buildSamples, sampleFloor, DEFAULT_WINDOW, WINDOW_MAX, WINDOWS } from "./v3/playerDetailProps.js";
 import useCustomWindow from "./v3/useCustomWindow.js";
 import PropFeedMobile from "./v3/PropFeedMobile.jsx";
 import PropFeedDesktop from "./v3/PropFeedDesktop.jsx";
@@ -1808,6 +1808,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const {
     playerId, setPlayerId, market, setMarket,
     side, setSide, lastN, setLastN, logScope, setLogScope,
+    minSample, setMinSample,
     line, setLine, dragLine, setDragLine,
     teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
     filtersOpen, setFiltersOpen, showContext, setShowContext,
@@ -2753,6 +2754,8 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       lineups={v3Lineups}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "nba", scope: logScope, onChange: setLogScope })}
+      samples={buildSamples({ minSample, setMinSample })}
+      minSample={sampleFloor(minSample)}
       windows={v3Windows}
       splits={v3Splits}
       bottomStrip={v2MobileNav}
@@ -2889,7 +2892,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: nbaNextGameForTeam(player?.team),
-        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba"),
+        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba", sampleFloor(minSample)),
       }}
       workload={{
         // The frame draws a workload filter in the rail -- MINUTES on the two
@@ -6562,20 +6565,25 @@ function indoorConditions(slateGame) {
 // at 55%, but amber in this app is an availability colour (CLAUDE.md rule 2)
 // and there is no rate-amber token -- a 60% cell tinted #e8b13a would read as
 // "questionable" beside avatars where that is exactly what it means.
-function frameSplitCells(logGames, valueOf, hit, sport) {
+function frameSplitCells(logGames, valueOf, hit, sport, minSample = 0) {
   const games = (logGames || []).filter(Boolean);
   if (!games.length) return null;
   const recent = [...games].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
+  // A cell under the MINIMUM SAMPLE floor keeps its number and loses its
+  // colour, and says why underneath. Marked, not hidden: the Findings header
+  // prints that rule on itself, and a blanked cell would leave a reader unable
+  // to tell a thin sample from a missing one.
   const cell = (label, list) => {
     const vals = list.map(valueOf).filter((v) => v != null && Number.isFinite(v));
     const hits = vals.filter(hit).length;
     const rate = vals.length ? hits / vals.length : null;
+    const thin = vals.length > 0 && minSample > 0 && vals.length < minSample;
     return {
       label,
       value: rate == null ? "\u2014" : `${Math.round(rate * 100)}%`,
-      sub: `${hits}/${vals.length}`,
-      tone: rate != null && rate >= 0.7 ? "var(--pos)" : "var(--text-2)",
+      sub: thin ? `${hits}/${vals.length} \u00b7 thin` : `${hits}/${vals.length}`,
+      tone: thin ? "var(--dim)" : rate != null && rate >= 0.7 ? "var(--pos)" : "var(--text-2)",
     };
   };
 
@@ -7567,6 +7575,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const {
     playerId, setPlayerId, market, setMarket,
     side, setSide, lastN, setLastN, logScope, setLogScope,
+    minSample, setMinSample,
     line, setLine, dragLine, setDragLine,
     teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
     filtersOpen, setFiltersOpen, showContext, setShowContext,
@@ -8464,6 +8473,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       lineups={v3Lineups}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "nfl", scope: logScope, onChange: setLogScope })}
+      samples={buildSamples({ minSample, setMinSample })}
+      minSample={sampleFloor(minSample)}
       windows={v3Windows}
       splits={v3Splits}
       bottomStrip={v2MobileNav}
@@ -8602,7 +8613,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValueNFL(g, market)),
         upcoming: nflNextGameForTeam(player?.team),
-        splitCells: frameSplitCells(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl"),
+        splitCells: frameSplitCells(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl", sampleFloor(minSample)),
       }}
       valueOfMarket={(g, id) => statValueNFL(g, id)}
       chart={{
@@ -9526,6 +9537,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const {
     playerId, setPlayerId, market, setMarket,
     side, setSide, lastN, setLastN, logScope, setLogScope,
+    minSample, setMinSample,
     line, setLine, dragLine, setDragLine,
     teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
     filtersOpen, setFiltersOpen, showContext, setShowContext,
@@ -10516,6 +10528,8 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       lineups={v3Lineups}
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "wnba", scope: logScope, onChange: setLogScope })}
+      samples={buildSamples({ minSample, setMinSample })}
+      minSample={sampleFloor(minSample)}
       windows={v3Windows}
       splits={v3Splits}
       bottomStrip={v2MobileNav}
@@ -10655,7 +10669,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: wnbaNextGameForTeam(player?.team),
-        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba"),
+        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba", sampleFloor(minSample)),
       }}
       workload={{
         // The mock scales the WNBA 0-40, against the NBA 40-minute-plus 42.
@@ -13498,6 +13512,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   const {
     playerId, setPlayerId, market, setMarket,
     side, setSide, lastN, setLastN, logScope, setLogScope,
+    minSample, setMinSample,
     line, setLine, dragLine, setDragLine,
     teammateChips, setTeammateChips, teammateDataWanted, setTeammateDataWanted,
     filtersOpen, setFiltersOpen, showContext, setShowContext,
@@ -15607,6 +15622,49 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
       availabilityCovered
       renderAvatar={v3RenderAvatar}
       seasons={buildSeasons({ games: logGames, sport: "mlb", scope: logScope, onChange: setLogScope })}
+      samples={buildSamples({ minSample, setMinSample })}
+      minSample={sampleFloor(minSample)}
+      // Frame 1a's WORKLOAD group, in baseball's own unit. NBA and WNBA have
+      // had the equivalent in MINUTES since the frame was transcribed; the mock
+      // labels this one PLATE APPEARANCES and baseball never got it.
+      //
+      // Nothing new is measured or filtered here. This page already held
+      // minPA/maxPA and already applied them to the log -- the control was just
+      // stranded in the old filters drawer, off the v3 rail, so the rail group
+      // the frame draws stayed empty while the filter behind it worked. Reusing
+      // the state means the two can never disagree, and means no second copy of
+      // a filter to keep in step.
+      //
+      // Scaled 0-6 because that is the scale already in use. The mock says 7,
+      // but seven plate appearances is an extra-innings game, and changing the
+      // ceiling would silently redefine the existing "Any" (maxPA !== 6) in
+      // three other places.
+      //
+      // Batters only. A starter's plate appearances are not his workload --
+      // innings are -- so a pitcher's page gets no control rather than one
+      // measuring the wrong thing, which is the call lib/role.js already makes.
+      workload={isPitcher ? null : {
+        label: "PLATE APPEARANCES",
+        value: !paRangeEnabled
+          ? (minPA === 0 ? "Any" : minPA + "+ PA")
+          : (minPA === 0 && maxPA === 6 ? "Any" : minPA + "–" + maxPA + " PA"),
+        active: minPA !== 0 || maxPA !== 6,
+        control: (
+          <ThresholdSlider
+            min={0} max={6} step={1}
+            lo={minPA} hi={maxPA}
+            onChangeLo={setMinPA} onChangeHi={setMaxPA}
+            rangeEnabled={paRangeEnabled}
+            onToggleRange={() => setPaRangeEnabled((v) => !v)}
+            showToggle={false}
+            compact
+          />
+        ),
+        modeLabel: paRangeEnabled ? "RANGE" : "MINIMUM",
+        onToggleMode: () => setPaRangeEnabled((v) => !v),
+        onReset: () => { setMinPA(0); setMaxPA(6); },
+        games: filtered.length + " G",
+      }}
       windows={v3Windows}
       splits={v3Splits}
       hands={v3Hands}
@@ -15751,7 +15809,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
         rows: buildLogRows(allGames, filtered, statValueFn),
         upcoming: nextGame,
         unit: isPitcher ? "starts" : "games",
-        splitCells: frameSplitCells(logGames, statValueFn, (v) => v > liveLine, "mlb"),
+        splitCells: frameSplitCells(logGames, statValueFn, (v) => v > liveLine, "mlb", sampleFloor(minSample)),
       }}
       valueOfMarket={(g, id) => (isPitcher ? statValueMLBPitcher(g, id) : statValueMLB(g, id))}
       chart={{
