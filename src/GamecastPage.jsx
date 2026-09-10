@@ -63,7 +63,7 @@ function statusLine(game) {
     // periodLabel carries a newline for NFL down-and-distance; the header has
     // one line to work with, so it collapses to a separator.
     const detail = game.periodLabel ? game.periodLabel.replace(/\n/g, " · ") : null;
-    return { text: detail ? `${head} · ${detail}` : head, live: true };
+    return { text: detail ? `${head} · ${detail}` : head, head, detail, live: true };
   }
   if (status === GAME_STATUS.DELAYED) return { text: "DELAYED", live: false };
   if (status === GAME_STATUS.SUSPENDED) return { text: "SUSPENDED", live: false };
@@ -416,14 +416,17 @@ export default function GamecastPage({ game, isMobile, embedded, onBack, onViewP
     const lead = winner || (isActiveStatus(game.status) && scoreOf("away") != null && scoreOf("home") != null
       ? (scoreOf("away") > scoreOf("home") ? "away" : scoreOf("home") > scoreOf("away") ? "home" : null)
       : null);
+    // The pill above the clock line already names the state. Naming it twice
+    // cost the ballpark its place on a 375px phone.
+    const statePill = isFinal ? "FINAL" : isActiveStatus(game.status) ? "LIVE" : "SCHEDULED";
     if (!isPhone) {
       return (
         <GamecastDesktop
           onBack={onBack}
           sport={game.sport}
-          state={isFinal ? "FINAL" : isActiveStatus(game.status) ? "LIVE" : "SCHEDULED"}
+          state={statePill}
           live={isActiveStatus(game.status)}
-          clock={[status.text, game.venue && game.venue.name].filter(Boolean).join(" · ")}
+          clock={[statePill === status.head ? status.detail : status.text, game.venue && game.venue.name].filter(Boolean).join(" · ")}
           sides={["away", "home"].map((side) => ({
             side,
             abbr: game[side] && game[side].abbr,
@@ -466,9 +469,9 @@ export default function GamecastPage({ game, isMobile, embedded, onBack, onViewP
       <GamecastMobile
         onBack={onBack}
         sport={game.sport}
-        state={isFinal ? "FINAL" : isActiveStatus(game.status) ? "LIVE" : "SCHEDULED"}
+        state={statePill}
         live={isActiveStatus(game.status)}
-        clock={[status.text, game.venue && game.venue.name].filter(Boolean).join(" · ")}
+        clock={[statePill === status.head ? status.detail : status.text, game.venue && game.venue.name].filter(Boolean).join(" · ")}
         sides={["away", "home"].map((side) => ({
           side,
           abbr: game[side] && game[side].abbr,

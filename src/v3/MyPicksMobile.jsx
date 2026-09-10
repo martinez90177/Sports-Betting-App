@@ -133,11 +133,24 @@ export default function MyPicksMobile({
             padding: "13px 16px", borderBottom: "1px solid #20242b", minHeight: 44,
           }}
         >
+          {/* The leg's name and prop WRAP; they used to truncate.
+
+              This grid is the mock's, transcribed exactly -- and the mock is
+              drawn at 430px. At 375 (SE, 13 mini) the five columns leave the
+              text block 103px, and the rows read "Trevor La…" over "Over 228.5
+              Pas…". The numbers have no slack to give back: "17 of 17" is 49px
+              inside its 62px column and a fractional price like 1000/1 is 56.
+
+              So the shortfall gets spent on a second line rather than on the
+              end of a name. Alex, 2026-09-10: *"no overlapping stuff or things
+              running off the rails."* A wrapped name is neither; a clipped one
+              hides which Lawrence is on the slip. At 430 and above nothing
+              wraps and the frame is the mock again. */}
           <span style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
             <span style={{ position: "relative", flex: "0 0 auto" }}>{avatarFor(l, 34)}</span>
             <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</span>
+              <span style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 7, minWidth: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, minWidth: 0, overflowWrap: "anywhere" }}>{l.name}</span>
                 <span role="img" style={crest(l.team, l.sport, 14)} />
                 {/* ALT is "off the posted line", read from mainLine rather
                     than from anything the reader did. */}
@@ -152,7 +165,7 @@ export default function MyPicksMobile({
                   </span>
                 )}
               </span>
-              <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)", minWidth: 0, overflowWrap: "anywhere" }}>
                 {l.prop}
               </span>
               <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

@@ -70,7 +70,13 @@ export default function MatchupMobile({
         >
           ← GAMES
         </span>
-        <span style={{ flex: "1 1 auto", minWidth: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, overflow: "hidden" }}>
+        {/* State pill and venue wrap rather than clip.
+
+            Squeezed between "← GAMES" and "PROP FEED →" on a 375px phone the
+            centre block had 83px for the venue and T-Mobile Park wanted 88, so
+            it read "T-Mobile Pa...". A ballpark is where the game is being
+            played; it does not get to be the thing that falls off the end. */}
+        <span style={{ flex: "1 1 auto", minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", justifyContent: "center", gap: 9 }}>
           <span
             style={{
               fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 8px", borderRadius: 5,
@@ -82,7 +88,7 @@ export default function MatchupMobile({
             {state}
           </span>
           {venue && (
-            <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)", minWidth: 0, overflowWrap: "anywhere", textAlign: "center" }}>
               {venue}
             </span>
           )}

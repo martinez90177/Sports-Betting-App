@@ -888,8 +888,39 @@ function mlbGamecast(feed) {
   };
 
   // Leaders: the side's best bat by hits (RBI, then HR, break ties) plus the
-  // starter, who is always first in `pitchers`. MLB pre-formats both stat
-  // lines as `summary`, so nothing is recomputed here.
+  // starter, who is always first in `pitchers`.
+  //
+  // The stat lines are built here rather than taken from MLB's own `summary`,
+  // because that string DROPS ANY COUNT OF ONE. Cristian Javier threw 5.0 IP,
+  // 2 H, 1 ER, 1 BB, 2 K on 2026-09-10 and the feed rendered it
+  // "5.0 IP, ER, 2 K, BB" -- from which no reader can tell one earned run from
+  // four, or that he walked anybody at all. Kyle Schwarber's "0-1 | BB, K" is
+  // the same loss on the other side of the ball.
+  //
+  // Every number below is one MLB already sent, in the same object, one key
+  // away. This is not a recomputation and nothing is estimated: it is the
+  // measured count keeping its digit. CLAUDE.md: every number shown under a
+  // real player's name is measured, or it is not shown -- a label with its
+  // count silently removed is the failure that rule exists to prevent.
+  const battingLine = (b) => {
+    const head = `${b.hits}-${b.atBats}`;
+    const extras = [];
+    const add = (n, label) => { if (n) extras.push(`${n} ${label}`); };
+    add(b.doubles, "2B");
+    add(b.triples, "3B");
+    add(b.homeRuns, "HR");
+    add(b.runs, "R");
+    add(b.rbi, "RBI");
+    add(b.baseOnBalls, "BB");
+    add(b.strikeOuts, "K");
+    return extras.length ? `${head} | ${extras.join(", ")}` : head;
+  };
+  // A pitching line keeps its zeros: "0 ER" is the whole point of the line,
+  // and a start with none reads as a blank rather than a shutout without it.
+  const pitchingLine = (p) => [
+    `${p.inningsPitched} IP`, `${p.hits} H`, `${p.earnedRuns} ER`,
+    `${p.baseOnBalls} BB`, `${p.strikeOuts} K`,
+  ].join(", ");
   const boxSide = (which) => {
     const team = live?.boxscore?.teams?.[which];
     if (!team) return null;
@@ -908,7 +939,7 @@ function mlbGamecast(feed) {
         items.push({
           category: "Batting",
           name: best.person?.fullName,
-          statLine: best.stats.batting.summary,
+          statLine: battingLine(best.stats.batting),
           headshot: best.person?.id ? mlbHeadshot(best.person.id) : null,
         });
       }
@@ -919,7 +950,7 @@ function mlbGamecast(feed) {
       items.push({
         category: "Pitching",
         name: starter.person?.fullName,
-        statLine: starter.stats.pitching.summary,
+        statLine: pitchingLine(starter.stats.pitching),
         headshot: starter.person?.id ? mlbHeadshot(starter.person.id) : null,
       });
     }

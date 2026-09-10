@@ -32,7 +32,15 @@ export default function GamecastMobile({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px 10px", minHeight: 48 }}>
+      {/* The strip wraps rather than clipping the ballpark off the end.
+
+          Back button, state pill and clock came to 374px of a 375px phone, so
+          a long venue lost its tail: "TOP 6th • 2 OUTS · Citizens Bank Pa...".
+          Two things fixed it. GamecastPage now hands over only what the pill
+          is not already saying -- it used to send "LIVE · TOP 6th ..." next to
+          a LIVE pill -- and what is left drops to a second line when even that
+          will not fit. A venue is not decoration; it is where the game is. */}
+      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "0 12px 10px", minHeight: 48 }}>
         <span
           role="button"
           tabIndex={0}
@@ -55,7 +63,7 @@ export default function GamecastMobile({
         >
           {state}
         </span>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", minWidth: 0, overflowWrap: "anywhere" }}>
           {clock}
         </span>
 
@@ -190,18 +198,39 @@ export default function GamecastMobile({
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", overflow: "hidden" }}>
             {leaders.map((l, i) => (
               <div
-                key={`-`}
+                // Team + category + name, because every one of these rows was keyed
+                // to the literal string "-". React saw four children with one key and
+                // warned that it may duplicate or omit them -- which is the one thing
+                // this app does not do with a player row. Both teams appear here and
+                // each contributes a BATTING and a PITCHING line, so all three parts
+                // are needed to tell the four apart.
+                key={`${l.team}-${l.cat}-${l.name}`}
+                /* A long stat line wraps under the name instead of erasing it.
+
+                   The value was flex: "0 0 auto" -- it refuses to shrink -- and
+                   a pitching line is "6.1 IP, 0 ER, 3 K, 0 BB". On a 375px
+                   phone that string took the whole row and left the name block
+                   at literally zero width: Nick Martinez and Martin Perez were
+                   in the DOM, measured 0px, and nobody could read who had
+                   pitched. CLAUDE.md: a thing that can't render surfaces as a
+                   visible state, never as an absent one -- and a name squeezed
+                   to nothing is the absent kind.
+
+                   So the row wraps, the name keeps a floor it can insist on,
+                   and a value too long to sit beside the name drops to its own
+                   line rather than taking the name's. Short values ("2-3")
+                   still share the line, which is every batting row. */
                 style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "12px 13px", minHeight: 44,
+                  display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "12px 13px", minHeight: 44,
                   borderBottom: i < leaders.length - 1 ? "1px solid #20242b" : "none",
                 }}
               >
                 <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)", flex: "0 0 88px" }}>{l.cat}</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, flex: "1 1 auto" }}>
-                  <span style={{ fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 116, flex: "1 1 auto" }}>
+                  <span style={{ fontSize: 14, minWidth: 0, overflowWrap: "anywhere" }}>{l.name}</span>
                   <span role="img" style={crest(l.team, sport, 13)} />
                 </span>
-                <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, flex: "0 0 auto" }}>{l.value}</span>
+                <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700, flex: "0 0 auto", marginLeft: "auto" }}>{l.value}</span>
               </div>
             ))}
           </div>
