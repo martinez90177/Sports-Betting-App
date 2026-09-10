@@ -23832,9 +23832,16 @@ function newsWirePropLine(status, affects) {
   const a = affects && affects[0];
   if (!a) return null;
   const line = a.line == null ? "" : ` ${a.line}`;
-  return a.gamesCounted >= 10
+  // The same floor the feed's cells state a rate over, not a second opinion.
+  // This was a hardcoded 10, so an eight-game player got a rate on the feed and
+  // "too few" on the injury wire for the same prop on the same afternoon.
+  //
+  // The thin branch drops the word "games" as well: the whole line is one row
+  // on a 375px phone and it was running past the edge into an ellipsis, which
+  // cut off the very words that explain why there is no percentage.
+  return a.gamesCounted >= FEED_RATE_FLOOR
     ? `${a.label}${line} · ${Math.round(a.hitRate * 100)}% · ${a.gamesOver} of ${a.gamesCounted}`
-    : `${a.label}${line} · ${a.gamesOver} of ${a.gamesCounted} games · too few`;
+    : `${a.label}${line} · ${a.gamesOver} of ${a.gamesCounted} · too few`;
 }
 
 // The rail's injury wire. Everyone the app currently has a designation for --

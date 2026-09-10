@@ -209,8 +209,14 @@ export default function InjuriesMobile({
                   {String(r.team || "").toUpperCase()}
                 </span>
               </span>
+              {/* The prop line wraps rather than truncates.
+
+                  "WR · Receptions 4.5 · 0 of 1 · too few" is a character too
+                  long for a 375px row, and the ellipsis was eating the end --
+                  which is exactly the part that says *why* there is no
+                  percentage. A second line costs less than the explanation. */}
               {(r.position || r.propLine) && (
-                <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", lineHeight: 1.4 }}>
                   {[r.position, r.propLine].filter(Boolean).join(" · ")}
                 </span>
               )}
