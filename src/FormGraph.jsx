@@ -187,6 +187,14 @@ export default function FeedFormStrip({
   r, direction, streak = 0,
   height, pedestal, gap, gutter, slots,
   tag = false, caption = true,
+  // Whether the caption states its own "N of M".
+  //
+  // On by default, because most callers draw this strip with no rate cells
+  // beside it and the count is then the only sample the reader gets. The feed
+  // row is the exception: its six rate cells each print their own sample, so
+  // the caption's "7 of 10" restated the lit cell's "7/10" an inch away. Alex,
+  // 2026-09-10: *"I dont want it to be like old repeating info ya know."*
+  captionCounts = true,
   // Print each game's value inside its own bar. Opt-in rather than always on:
   // a numeral needs a bar wide enough to hold it, and the board card (64px
   // over eight columns) and the phone strip (48px) do not have one. The feed
@@ -496,9 +504,9 @@ export default function FeedFormStrip({
                rule means, in the same place the sample and the streak are
                already stated. A grey line nobody can name is the dot problem
                again with a different shape. */}
-          {hitCount} of {recent.length}
-          {showRun ? ` · ${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
-          {poCount > 0 ? ` · ${poCount} PO` : ""}
+          {captionCounts ? `${hitCount} of ${recent.length}` : ""}
+          {showRun ? `${captionCounts ? " · " : ""}${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
+          {poCount > 0 ? `${captionCounts || showRun ? " · " : ""}${poCount} PO` : ""}
         </div>
       )}
     </div>

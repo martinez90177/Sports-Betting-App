@@ -69,6 +69,12 @@ export default function InjuriesPage({
   // ones that do not instead of showing them as empty.
   coveredSports = [],
   uncoveredSports = [],
+  // Leagues that publish a feed but have not started their season. Their
+  // designations are last season's, and ESPN keeps serving them on the roster
+  // endpoint right through the summer. Named rather than silently dropped --
+  // "the NBA has not started" and "nobody in the NBA is hurt" are different
+  // claims and only one of them is true.
+  dormantSports = [],
   // (sport, teamAbbr) => ISO kickoff, or null when that team is not on a
   // slate we hold. Optional: without it the page simply does not offer the
   // "playing next" sort rather than offering one that cannot work.
@@ -142,14 +148,24 @@ export default function InjuriesPage({
       onSetQuery: setQ,
       sampleQuery: (list[0] && String(list[0].name || "").split(" ").slice(-1)[0]) || null,
       leagues: [{ id: "all", label: "All", count: countBySport("all") }]
-        .concat(coveredSports.map((sp) => ({ id: sp.id, label: sp.label, count: countBySport(sp.id) }))),
+        .concat(coveredSports
+          .filter((sp) => !dormantSports.some((d) => d.id === sp.id))
+          .map((sp) => ({ id: sp.id, label: sp.label, count: countBySport(sp.id) }))),
       league: sport,
       onSetLeague: setSport,
+      // "Any", not "All". The league row above already opens with an All whose
+      // count is the same number, and two identical chips stacked on a phone
+      // read as one control drawn twice. Alex, 2026-09-10: *"this page having
+      // all for both choices seems a bit strange."* Different word, same job.
+      //
+      // "Watched" rather than "Active · watched" for width: it is the only one
+      // of the four that could not fit the row, and the interpunct was doing
+      // the work a tooltip should.
       statuses: [
-        { id: "all", label: "All", count: countByStatus("all") },
+        { id: "all", label: "Any", count: countByStatus("all") },
         { id: "questionable", label: "Questionable", count: countByStatus("questionable") },
         { id: "out", label: "Out", count: countByStatus("out") },
-        { id: "active", label: "Active · watched", count: countByStatus("active") },
+        { id: "active", label: "Watched", count: countByStatus("active") },
       ],
       status,
       onSetStatus: setStatus,
@@ -159,11 +175,24 @@ export default function InjuriesPage({
       playingSoon,
       rows: list,
       scopeLabel: [sport === "all" ? "All leagues" : sport.toUpperCase(), status === "all" ? "All statuses" : status].join(" · "),
-      // Which leagues publish a feed at all. A league showing nobody has
-      // nobody designated, not nobody checked.
-      coverageNote: uncoveredSports.length
-        ? `${andList(coveredSports.map((sp) => sp.label))} publish an availability feed this app can read. ${andList(uncoveredSports.map((sp) => sp.label))} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
-        : `${andList(coveredSports.map((sp) => sp.label))} all publish an availability designation this app reads. A league showing nobody here has nobody designated, not nobody checked.`,
+      // Which leagues publish a feed at all, and which are simply not playing
+      // yet. A league showing nobody has nobody designated, not nobody checked.
+      //
+      // A dormant league drops out of the "publishes a feed" sentence as well
+      // as out of the list: naming the NBA as a league this app reads, in the
+      // sentence straight after saying its designations are not shown, reads
+      // as a contradiction rather than as two facts.
+      coverageNote: (() => {
+        const live = coveredSports.filter((sp) => !dormantSports.some((d) => d.id === sp.id));
+        const one = dormantSports.length === 1;
+        const dormant = dormantSports.length
+          ? `${andList(dormantSports.map((sp) => sp.label))} ${one ? "has" : "have"} not started ${one ? "its" : "their"} season, so ${one ? "its" : "their"} designations are last season's and are not listed. `
+          : "";
+        const rest = uncoveredSports.length
+          ? `${andList(live.map((sp) => sp.label))} publish an availability feed this app can read. ${andList(uncoveredSports.map((sp) => sp.label))} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
+          : `${andList(live.map((sp) => sp.label))} ${live.length > 1 ? "all " : ""}publish an availability designation this app reads. A league showing nobody here has nobody designated, not nobody checked.`;
+        return dormant + rest;
+      })(),
       loading,
       onOpenProp: onOpenProp ? (r) => onOpenProp(r) : null,
       kickoffLabelFor: kickoffLabel,

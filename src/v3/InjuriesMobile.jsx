@@ -116,7 +116,13 @@ export default function InjuriesMobile({
         {/* Only the leagues with an availability feed appear; the others are
             named in the sentence at the foot rather than shown as leagues with
             nobody hurt. */}
-        <div className="nsb" style={{ display: "flex", gap: 8, padding: "0 16px", overflowX: "auto" }}>
+        {/* Both chip rows wrap rather than scroll.
+
+            They were horizontal scrollers, and on a 375px phone the status row
+            ran past the edge -- its fourth chip sat off screen with nothing to
+            say it was there, so a filter the page offers was one nobody could
+            find. A hidden control is worse than a taller row. */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "0 16px" }}>
           {leagues.map((l) => {
             const on = l.id === league;
             return (
@@ -128,7 +134,7 @@ export default function InjuriesMobile({
           })}
         </div>
 
-        <div className="nsb" style={{ display: "flex", gap: 8, padding: "0 16px", overflowX: "auto" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: "0 16px" }}>
           {statuses.map((s) => {
             const on = s.id === status;
             return (
@@ -140,23 +146,31 @@ export default function InjuriesMobile({
           })}
         </div>
 
-        <div className="nsb" style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px", overflowX: "auto" }}>
-          <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>SORT</span>
-          {sorts.map((s) => (
-            <div key={s.id} onClick={() => onSetSort(s.id)} style={segChip(s.id === sort)}>{s.label}</div>
-          ))}
+        {/* The count and the sort share a line, and the scope caption is gone.
+
+            There were five stacked control rows above the first player -- most
+            of the fold on a phone -- and one of them existed to print "All
+            leagues · All statuses" beside two chip rows that already show
+            which chip is lit. Saying it twice cost a row and told nobody
+            anything. Alex, 2026-09-10: *"the layout in here looks a bit
+            crammed and like it could be improved."*
+
+            "N playing soon" keeps its place: it is the one thing here that is
+            neither a control nor a restatement. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", flexWrap: "wrap" }}>
+          <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--text-2)" }}>
+            {`${rows.length} ${rows.length === 1 ? "player" : "players"}`}
+          </span>
           {playingSoon > 0 && (
-            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: "var(--status-questionable)", whiteSpace: "nowrap" }}>
+            <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--status-questionable)", whiteSpace: "nowrap" }}>
               {`${playingSoon} playing soon`}
             </span>
           )}
-        </div>
-
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, padding: "0 16px" }}>
-          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)" }}>
-            {`${rows.length} ${rows.length === 1 ? "player" : "players"}`}
-          </span>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)" }}>{scopeLabel}</span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            {sorts.map((s) => (
+              <div key={s.id} onClick={() => onSetSort(s.id)} style={segChip(s.id === sort)}>{s.label}</div>
+            ))}
+          </div>
         </div>
       </div>
 

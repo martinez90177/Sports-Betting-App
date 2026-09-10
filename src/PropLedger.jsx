@@ -17802,6 +17802,10 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         onDragLine={startLineDrag}
         onResetLine={resetLine}
         values
+        // The six rate cells to the right each print their own sample, so the
+        // caption keeps only what they do not say: the run, and the playoff
+        // count. See captionCounts in FormGraph.
+        captionCounts={false}
       />
       {formAnchor && <FeedFormPopover r={r} direction={direction} anchor={formAnchor} line={lineVal} />}
     </div>
@@ -24913,6 +24917,31 @@ export default function PropLedger() {
   // slate does not mention is simply absent from the map, which the page reads
   // as "not playing soon" and says so rather than sorting it silently.
   const [injurySlate, setInjurySlate] = useState(() => new Map());
+
+  // Leagues that publish an availability feed but have not started playing.
+  //
+  // ESPN serves `athlete.injuries` on the roster endpoint all year, so in
+  // September the NBA's designations are May's -- players listed out with
+  // injuries they have long since recovered from, on a league that has not
+  // played a preseason game. Alex, 2026-09-10: *"dont list NBA players yet in
+  // injuries they havent even begun preseason yet."*
+  //
+  // Measured, not typed: fetchNbaOpenerDay reads the season's own start date
+  // off ESPN's season record, which is the same source playerSlateGames
+  // already falls back to when the NBA has no "today". So this un-hides itself
+  // on opening night with nothing to remember.
+  const [dormantSports, setDormantSports] = useState(() => []);
+  React.useEffect(() => {
+    if (page !== "injuries") return undefined;
+    let cancelled = false;
+    fetchNbaOpenerDay().then((opener) => {
+      if (cancelled || !opener) return;
+      const today = new Date().toISOString().slice(0, 10);
+      setDormantSports(today < opener ? [{ id: "nba", label: "NBA" }] : []);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [page]);
+
   React.useEffect(() => {
     if (page !== "injuries") return undefined;
     let cancelled = false;
@@ -25255,10 +25284,11 @@ export default function PropLedger() {
         >
         <LazyPane minHeight={400}>
           <InjuriesPage
-            rows={newsInjuryWireAll}
+            rows={newsInjuryWireAll.filter((r) => !dormantSports.some((d) => d.id === r.sport))}
             kickoffFor={(sp, team) => injurySlate.get(`${sp}:${team}`) || null}
             coveredSports={INJURY_FEED_SPORTS}
             uncoveredSports={INJURY_FEED_MISSING}
+            dormantSports={dormantSports}
             onOpenProp={goToProp}
             loading={newsInjuryWireAll.length === 0}
           />
