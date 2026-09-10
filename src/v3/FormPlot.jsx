@@ -28,13 +28,18 @@ export const PLOT = {
   player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261, axisW: 0 },
   // A Prop Feed row (frame 1b): 74px box, 52px span, 46px gutter.
   feed: { plotH: 74, span: 52, gutter: 46, handleW: 42, handleH: 28, trackW: 265, axisW: 0 },
-  // Desktop Player Detail (`PropPalace Desktop v3.dc.html` frame 1a).
+  // Desktop Player Detail (`PropPalace Desktop v3.dc.html` frame 1a): the
+  // frame's own 268px box over a 224px span, 58px gutter.
   //
-  // Taller than the handoff's 268/224 on Alex's read (2026-09-09): the labels
-  // underneath cost ~53px, which left the bars a short box for the one thing
-  // the page is about. 330 over a 250 span gives the graph the room and still
-  // leaves headroom above the tallest bar for the hover card.
-  desktop: { plotH: 330, span: 250, gutter: 58, handleW: 52, handleH: 32, trackW: 780, axisW: 34 },
+  // This was briefly 330/250 with a 34px axis gutter, on 2026-09-09, because
+  // the labels under the bars were overlapping the card above. Growing the box
+  // was treating the symptom: the real fault was `layFor` guessing the label
+  // stack's height instead of measuring it, and that fix (COL_GAP / CREST_PX /
+  // CREST_MT / LABEL_LINE, below) is what actually stopped the overlap and is
+  // kept. The size went back to the frame -- see docs/V3_PARKED_CHANGES.md B3
+  // and B4, which is where a taller graph and a value-scale gutter wait for a
+  // decision rather than being taken silently here.
+  desktop: { plotH: 268, span: 224, gutter: 58, handleW: 52, handleH: 32, trackW: 780, axisW: 0 },
 };
 
 export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);

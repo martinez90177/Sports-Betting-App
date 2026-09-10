@@ -449,58 +449,38 @@ export default function PlayerDetailDesktop({
     </div>
   );
 
-  // ---- market tabs: a strip across the top, not a column in the rail ------
-  //
-  // Markets are the one control you move through while reading rather than set
-  // once and leave, so they sit in the reading area instead of the filter rail.
-  // Both PropsMadness and Outlier run them as a horizontal strip above the
-  // chart for the same reason; stacked vertically, a quarterback's eight
-  // markets pushed WINDOW and SPLITS below the fold on a laptop, so the two
-  // controls you actually combine were never on screen together.
-  //
-  // Same railPill the rail uses -- this is a move, not a restyle -- and the
-  // strip scrolls sideways rather than wrapping, so the chart underneath never
-  // shifts down when a position carries more markets than fit.
-  const marketTabs = markets.length > 0 ? (
-    <div
-      className="nsb"
-      style={{
-        flex: "0 0 auto", display: "flex", gap: 6, alignItems: "center",
-        padding: "10px 18px", borderBottom: "1px solid var(--line)",
-        overflowX: "auto", background: "var(--bg)",
-      }}
-    >
-      <span style={{ ...railLabel, flex: "0 0 auto", marginRight: 4 }}>MARKET</span>
-      {markets.map((m) => (
-        <div
-          key={m.id}
-          role="button"
-          tabIndex={0}
-          onClick={m.onPick}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); m.onPick(); } }}
-          style={{ ...railPill(m.active), flex: "0 0 auto", whiteSpace: "nowrap" }}
-        >
-          {m.label}
-        </div>
-      ))}
-      {/* The shortcut, said once where the thing it drives lives. A keyboard
-          affordance nobody is told about is a keyboard affordance nobody uses,
-          and this is the legend PropsMadness prints on its own chart. Pushed
-          right so it reads as a note on the strip rather than another tab. */}
-      <span
-        style={{
-          fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", color: "var(--dim)",
-          flex: "0 0 auto", marginLeft: "auto", paddingLeft: 14, whiteSpace: "nowrap",
-        }}
-      >
-        ←→ PLAYERS · ↑↓ MARKETS
-      </span>
-    </div>
-  ) : null;
-
   // ---- left rail: what filters the page -----------------------------------
   const leftRail = (
     <div className="nsb" style={{ borderRight: "1px solid var(--line)", overflowY: "auto", minHeight: 0, padding: "20px 18px 28px", display: "flex", flexDirection: "column", gap: 22 }}>
+      {/* MARKET leads the rail, as frame 1a draws it.
+
+          It spent 2026-09-09 as a horizontal strip above the chart instead --
+          the reasoning being that markets are stepped through while reading
+          rather than set once, and that a quarterback's eight of them pushed
+          WINDOW and SPLITS below the fold. That may still be the better screen,
+          but it is a change to the design rather than a reading of it, and it
+          is what made the page stop looking like v3. It waits in
+          docs/V3_PARKED_CHANGES.md B1/B2 for Alex to call. */}
+      {markets.length > 0 && (
+        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
+          <span style={railLabel}>MARKET</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {markets.map((m) => (
+              <div
+                key={m.id}
+                role="button"
+                tabIndex={0}
+                onClick={m.onPick}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); m.onPick(); } }}
+                style={railPill(m.active)}
+              >
+                {m.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {seasons && seasons.length > 0 && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
           <span style={railLabel}>SEASON</span>
@@ -977,84 +957,18 @@ export default function PlayerDetailDesktop({
   const shownTeam = rosterTeam || subjectKey || (rails[0] || {}).key;
   const activeRail = (rails.find((r) => r.key === shownTeam) || rails[0] || {}).rail;
 
-  // ---- keyboard: walk players and markets without the mouse ---------------
+  // No document-level arrow-key walk here, deliberately.
   //
-  // Left/right steps through the roster rail currently on screen, up/down
-  // through the market strip. Both rivals do this (PropsMadness prints the
-  // legend on its chart) and it is the difference between comparing six
-  // receivers in six clicks-and-scrolls and comparing them in six keystrokes.
+  // One was added on 2026-09-09 -- left/right through the roster, up/down
+  // through the markets -- and it takes the arrows away from the thing frame
+  // 1a gives them to. The frame's own caption reads "drag across the bars to
+  // zoom · hover for a tooltip · ← → step the line", so on this screen the
+  // arrows move the line, and the drag handle's onKeyDown is what serves them.
+  // A walk that only defers once the handle happens to hold focus means the
+  // same key does two different things depending on where you last clicked.
   //
-  // Bound to the document rather than to the frame: the reader's focus is
-  // wherever they last clicked, and requiring them to click the chart first
-  // would make the shortcut something you have to know twice.
-  //
-  // Three guards, each for a real way this goes wrong:
-  //   * a typed field -- the watch box, the custom-window stepper -- must keep
-  //     its own arrow keys, or the page steals the caret
-  //   * any modifier means the browser's shortcut wins (cmd+left is Back)
-  //   * an inner handler that already consumed the key wins outright. The
-  //     line-drag handle nudges the line by 0.5 on the arrows and calls
-  //     preventDefault (see its handleKeyDown); React's own listener sits on
-  //     the app root, which is INSIDE document, so it runs first and this one
-  //     would otherwise fire too -- moving the line and the player on one
-  //     press. Reading defaultPrevented defers to it without having to know
-  //     it exists.
-  //   * preventDefault only once a move is actually made, so arrows still
-  //     scroll the page when there is nothing to step to
-  //
-  // The list is the rail holding the player currently on screen, not the rail
-  // currently displayed. They are usually different: rosterTeam defaults to
-  // "own", which is the AWAY side, so on a home player's page the visible rail
-  // is the opposition and stepping through it would walk away from the player
-  // being read rather than across his own team.
-  const navPlayers = React.useMemo(() => {
-    const lists = [
-      (activeRail && activeRail.players) || [],
-      (ownRail && ownRail.players) || [],
-      (oppRail && oppRail.players) || [],
-    ];
-    return lists.find((ps) => ps.some((p) => p.active)) || [];
-  }, [activeRail, ownRail, oppRail]);
-
-  React.useEffect(() => {
-    const onKey = (e) => {
-      if (e.defaultPrevented) return;
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      const el = e.target;
-      const tag = el && el.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (el && el.isContentEditable)) return;
-
-      const step = (list, isActive, pick, delta) => {
-        if (!list || list.length < 2) return false;
-        const i = list.findIndex(isActive);
-        // The active row is not in this list -- the reader is looking at the
-        // other team's rail. Stepping from a guessed index would jump
-        // somewhere they did not ask for.
-        if (i < 0) return false;
-        const next = list[(i + delta + list.length) % list.length];
-        if (!next || !pick(next)) return false;
-        return true;
-      };
-
-      let moved = false;
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        moved = step(
-          navPlayers, (p) => p.active,
-          (p) => (p.onSelect ? (p.onSelect(), true) : false),
-          e.key === "ArrowRight" ? 1 : -1
-        );
-      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        moved = step(
-          markets, (m) => m.active,
-          (m) => (m.onPick ? (m.onPick(), true) : false),
-          e.key === "ArrowDown" ? 1 : -1
-        );
-      }
-      if (moved) e.preventDefault();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [navPlayers, markets]);
+  // The walk is worth having; it needs keys of its own. Parked as B7 in
+  // docs/V3_PARKED_CHANGES.md.
 
   const lineupGroup = (title, scope, cards, note) => (cards && cards.length > 0) && (
     <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
@@ -1271,7 +1185,6 @@ export default function PlayerDetailDesktop({
     >
       {nav}
       {crumb}
-      {marketTabs}
 
       <div style={{ flex: "1 1 auto", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr)", gridTemplateColumns: cols }}>
         {leftRail}
