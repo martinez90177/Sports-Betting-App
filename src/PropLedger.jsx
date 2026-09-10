@@ -9,7 +9,10 @@ import { readFor, wilsonLower, supportBand } from "./lib/support.js";
 import { useSettings, useDisplaySettings, useBettingSettings, useOddsFormat, useUnitValue, formatUnits, isFirstRun, markTourDismissed, DEFAULTS } from "./settings.jsx";
 import { useOverlay } from "./useOverlay.js";
 import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, ODDS_PROB_LOW, ODDS_PROB_HIGH } from "./odds.js";
-import AltLineLadder, { SlipLeg } from "./AltLineLadder.jsx";
+// The ladder component itself is no longer mounted anywhere in the feed --
+// alt lines are rows now (see feedRowsWithAlts). SlipLeg still lives in that
+// file and is still used by the slip.
+import { SlipLeg } from "./AltLineLadder.jsx";
 import {
   fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflCurrentWeekSlate, fetchNbaOpenerDay,
   dayKey as slateDayKey,
@@ -16101,6 +16104,12 @@ function buildWNBAFeedRows() {
         // split taken off that would silently be a last-ten split wearing a
         // season label.
         homes: games.map((g) => g.home),
+        // Parallel to `values` and to `homes`, and for the same reason: an
+        // alt-line row has to recount H2H against its own line, and `recent`
+        // only carries the last ten. Without this, every alt row's H2H cell
+        // would either be blank or be the main line's number wearing a
+        // different line's label.
+        opps: games.map((g) => g.opp),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -17203,8 +17212,14 @@ function pickStatus(p) {
 function feedPickId(sport, r, line) {
   const dir = r.direction === "under" ? "-u" : "";
   const date = r.date ? `@${String(r.date).slice(0, 10)}` : "";
-  const rung = line != null && line !== r.line ? `~${line}` : "";
-  return `${sport}-${r.key}${dir}${date}${rung}`;
+  // An alt row is its parent prop at another line, so it writes the parent's
+  // key with a rung suffix -- not its own composite key, which would give the
+  // same leg two different slip slots depending on which surface added it.
+  const key = r.altOf || r.key;
+  const main = r.mainLine != null ? r.mainLine : r.line;
+  const at = line != null ? line : r.line;
+  const rung = at != null && at !== main ? `~${at}` : "";
+  return `${sport}-${key}${dir}${date}${rung}`;
 }
 
 // Player-page pick id, aligned with feedPickId so a prop added from the feed
@@ -17312,7 +17327,7 @@ function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status })
   };
 }
 
-const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, showLadder, expanded, onToggleLadder, prior = null, showPrior = true, customWin = null }) {
+const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, minGames = 10, isNarrow, isAdded, onTogglePick, onOpenProp, isLast, prior = null, showPrior = true, customWin = null }) {
   // Read from context rather than passed down: this component is memo'd, and
   // a context read still re-renders it when the format changes (memo only
   // short-circuits prop changes), so the whole feed reformats without adding
@@ -17625,42 +17640,30 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           {r.team}
         </span>
       </div>
-      <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
-        {r.subtitle}
+      <div className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
+        <span>{r.subtitle}</span>
+        {/* Read-only, so a pill -- the handoff reserves full pills for badges
+            and rounded rectangles for anything pressable. Frame 1c badges its
+            slip legs MAIN and ALT; only ALT is drawn here, because on a list
+            where most rows are the posted line, marking the exception is the
+            information and marking both is noise. */}
+        {r.isAlt && (
+          <span
+            className="pp-mono"
+            title={`Alt line. The posted line is ${r.mainLine}.`}
+            style={{
+              flexShrink: 0, fontSize: 9.5, letterSpacing: "0.1em", lineHeight: 1,
+              padding: "3px 7px", borderRadius: 999,
+              border: "1px solid var(--line-strong)", color: "var(--dim-strong)",
+            }}
+          >
+            ALT
+          </span>
+        )}
       </div>
     </div>
   );
 
-
-  // Rule 4 in miniature: a binary market has no line to move, so the control
-  // renders disabled and says why rather than vanishing from half the rows and
-  // leaving the reader to work out which half.
-  const ladderBtn = showLadder && (
-    <div
-      className="oswald"
-      role="button"
-      aria-expanded={!!expanded}
-      onClick={r.isBinary ? undefined : onToggleLadder}
-      title={
-        r.isBinary
-          ? `${r.marketLabel} either happened or it didn't — there is no line to move`
-          : expanded ? "Close the alt-line ladder" : "Show every alt line, counted from the same games"
-      }
-      style={{
-        cursor: r.isBinary ? "default" : "pointer",
-        justifySelf: "end", whiteSpace: "nowrap", textAlign: "center",
-        padding: "6px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
-        opacity: r.isBinary ? 0.45 : 1,
-        // Accent border when the rate on show is strong, neutral otherwise --
-        // the ladder is worth opening on a row that already reads well.
-        border: `1px solid ${!r.isBinary && r[sampleWindow] >= 0.7 ? "var(--amber)" : "var(--line-strong)"}`,
-        color: !r.isBinary && r[sampleWindow] >= 0.7 ? "var(--amber)" : "var(--dim-strong)",
-        background: "transparent",
-      }}
-    >
-      {r.isBinary ? "NO ALT LINES" : expanded ? "CLOSE LADDER ▴" : "OPEN LADDER ▾"}
-    </div>
-  );
 
   // The matchup, on one line: who he is facing, how that defence ranks
   // against this market, and the word for it.
@@ -17928,7 +17931,6 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           {/* The ladder toggle has no column of its own any more. It sits
               here, under the prop it opens alt lines for, and only when the
               Lines control is asking for them. */}
-          {ladderBtn && <div style={{ marginTop: 7 }}>{ladderBtn}</div>}
         </div>
       </div>
       {formCell || <div />}
@@ -18001,57 +18003,6 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
     </div>
   );
 });
-
-// The ladder for one expanded feed row: builds the rungs, then hands them to
-// the shared AltLineLadder. Mounted only while that row is open (see the feed's
-// render loop) so the per-rung passes over the game log are paid once, for the
-// row actually being read.
-function FeedRowLadder({ r, sport, status, sampleWindow, pickIds, onTogglePick }) {
-  const direction = r.direction || "over";
-  const rungs = useMemo(
-    () => buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction, window: sampleWindow }),
-    [r.values, r.line, r.isBinary, direction, sampleWindow]
-  );
-  const streak = feedStreak(r.values, r.line, r.isBinary, direction);
-  const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
-  // Which rungs are already on the slip, worked out through the same id
-  // builder that writes them -- not a separate comparison that could drift
-  // from it. A rung's IN SLIP badge and the pick it refers to are then the
-  // same statement.
-  const slipLines = rungs.filter((x) => pickIds.has(feedPickId(sport, r, x.line))).map((x) => x.line);
-  // Rule 1: the ladder header names a player, so it carries their
-  // availability. `status` is resolved once by the feed's render loop and
-  // covers every sport that has a feed, so the row header and this ladder
-  // header are the same statement about the same player.
-  const headerStatus = status || undefined;
-
-  return (
-    <div style={{ borderTop: "1px solid var(--line)", background: "var(--panel)" }}>
-      <AltLineLadder
-        player={{
-          name: r.name,
-          team: r.team,
-          headshotSrc: r.avatar,
-          fallbackSrc: r.avatarFallback,
-          espnId: r.espnId,
-          status: headerStatus,
-        }}
-        sport={sport}
-        colorMap={FEED_TEAM_COLORS[sport]}
-        market={direction === "under" ? `Under ${r.marketLabel}` : `Over ${r.marketLabel}`}
-        direction={direction}
-        rungs={rungs}
-        slipLines={slipLines}
-        emptyNote={
-          r.isBinary
-            ? `${r.marketLabel} either happened or it didn't — there is no line to move, so this prop has no ladder.`
-            : "No finished games behind this prop yet, so there are no rungs to count."
-        }
-        onAddLeg={(rung) => onTogglePick(pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status: headerStatus }))}
-      />
-    </div>
-  );
-}
 
 // Same idea as the NFL feed's per-market defensive ranking, applied to both
 // sides of the ball: for batter props this is the opponent pitching staff's
@@ -18434,6 +18385,71 @@ function feedCushion(values, line, isBinary, window, direction) {
 //    Defense Rank Range filter reads it. Sorting instead goes through
 //    `matchupScore`, negated so "Easiest Matchup" surfaces the toughest
 //    defenses first when you're betting Unders.
+// Alt lines, as rows.
+//
+// Alex, 2026-09-09: *"i want the alt lines to show like how we planned to set
+// it up just today and similar to outlier's system."* Outlier's own toggle
+// takes their row set from 4,233 to 13,652 -- an alt line is not a panel you
+// open under a prop, it is another proposition in the list, with its side and
+// its line inside the sentence: "Over 260.5 Pass Yds".
+//
+// Frame 1c draws the same thing (`Over 1.5 Total Bases`, `Over 0.5 Hits`) and
+// its slip badges legs MAIN and ALT, so this is a transcription rather than a
+// deviation.
+//
+// Every rate is recounted over the same games against the new line. Nothing is
+// modelled and nothing is interpolated -- the rung lines come from buildRungs,
+// which is the same walk the ladder used, so the feed and the player page can
+// never offer different rungs for the same prop.
+//
+// Rebuilt from the Over frame only. The feed builds rows Over-first and flips
+// the whole list once (see the `rows` memo), so expanding before that flip
+// means the Under side is the same one inversion it has always been.
+function altFeedRow(r, line) {
+  const hit = (v) => v > line;
+  const values = r.values;
+  // H2H recounted off `opps`. Same shape as h2hSplit, which cannot be reused
+  // here because it takes the game objects and a row carries only the arrays.
+  let h2h = null, nH2h = 0;
+  if (r.opp && r.opps) {
+    const vs = [];
+    for (let i = 0; i < values.length; i++) if (r.opps[i] === r.opp) vs.push(values[i]);
+    if (vs.length) { h2h = vs.filter(hit).length / vs.length; nH2h = vs.length; }
+  }
+  return {
+    ...r,
+    // Distinct for React, and `altOf`/`mainLine` keep the *pick* id aligned
+    // with the one the player page writes for the same rung -- so a leg added
+    // from an alt row here and from the ladder there share one slip slot.
+    key: `${r.key}~${line}`,
+    altOf: r.key,
+    mainLine: r.line,
+    isAlt: true,
+    line,
+    subtitle: `Over ${line} ${r.marketLabel}`,
+    l5: hitRateWindow(values, 5, hit),
+    l10: hitRateWindow(values, 10, hit),
+    l20: hitRateWindow(values, 20, hit),
+    all: hitRateWindow(values, "all", hit),
+    h2h, nH2h,
+    // n5/n10/n20/nAll are inherited on purpose: a window is the same size
+    // whatever line it is counted against.
+  };
+}
+
+// One prop's rows: the posted line first, then its rungs ascending.
+//
+// A binary market returns itself alone -- a double-double either happened or
+// it did not, and there is no line to move.
+function feedRowsWithAlts(r) {
+  if (r.isBinary || r.line == null || !r.values || !r.values.length) return [r];
+  const rungs = buildRungs({
+    values: r.values, mainLine: r.line, isBinary: false, direction: "over", window: "all",
+  });
+  if (!rungs.length) return [r];
+  return [r, ...rungs.filter((x) => !x.isMain).map((x) => altFeedRow(r, x.line))];
+}
+
 function flipFeedRowToUnder(r) {
   return {
     ...r,
@@ -18911,6 +18927,12 @@ function buildNBAFeedRows() {
         // split taken off that would silently be a last-ten split wearing a
         // season label.
         homes: games.map((g) => g.home),
+        // Parallel to `values` and to `homes`, and for the same reason: an
+        // alt-line row has to recount H2H against its own line, and `recent`
+        // only carries the last ten. Without this, every alt row's H2H cell
+        // would either be blank or be the main line's number wearing a
+        // different line's label.
+        opps: games.map((g) => g.opp),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -19019,6 +19041,12 @@ function buildNFLFeedRows() {
         // split taken off that would silently be a last-ten split wearing a
         // season label.
         homes: games.map((g) => g.home),
+        // Parallel to `values` and to `homes`, and for the same reason: an
+        // alt-line row has to recount H2H against its own line, and `recent`
+        // only carries the last ten. Without this, every alt row's H2H cell
+        // would either be blank or be the main line's number wearing a
+        // different line's label.
+        opps: games.map((g) => g.opp),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -19113,6 +19141,12 @@ function buildMLBFeedRows(teamsData) {
         // split taken off that would silently be a last-ten split wearing a
         // season label.
         homes: games.map((g) => g.home),
+        // Parallel to `values` and to `homes`, and for the same reason: an
+        // alt-line row has to recount H2H against its own line, and `recent`
+        // only carries the last ten. Without this, every alt row's H2H cell
+        // would either be blank or be the main line's number wearing a
+        // different line's label.
+        opps: games.map((g) => g.opp),
           values, line, isBinary: false, variance,
           // Plate appearances per game: a leadoff bat sees ~4.5, a No. 9 ~3.9,
           // so this reads the order without needing the order to be posted.
@@ -20060,10 +20094,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     () => (finishedTeams.size ? baseRows.filter((r) => !finishedTeams.has(r.team)) : baseRows),
     [baseRows, finishedTeams]
   );
-  const rows = useMemo(
-    () => (direction === "under" ? liveRows.map(flipFeedRowToUnder) : liveRows),
-    [liveRows, direction]
-  );
+  // Alt lines expand the list before the side is chosen, so the Under feed is
+  // the same single inversion of the same rows rather than a second, separately
+  // counted set.
+  const rows = useMemo(() => {
+    const withAlts = linesMode === "alt" ? liveRows.flatMap(feedRowsWithAlts) : liveRows;
+    return direction === "under" ? withAlts.map(flipFeedRowToUnder) : withAlts;
+  }, [liveRows, direction, linesMode]);
   const propGroups = PROP_GROUPS[sport] || [];
   // Display name(s) of the selected prop(s), for the preset chip summary --
   // the stored value is market ids ("pts_reb_ast"), which is not what someone
@@ -20621,9 +20658,36 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return r.role >= c.featured ? 0 : r.role >= c.rotation ? 1 : 2;
     };
 
+    // A rate the app will not *price* cannot lead the feed either.
+    //
+    // Alt lines put thousands of rungs in the list, and the low ones clear
+    // every time: "Over 136.5 Pass Yds - 10 of 10" is true, useless, and
+    // outranks every real spot in the league. Turning the toggle on used to
+    // replace the entire top of the feed with them.
+    //
+    // It is the same fact rungAt already refuses to convert -- a rate of 0 or
+    // 1 has no price, only the +/-1000 clamp, "a display floor dressed up as a
+    // number the games produced". So a row the app declines to price sinks,
+    // exactly as a row it declines to state a rate for does. Nothing is
+    // filtered: the rung keeps its place in the list and its number, below the
+    // rows carrying a real one. A 90% rung still leads, because 90% is a price.
+    //
+    // Two limits on purpose. Only while alt lines are on, because without them
+    // this is a handful of main rows and changing their order is a change
+    // nobody asked for. And never when the reader has asked for the worst hit
+    // rates, where the 0% rows are the answer to the question rather than
+    // noise in front of it.
+    const demoteUnpriced = linesMode === "alt" && !(activeSortMode.id === "hit" && sortDir === "asc");
+    const unpricedSort = (r) => {
+      if (!demoteUnpriced) return 0;
+      const v = r[sampleWindow];
+      return v != null && (v <= 0 || v >= 1) ? 1 : 0;
+    };
+
     // One order, and the mode the reader picked leads it.
     //
     //   1. a rate the app will not state sinks       (thinSort)
+    //   1b. a rate the app will not price sinks      (unpricedSort)
     //   2. role band                                  (roleTier)
     //   3. the selected mode, in the selected direction
     //   4. hit rate, as the tiebreak
@@ -20642,6 +20706,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     copy.sort((a, b) => {
       const at = thinSort(a), bt = thinSort(b);
       if (at !== bt) return at - bt;
+      const au = unpricedSort(a), bu = unpricedSort(b);
+      if (au !== bu) return au - bu;
       const ar = roleTier(a), br = roleTier(b);
       if (ar !== br) return ar - br;
 
@@ -20659,7 +20725,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return sortDir === "desc" ? bHit - aHit : aHit - bHit;
     });
     return copy;
-  }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort, minGames]);
+  }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort, minGames, linesMode]);
 
   // Renders a growing slice rather than the full (sometimes 2,000+ row) list
   // at once -- MLB in particular mounts a DOM row per player x market, and
@@ -21845,7 +21911,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       )}
       {visibleRows.map((r, i) => {
         const rowStatus = resolveRowStatus(r);
-        const expanded = expandedKey === r.key;
         return (
           <ErrorBoundary key={r.key} compact label={`${r.name || "This row"} couldn't be displayed.`}>
             <FeedRow
@@ -21856,14 +21921,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               isLast={i === visibleRows.length - 1}
               prior={priorFor(r)}
               showPrior={seasonLabels ? seasonLabels.showPrior !== false : true}
-              showLadder={linesMode === "alt"}
-              expanded={expanded}
-              onToggleLadder={() => setExpandedKey((k) => (k === r.key ? null : r.key))}
               customWin={feedCustomCol}
             />
-            {expanded && (
-              <FeedRowLadder r={r} sport={sport} status={rowStatus} sampleWindow={sampleWindow} pickIds={pickIds} onTogglePick={onTogglePick} />
-            )}
           </ErrorBoundary>
         );
       })}

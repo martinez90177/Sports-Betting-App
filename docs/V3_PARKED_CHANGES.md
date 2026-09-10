@@ -459,3 +459,77 @@ Also: clicks through the pane's `computer` tool time out after 30s on this app,
 because it never reaches the idle state the tool waits for — a known rAF
 quirk of this project. Driving the DOM with `javascript_tool` (`el.click()`)
 works and costs nothing.
+
+---
+
+## G. Both open decisions taken — 2026-09-09
+
+### G1. B16 sorts — **keep today's set**. Deliberate deviation from frame 1c.
+
+Alex, 2026-09-09: *"for sorts keep today's set."*
+
+Frame 1c draws `SORT · Matchup · Trend · Cushion · Streak` with the caption
+*"sorted by nothing — click a column to rank by its rate"*. The app keeps
+**Best hit rate · Biggest role · Easiest matchup · Most consistent · Trending
+up**, each with an opposite on a second click, and hit rate as the default.
+
+This is now a standing deviation, third alongside the removed Last 3 split and
+the un-built ladder. Do not "restore" the frame's chips. The reason the app's
+set wins: Cushion and Streak have no builder behind them, the flip covers
+Alex's *"i dont want this site to only be overs"* directly, and column-click
+ranking already exists beside the chips (`columnSort`), so the frame's
+interaction is present as well as the chips.
+
+### G2. B15 alt lines — **built, as rows, with a derived price column**
+
+Alex chose option 1: ship the rows now, price column derived and labelled,
+upgrading in place the day a real alt-line odds feed lands.
+
+**An alt line is another row.** `feedRowsWithAlts` expands each prop into its
+posted line plus its rungs, and every rate is recounted over the same games
+against the new line — nothing modelled, nothing interpolated. Rung lines come
+from `buildRungs`, the same walk the ladder used, so the feed and the player
+page can never offer different rungs for one prop. The NFL feed goes from
+**~2,100 props to 12,918**; Outlier's own toggle takes theirs from 4,233 to
+13,652.
+
+Expansion happens **before** the Over/Under flip, so the Under feed stays the
+single inversion it has always been rather than a second, separately counted
+set. `opps` joins `homes` on every row so an alt row can recount H2H against
+its own line instead of inheriting the main line's number under a different
+label.
+
+**The feed's ladder is gone** — `FeedRowLadder`, the `OPEN LADDER` control and
+the `AltLineLadder` default import with them. The player page keeps its own,
+folded, because frame 1a draws it there and Alex's instruction was about the
+feed.
+
+Pick ids stay aligned across surfaces: an alt row carries `altOf` and
+`mainLine`, so `feedPickId` writes the parent's key with a rung suffix — the
+same id the player page writes for that rung. One leg, one slip slot, whichever
+surface added it.
+
+**The problem this created, and the rule that fixes it.** With alt lines on,
+the low rungs clear every time: `Over 136.5 Pass Yds · 10 of 10` is true,
+useless, and outranked every real spot in the league — the toggle replaced the
+whole top of the feed with them.
+
+It is the same fact `rungAt` already refuses to convert: a rate of 0 or 1 has
+no price, only the ±1000 clamp, *"a display floor dressed up as a number the
+games produced"*. So a row the app declines to **price** now sinks, exactly as
+a row it declines to state a **rate** for already did. Nothing is filtered — a
+100% rung keeps its row and its number, below the rows carrying a real one, and
+a 90% rung still leads because 90% is a price.
+
+Two limits on it: only while alt lines are on, and never when the reader has
+asked for the *worst* hit rates, where the 0% rows are the answer rather than
+noise in front of it.
+
+Verified: 32 rows become 12,918 props; the visible list descends 90% → 40% with
+**zero rows at 100%** in the sort window; two alt rows add to the slip as
+separate legs reading `Over 247.5 Pass Yds · 9 of 10`.
+
+**Still open, and the only thing left on alt lines:** the price column is this
+app's own hit rate through `probToAmericanOdds`, not a book's number. The feed
+says so under the table and the slip says so under the legs. The Odds API's
+$30/mo tier would make it real; the free 500/mo will not.
