@@ -258,21 +258,35 @@ including the spread bags (`v3Shared` on Games and Findings, which do pass
 `activeWeek`, `currentWeek`, `sampleQuery` and `hideStructural` — those are not
 gaps).
 
-**Regions the design draws that the app never renders:**
+**First sweep was wrong, and the correction is the useful part.** Looking for
+`propName={` at call sites misses every prop handed over in a spread bag —
+`{...v3Shared}` on Games, Findings, News and Matchup — because those use
+shorthand (`readScope,`) rather than JSX attributes. That over-reported six
+regions as dead. Four of them are wired perfectly well: `sampleQuery`
+(`GamesPage.jsx:906`, `InjuriesPage.jsx:143`), `probables` / `probableNote` /
+`readScope` (`MatchupPage.jsx:426,457`), `error` (`NewsPageRedesign.jsx:238`)
+and `emptyCopy` on Games (`GamesPage.jsx:928`).
+
+**Verify a prop three ways before calling it dead:** as a JSX attribute
+(`x={`), as a bag shorthand (`x,`), and as a bag key (`x:`).
+
+**Regions the design draws that the app genuinely never renders — two:**
 
 | Frame | Component | Prop | What is lost |
 |---|---|---|---|
-| 1a Player Detail | `PlayerDetailDesktop` | `samples` | The entire **MINIMUM SAMPLE** rail group. Frame 1a's own values are `10+ · 15+ · 30+ · All`. |
-| 2f Matchup | `MatchupDesktop` | `probables`, `probableNote`, `readScope` | The **probables** region — the starting pitcher / quarterback block the frame puts under the crumb bar. |
-| 2e Injuries | `InjuriesDesktop` | `sampleQuery` | The search box's worked example; it falls back to a generic placeholder. |
-| 2b Games | `GamesDesktop` | `emptyCopy` | The empty state. A day with no games renders **nothing**. |
-| 2c Findings | `FindingsDesktop` | `emptyCopy` | Same. |
-| 2d News | `NewsDesktop` | `error` | A failed news fetch renders **nothing at all**. |
+| 1a Player Detail | `PlayerDetailDesktop` | `samples` | The entire **MINIMUM SAMPLE** rail group. Frame 1a's values are `10+ · 15+ · 30+ · All`. Transcribed when the frame was built; passed by no call site since, so it has never once been on screen. |
+| 2c Findings | `FindingsDesktop` | `emptyCopy` | The empty state. Filters that match nothing render **nothing** — no row, no explanation. Games passes its equivalent; Findings was missed. |
 
-The last three are not only fidelity gaps, they break CLAUDE.md's fourth avatar
-rule directly — *"Nothing is ever silently dropped. A game, player or row that
-can't render surfaces as a visible state, never as an absent row."* The visible
-state was built. Nobody wired it.
+The Findings one breaks CLAUDE.md's fourth rule directly — *"Nothing is ever
+silently dropped. A game, player or row that can't render surfaces as a visible
+state, never as an absent row."* The visible state was built. Nobody passed it.
+
+Two further gaps, found by reading rather than by sweeping:
+
+| Where | Gap |
+|---|---|
+| 1a right rail, NFL | **OPPOSING LINEUP** never appears — `lineups.opps` arrives empty on the NFL page. TEAMMATES beside it is populated, so the shape works and the opposition side is not being built. |
+| 1a left rail, MLB | **WORKLOAD** — the mock specifies `PLATE APPEARANCES` for its MLB subject, and the MLB page passes no `workload`. NBA and WNBA both do. |
 
 ### E2. Frame 1a, on the live NFL page
 
