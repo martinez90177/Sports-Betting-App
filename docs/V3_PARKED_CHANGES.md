@@ -390,3 +390,72 @@ lines above the `rungs` memo it reads — a clean build and
 first written with fresh `minPa`/`maxPa` state and a second copy of the filter,
 before finding that the page already had both. **Search for the state before
 adding it.**
+
+---
+
+## F. The mobile and Board frames — 2026-09-09
+
+Same method as E, run over the eleven mobile frames and the two Board frames.
+
+**All thirteen are faithful at the label level.** Every literal that came back
+"absent" resolves to one of three things, and none is a gap:
+
+| Label | What it actually is |
+|---|---|
+| `ADVANCED · 7 MORE` | template — `` `ADVANCED · ${advanced.length} MORE` `` |
+| `CONDITIONS · CAMDEN YARDS` | template |
+| `ALL  TOGETHER` | template — `` `ALL ${view.length} LEGS TOGETHER` `` |
+| `MLB · 15 GAMES`, `OF 30 · MID` | templates |
+| `MY PICKS · 7` | template, and rendered on the Board by `MaybeV3Shell` rather than by `BoardMobile` itself |
+| `OVER 1.5 TOTAL BASES` | the mock's own sample row |
+| `DIAGNOSIS` | a designer's panel *about* the mocks — its heading reads "What the screenshots show" |
+
+The gate sweep in E1 already covered all twenty components, mobile included, and
+found nothing dead on mobile.
+
+### F1. Found by driving it: the roster dock led with the wrong team
+
+`PlayerDetailMobile` still had the pre-fix desktop code —
+`React.useState("own")` and rails in fixture order. `ownRail` is always the
+**away** roster, so a Detroit player's page opened on `NO · 29`, selected,
+listing Saints. On a Lions page. The desktop frame took this fix on
+2026-09-09 (B6); mobile was never touched.
+
+Same shape as the desktop fix: find the rail holding the active row, lead with
+it, and treat `rosterTeam: null` as "follow the player" so a tap is an override
+that clears when the subject changes.
+
+The effect is the **last hook in the component**, and it is only safe there
+because there is no conditional return above or below it — checked before
+adding, because that is precisely what the WNBA page got wrong when its guard
+drifted above two hooks.
+
+Verified: Goff's page now reads `DET · 23` then `NO · 29`, with the dock
+listing Goff, Brown, Williams, TeSlaa, Gibbs.
+
+### F2. A method note that cost real time
+
+**This browser pane's console buffer accumulates across navigations.** A
+`NaN is an invalid value for height` warning from `FormPlot` on the MLB player
+page looked live and was not — it came from an intermediate HMR state while
+`PropLedger.jsx` was mid-save and `frameSplitCells` was briefly undefined.
+
+Do not read fidelity or defects off `read_console_messages`. Install a trap and
+read what it catches on a clean load:
+
+```js
+window.__nan = [];
+const o = console.error;
+console.error = function (...a) {
+  const s = String(a[0]);
+  if (s.includes("NaN") || s.includes("invalid value") || s.includes("hooks")) window.__nan.push(s.slice(0, 140));
+  return o.apply(this, a);
+};
+```
+
+A clean load of the MLB player page catches zero.
+
+Also: clicks through the pane's `computer` tool time out after 30s on this app,
+because it never reaches the idle state the tool waits for — a known rAF
+quirk of this project. Driving the DOM with `javascript_tool` (`el.click()`)
+works and costs nothing.

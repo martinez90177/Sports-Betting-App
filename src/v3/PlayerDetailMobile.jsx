@@ -240,7 +240,11 @@ export default function PlayerDetailMobile({
   const [sheet, setSheet] = React.useState(null);
   const [barSel, setBarSel] = React.useState(null);
   const [parkOpen, setParkOpen] = React.useState(false);
-  const [rosterTeam, setRosterTeam] = React.useState("own");
+  // null means "follow the player", not "the away side". See the roster dock
+  // below: "own"/"opp" name the fixture's two sides rather than the reader's,
+  // so defaulting to "own" opened a home player's page on his opponent's
+  // roster, selected, with his own team one tap away on his own page.
+  const [rosterTeam, setRosterTeam] = React.useState(null);
 
   const games = (chart && chart.games) || [];
   const line = chart ? chart.line : null;
@@ -1263,11 +1267,33 @@ export default function PlayerDetailMobile({
   );
 
   // ---- the roster dock ---------------------------------------------------
-  const rails = [
+  //
+  // The subject's own team leads and is the tab you land on. This is the same
+  // fix the desktop frame took on 2026-09-09 and mobile did not: ownRail is
+  // always the AWAY roster, so a Detroit player's page opened on "NO · 29",
+  // selected, listing Saints -- on a Lions page.
+  //
+  // Found by looking for the active row rather than by comparing team
+  // abbreviations, which needs no knowledge of how either rail was built.
+  const railsBySide = [
     ownRail && { key: "own", rail: ownRail },
     oppRail && { key: "opp", rail: oppRail },
   ].filter(Boolean);
-  const activeRail = (rails.find((r) => r.key === rosterTeam) || rails[0] || {}).rail;
+  const subjectKey = (railsBySide.find((r) => ((r.rail.players || []).some((p) => p.active))) || {}).key || null;
+  const rails = subjectKey
+    ? [...railsBySide].sort((a, b) => (a.key === subjectKey ? -1 : b.key === subjectKey ? 1 : 0))
+    : railsBySide;
+
+  // A tap sets the override, so browsing the other team's roster stays put --
+  // and picking someone from it changes the subject, which clears the override
+  // and hands the lead back to his team.
+  //
+  // Last hook in the component, deliberately: there is no conditional return
+  // above it and none below, so its position in the order is fixed. That is the
+  // rule the WNBA page broke when its guard drifted above two hooks.
+  React.useEffect(() => { setRosterTeam(null); }, [subjectKey]);
+  const shownTeam = rosterTeam || subjectKey || (rails[0] || {}).key;
+  const activeRail = (rails.find((r) => r.key === shownTeam) || rails[0] || {}).rail;
 
   const dock = rails.length > 0 && (
     <div
@@ -1280,7 +1306,7 @@ export default function PlayerDetailMobile({
         <span style={sectionLabel}>SWITCH PLAYER</span>
         <div style={{ display: "flex", gap: 6 }}>
           {rails.map((r) => {
-            const on = (rosterTeam === r.key) || (!rails.some((x) => x.key === rosterTeam) && r === rails[0]);
+            const on = shownTeam === r.key;
             return (
               <div
                 key={r.key}
