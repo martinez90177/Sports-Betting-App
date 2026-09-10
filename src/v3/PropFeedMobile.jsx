@@ -233,7 +233,7 @@ export default function PropFeedMobile({
           {/* The mock's own sentence. It is also the app's rule: the minimum
               sample is a display threshold, never a filter -- a row under it
               keeps its place and shows no rate. */}
-          <span style={{ fontSize: 12, color: "var(--dim)" }}>Below this, props show without a rate.</span>
+          <span style={{ fontSize: 12, color: "var(--dim)" }}>Below this, props sort below the rest. They still state a rate.</span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

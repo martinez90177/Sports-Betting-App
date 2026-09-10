@@ -17832,7 +17832,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
     // Matches FeedPctCell's `minSample` exactly, so the phone card and the
     // desktop cell for one row can never disagree about whether its sample is
     // big enough to state a rate over.
-    const thinSample = gamesCounted != null && gamesCounted < feedWindowFloor(minGames, sampleWindow);
+    const thinSample = gamesCounted != null && gamesCounted < feedWindowFloor(FEED_RATE_FLOOR, sampleWindow);
     return (
       <div
         className="feed-row"
@@ -17991,13 +17991,13 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             actually had rather than the one that was asked for. */}
         {customWin ? (() => {
           const w = Array.isArray(r.values) ? windowValues(r.values, customWin) : [];
-          if (!w.length) return <FeedPctCell v={null} n={0} label={customWin} minSample={feedWindowFloor(minGames, customWin)} active={false} />;
+          if (!w.length) return <FeedPctCell v={null} n={0} label={customWin} minSample={feedWindowFloor(FEED_RATE_FLOOR, customWin)} active={false} />;
           const hit = w.filter((v) => feedIsHit(v, lineVal, r.isBinary, direction)).length;
-          return <FeedPctCell v={hit / w.length} n={w.length} label={customWin} minSample={feedWindowFloor(minGames, customWin)} active />;
+          return <FeedPctCell v={hit / w.length} n={w.length} label={customWin} minSample={feedWindowFloor(FEED_RATE_FLOOR, customWin)} active />;
         })() : null}
-        <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={feedWindowFloor(minGames, "l5")} active={sampleWindow === "l5"} />
-        <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={feedWindowFloor(minGames, "l10")} active={sampleWindow === "l10"} />
-        <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={feedWindowFloor(minGames, "l20")} active={sampleWindow === "l20"} />
+        <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={feedWindowFloor(FEED_RATE_FLOOR, "l5")} active={sampleWindow === "l5"} />
+        <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={feedWindowFloor(FEED_RATE_FLOOR, "l10")} active={sampleWindow === "l10"} />
+        <FeedPctCell v={r.l20} n={r.n20} label={20} minSample={feedWindowFloor(FEED_RATE_FLOOR, "l20")} active={sampleWindow === "l20"} />
         {/* No floor on this column: one meeting is still a meeting.
              It used to suppress the rate under five and print "1 meeting vs
              SEA" instead, on the support band this app uses everywhere else.
@@ -18391,6 +18391,29 @@ function feedRowPlaysEnough(r, teamGames, sport) {
 // That is the honest place for it: "I do not trust a rate under fifteen games"
 // is a claim about a season record, not about a ten-game form window that
 // announces its own length in its title.
+// Two floors, because the one number was doing two jobs and they wanted
+// different answers.
+//
+// `minGames` -- the reader's MINIMUM SAMPLE control -- used to decide both
+// whether a cell printed a rate AND whether a row could lead the feed. That
+// second job is the one that matters: fairFeedLine sets each line from the
+// player's own median, so a four-game backup clears his own bar as easily as a
+// starter clears his, and 3 of 4 is 75%. Alex, 2026-09-08: *"these too few guys
+// should not be popping up at the top as much as they are."*
+//
+// But tying the printed rate to the same number meant football hid a rate under
+// nine games -- over half a season -- and Alex, 2026-09-10: *"why is the minimum
+// 9 for it to show a rate? that seems a bit excessive."* Quite: every cell
+// already prints its own sample underneath ("6/6"), so a reader can see the
+// thinness for themselves without the app withholding the number.
+//
+// So the control keeps the ranking job, and stating a rate gets its own floor.
+// Three, because two games cannot describe anything and one is not a rate at
+// all -- below that the cell still says "too few" rather than dividing by
+// almost nothing. Alex, 2026-09-10: *"as long as the backups dont appear up top
+// again i think itll work."* They cannot: thinSort still runs on minGames.
+const FEED_RATE_FLOOR = 3;
+
 function feedWindowFloor(minGames, window) {
   if (window === "all") return minGames;
   const cap = Number(String(window).replace("l", ""));
@@ -21191,8 +21214,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         <div style={{ ...FEED_CELL_VALUE, color: "var(--dim)" }}>{feedSummary.thin}</div>
         <div style={FEED_CELL_SUB}>
           {minGames === MIN_SAMPLE_ALL
-            ? "no minimum set — every row states a rate"
-            : `under ${feedWindowFloor(minGames, sampleWindow)} games, so no rate is stated`}
+            ? "no minimum set — every row can lead the feed"
+            : `under ${feedWindowFloor(minGames, sampleWindow)} games, so they sort below the rows that clear it`}
         </div>
       </div>
       <div style={{ flex: "1 1 170px", minWidth: 0, padding: "12px 18px", borderLeft: "1px solid var(--line)" }}>
@@ -22042,7 +22065,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       // has always tested `value <= MIN_SAMPLE_ALL`. This is now the same test
       // in both places.
       value: minGames <= MIN_SAMPLE_ALL ? "All" : `${minGames}+`,
-      note: "Below this a prop shows without a rate rather than being dropped.",
+      note: "Below this a prop still shows, and still states its rate — it just cannot lead the feed. Every cell prints the games behind it either way.",
       items: sampleScale(sport).presets.map((v) => feedChip(String(v), `${v}+`, minGames === v, () => changeMinGames(v)))
         .concat([feedChip("all", "All", minGames <= MIN_SAMPLE_ALL, () => changeMinGames(MIN_SAMPLE_ALL))]),
     },
