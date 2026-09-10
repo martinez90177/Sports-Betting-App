@@ -753,3 +753,28 @@ same scale — a game that barely cleared still barely clears. And the feed's
 mini-strip shares `feedFormScale`, so it changed too: checked, and its shape,
 its red/green split and its rule all still read at 74px. One scale, both
 surfaces, which is the point.
+
+### J1b. The switch became a pill, and moved down a row — 2026-09-10
+
+Alex: *"can you change the style of the alt line switch? just to be different
+from outlier? i also feel like it's kind of in a spot that makes it hard to
+detect with the naked eye."*
+
+Both fair. J1 put a track-and-knob switch in the header between the market
+strip and the side pills — which is Outlier's own control, borrowed, and
+sandwiched there in dim grey it was easy to miss.
+
+**Style: the app's own vocabulary instead of a borrowed one.** `+` and `✓` are
+already what this product says for "add this" and "added" — the slip's button
+reads `+ MY PICKS`, then `✓ ON THE SLIP`. Adding alt lines to the list is the
+same kind of act, so the control reads `+ ALT LINES` and becomes `✓ ALT LINES`,
+picking up the accent border and tint when on.
+
+**Position: the right of the SORT row.** That row holds the controls that
+change *what is in the list*, which is exactly what this does, and it sits one
+line under the count it moves — `29 of 1589 props` becomes `178 of 8607` as it
+is pressed.
+
+**Legible off as well as on**, which the switch was not: a real
+`--line-strong` border and a `--surface-2` ground rather than dim text on the
+page background.
