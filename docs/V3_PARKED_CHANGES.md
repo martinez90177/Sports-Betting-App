@@ -229,3 +229,69 @@ screens that genuinely still differ. The work is:
 `public/__mockcheck/` is gitignored and serves the mock files through the dev
 server, which is how to put a frame and a screen side by side at the same
 width. **Use it before declaring any frame unfaithful.**
+
+---
+
+## E. The real audit — every desktop frame, 2026-09-09
+
+Done properly this time: mock frame against component, not mock frame against
+a live page carrying a day of undocumented changes.
+
+**Method, so it can be repeated.** Every human-visible literal inside a frame's
+markup (text between tags, templates stripped, designer annotations like
+`CARRIED OVER FROM MOBILE` excluded) checked against the component that renders
+it, then against the whole of `src/` so shared chrome — the nav, the slip, the
+read panel — counts as found rather than missing.
+
+**Result: all twelve desktop frames are faithful at the label level.** Three
+literals appear nowhere, and all three are explained rather than missing:
+`OPPOSING LINEUP ·` and `MY PICKS · 4` are built by template (`` `OPPOSING
+LINEUP · ${n}` ``), and `OVER 1.5 TOTAL BASES` is the mock's own sample row.
+
+### E1. What that check cannot see, and what does
+
+A label being present proves nothing about whether it ever reaches a screen.
+`MINIMUM SAMPLE` is in `PlayerDetailDesktop.jsx` and has never once rendered,
+because the prop that gates it is passed by no one. So: every optional prop in
+every desktop component that gates a region, checked against every call site,
+including the spread bags (`v3Shared` on Games and Findings, which do pass
+`activeWeek`, `currentWeek`, `sampleQuery` and `hideStructural` — those are not
+gaps).
+
+**Regions the design draws that the app never renders:**
+
+| Frame | Component | Prop | What is lost |
+|---|---|---|---|
+| 1a Player Detail | `PlayerDetailDesktop` | `samples` | The entire **MINIMUM SAMPLE** rail group. Frame 1a's own values are `10+ · 15+ · 30+ · All`. |
+| 2f Matchup | `MatchupDesktop` | `probables`, `probableNote`, `readScope` | The **probables** region — the starting pitcher / quarterback block the frame puts under the crumb bar. |
+| 2e Injuries | `InjuriesDesktop` | `sampleQuery` | The search box's worked example; it falls back to a generic placeholder. |
+| 2b Games | `GamesDesktop` | `emptyCopy` | The empty state. A day with no games renders **nothing**. |
+| 2c Findings | `FindingsDesktop` | `emptyCopy` | Same. |
+| 2d News | `NewsDesktop` | `error` | A failed news fetch renders **nothing at all**. |
+
+The last three are not only fidelity gaps, they break CLAUDE.md's fourth avatar
+rule directly — *"Nothing is ever silently dropped. A game, player or row that
+can't render surfaces as a visible state, never as an absent row."* The visible
+state was built. Nobody wired it.
+
+### E2. Frame 1a, on the live NFL page
+
+After the restore in `4e5cfc9`, what is on screen and what is not:
+
+| Frame 1a rail | NFL page | Verdict |
+|---|---|---|
+| MARKET | present | restored |
+| SEASON | absent | **correct** — it renders when the log spans more than one season, and the NFL log is 2025 only until Week 1 finishes. It will appear on its own. |
+| WINDOW + YOUR OWN | present | ok |
+| WORKLOAD | absent | **not a gap for the NFL.** The mock has three subjects — MLB `PLATE APPEARANCES`, NBA and WNBA `MINUTES` — and **no NFL subject at all**. "SNAP SHARE" was never in the design; it came from an earlier note of mine. MLB is a genuine gap: the frame specifies PA and the MLB page passes no `workload`. NFL cannot have this control honestly anyway while `SNAP_PROFILE` is a seven-player hand-written table. |
+| OPPOSING STARTER | absent on NFL | MLB-shaped (pitcher handedness); correct to hide. |
+| SPLITS | present | ok, minus Last 3 by A3 |
+| MINIMUM SAMPLE | absent | **real gap — E1.** |
+
+Right rail: SWITCH PLAYER, TEAMMATES and INJURIES · THIS MATCHUP all render.
+**OPPOSING LINEUP does not** — `lineups.opps` arrives empty on the NFL page.
+
+### E3. Still to audit
+
+The eleven mobile frames and the two Board frames. Same method; it is cheap now
+that the scripts exist.
