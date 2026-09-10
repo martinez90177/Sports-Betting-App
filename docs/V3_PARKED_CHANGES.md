@@ -715,3 +715,41 @@ that existed only to opt back out of the default.
 `v2ControlBar` (`PropLedger.jsx:21220`) is dead — assembled in full and never
 rendered. Left alone rather than cut alongside a behaviour change; it is worth
 its own pass.
+
+---
+
+## K. The form chart's axis starts at zero — 2026-09-10
+
+Alex, on Matthew Stafford's Pass Yds page: *"the player detail chart should be
+scaled better, 259 and 258 are high passing yards but the way its set up it
+looks miniscule, please fix."*
+
+**A flaw in the mock, faithfully transcribed.** `PropPalace Desktop
+v3.dc.html:3023` computes
+
+```js
+const lo0 = Math.min(line, ...vals);
+const pad  = Math.max((hi0 - lo0) * 0.18, 0.6);
+const axisMin = lo0 - pad;
+```
+
+and `feedFormScale` matched it line for line. On a market with a high floor
+that truncates the axis badly. Stafford's last ten passing games run 243–457
+against a 253.5 line, so the axis began at **204** — and a 258-yard game
+rendered at **18%** of the box while 457 rendered at 87%.
+
+A bar's length is how a bar chart says how big a number is. An axis starting
+just under the smallest value makes every ordinary game look like a failure
+beside one outlier.
+
+**Now `axisMin = 0`**, with headroom measured off the top (`hi0 * 0.08`) so the
+tallest bar is never flush against the ceiling and the drag handle has
+somewhere to go. Measured after: 243 → 44%, 269 → 49%, 281 → 51%, 368 → 66%,
+457 → 80%. Proportional, and the variation is still plainly readable.
+
+**What this does not cost.** The over/under read comes from the bar's colour
+and from where it sits against the dashed rule, both of which move with the
+same scale — a game that barely cleared still barely clears. And the feed's
+mini-strip shares `feedFormScale`, so it changed too: checked, and its shape,
+its red/green split and its rule all still read at 74px. One scale, both
+surfaces, which is the point.

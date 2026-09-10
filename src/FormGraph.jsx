@@ -117,16 +117,38 @@ export function feedFormScale(recent, line, isBinary, opts = {}) {
     return { unit: plot, y: () => height, step: 0.5, dragMax: 1, axisMin: 0, span: 1 };
   }
   const vals = (recent || []).map((g) => g.v);
-  // `line` is included in both bounds on purpose: a line outside the range of
-  // every game still has to be drawable, and its rule has to land inside the
-  // plot rather than clipped against an edge.
-  const lo0 = Math.min(line, ...vals);
+  // `line` is included in the top bound on purpose: a line dragged above every
+  // game still has to be drawable, and its rule has to land inside the plot
+  // rather than clipped against an edge.
   const hi0 = Math.max(line, ...vals);
-  // The 0.6 floor keeps a flat row -- ten identical values, or a single game
-  // -- from collapsing to a zero-width span and dividing by nothing.
-  const pad = Math.max((hi0 - lo0) * 0.18, 0.6);
-  const axisMin = lo0 - pad;
-  const span = (hi0 + pad) - axisMin;
+
+  // The axis starts at zero, and that is a deliberate departure from the mock.
+  //
+  // The mock computes `axisMin = min(line, ...values) - pad` and the app
+  // transcribed it faithfully. On a market with a high floor that truncates the
+  // axis badly: Matthew Stafford's last ten passing games run 243 to 457
+  // against a 253.5 line, so the axis began at 204 and a 258-yard game rendered
+  // at 18% of the box while 457 rendered at 87%. Alex, 2026-09-10: *"259 and
+  // 258 are high passing yards but the way its set up it looks miniscule."*
+  //
+  // Quite. A bar's length is how a bar chart says how big a number is, and an
+  // axis that starts near the smallest value makes every ordinary game look
+  // like a failure next to one outlier. Zero-based, the same ten games read
+  // 49%, 52% … 92% -- the variation is still plainly there, and none of it
+  // lies about the ratios.
+  //
+  // What is NOT lost by this: the over/under read. That comes from the bar's
+  // colour and from where it sits against the dashed rule, both of which move
+  // with the same scale. A game that barely cleared still barely clears.
+  //
+  // Headroom stays, measured off the top rather than off the range, so the
+  // tallest bar is never flush against the ceiling and the drag handle has
+  // somewhere to go. The 0.6 floor keeps a flat row -- ten identical values, or
+  // a single game -- from collapsing to a zero-width span and dividing by
+  // nothing.
+  const pad = Math.max(hi0 * 0.08, 0.6);
+  const axisMin = 0;
+  const span = hi0 + pad;
   // The drag grid: one unit, on every market.
   //
   // It was 5 above a hundred, and that made the control unable to reach the
