@@ -778,3 +778,78 @@ is pressed.
 **Legible off as well as on**, which the switch was not: a real
 `--line-strong` border and a `--surface-2` ground rather than dim text on the
 page background.
+
+---
+
+## L. The formatting sweep — every screen, phone and desktop — 2026-09-10
+
+Alex, 2026-09-10: *"make sure all of this stuff formats and fits on mobile, no
+overlapping stuff or things running off the rails, make sure it is perfectly
+formatted for mobile"*, and *"is everything from the v3 folder i sent before
+completed? across the whole site and not just player detail?"*
+
+Twelve screens, four widths — 375, 430, 1024, 1280, 1440. Driven mechanically
+rather than by eye: an injected scanner reports `pageOverflowPx`, text needing
+more width than it has with no ellipsis and no scroller, anything painted past
+the viewport, and any two leaf texts sharing more than 40% of the smaller one's
+area.
+
+**The scanner needed three exclusions before it stopped crying wolf**, and each
+is worth keeping if this is ever run again:
+
+1. An element covered by an overlay is not on screen. Without this, opening
+   Settings over the Board reported every text pair on both layers.
+2. An element scrolled out of its own scroller is not on screen either — and
+   `elementFromPoint` alone will not tell you, because the point lands on an
+   ancestor and an ancestor *contains* the element, so a naive hit test calls
+   it visible. This one produced a phantom collision between the feed's market
+   strip and its OVER pill at 1280 that does not exist.
+3. Fixed, sticky, or absolutely-placed-with-a-z-index elements are overlays by
+   construction. Content passing behind an opaque floating button while you
+   scroll is the design, not a collision.
+
+Exclusion 3 hides a real question it cannot answer — *is content hidden
+permanently?* — so that is checked separately, by scrolling each container to
+its end and re-measuring. That check is what found L6 below.
+
+### What it found
+
+| # | Screen | Defect |
+|---|---|---|
+| L1 | Injuries, phone | Status row scrolled; its 4th chip sat off-screen with nothing to say it was there — a filter the page offers that nobody could find. Both chip rows now wrap. |
+| L2 | Injuries, phone | `All 91` on two stacked rows, and five control rows above the first player. Reset renamed `Any`; count and sort share a line; the scope caption went. |
+| L3 | News wire | A hardcoded `>= 10` disagreed with the feed's own floor, so an 8-game player got a percentage in one place and "too few" in the other, same prop, same afternoon. |
+| L4 | Player hero, phone | `Detroit Lions · quarterback · 2026` truncated away the season. Wraps. |
+| L5 | My Picks, phone | The slip grid is the mock's exactly — and the mock is drawn at **430px**. At 375 the five columns leave the leg 103px: "Trevor La…" over "Over 228.5 Pas…". The numbers have no slack ("17 of 17" is 49px in a 62px column), so name and prop wrap instead. Above 430 nothing wraps and the frame is the mock again. |
+| L6 | Player page, 1280 | The right rail ended 30px above its floor with two buttons floating in that corner, which between them own the lowest 115px. Scrolled fully down, Brock Rechsteiner's injury row was still 77% covered, Audric Estime's 64% — named players, carrying a status, unreachable. Rail floor is now 124px. |
+| L7 | Gamecast, phone | The leaders' stat line was `flex: "0 0 auto"`, so a pitching line took the whole row and left the name block at **literally zero width**. Nick Martinez and Martín Pérez were in the DOM, measured 0px, unreadable. |
+| L8 | Gamecast | Every leaders row was keyed to the literal string `"-"`. React was warning it might duplicate or omit them. |
+| L9 | Gamecast + Matchup | The header said LIVE twice — once in the pill, once at the head of the clock line — and the ballpark fell off the end paying for it. `statusLine` now returns `head` and `detail` separately. |
+| L10 | MLB leaders | MLB's own `summary` string drops any count of one: Cristian Javier's 5.0 IP, 2 H, 1 ER, 1 BB, 2 K arrived as `"5.0 IP, ER, 2 K, BB"`. Built from the counting stats in the same object instead. |
+| L11 | NBA + WNBA player page | The unresolvable-player guard returns a bare panel — no header, no nav, no back link. One card, one button offering somebody else's page. |
+| L12 | Empty feed, all sports | Announced its "next **kickoff**" — football's word, on basketball, in the one sentence a reader sees when the screen is otherwise empty. |
+
+### Two findings that are not layout, and are not closed
+
+**The WNBA player page is unreachable from the feed.** There are no WNBA games
+on 2026-09-10 — the next five are the 17th and 18th — and four of four players
+opened from the feed landed on L11's card. The message is accurate and the
+back button (L11) means the reader is no longer stranded, but until the 17th
+that card *is* the WNBA player page. Whether a player with no game today should
+get a season-log view instead is a product decision, not a formatting one.
+
+**A duplicate-key warning seen twice, never reproduced.** It appeared mid-session
+on two occasions, both after a run of hot reloads, and never once on a clean
+load across a full crawl — six pages, four sports, Settings, My Picks. L8 was a
+real instance of the same warning and is fixed; whether these two were a second
+site or stale HMR renders is unresolved. Recorded rather than claimed either
+way.
+
+### Still open
+
+- **The feed's form strip: L5 or L10.** Alex asked for an opinion and said
+  *"dont change it yet."* Recommendation: keep 10. The duplicated caption is
+  already cut; making the strip follow the chosen window is the remaining half
+  and needs verifying before it ships.
+- **The alt-line price column**, which needs the Odds API $30/mo decision.
+- **Nav order** — deferred by Alex until the sweep finished. It has.
