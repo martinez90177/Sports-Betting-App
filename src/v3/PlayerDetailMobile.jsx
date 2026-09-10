@@ -412,10 +412,16 @@ export default function PlayerDetailMobile({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
           <span role="img" aria-label={player.team || ""} style={crest(player.team, sport, 20)} />
+          {/* Wraps rather than truncates.
+
+              "Detroit Lions · quarterback · 2026" is wider than a 375px phone
+              leaves after the crest, so the ellipsis was cutting the season off
+              the end -- and the season is the part a reader cannot infer. It is
+              three short words on two lines instead of two and a half on one. */}
           <span
             style={{
               fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--dim)",
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              lineHeight: 1.45, minWidth: 0,
             }}
           >
             {player.identity}
