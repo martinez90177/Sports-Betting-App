@@ -44,12 +44,26 @@ const CLAIMS = [
   },
 ];
 
-// Season lengths, the same figures the custom-window ceilings use.
+// Season lengths, and they say so.
+//
+// They used to read "162 GP", "17 GP", "82 GP", "44 GP" -- games played --
+// directly under the sentence "Every number here is a count of finished
+// games." Not one of them was. They are the length of a regular season, a
+// constant, and on 2026-09-12 the NBA chip claimed 82 games played by a league
+// that had played none, while the NFL chip claimed 17 in a season one week
+// old. The first four numbers on the front page contradicted the promise made
+// one line above them. Alex, 2026-09-12: *"this doesnt look right."*
+//
+// The figure is worth keeping -- it says how deep a log behind a rate can get,
+// which is the whole pitch -- so it keeps its number and loses the false
+// label.
+//
+// Same figures the custom-window ceilings use.
 const LEAGUES = [
-  { label: "MLB", meta: "162 GP" },
-  { label: "NFL", meta: "17 GP" },
-  { label: "NBA", meta: "82 GP" },
-  { label: "WNBA", meta: "44 GP" },
+  { label: "MLB", meta: "162-game season" },
+  { label: "NFL", meta: "17-game season" },
+  { label: "NBA", meta: "82-game season" },
+  { label: "WNBA", meta: "44-game season" },
 ];
 
 export default function LandingMobile({ hero, onOpenBoard, onOpenSettings, onOpenProp }) {

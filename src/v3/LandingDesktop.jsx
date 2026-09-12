@@ -25,12 +25,24 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
 
-// Season lengths, as the frame prints them beside each league.
+// Season lengths, and they say so.
+//
+// They used to read "162 GP", "17 GP", "82 GP", "44 GP" -- games played --
+// directly under the sentence "Every number here is a count of finished
+// games." Not one of them was. They are the length of a regular season, a
+// constant, and on 2026-09-12 the NBA chip claimed 82 games played by a league
+// that had played none, while the NFL chip claimed 17 in a season one week
+// old. The first four numbers on the front page contradicted the promise made
+// one line above them. Alex, 2026-09-12: *"this doesnt look right."*
+//
+// The figure is worth keeping -- it says how deep a log behind a rate can get,
+// which is the whole pitch -- so it keeps its number and loses the false
+// label.
 const LEAGUES = [
-  ["MLB", "162 GP"],
-  ["NFL", "17 GP"],
-  ["NBA", "82 GP"],
-  ["WNBA", "44 GP"],
+  ["MLB", "162-game season"],
+  ["NFL", "17-game season"],
+  ["NBA", "82-game season"],
+  ["WNBA", "44-game season"],
 ];
 
 const CLAIMS = [
@@ -216,7 +228,12 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
           {/* Which leagues publish a feed, said on the front page rather than
               discovered on the Injuries screen. */}
           <span style={{ fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)", maxWidth: 720 }}>
-            MLB and the WNBA publish an availability feed we read. The NFL and NBA do not, so those pages say so rather than showing a league with nobody hurt.
+            {/* All four, not two. The NFL and NBA sat in the missing list on the
+                strength of a fetch whose status map the caller discarded; they
+                have read for a while now (INJURY_FEED_MISSING is empty), and
+                LandingMobile was corrected while this copy was not. */}
+            All four publish an availability designation this app reads, so a player listed out is
+            listed out here. A league showing nobody has nobody designated, not nobody checked.
           </span>
         </div>
       </div>
