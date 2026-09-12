@@ -26,7 +26,10 @@ vocabulary. Where the app's structure and the design disagree, the design wins.
 Sources of truth: `reference/app-screens.html` for the screens it covers,
 `design_handoff_proppalace_redesign/PropPalace Concepts.dc.html` sections 2a-5c
 for everything else. Sections 1a/1b/1c are rejected directions. The logo is
-three ascending bars in lapis — any arch motif is dead.
+the crown mark (`src/PalaceMark.jsx`, 2026-09-12): three green bars on a band,
+the dashed line fused into the band's top edge. It replaced the five-tower
+palace mark, which had replaced the three ascending bars in lapis — any arch
+motif is dead.
 
 **This note is a historical snapshot and goes stale fast — for current status,
 read `REDESIGN_PLAN.md`'s "Status as of" line and "Shipped so far" table at the

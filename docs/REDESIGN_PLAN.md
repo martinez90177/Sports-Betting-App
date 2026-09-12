@@ -262,6 +262,14 @@ printed "2024-25" over a season played in 2025.
   keep. Item 15 builds *this*, not the three ascending bars. It keeps the fixed
   status colours and does **not** re-tint with the user's accent — the one
   sanctioned exception to that rule.
+  - **Superseded 2026-09-12 — the crown mark.** Alex picked it from a concept
+    round: the same bars-over-a-line idea as one silhouette. Three green bars
+    on a band, the dashed line fused into the band's top edge so the betting
+    line *is* the crown's band. Green tile with the crown cut out for the nav
+    and favicon; bare crown for display. No red bars, no pennant, nothing
+    overflows its box. Still never re-tints with the accent. Lives in
+    `src/PalaceMark.jsx` (same component name and props, so no call site
+    changed) and `public/favicon.svg`.
 
 ## v2 rebuild — complete, 2026-08-22
 

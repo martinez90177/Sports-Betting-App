@@ -2,6 +2,7 @@ import React from "react";
 import { crest } from "./FormPlot.jsx";
 import { MiniStrip } from "./boardShared.jsx";
 import AgeMark from "./AgeMark.jsx";
+import PalaceMark from "../PalaceMark.jsx";
 
 // A transcription of frame `2i` in `v3 Mocks/PropPalace Desktop v3.dc.html`.
 //
@@ -80,7 +81,11 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
           landing page is not one of the nav destinations, and lighting one up
           would claim you are somewhere you are not. */}
       <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 16, padding: "18px 32px", borderBottom: "1px solid var(--line)" }}>
-        <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
+        {/* Same lockup as LandingMobile: the mark beside the wordmark. */}
+        <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <PalaceMark variant="nav" />
+          <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
+        </span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           <span
             role="button"

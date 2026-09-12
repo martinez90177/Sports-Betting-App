@@ -1,40 +1,22 @@
 <!--
-  The palace mark (see src/PalaceMark.jsx), redrawn as SVG for the tab icon.
-  Same five towers, same green/red split, same dashed line and pennant.
+  The crown mark (see src/PalaceMark.jsx), as the tab icon. Same drawing as
+  the "nav" variant: a green tile with three bars and a band cut out of it,
+  and the dashed line on the band's top edge.
 
   NOTE ON COMMENTS IN THIS FILE: no double hyphen anywhere inside one. XML
-  forbids it, and this file shipped with a prose "&#8212;" written as two hyphens on
-  the line below. That is a parse error, not a warning: the whole document is
-  rejected, the browser gets no icon at all, and the tab falls back to the
-  generated letter tile. Use an em dash or a comma instead.
+  forbids it; a parse error means the browser gets no icon at all and the tab
+  falls back to the generated letter tile. Use an em dash or a comma instead.
 
-  Two things differ from the DOM version on purpose:
-
-  * The whole mark is scaled up and centred in a 32x32 box with a dark ground
-    behind it, because a browser tab renders this at ~16px against whatever
-    colour the user's chrome happens to be. The old "P" on a lapis ring is
-    gone with the three-bar mark it belonged to.
-  * The colours are literal hexes, not tokens. An SVG loaded via a link
-    rel="icon" gets no page CSS, so there are no custom properties to read and
-    no theme to follow; these are the dark-theme values, which is what the
-    ground behind them is.
+  The colours are literal hexes, not tokens. An SVG loaded via a link
+  rel="icon" gets no page CSS, so there are no custom properties to read and
+  no theme to follow. The tile is always green, so the cutouts take the dark
+  theme's ground and the icon is identical whatever the browser chrome is.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="6" fill="#0d0f12"/>
-  <!-- Towers, on a shared baseline at y=27. Left wing and right wing are
-       outlined red with no bottom edge; the three inner towers are solid
-       green. Widths 4, gaps 1.5. -->
-  <path d="M4.75 19.75 v-4 a1 1 0 0 1 1 -1 h2 a1 1 0 0 1 1 1 v4"
-        fill="none" stroke="#ef5b5b" stroke-width="1.5"/>
-  <rect x="10.25" y="12" width="4" height="15" rx="1" fill="#3ecf8e"/>
-  <rect x="15.75" y="7"  width="4" height="20" rx="1" fill="#3ecf8e"/>
-  <rect x="21.25" y="12" width="4" height="15" rx="1" fill="#3ecf8e"/>
-  <path d="M26.75 19.75 v-4 a1 1 0 0 1 1 -1 h2 a1 1 0 0 1 1 1 v4"
-        fill="none" stroke="#ef5b5b" stroke-width="1.5"/>
-  <!-- Mast and pennant on the keep. -->
-  <rect x="16.9" y="2.5" width="1.6" height="5" fill="#3ecf8e"/>
-  <path d="M18.5 2.6 L23.6 4.6 L18.5 6.6 Z" fill="#3ecf8e"/>
-  <!-- The line, overhanging both wings. -->
-  <line x1="2.5" y1="19.75" x2="29.5" y2="19.75"
-        stroke="#e8ecf2" stroke-width="1.5" stroke-dasharray="2.5 2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32">
+  <rect width="64" height="64" rx="14" fill="#3ecf8e"/>
+  <rect x="12" y="26" width="11" height="20" rx="3.5" fill="#0a0b0d"/>
+  <rect x="26.5" y="13" width="11" height="33" rx="3.5" fill="#0a0b0d"/>
+  <rect x="41" y="26" width="11" height="20" rx="3.5" fill="#0a0b0d"/>
+  <rect x="9" y="44" width="46" height="10" rx="3.5" fill="#0a0b0d"/>
+  <line x1="4" y1="44" x2="60" y2="44" stroke="#3ecf8e" stroke-width="2.6" stroke-dasharray="4.5 3.5"/>
 </svg>
