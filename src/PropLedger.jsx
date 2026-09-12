@@ -11221,7 +11221,10 @@ const DBACKS_PLAYERS = [
   { id: "arenado", name: "Nolan Arenado", team: "ARI", pos: "3B", mlbId: 571448 },
   { id: "perdomo", name: "Geraldo Perdomo", team: "ARI", pos: "SS", mlbId: 672695 },
   { id: "kepler", name: "Max Kepler", team: "ARI", pos: "LF", mlbId: 596146 },
-  { id: "barrosa", name: "Jorge Barrosa", team: "ARI", pos: "CF", mlbId: 678489 },
+  // Barrosa was designated for assignment on 2026-09-04 (Tommy Troy reinstated
+  // off the IL); Waldschmidt, Arizona's No. 1 prospect, has held the everyday
+  // CF job since Alek Thomas was DFA'd back in May.
+  { id: "waldschmidt", name: "Ryan Waldschmidt", team: "ARI", pos: "CF", mlbId: 814439 },
   { id: "carroll", name: "Corbin Carroll", team: "ARI", pos: "RF", mlbId: 682998 },
   { id: "delcastillo", name: "Adrian Del Castillo", team: "ARI", pos: "DH", mlbId: 680728 },
   { id: "drake", name: "Kohl Drake", team: "ARI", pos: "SP", mlbId: 684442 },
