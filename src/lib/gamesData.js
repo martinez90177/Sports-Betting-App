@@ -818,7 +818,8 @@ export async function fetchNflWeekSlate(id, season, { force = false } = {}) {
 //   leaders  [{ teamAbbr, items }]   items: { category, name, statLine, headshot }
 
 // MLB's own headshot CDN, keyed by the same person id the boxscore returns.
-const mlbHeadshot = (id) => `https://midfield.mlbstatic.com/v1/people/${id}/spots/120`;
+// Same 480 spot as mlbStatus.js, for the same reason.
+const mlbHeadshot = (id) => `https://midfield.mlbstatic.com/v1/people/${id}/spots/480`;
 
 function mlbGamecast(feed) {
   const live = feed?.liveData;

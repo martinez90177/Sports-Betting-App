@@ -27,8 +27,10 @@ export const MLB_ABBR_TEAM_ID = Object.fromEntries(
 
 // Official MLB headshot. Keyed on the same mlbId already used to fetch stats --
 // no separate id table to maintain, and it resolves correctly for trades and
-// call-ups automatically.
-export const mlbHeadshot = (mlbId) => `https://midfield.mlbstatic.com/v1/people/${mlbId}/spots/120`;
+// call-ups automatically. 480 because the 104px header avatar is 156 device
+// pixels on a 1.5x desktop and 208 on a 2x one; the 120 spot it replaced was
+// smaller than the circle it was drawn in.
+export const mlbHeadshot = (mlbId) => `https://midfield.mlbstatic.com/v1/people/${mlbId}/spots/480`;
 
 // The MLB "day". Rolls over at 3am Eastern rather than midnight local, so a
 // west-coast game finishing after midnight still belongs to the day it started.

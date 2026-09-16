@@ -54,9 +54,13 @@ export default function PlayerAvatar({
   const inner = size - inset * 2;
 
   // Tight combiner crop rather than the raw "full" asset, which carries a lot
-  // of jersey and background and reads badly in a circle.
+  // of jersey and background and reads badly in a circle. 436 because ESPN's
+  // "full" asset is 600x436: the square crop is the whole height, so this is
+  // the one size the combiner serves without resampling. Anything smaller
+  // is a second downscale before the browser's own; anything larger is an
+  // upscale of the same pixels.
   const espnUrl = espnId
-    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${espnId}.png&w=350&h=350&scale=crop`
+    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${espnId}.png&w=436&h=436&scale=crop`
     : null;
   const chain = [headshotSrc, fallbackSrc, espnUrl].filter(Boolean);
 

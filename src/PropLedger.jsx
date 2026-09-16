@@ -391,8 +391,9 @@ const NBA_MATCHUPS = [
 ];
 const NBA_MATCHUPS_BY_DATE = groupMatchupsByDate(NBA_MATCHUPS);
 
-// Primary: ESPN's combiner image proxy, requested at 350x350 with a server-
-// side crop -- the same source and approach the NFL page uses, and it frames
+// Primary: ESPN's combiner image proxy, requested at 436x436 with a server-
+// side crop (see PlayerAvatar for why 436) -- the same source and approach
+// the NFL page uses, and it frames
 // every player consistently as a head-and-shoulders circle. Fallback:
 // NBA.com's official headshot CDN, a raw 1040x760 landscape photo -- used
 // to be the primary source, but forcing that wide, inconsistently-framed
@@ -400,7 +401,7 @@ const NBA_MATCHUPS_BY_DATE = groupMatchupsByDate(NBA_MATCHUPS);
 // to the ESPN version, so it's now only used if ESPN's is missing.
 const nbaHeadshot = (nbaId) => `https://cdn.nba.com/headshots/nba/latest/1040x760/${nbaId}.png`;
 const espnHeadshot = (espnId) =>
-  `https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${espnId}.png&w=350&h=350&scale=crop`;
+  `https://a.espncdn.com/combiner/i?img=/i/headshots/nba/players/full/${espnId}.png&w=436&h=436&scale=crop`;
 
 // Row 1 = core box-score stats.
 // Row 2 = defense + hustle counting stats (Turnovers grouped here since it has
@@ -3319,12 +3320,13 @@ const NFL_ESPN_ID = {
 // browser's own object-fit: cover crop looks sharper than ESPN's server-side one.
 // The raw "full" asset isn't a tight headshot crop (lots of jersey/background,
 // odd framing) — the combiner endpoint's scale=crop does a proper face-focused
-// crop; requesting it at 350x350 (vs. the earlier 200x200) keeps that framing
-// while giving the browser a much sharper source to scale down from.
+// crop; requesting it at 436x436 -- the full asset's native height, so the
+// crop is served 1:1 -- keeps that framing while giving the browser the
+// sharpest source ESPN has to scale down from.
 const NFL_HEADSHOTS = Object.fromEntries(
   Object.entries(NFL_ESPN_ID).map(([id, espnId]) => [
     id,
-    `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${espnId}.png&w=350&h=350&scale=crop`,
+    `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${espnId}.png&w=436&h=436&scale=crop`,
   ])
 );
 
@@ -3338,7 +3340,7 @@ function nflHeadshot(player) {
   if (bySlug) return bySlug;
   const espnId = player.espnId || NFL_ESPN_ID[player.id];
   return espnId
-    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${espnId}.png&w=350&h=350&scale=crop`
+    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${espnId}.png&w=436&h=436&scale=crop`
     : null;
 }
 
@@ -8733,7 +8735,7 @@ const wnbaTeamLogo = (abbr) => `https://a.espncdn.com/i/teamlogos/wnba/500/${WNB
 // Same ESPN combiner headshot proxy as the NBA/NFL pages, just pointed at
 // the wnba headshot path instead.
 const wnbaHeadshot = (espnId) =>
-  `https://a.espncdn.com/combiner/i?img=/i/headshots/wnba/players/full/${espnId}.png&w=350&h=350&scale=crop`;
+  `https://a.espncdn.com/combiner/i?img=/i/headshots/wnba/players/full/${espnId}.png&w=436&h=436&scale=crop`;
 
 // ---------- WNBA availability ----------
 //
@@ -10921,7 +10923,7 @@ const MLB_ESPN_ID = {
 };
 const mlbEspnHeadshot = (id) =>
   MLB_ESPN_ID[id]
-    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/mlb/players/full/${MLB_ESPN_ID[id]}.png&w=350&h=350&scale=crop`
+    ? `https://a.espncdn.com/combiner/i?img=/i/headshots/mlb/players/full/${MLB_ESPN_ID[id]}.png&w=436&h=436&scale=crop`
     : null;
 
 // New York Yankees 2026 starting lineup (batting order). mlbId is the

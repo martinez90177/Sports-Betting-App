@@ -729,7 +729,7 @@ export default function PlayerDetailDesktop({
       ) : null}
 
       {/* The hero wraps rather than overflowing.
-          It was one unwrappable row — a 68px avatar, a name block floored at
+          It was one unwrappable row — a 68px avatar (104 now), a name block floored at
           330px, and a three-cell strip pinned `flex: 0 0 auto` — which needs
           about 780px. The mock is 1440 wide and the centre track there has
           it; at 1252 (an iPad in landscape, a 13" laptop) the track is 748
@@ -742,7 +742,7 @@ export default function PlayerDetailDesktop({
           does not change shape again. At 1440 nothing moves. */}
       <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", rowGap: 14 }}>
         <div style={{ position: "relative", flex: "0 0 auto" }}>
-          {renderAvatar ? renderAvatar(player, 68) : null}
+          {renderAvatar ? renderAvatar(player, 104) : null}
         </div>
         <div style={{ flex: "1 1 260px", minWidth: 260, display: "flex", flexDirection: "column", gap: 7 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 11, whiteSpace: "nowrap" }}>
