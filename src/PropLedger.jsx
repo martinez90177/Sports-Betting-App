@@ -3987,47 +3987,71 @@ const NFL_MATCHUPS = [
     city: "Inglewood, CA",
   },
 ];
-const NFL_MATCHUPS_BY_DATE = groupMatchupsByDate(NFL_MATCHUPS);
 // Flat team -> {label, players} lookup built from NFL_MATCHUPS' two sides,
 // so any of the 32 real rosters can be selected directly by team instead of
-// only ever appearing paired into one fixed Week 1 matchup.
+// only ever appearing paired into the one fixture the list happens to hold.
+// It is also what re-pairs them onto the live week -- see nflMatchups.
 const NFL_TEAM_ROSTERS = {};
 NFL_MATCHUPS.forEach((m) => {
   NFL_TEAM_ROSTERS[m.teamA.players[0].team] = m.teamA;
   NFL_TEAM_ROSTERS[m.teamB.players[0].team] = m.teamB;
 });
-// Each team's fixture on the modelled week, keyed by abbreviation -- the NFL
-// equivalent of nbaNextGameForTeam, and the only place that knows which side
-// of it a team is on. `teamA` is always the away team and `teamB` the home
-// one (the labels read "Cowboys @ Giants"), and neither carries an `abbr` of
-// its own, so the abbreviation comes off a roster player exactly as
-// NFL_TEAM_ROSTERS above reads it.
-const NFL_SLATE_BY_TEAM = {};
-NFL_MATCHUPS.forEach((m) => {
-  const away = m.teamA.players[0].team;
-  const home = m.teamB.players[0].team;
-  NFL_SLATE_BY_TEAM[away] = { opp: home, home: false, date: m.date };
-  NFL_SLATE_BY_TEAM[home] = { opp: away, home: true, date: m.date };
-});
-// The same map, but read from ESPN's own scoreboard for whichever week is
-// actually current. Null until fetchNflCurrentWeekSlate answers.
+// Each team's fixture on the week that is actually on, keyed by abbreviation
+// -- the NFL equivalent of nbaNextGameForTeam, and the only place that knows
+// which side of it a team is on. Read from ESPN's own scoreboard via
+// fetchNflCurrentWeekSlate, and null until that answers.
 //
-// NFL_SLATE_BY_TEAM above is a frozen snapshot of Week 1 2026. Every one of
-// its 16 pairings and kickoff times is correct -- and correct for one week
-// only. From Week 2 it would hand the feed, the player pages, the defence
-// badge, the H2H column and the weather block last week's opponent, all
-// stated with the confidence of a fact.
+// It used to fall back to a map built off NFL_MATCHUPS, whose 16 pairings and
+// kickoff times were typed out by hand and every one of them right -- right
+// for Week 1 2026, and for no week after it. On 15 September 2026, with Week 1
+// played out, that fallback was no longer a fixture we could not read: it was
+// last week's finished game offered as this week's, and a wrong opponent is
+// worse here than no opponent. It feeds the feed's matchup column, the player
+// page's kickoff and venue, the defence badge, the H2H column and the weather
+// block, none of which can tell a stale fixture from a fresh one.
+//
+// So there is no fallback now. Null off the slate, and every caller already
+// renders that as a cell that does not appear -- the same direction the NBA
+// and WNBA builders take.
 let NFL_LIVE_SLATE_BY_TEAM = null;
 
-// Live first, hand-typed second. The fallback is the point: an unanswered or
-// failed schedule fetch leaves the page exactly as it is today rather than
-// emptying the opponent column, which is the same direction NFL_STARTERS
-// takes -- a fixture we could not read is not a claim that there is no game.
 function nflNextGameForTeam(abbr) {
   if (!abbr) return null;
-  return (NFL_LIVE_SLATE_BY_TEAM && NFL_LIVE_SLATE_BY_TEAM[abbr])
-    || NFL_SLATE_BY_TEAM[abbr]
-    || null;
+  return (NFL_LIVE_SLATE_BY_TEAM && NFL_LIVE_SLATE_BY_TEAM[abbr]) || null;
+}
+
+// The same 32 rosters, re-paired onto the week that is actually on.
+//
+// NFL_MATCHUPS above is Week 1 2026 written down: which two teams meet, when
+// they kick off and where. The rosters hanging off it are not week-bound --
+// Dallas's side is Dallas's side in Week 2 as well -- so the only part of it
+// that goes stale is the pairing, and that is the part the player page leads
+// with. It opened on "DAL @ NYG · Sun · 8:20 PM" all through Week 2, named
+// the Giants as the defence to beat, and sat the Giants' players in the
+// opposing-lineup rail, because that is the fixture the list holds.
+//
+// Re-paired from the live slate, the rosters stay and the fixture follows the
+// schedule: same 32 sides, this week's opponents, kickoffs and venues. The
+// hand-typed list is what is left when the slate cannot be read at all -- not
+// because a week-old pairing is good, but because this page is built around a
+// pairing and has nothing to draw without one.
+let NFL_LIVE_MATCHUPS = null;
+function nflMatchups() { return NFL_LIVE_MATCHUPS || NFL_MATCHUPS; }
+
+// Ids are `${away}-${home}` lowercased, in both lists, which is what lets a
+// selection survive the swap: the id the reader picked last week is not on
+// this week's card, but the teams in it are, and following the team they were
+// reading beats dropping them on whichever game sorts first.
+function nflMatchupFor(id) {
+  const list = nflMatchups();
+  const exact = list.find((m) => m.id === id);
+  if (exact) return exact;
+  const sideOf = (m, t) => ((m.teamA.players[0] || {}).team || "").toLowerCase() === t
+    || ((m.teamB.players[0] || {}).team || "").toLowerCase() === t;
+  const [a, b] = String(id || "").split("-");
+  return (a && list.find((m) => sideOf(m, a)))
+    || (b && list.find((m) => sideOf(m, b)))
+    || list[0];
 }
 
 // ESPN's schedule endpoint takes each team's slug in the URL -- identical to
@@ -7583,8 +7607,14 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
 }
 
 function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
-  const [matchupId, setMatchupId] = useState(NFL_MATCHUPS[0].id);
-  const matchup = NFL_MATCHUPS.find((m) => m.id === matchupId);
+  const [matchupId, setMatchupId] = useState(nflMatchups()[0].id);
+  // Re-resolved on every render rather than held: the live card arrives after
+  // the first paint (see nflMatchups), and the id chosen against the old one
+  // has to follow its team onto the new one rather than come back undefined.
+  const matchup = nflMatchupFor(matchupId);
+  // The card both matchup pickers list, grouped by kickoff day. Recomputed
+  // when the live slate lands, which is what `dataVersion` marks.
+  const nflMatchupGroups = useMemo(() => groupMatchupsByDate(nflMatchups()), [dataVersion]);
   // Memoised so the objects stay stable across renders: playerSide below
   // compares against these by identity, and a fresh object each render would
   // make it think the player belongs to neither side.
@@ -7621,9 +7651,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       // live-roster player: NFL_MATCHUPS holds the hand-written rosters while
       // nflPlayerPool() is live rosters merged over them, so matching on id
       // alone leaves everyone who arrived from a fetch on someone else's game.
-      const jumpMatchup = NFL_MATCHUPS.find(
+      const jumpMatchup = nflMatchups().find(
         (m) => m.teamA.players.some((p) => p.id === jumpPlayer.id) || m.teamB.players.some((p) => p.id === jumpPlayer.id)
-      ) || (jumpPlayer.team ? NFL_MATCHUPS.find(
+      ) || (jumpPlayer.team ? nflMatchups().find(
         (m) => (m.teamA.players[0] || {}).team === jumpPlayer.team
           || (m.teamB.players[0] || {}).team === jumpPlayer.team
       ) : null);
@@ -8491,7 +8521,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     <PlayerDetailV2
       sport="nfl"
       slate={buildSlate({
-        groups: NFL_MATCHUPS_BY_DATE, value: matchupId, timeOf: (m) => matchupTimeLabel(m.date),
+        groups: nflMatchupGroups, value: matchupId, timeOf: (m) => matchupTimeLabel(m.date),
         onChange: (next) => {
           setMatchupId(next.id);
           setPlayerId(next.teamA.players[0].id);
@@ -8524,7 +8554,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         <GameSelect
           variant="crumb"
           triggerLabel={v2Fixture}
-          groups={NFL_MATCHUPS_BY_DATE}
+          groups={nflMatchupGroups}
           value={matchupId}
           logoFn={nflTeamLogo}
           onChange={(next) => {
@@ -24521,9 +24551,31 @@ export default function PropLedger() {
         byTeam[home] = { opp: away, home: true, date: g.startsAt };
       });
       // An empty answer is not a week with no games -- it is a week we could
-      // not read, and the hand-typed map is a better answer than none.
+      // not read, and overwriting a slate already on screen with nothing is
+      // the one thing worse than waiting for the next attempt.
       if (!Object.keys(byTeam).length) return;
       NFL_LIVE_SLATE_BY_TEAM = byTeam;
+      // The same games again, paired into the shape the player page's matchup
+      // selector reads (see nflMatchups). A game whose two sides are not both
+      // in NFL_TEAM_ROSTERS is left out rather than half-built -- there is no
+      // roster to put in the rail for it.
+      const paired = (slate.games || []).map((g) => {
+        const away = g.away?.abbr;
+        const home = g.home?.abbr;
+        const teamA = NFL_TEAM_ROSTERS[away];
+        const teamB = NFL_TEAM_ROSTERS[home];
+        if (!teamA || !teamB) return null;
+        return {
+          id: `${away.toLowerCase()}-${home.toLowerCase()}`,
+          label: `${g.away.name || away} @ ${g.home.name || home}`,
+          teamA,
+          teamB,
+          date: g.startsAt,
+          venue: g.venue?.name || "",
+          city: g.venue?.city || "",
+        };
+      }).filter(Boolean);
+      if (paired.length) NFL_LIVE_MATCHUPS = paired;
       bumpNflRefresh();
     }).catch(() => {});
 

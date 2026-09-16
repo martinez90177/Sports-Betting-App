@@ -194,39 +194,11 @@ export function timeLabel(iso) {
 
 
 
-// NFL Week 1, 2026. The season has not been played at the time of writing,
-// so these pairings are placeholders in the correct Thu/Sun/Mon shape --
-// fetchNflWeekOneSlate replaces them with ESPN's real bracket once the
-// schedule is published. Every team is 0-0 in Week 1 by definition.
-const NFL_WEEK1 = [
-  ["DAL", "PHI", "2026-09-10T20:20"],
-  ["KC", "BAL", "2026-09-13T13:00"], ["CIN", "CLE", "2026-09-13T13:00"],
-  ["MIA", "BUF", "2026-09-13T13:00"], ["NYJ", "NE", "2026-09-13T13:00"],
-  ["JAX", "IND", "2026-09-13T13:00"], ["TEN", "HOU", "2026-09-13T13:00"],
-  ["CAR", "ATL", "2026-09-13T13:00"], ["TB", "NO", "2026-09-13T13:00"],
-  ["ARI", "SF", "2026-09-13T16:05"], ["SEA", "LAR", "2026-09-13T16:05"],
-  ["DEN", "LV", "2026-09-13T16:25"], ["LAC", "PIT", "2026-09-13T16:25"],
-  ["GB", "DET", "2026-09-13T20:20"],
-  ["CHI", "MIN", "2026-09-14T20:15"], ["NYG", "WAS", "2026-09-14T20:15"],
-];
-
-
-// Local ISO for a given day + "HH:MM", kept in local time so the card time
-// matches the date tab it is filed under.
-function localIso(date, hhmm) {
-  const [h, m] = hhmm.split(":");
-  const d = new Date(date);
-  d.setHours(Number(h), Number(m), 0, 0);
-  return d.toISOString();
-}
-
-
-
 // ------------------------------------------------------------- date tabs
 //
 // MLB and WNBA get the reference's rolling yesterday/Today/+1/+2. NFL is a
-// week competition, so its tabs are the distinct kickoff days of Week 1 --
-// same component, different source list.
+// week competition, so its tabs are the distinct kickoff days of whichever
+// week is loaded -- same component, different source list.
 
 export function buildDateTabs(sport, nflGames) {
   if (sport === "nfl") {
@@ -720,6 +692,58 @@ export async function fetchNbaOpenerDay() {
 // promising props that do not exist.
 const NFL_SKIP_WEEK_LABELS = /pro bowl/i;
 
+// ESPN goes on naming a week "current" until that week's calendar window
+// closes, which is the Tuesday morning after its last game. For a day and a
+// half either side of that, `week.number` points at a slate with nothing left
+// to play: on Tuesday 15 September 2026 the scoreboard still answered
+// `week: 1` with all sixteen Week 1 games marked completed. Every surface that
+// asks for the current NFL week believed it -- the Games page opened on
+// finished scores, the Board joined players to games already played, and the
+// feed's opponent column, defence badge and weather block named last week's
+// fixture, stated as fact.
+//
+// So the week ESPN names is taken as the question, not the answer: if it has
+// no game left to play, the week in progress is the next one on its calendar.
+// It is the judgement the prop feed's own slate already makes off a team
+// schedule -- the first game ESPN has not marked completed -- asked of the
+// league instead, and it turns on the provider's completed flags rather than
+// on a rollover hour written down here.
+//
+// The week is asked for by name rather than judged from whatever the default
+// scoreboard happened to return. The question is whether *this whole week*
+// still has a game in it, and only a week-scoped request answers that: a
+// payload holding a subset would read as all-final on a Sunday night with the
+// Monday game still to come, and rolling forward on that would take a week's
+// last game off the site the day before kickoff. It is the same cached call
+// the Games page and the Board make moments later, so on a warm cache it
+// costs nothing.
+async function weekInProgress(id, weeks, season, force) {
+  const i = weeks.findIndex((w) => w.id === id);
+  // Nothing to roll into past the Super Bowl: a finished season standing on
+  // its last week is the truth, not a week to step over.
+  if (i < 0 || i === weeks.length - 1) return id;
+  const slate = await fetchNflWeekSlate(id, season, { force });
+  const games = slate?.games || [];
+  // A week we could not read, or one the provider lists no games for, is not
+  // a week that is over. The name ESPN gave stands.
+  if (!games.length) return id;
+  if (games.some((g) => !g.isFinal)) return id;
+  return weeks[i + 1].id;
+}
+
+// What to open on when the week ESPN names is not one this list carries. That
+// is the preseason and the off-season, which are deliberately not offered, and
+// the Pro Bowl, which is deliberately skipped -- and the Pro Bowl is the sharp
+// one: for that week every February ESPN names a week this list does not have,
+// and the answer used to be weeks[0], which is the regular season's own Week
+// 1. The first week that has not ended yet instead: the Super Bowl during Pro
+// Bowl week, Week 1 of the season ahead out of season.
+function nearestWeek(weeks) {
+  const now = Date.now();
+  const ahead = weeks.find((w) => w.endDate && new Date(w.endDate).getTime() >= now);
+  return (ahead || weeks[0]).id;
+}
+
 export async function fetchNflCalendar({ force = false } = {}) {
   const ck = "nfl:calendar";
   if (!force) {
@@ -756,15 +780,14 @@ export async function fetchNflCalendar({ force = false } = {}) {
     const season = Number(data?.season?.year) || new Date().getFullYear();
     const currentType = Number(data?.season?.type) || 2;
     const currentWeek = Number(data?.week?.number) || 1;
-    const currentId = `${currentType}-${currentWeek}`;
-    return store(ck, {
-      season,
-      weeks,
-      // Falls back to the first week the calendar lists rather than to a
-      // hardcoded 1: in the postseason `currentId` is a type-3 id, and in the
-      // off-season it is a phase this list does not carry at all.
-      currentId: weeks.some((w) => w.id === currentId) ? currentId : weeks[0].id,
-    });
+    const namedId = `${currentType}-${currentWeek}`;
+    // Never a hardcoded 1: in the postseason the id is a type-3 one, and in
+    // the preseason and off-season it is a phase this list does not carry at
+    // all (see nearestWeek).
+    const currentId = weeks.some((w) => w.id === namedId)
+      ? await weekInProgress(namedId, weeks, season, force)
+      : nearestWeek(weeks);
+    return store(ck, { season, weeks, currentId });
   } catch {
     return null;
   }

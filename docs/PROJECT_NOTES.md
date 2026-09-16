@@ -1392,3 +1392,124 @@ path works is to take the fallback away.
 Also removed a hardcoded `season=2026` from `fetchNFLTeamNextGame`'s URL, the
 same trap already noted against the NBA standings call: right until 1 January,
 silently wrong after it.
+
+---
+
+## The week rolled over and the site didn't — 2026-09-15
+
+Week 1 2026 finished on Monday night, 14 September. On Tuesday the whole NFL
+side of the site was still showing it: the Games page opened on sixteen final
+scores, the Board hung its cards on games already played, the prop feed's
+opponent column named last week's fixture, and Dak Prescott's page led with
+`DAL @ NYG · Sun · 8:20 PM` — a game that had been over for a day.
+
+Three separate causes, which is why it looked like one.
+
+### ESPN keeps naming a finished week "current"
+
+`fetchNflCalendar` took `data.week.number` at its word. ESPN does not advance it
+when the last game ends; it advances it when the week's *calendar window*
+closes, which is 07:00Z the following Tuesday. Checked against the live
+scoreboard on 15 September: `season.type 2`, `week.number 1`, and all sixteen
+events carrying `status.type.completed: true`. Week 1's entry ran `Sep 6-15`,
+Week 2's began `2026-09-16T07:00Z`.
+
+`weekInProgress` now treats the week ESPN names as the question rather than the
+answer: if it has no game left to play, the week in progress is the next one on
+its calendar. No rollover hour is written down anywhere; it turns entirely on
+the provider's own completed flags. It is the judgement `fetchNFLTeamNextGame`
+already made off a team schedule, asked of the league instead — which is why the
+feed's game picker was on Week 2 while everything calendar-anchored was still on
+Week 1.
+
+**It asks for the week by name, and that detail is the whole safety of it.** The
+first cut read the events already on the calendar payload — free, no second
+request. But that payload is whatever ESPN chose to return, and a subset would
+read as all-final on a Sunday night with the Monday game still to come, which
+would have taken a week's last game off the site the day before kickoff. A
+week-scoped request cannot be a subset of the week it names. It is the same
+cached, TTL'd `fetchNflWeekSlate` the Games page and the Board call moments
+later, so on a warm cache it costs nothing.
+
+Guards: a week that could not be read, or that the provider lists no games for,
+is not a week that is over; and the last week on the calendar has nothing to
+roll into — a finished season stands on the Super Bowl.
+
+### And one week a year it said Week 1 for a different reason
+
+Found while checking the above. When the week ESPN names is not one the list
+carries, the fallback was `weeks[0]` — the regular season's own Week 1. That is
+right for the preseason and the off-season, which are deliberately not offered.
+It is wrong for the Pro Bowl, which `NFL_SKIP_WEEK_LABELS` deliberately skips:
+for that week every February ESPN names a week the list does not have, and the
+whole NFL side of the site would have dropped back to Week 1. `nearestWeek`
+takes the first week that has not ended yet instead — the Super Bowl during Pro
+Bowl week, Week 1 of the season ahead out of season.
+
+### The Games page printed "Week 1" as a literal
+
+Three of them: the heading (`NFL Week 1`), the date-tab caption, and the
+"couldn't load the Week 1 slate" message. The data underneath had followed
+ESPN's calendar since 2026-09-07, so choosing Week 7 in the picker already left
+all three naming Week 1 under Week 7's games. They read `nflWeekLabel` now —
+ESPN's own label for the week actually loaded, which also means a postseason
+round reads "Wild Card" rather than a week number it does not have.
+
+### The player page was built around a Week 1 pairing
+
+`NFL_MATCHUPS` is sixteen hand-typed fixtures. The rosters hanging off it are
+not week-bound — Dallas's side is Dallas's side in any week — but the *pairing*
+is, and the pairing is what the player page leads with: the breadcrumb, the
+defence badge, the opposing-lineup rail, the H2H opponent, the venue and the
+injury list all come off it.
+
+`NFL_LIVE_MATCHUPS` re-pairs the same 32 rosters onto the live slate, off the
+response that already fills `NFL_LIVE_SLATE_BY_TEAM`. Ids are
+`${away}-${home}` lowercased in both lists, so `nflMatchupFor` can follow a
+selection whose id is no longer on the card onto this week's game for the same
+team, rather than dropping the reader on whichever game sorts first. The
+hand-typed list is what is left when the slate cannot be read at all — not
+because a week-old pairing is good, but because the page is built around a
+pairing and has nothing to draw without one.
+
+### And the fixture fallback had to go
+
+`nflNextGameForTeam` fell back to `NFL_SLATE_BY_TEAM`, the Week 1 map built off
+`NFL_MATCHUPS`. That fallback was written on 2026-09-08 as "a schedule we could
+not read is not a claim that there is no game", which was true while Week 1 was
+the week in progress. From 15 September it was last week's finished game
+offered as this week's. Removed: the fetchers answer or they do not, and every
+caller already renders null as a cell that does not appear.
+
+Also removed, both dead since the mock slates came out: `NFL_WEEK1` in
+`gamesData.js` (sixteen hand-typed pairings) and the `localIso` helper that
+served it.
+
+### Verified by driving it
+
+- **Games** — week select reads `Week 2 · this week`, `Sep 16-22`; date tabs
+  THU 17 (1) / SUN 20 (16) / MON 21 (1); the Thursday card is Lions at Bills,
+  Highmark Stadium, 84 props, both sides 1-0.
+- **The Board** — NFL, 16 of 16 games counted, hero SEA @ ARI at State Farm
+  Stadium.
+- **Dak Prescott** — `WAS @ DAL · Sun · 4:25 PM`; splits offer `vs WAS`;
+  switch-player rail Dallas / Washington; opposing lineup 25 Commanders;
+  conditions AT&T Stadium; injuries for this matchup WAS. His chart still
+  points at `@ NYG · Sep 14`, which is right — that one is a game log.
+- **The matchup dropdown** — Thursday 17 September, then Sunday 20th: Panthers
+  @ Falcons, Vikings @ Bears, Eagles @ Titans, Steelers @ Patriots, Packers @
+  Jets, Browns @ Buccaneers.
+- **`fetchNflCalendar` against the live payload with the network stubbed**, nine
+  cases, all passing: week 1 named and the whole week final → Week 2; the bare
+  payload day-scoped to Sunday's finished games while the week-scoped request
+  still has Monday to play → stays Week 1; Monday game unplayed → stays Week 1;
+  the week slate unreadable → stays Week 1; Super Bowl named → never stepped
+  over, and no week request is even made; Conference Championship done → Super
+  Bowl, skipping the Pro Bowl; Pro Bowl week → Super Bowl; preseason → Week 1;
+  calendar fetch fails → null.
+
+  Two of those nine failed on the first run and both were worth having. One was
+  the day-scoped case, which is what sent `weekInProgress` to a week-scoped
+  request. The other was a test that only cleared `completed` on an event and
+  left `state: "post"` behind — `espnStatus` reads state, name and description
+  too, so the "unplayed" game still read FINAL and the test was testing nothing.

@@ -280,6 +280,14 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   const [nflCalendar, setNflCalendar] = useState(null);
   const [pickedWeekId, setPickedWeekId] = useState(null);
   const nflWeekId = pickedWeekId || nflCalendar?.currentId || null;
+  // What to call the week on screen: ESPN's own label for the week actually
+  // loaded, never one built here. The heading, the date-tab caption and the
+  // failure message all read "Week 1" as a literal, so picking week 7 left
+  // three places naming week 1 under week 7's games -- and a postseason round
+  // has no week number to print at all ("Wild Card", not "Week 19"). Null
+  // until the calendar answers, which every use below renders as the league's
+  // name alone rather than as a guess at which week it is.
+  const nflWeekLabel = (nflCalendar?.weeks || []).find((w) => w.id === nflWeekId)?.label || null;
   const [dayGames, setDayGames] = useState(null);
   // The merged slate for the All tab: every league's games for one calendar
   // day. Held separately from dayGames so switching between All and a league
@@ -375,7 +383,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   }, [pickedKey, tabs, sport, nbaOpenerKey]);
 
   // Per-day game counts for the date tabs (card 22's "Sun 16 / 12 GAMES").
-  // NFL's whole Week 1 is already loaded in `nflWeek`, so its counts are a
+  // The NFL's whole week is already loaded in `nflWeek`, so its counts are a
   // synchronous filter -- no extra fetch. MLB/WNBA only ever load the active
   // day's slate, so their other visible tabs need their own fetch; bounded to
   // the tabs actually on screen (4), and reusing the same cached, TTL'd
@@ -626,14 +634,14 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
   }, [loadSlate, sport, activeKey]);
 
   const subtitle = useMemo(() => {
-    if (sport === "nfl") return "NFL Week 1";
+    if (sport === "nfl") return nflWeekLabel ? `NFL ${nflWeekLabel}` : "NFL";
     if (nbaOpenerKey && activeKey === nbaOpenerKey) {
       const d = new Date(`${activeKey}T12:00:00`);
       return `Opening night · ${d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}`;
     }
     const d = activeKey ? new Date(`${activeKey}T12:00:00`) : new Date();
     return d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-  }, [sport, activeKey]);
+  }, [sport, activeKey, nflWeekLabel]);
 
 
   // ---- The v2 shell (PropPalace Games v2.dc.html) --------------------------
@@ -1011,7 +1019,9 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       {slateFailed ? (
         <>
           <div style={{ color: "var(--text)", marginBottom: 12 }}>
-            Couldn&rsquo;t load {sport === "nfl" ? "the Week 1 slate" : "today’s slate"}.
+            Couldn&rsquo;t load {sport === "nfl"
+              ? (nflWeekLabel ? `the ${nflWeekLabel} slate` : "the NFL slate")
+              : "today’s slate"}.
           </div>
           <div
             className="gm-tab pp-mono"
@@ -1059,7 +1069,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
               activeKey={activeKey}
               onChange={setPickedKey}
               isMobile={isMobile}
-              caption={sport === "nfl" ? "Week 1" : null}
+              caption={sport === "nfl" ? nflWeekLabel : null}
               counts={tabCounts}
             />
           </div>
@@ -1072,7 +1082,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
                 activeKey={activeKey}
                 onChange={setPickedKey}
                 isMobile={isMobile}
-                caption={sport === "nfl" ? "Week 1" : null}
+                caption={sport === "nfl" ? nflWeekLabel : null}
                 counts={tabCounts}
               />
             </div>
