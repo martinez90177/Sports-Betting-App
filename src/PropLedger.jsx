@@ -4013,7 +4013,17 @@ NFL_MATCHUPS.forEach((m) => {
 // So there is no fallback now. Null off the slate, and every caller already
 // renders that as a cell that does not appear -- the same direction the NBA
 // and WNBA builders take.
+//
+// It holds the games still TO BE PLAYED, not every game the week contains --
+// see the filter where it is built. A fixture here is a claim that the game is
+// ahead of the reader, and every caller uses it as one.
 let NFL_LIVE_SLATE_BY_TEAM = null;
+
+// The teams whose week is already over: in a concluded game on this week's
+// slate, and in no unplayed one. Only ever read to tell a reader *why* a team
+// has no props -- "their game has been played" and "they have no game this
+// week" are different sentences, and a bye is not a failure to load anything.
+let NFL_PLAYED_THIS_WEEK = null;
 
 function nflNextGameForTeam(abbr) {
   if (!abbr) return null;
@@ -19085,6 +19095,29 @@ function buildNFLFeedRows() {
     // Null off the slate, and the row then carries no opponent rather than
     // the wrong one, exactly as the NBA and WNBA builders do.
     const nextGame = nflNextGameForTeam(player.team);
+    // Their game has been played: the props are settled and leave with it.
+    //
+    // A prop on a finished game cannot be researched and cannot be bet, so
+    // listing it invites someone to study a number whose answer is already
+    // known. The feed has dropped those rows since the MLB slates (see
+    // `finishedTeams`), but it does it inside the feed component off a second
+    // slate fetch -- so the Board and Findings, which read these rows
+    // directly, kept drawing a card for a game that was over. Dropped here
+    // instead, at the one place all three read, so the three cannot disagree.
+    //
+    // Deliberately "their game is over", not "they have no fixture". A team
+    // can also have no fixture because it is on a bye, or because an
+    // abbreviation did not match between the roster feed and the slate -- and
+    // that second one has happened here before (ESPN says WSH, every map in
+    // this file says WAS; see nflOurAbbr at the live-roster merge). Skipping
+    // on a missing fixture would turn that class of mismatch from a cell that
+    // does not render into a team silently absent from the league, which is
+    // the trade rule 4 refuses. A team only leaves on a positive statement
+    // that its game has been played.
+    if (NFL_PLAYED_THIS_WEEK && NFL_PLAYED_THIS_WEEK.has(player.team)) {
+      noteFeedSkip("nfl", player, "their game has been played");
+      return;
+    }
     const nextOpp = nextGame ? nextGame.opp : null;
     const gameDate = nextGame ? nextGame.date : null;
     const applicableMarkets = NFL_MARKETS.filter((m) => m.pos.includes(player.pos));
@@ -24542,24 +24575,54 @@ export default function PropLedger() {
     // use (fetchNflCurrentWeekSlate) -- not 32 per-team schedule lookups.
     fetchNflCurrentWeekSlate().then((slate) => {
       if (cancelled || !slate) return;
+      // Readable games first -- an empty answer is not a week with no games,
+      // it is a week we could not read, and overwriting a slate already on
+      // screen with nothing is the one thing worse than waiting for the next
+      // attempt.
+      const readable = (slate.games || []).filter((g) => g.away?.abbr && g.home?.abbr);
+      if (!readable.length) return;
+      // Then the ones still to be played, and that filter is the point.
+      //
+      // A week is not a slate. ESPN's week runs Thursday to Monday, so from
+      // Friday morning the Thursday night game is still in it and already
+      // over -- and every surface downstream of this map states its fixture as
+      // the game to come: the feed's opponent column and defence badge, the
+      // board's cards, the player page's kickoff, venue, weather and opposing
+      // lineup, the matchup dropdown, the header's slate menu. All of them
+      // spent Friday describing a game played on Thursday night. Alex,
+      // 2026-09-18, the morning after Lions at Bills: *"make sure all stuff
+      // for lions vs bills week 2 is taken off the site since that game has
+      // concluded now."*
+      //
+      // `gameHasConcluded` is the feed picker's own test rather than a second
+      // one, so a game leaves this map at the same moment it leaves the
+      // picker -- and a postponed or suspended game counts as gone here for
+      // the reason it does there: it is not being played either.
+      //
+      // `{}` is a real answer, not a failure: it is a week whose last game has
+      // been played, and the callers below already read "no fixture" as the
+      // cell that does not appear. The calendar rolls to the next week within
+      // its own fifteen-minute TTL (see weekInProgress), and the slate that
+      // arrives then is next week's.
+      const toPlay = readable.filter((g) => !gameHasConcluded(g));
       const byTeam = {};
-      (slate.games || []).forEach((g) => {
-        const away = g.away?.abbr;
-        const home = g.home?.abbr;
-        if (!away || !home) return;
-        byTeam[away] = { opp: home, home: false, date: g.startsAt };
-        byTeam[home] = { opp: away, home: true, date: g.startsAt };
+      toPlay.forEach((g) => {
+        byTeam[g.away.abbr] = { opp: g.home.abbr, home: false, date: g.startsAt };
+        byTeam[g.home.abbr] = { opp: g.away.abbr, home: true, date: g.startsAt };
       });
-      // An empty answer is not a week with no games -- it is a week we could
-      // not read, and overwriting a slate already on screen with nothing is
-      // the one thing worse than waiting for the next attempt.
-      if (!Object.keys(byTeam).length) return;
       NFL_LIVE_SLATE_BY_TEAM = byTeam;
+      // Which teams are done for the week, as opposed to never having been on
+      // it. Both end up with no fixture and no props, and the feed's skip list
+      // is read by a person, so it says which -- see buildNFLFeedRows.
+      NFL_PLAYED_THIS_WEEK = new Set(
+        readable.filter((g) => gameHasConcluded(g)).flatMap((g) => [g.away.abbr, g.home.abbr])
+          .filter((abbr) => !byTeam[abbr])
+      );
       // The same games again, paired into the shape the player page's matchup
       // selector reads (see nflMatchups). A game whose two sides are not both
       // in NFL_TEAM_ROSTERS is left out rather than half-built -- there is no
       // roster to put in the rail for it.
-      const paired = (slate.games || []).map((g) => {
+      const paired = toPlay.map((g) => {
         const away = g.away?.abbr;
         const home = g.home?.abbr;
         const teamA = NFL_TEAM_ROSTERS[away];

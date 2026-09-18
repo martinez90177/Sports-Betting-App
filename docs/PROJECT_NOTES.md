@@ -1589,3 +1589,63 @@ rolling windows over the merged log since 2026-09-08 ("Rolling windows now span
 seasons" above), for the stated reason that a window would otherwise collapse to
 a single game. The player page was the last surface that still collapsed, so a
 feed row reading 8 of 10 opened a page reading 1 of 1.
+
+## A week is not a slate — the Thursday game stayed on all Friday — 2026-09-18
+
+Alex, the morning after Lions at Bills: *"make sure all stuff for lions vs bills
+week 2 is taken off the site since that game has concluded now."*
+
+The week rollover fixed on 2026-09-15 rolls whole weeks: `weekInProgress` moves
+to the next week only when the named one has **no game left to play**, which is
+right — roll on Sunday night and Monday's game disappears the day before
+kickoff. But ESPN's week runs Thursday to Monday, so for four days of every
+week the slate legitimately contains a game that is over, and
+`NFL_LIVE_SLATE_BY_TEAM` was built from all of it.
+
+That map is the fixture every NFL surface joins to: the feed's opponent column
+and defence badge, the board's cards, the player page's kickoff, venue, weather
+and opposing lineup, the matchup dropdown, the header's slate menu. All of them
+state their fixture as the game *to come*. So from Friday morning Detroit and
+Buffalo players still carried "DET @ BUF", the board still hung a card on it,
+and the player pages still offered its weather and its opposing lineup.
+
+It now holds the games still to be played — `gameHasConcluded`, the feed
+picker's own test, so a game leaves the map at the same moment it leaves the
+picker. Everything downstream already renders "no fixture" as the cell that does
+not appear (see the note on `NFL_LIVE_SLATE_BY_TEAM`), and `unplacedPlayer` on
+the player page already suppresses the fixture furniture for someone not on the
+week's card.
+
+### The board and Findings needed the rows dropped, not just the fixture
+
+The feed has dropped settled props since the MLB slates, but it does it inside
+the feed component off a *second* slate fetch (`finishedTeams`), so the Board and
+Findings — which read `buildNFLFeedRows()` directly — kept drawing the card.
+The drop moved into the builder, where all three read.
+
+**The skip is on "their game has been played", never on "they have no
+fixture"**, and that distinction is the whole safety of it. A team can have no
+fixture because it is on a bye, or because an abbreviation did not match between
+the roster feed and the slate — and that second one has happened here before
+(ESPN says WSH, every map in PropLedger says WAS; `nflOurAbbr` at the
+live-roster merge is the fix). Skipping on a missing fixture would turn that
+class of mismatch from a cell that does not render into a whole team silently
+absent from the league. `NFL_PLAYED_THIS_WEEK` is a positive statement, so
+nothing leaves without one.
+
+### Verified by driving it with the scoreboard stubbed
+
+ESPN is not reachable from the session this was written in, so the week-2
+scoreboard and the gamelog endpoint were served from fixtures and the real app
+driven against them — the same payload twice, once with the Thursday game
+`STATUS_FINAL` and once `STATUS_SCHEDULED`:
+
+- **Board, Thursday final** — 28 games, `CAR @ ATL` leads, the slate date reads
+  SUN, SEP 20, and Detroit and Buffalo appear nowhere on the page.
+- **Board, Thursday scheduled** — 29 games, `DET @ BUF` leads, date THU, SEP 17.
+- **Player page, Thursday final** — leads with the Panthers/Falcons game;
+  Lions and Bills are not in the matchup list.
+- **Player page, Thursday scheduled** — leads with Lions/Bills.
+
+The Games page is deliberately untouched: it is the slate view, its job is to
+show the week including what has been played, and it reads its own week fetch.
