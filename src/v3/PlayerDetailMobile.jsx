@@ -199,7 +199,7 @@ export default function PlayerDetailMobile({
   onOpenSlip = null,
   availability = null,   // "active" | "questionable" | "out"
   renderAvatar = null,   // (person, size) => node
-  seasons = null,        // [{ id, label, active, onPick }]
+  seasons = null,        // { options: [{ id, label, active, onPick }], note }
   windows = null,        // { options: [{ id, label, active, onPick }], custom, onCustom }
   splits = null,         // [{ id, label, active, onPick }]
   // Opposing-starter handedness, MLB batters only. Alex asked for it; no mock
@@ -361,7 +361,7 @@ export default function PlayerDetailMobile({
         style={{
           position: "absolute", top: 49, left: 0, right: 0, zIndex: 35, background: "var(--surface-sunken)",
           borderBottom: "1px solid var(--line)", boxShadow: "0 14px 30px rgba(0,0,0,0.55)",
-          maxHeight: "60%", overflowY: "auto",
+          maxHeight: "60%", overflowY: "auto", overscrollBehaviorY: "contain",
         }}
       >
         <div style={{ padding: "11px 16px 9px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -487,7 +487,8 @@ export default function PlayerDetailMobile({
 
   // ---- tabs + control chips ---------------------------------------------
   const tabs = ["Form", "Matchup", "Log", "Injuries", "News"];
-  const activeSeason = (seasons || []).find((s) => s.active);
+  const seasonOptions = (seasons && seasons.options) || [];
+  const activeSeason = seasonOptions.find((s) => s.active);
   const activeWindow = ((windows && windows.options) || []).find((w) => w.active);
   const activeSplit = (splits || []).find((s) => s.active);
   const activeMarket = markets.find((m) => m.active);
@@ -523,8 +524,8 @@ export default function PlayerDetailMobile({
         <div onClick={() => setSheet("market")} style={chip(true)}>
           {(activeMarket && activeMarket.label) || marketLabel} ▾
         </div>
-        {seasons && seasons.length > 1 && (
-          <div onClick={() => setSheet("season")} style={chip(activeSeason ? !seasons[0].active : false)}>
+        {seasonOptions.length > 1 && (
+          <div onClick={() => setSheet("season")} style={chip(activeSeason ? !seasonOptions[0].active : false)}>
             {(activeSeason && activeSeason.label) || "Season"} ▾
           </div>
         )}
@@ -1075,7 +1076,7 @@ export default function PlayerDetailMobile({
           position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 41, background: "var(--surface-1)",
           borderTop: "1px solid var(--line)", borderRadius: "20px 20px 0 0", padding: "12px 18px 26px",
           display: "flex", flexDirection: "column", gap: 18, boxShadow: "0 -14px 34px rgba(0,0,0,0.6)",
-          maxHeight: "88%", overflowY: "auto",
+          maxHeight: "88%", overflowY: "auto", overscrollBehaviorY: "contain",
         }}
       >
         <div style={{ display: "flex", justifyContent: "center" }}>
@@ -1102,15 +1103,21 @@ export default function PlayerDetailMobile({
           </div>
         )}
 
-        {showSeason && seasons && seasons.length > 0 && (
+        {showSeason && seasonOptions.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={sectionLabel}>SEASON</span>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {seasons.map((s) => (
+              {seasonOptions.map((s) => (
                 <div key={s.id} onClick={pickAndClose(s.onPick)} style={pill(s.active)}>{s.label}</div>
               ))}
             </div>
-            <span style={sheetNote}>MLB, NBA and the WNBA carry 2025 logs. NFL keeps one season.</span>
+            {/* The note the row itself cannot carry: which seasons this log
+                holds, or -- in the opening weeks of a new one -- why the year
+                stamped on the rest of the page is not yet a choice of its own
+                (see SEASON_MIN_GAMES). */}
+            <span style={sheetNote}>
+              {seasons.note || "Seasons never blend unless you pick All seasons."}
+            </span>
           </div>
         )}
 
@@ -1372,7 +1379,11 @@ export default function PlayerDetailMobile({
       {header}
       {gameMenuNode}
 
-      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+      {/* `overscroll-behavior: contain` is what keeps a flick that reaches the
+          top or bottom of this panel from carrying on into the document and
+          taking the header and roster dock with it -- see the note in
+          index.css. */}
+      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overscrollBehaviorY: "contain" }}>
         {hero}
         {threeCell}
         {controlBar}

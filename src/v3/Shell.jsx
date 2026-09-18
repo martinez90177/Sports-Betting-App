@@ -108,7 +108,10 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
         </div>
       </div>
 
-      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", position: "relative" }}>
+      {/* `overscroll-behavior: contain` is what keeps a flick that reaches the
+          top or bottom of this panel from carrying on into the document and
+          taking the header and dock with it -- see the note in index.css. */}
+      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", overscrollBehaviorY: "contain", position: "relative" }}>
         {children}
       </div>
 

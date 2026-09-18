@@ -1513,3 +1513,79 @@ served it.
   request. The other was a test that only cleared `completed` on an event and
   left `state: "post"` behind — `espnStatus` reads state, name and description
   too, so the "unplayed" game still read FINAL and the test was testing nothing.
+
+## The phone scrolled the whole app, and a one-game season was a slab — 2026-09-18
+
+Alex, on a screen recording of Tyler Shough's page in Week 2: *"there's some
+issues in this video, there's something odd with the scrolling going on with
+mobile, also the 2026 thing being one giant bar like that looks silly ... should
+2026 on its own not become a choice until after week 2? find a workaround to make
+sure it doesn't show like this again."*
+
+Three separate faults, one of which had been there since the v3 chassis shipped.
+
+### `100vh` is not `100dvh`, and one ancestor of the chassis still said `vh`
+
+The v3 phone chassis — `Shell.jsx` and `PlayerDetailMobile.jsx` — is
+`height: 100dvh; overflow: hidden` with one scrolling panel between a fixed
+header and a fixed dock. It is built never to scroll as a whole. But the app
+container every screen renders inside was `min-height: 100vh`, and on iOS Safari
+`100vh` is the **large** viewport: the height the page would have if the bottom
+toolbar were retracted. So the document was about 60px taller than the screen,
+the document itself scrolled, and a flick anywhere dragged the entire app —
+header, sticky filter bar, roster dock — up under the status bar and then
+rubber-banded it back.
+
+Measured off the recording rather than guessed. The chassis draws 813 CSS px
+tall (its `100dvh`); the header's bottom border sits 49px below the app's top
+edge when nothing has moved. Across the flick it was found 60px high, held 40px
+high for four tenths of a second, and at one point sat 69px **below** its
+resting place with plain body background above it. A rubber band alone snaps
+back; a scroll that holds is a document with somewhere to go.
+
+The settings frame two hundred lines above already read
+`minHeight: isPhoneShell ? "100dvh" : "100vh"` — someone had hit this once and
+fixed the frame they were looking at. The main container now does the same.
+
+`overscroll-behavior-y: none` on `html, body` is the second half: even with the
+document exactly the height of the screen, iOS carries a flick that reaches the
+end of an inner scroller on into the document and bounces the page. The two
+chassis panels, the filter sheet and the game menu ask for `contain`, so a flick
+inside one stops there. Vertical only — `overscroll-behavior-x` would also kill
+the swipe-from-edge back gesture.
+
+### A chart of one game took the whole track
+
+`FormPlot`'s columns are `flex: 1 1 0`, so one game got 100% of the track: a
+green slab the width of the card with a `3` under it. Scoping a Week 1 NFL page
+to the new season is exactly how you get there, and so is an H2H window against
+a team met once.
+
+The columns still divide the track evenly — the bars stay in order and spread
+across it rather than bunching at one end — but a bar is now capped at
+`BAR_COLS = 10` columns' worth of width and centred in what is left. Ten because
+that is `DEFAULT_WINDOW` for all four sports: the cap is "as wide as this bar
+would be on a full page", so bar width stops encoding sample size and one game
+draws the same bar as the tenth game of ten. Past ten games the columns are
+already narrower than the cap and nothing changes — verified against 1, 2, 3, 6
+and 10 games at both the phone and desktop plot sizes.
+
+### A season is not a choice until its third game
+
+`SEASON_MIN_GAMES` in `LogScope.jsx`. Decision 3 — current season outranks
+previous — is right for fifteen weeks of a seventeen-game season and wrong in
+Week 1, where "2026" is one game: LAST 5 and LAST 10 both read 1 of 1 and the
+implied price comes off a single result.
+
+So `season: "current"` resolves through `resolveSeason`, which returns the newest
+season only once that season has three games and `"all"` until then, and the
+newest season is left off the option row for as long as that holds. Both controls
+and the filter read the same resolver, so the chip can never name a season the
+chart is not drawn from, and the row says why — *"2026 is 1 game old — it becomes
+a choice of its own at 3."* Prior seasons stay individually selectable throughout.
+
+This is the player page catching up with the feed. `buildNFLFeedRows` has run its
+rolling windows over the merged log since 2026-09-08 ("Rolling windows now span
+seasons" above), for the stated reason that a window would otherwise collapse to
+a single game. The player page was the last surface that still collapsed, so a
+feed row reading 8 of 10 opened a page reading 1 of 1.

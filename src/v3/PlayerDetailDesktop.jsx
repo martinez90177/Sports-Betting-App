@@ -167,7 +167,7 @@ export default function PlayerDetailDesktop({
   // no repeat structure -- see the gates on each page.
   distribution = null,
   // v3 additions, the same ones the phone frame takes.
-  seasons = null,
+  seasons = null,       // { options: [{ id, label, active, onPick }], note }
   windows = null,
   splits = null,
   // Opposing-starter handedness, MLB batters only. Not a mock control --
@@ -505,11 +505,11 @@ export default function PlayerDetailDesktop({
         </div>
       )}
 
-      {seasons && seasons.length > 0 && (
+      {seasons && seasons.options && seasons.options.length > 0 && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
           <span style={railLabel}>SEASON</span>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            {seasons.map((s) => (
+            {seasons.options.map((s) => (
               <div key={s.id} role="button" tabIndex={0} onClick={s.onPick}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); s.onPick(); } }}
                 style={railPillC(s.active)}>
@@ -517,6 +517,11 @@ export default function PlayerDetailDesktop({
               </div>
             ))}
           </div>
+          {/* A season young enough that it is not on the row yet says so --
+              see SEASON_MIN_GAMES. */}
+          {seasons.note && (
+            <span style={{ fontSize: 11, lineHeight: 1.45, color: "var(--dim)" }}>{seasons.note}</span>
+          )}
         </div>
       )}
 

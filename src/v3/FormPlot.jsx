@@ -44,6 +44,29 @@ export const PLOT = {
 
 export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);
 
+// The widest a bar is ever drawn, in columns of the track.
+//
+// Columns are `flex: 1 1 0`, so a one-game log took the whole track: a single
+// green slab the width of the card with a `3` under it, which is what a Week 1
+// NFL season looks like the moment a reader scopes to it. Alex, 2026-09-18:
+// *"the 2026 thing being one giant bar like that looks silly ... find a
+// workaround to make sure it doesn't show like this again."*
+//
+// The columns still divide the track evenly -- so the bars stay in order and
+// spread across it rather than bunching at one end -- but a bar inside its
+// column is capped at the width a *full* window would have given it, and
+// centred in whatever is left. A chart of one game is now one bar the size of
+// any other bar in the app, with air around it.
+//
+// Ten, because that is DEFAULT_WINDOW for all four sports: the cap is "as wide
+// as this bar would be on a full page", so bar width stops encoding sample size
+// and every window from one game to ten draws the same bar. Past ten the
+// columns are already narrower than the cap and nothing here applies.
+export const BAR_COLS = 10;
+
+export const barMaxFor = (trackW, n) =>
+  Math.max(0, (trackW - gapFor(n) * (BAR_COLS - 1)) / BAR_COLS);
+
 // Labels are all-or-nothing per kind, gated on the column's measured width.
 // A kind that fits for some columns and not others is the overlap the desktop
 // graph shows at 100 games, so it is dropped for every column instead.
@@ -138,6 +161,9 @@ export default function FormPlot({
     return () => ro.disconnect();
   }, []);
 
+  // Measured off the same track the columns are, so the cap is a real width
+  // rather than a guess at one -- see BAR_COLS.
+  const barMax = barMaxFor(trackW, n);
   const lay = labels ? layFor(n, trackW) : { crest: false, abbr: false, date: false, val: layFor(n, trackW).val, labelH: 0 };
   const recent = React.useMemo(() => games.map((x) => ({ v: x.v })), [games]);
   const scale = feedFormScale(recent, line, isBinary, { height: g.span + PEDESTAL, pedestal: PEDESTAL });
@@ -276,7 +302,11 @@ export default function FormPlot({
               {v !== 0 && (
                 <span
                   style={{
-                    display: "flex", width: "100%", height: scale.y(v), borderRadius: 2, boxSizing: "border-box",
+                    // Capped and centred in the column rather than filling it
+                    // -- see BAR_COLS. Above ten games the column is narrower
+                    // than the cap and this changes nothing.
+                    display: "flex", width: "100%", maxWidth: barMax,
+                    height: scale.y(v), borderRadius: 2, boxSizing: "border-box",
                     alignItems: "flex-end", justifyContent: "center",
                     // A cleared game is a solid fill; a miss is a *closed* red
                     // outline. Closed, not open-bottomed: an open box reads as

@@ -34,6 +34,61 @@ import { useEffect, useMemo, useState } from "react";
 
 export const LOG_SCOPE_DEFAULT = { seasonType: "all", team: "all", season: "current" };
 
+// How many games a season needs before it can be read on its own.
+//
+// Decision 3 says the current season outranks the previous one, and for fifteen
+// weeks of a seventeen-game season that is exactly right. In Week 1 it is not:
+// "2026" is one game. Scoped to it, every number on the page is that game --
+// LAST 5 and LAST 10 both read 1 of 1, the implied price comes off a single
+// result, and the form graph is one bar. Alex, 2026-09-18: *"should 2026 on its
+// own not become a choice until after week 2?"*
+//
+// So a season becomes a choice -- and becomes what "current" resolves to -- on
+// its third game, and until then the log reads as one list across the boundary.
+// That is what the NFL feed has always done: `nflFeedGames` merges both seasons
+// and every rolling window on the feed runs over the merged list, with only the
+// SEASON column narrowing back out of it. A player page that said L10 and meant
+// "the one game of the new year" was disagreeing with the feed row that opened
+// it.
+//
+// Three, not ten: this is the point where a season can answer a question on its
+// own, not the point where the answer is a strong one. The sample floors
+// already mark a thin one, which is their job and not this one.
+export const SEASON_MIN_GAMES = 3;
+
+// Which seasons a log holds and how many games each one has, newest first.
+function seasonTally(games) {
+  const counts = {};
+  (games || []).forEach((g) => {
+    if (g && g.season != null) counts[g.season] = (counts[g.season] || 0) + 1;
+  });
+  return { counts, keys: Object.keys(counts).sort((a, b) => Number(b) - Number(a)) };
+}
+
+// True when the newest season in this log can be read on its own -- i.e. when
+// scoping to it leaves a sample rather than a sliver. A log with only one
+// season in it always can: there is nothing it could be blended with.
+export function newestSeasonStandsAlone(games) {
+  const { counts, keys } = seasonTally(games);
+  if (keys.length < 2) return true;
+  return counts[keys[0]] >= SEASON_MIN_GAMES;
+}
+
+// What `season: "current"` actually means for the log in hand.
+//
+// "current" is the stored default, so it has to keep working before any log has
+// loaded; this is where it turns into a season. It resolves to "all" for as
+// long as the newest season is too short to stand alone, which is what keeps a
+// page from opening on a one-game chart, and goes back to the newest season the
+// moment that season has three games. Every caller -- the filter, the option
+// list, both controls -- reads it, so the chip can never name a season the
+// chart is not drawn from.
+export function resolveSeason(games, scope) {
+  const id = (scope || LOG_SCOPE_DEFAULT).season ?? "current";
+  if (id !== "current") return id;
+  return newestSeasonStandsAlone(games) ? "current" : "all";
+}
+
 // The newest season present in a log, or null when the log carries no season
 // stamps at all (a generated one).
 export function newestSeason(games) {
@@ -177,14 +232,35 @@ export function logScopeOptions(games, sport, scope) {
   // prior one is a separate choice, and combining them is a third choice a
   // reader has to make deliberately -- not something that happens to their
   // Last 10 because a second season finished loading.
+  //
+  // The exception is a season that has not been played long enough to stand on
+  // its own (SEASON_MIN_GAMES): it is not offered yet, and "All seasons" leads
+  // the row instead of trailing it, because until that third game it is what
+  // the page is showing. Nothing is hidden by this -- every game in the log is
+  // in the list "All seasons" draws, which is the one selected.
   const seasonKeys = Object.keys(seasonCounts).sort((a, b) => Number(b) - Number(a));
+  const standsAlone = newestSeasonStandsAlone(list);
+  const older = seasonKeys.slice(1).map((y) => ({ id: y, label: seasonLabel(y, sport), n: countWith({ season: y }) }));
+  const allOption = { id: "all", label: "All seasons", n: countWith({ season: "all" }) };
   const seasons = seasonKeys.length > 1
-    ? [{ id: "current", label: seasonLabel(seasonKeys[0], sport), n: countWith({ season: "current" }) }]
-        .concat(seasonKeys.slice(1).map((y) => ({ id: y, label: seasonLabel(y, sport), n: countWith({ season: y }) })))
-        .concat([{ id: "all", label: "All seasons", n: countWith({ season: "all" }) }])
+    ? (standsAlone
+        ? [{ id: "current", label: seasonLabel(seasonKeys[0], sport), n: countWith({ season: "current" }) }]
+            .concat(older)
+            .concat([allOption])
+        : [allOption].concat(older))
     : [];
 
-  return { seasonTypes, teams, seasons, currentSeason: seasonKeys[0] ?? null };
+  return {
+    seasonTypes,
+    teams,
+    seasons,
+    currentSeason: seasonKeys[0] ?? null,
+    // For a caller that wants to say why the newest season is not on the row:
+    // its name and how far along it is. Null whenever it is on the row.
+    pendingSeason: standsAlone
+      ? null
+      : { label: seasonLabel(seasonKeys[0], sport), n: seasonCounts[seasonKeys[0]] || 0 },
+  };
 }
 
 // The one filter. Pure, and deliberately not memoised in here -- callers hold
@@ -200,12 +276,16 @@ export function scopeGames(games, scope) {
   // year, not last.
   let out = list;
   const seasons = new Set(list.map((g) => g.season).filter((v) => v != null));
-  if (seasons.size > 1 && s.season !== "all") {
-    if (s.season === "current" || s.season == null) {
+  // Resolved, not read straight off the scope: "current" means the newest
+  // season only once that season has games enough to stand alone, and "all"
+  // until then. See resolveSeason.
+  const season = resolveSeason(list, s);
+  if (seasons.size > 1 && season !== "all") {
+    if (season === "current") {
       const newest = Math.max(...[...seasons].map(Number));
       out = out.filter((g) => Number(g.season) === newest);
     } else {
-      out = out.filter((g) => String(g.season) === String(s.season));
+      out = out.filter((g) => String(g.season) === String(season));
     }
   }
 
@@ -289,12 +369,23 @@ export function LogScopeControl({ games, sport, scope, onChange }) {
   const s = scope || LOG_SCOPE_DEFAULT;
   return (
     <>
+      {/* Resolved rather than raw, so the chip that looks selected is the one
+          the games are actually scoped by -- before its third game the newest
+          season is not on this row and "current" is showing All seasons. */}
       <ScopeRow
         label="Season"
         options={opts.seasons}
-        value={s.season || "current"}
+        value={resolveSeason(games, s)}
         onChange={(id) => onChange({ ...s, season: id })}
       />
+      {/* Said out loud rather than left as a season that is simply missing --
+          the reader can see the year on every other surface in the app. */}
+      {opts.pendingSeason && (
+        <div style={{ margin: "-4px 0 10px", fontSize: 11.5, lineHeight: 1.45, color: "var(--dim)" }}>
+          {`${opts.pendingSeason.label} is ${opts.pendingSeason.n} game${opts.pendingSeason.n === 1 ? "" : "s"} old`}
+          {` — it becomes a season you can read on its own at ${SEASON_MIN_GAMES}.`}
+        </div>
+      )}
       <ScopeRow
         label="Games counted"
         options={opts.seasonTypes}

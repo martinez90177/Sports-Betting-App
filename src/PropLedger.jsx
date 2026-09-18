@@ -25112,7 +25112,17 @@ export default function PropLedger() {
     // max-width:1600px element, which is why the logo lines up with the left
     // rail rather than sitting out at the window edge. The app used to run a
     // full-bleed header over capped content, so the two never aligned.
-    <div style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
+    //
+    // `dvh` on the phone, and this is the whole of the mobile scrolling bug.
+    // `100vh` on iOS Safari is the LARGE viewport -- the height the page would
+    // have if the bottom toolbar were retracted -- while the v3 chassis inside
+    // is `100dvh`, the height it actually has. So this element was ~60px taller
+    // than the screen and the *document* scrolled by that much, underneath a
+    // chassis built never to scroll: a flick anywhere dragged the whole app --
+    // header, sticky filter bar, roster dock -- up under the status bar and
+    // rubber-banded it back. The settings frame above already uses dvh here;
+    // this is the same fix on the container every other screen renders in.
+    <div style={{ minHeight: isPhoneShell ? "100dvh" : "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
       {/* The v2 nav (see NavBar.jsx). The `Page ▾` dropdown and the

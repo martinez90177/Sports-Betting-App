@@ -338,6 +338,22 @@ a:focus-visible, div[role="button"]:focus-visible, button:focus-visible,
    those panels either way and are unaffected. */
 html, body { max-width: 100%; overflow-x: clip; }
 
+/* The second half of the mobile scrolling fix (the first is the app
+   container's `100dvh` -- see PropLedger's v2 container).
+
+   Even with the document exactly the height of the screen, iOS lets a flick
+   that reaches the end of an inner scroller carry on into the document and
+   rubber-band the whole page. On a phone every screen is an inner scroller
+   inside a chassis the exact height of the viewport, so a flick ends at a
+   boundary constantly, and the app bounced under the status bar each time.
+   `none` stops the bounce and the chain at the viewport; the panels themselves
+   ask for `contain` (v3 Shell, PlayerDetailMobile) so a flick inside one stops
+   there.
+
+   Vertical only. `overscroll-behavior-x` would also disable the
+   swipe-from-edge back gesture, which is how a phone leaves a player page. */
+html, body { overscroll-behavior-y: none; }
+
 /* ---------- UI scale (Settings > Display > Display size) ----------
    `zoom` rather than a font-size change because virtually all sizing in this
    app is inline pixel values rather than var(--fs-*)/var(--s-*) -- a token

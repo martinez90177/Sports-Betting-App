@@ -7,7 +7,7 @@
 // Nothing here holds state or fetches. Each page passes its own values and
 // setters in; the shapes out are exactly what PlayerDetailMobile renders.
 
-import { logScopeOptions } from "../LogScope.jsx";
+import { logScopeOptions, resolveSeason, SEASON_MIN_GAMES } from "../LogScope.jsx";
 
 // A season's length decides what a window means: 162 games make "last 18"
 // meaningless and 17 make "last 30" impossible. From
@@ -188,12 +188,25 @@ export function buildSplits({ side, setSide, h2h, setH2h, starterLabel }) {
 export function buildSeasons({ games, sport, scope, onChange }) {
   const opts = logScopeOptions(games, sport, scope);
   if (!opts.seasons.length) return null;
-  return opts.seasons.map((s) => ({
-    id: s.id,
-    label: s.label,
-    active: (scope.season ?? "current") === s.id,
-    onPick: () => onChange({ ...scope, season: s.id }),
-  }));
+  // Resolved rather than raw: a season too young to stand alone is not on the
+  // list (see SEASON_MIN_GAMES), and "current" is showing All seasons until it
+  // is. Comparing the stored id would leave the sheet with nothing marked and
+  // the chip reading "Season".
+  const active = resolveSeason(games, scope);
+  return {
+    options: opts.seasons.map((s) => ({
+      id: s.id,
+      label: s.label,
+      active: active === s.id,
+      onPick: () => onChange({ ...scope, season: s.id }),
+    })),
+    // Drawn under the row, so a season missing from it says why rather than
+    // just not being there -- the year is stamped on every other surface of
+    // the page, so its absence here is a question a reader will ask.
+    note: opts.pendingSeason
+      ? `${opts.pendingSeason.label} is ${opts.pendingSeason.n} game${opts.pendingSeason.n === 1 ? "" : "s"} old — it becomes a choice of its own at ${SEASON_MIN_GAMES}.`
+      : null,
+  };
 }
 
 // The slate the header's game menu opens. Built from the same `groups` the

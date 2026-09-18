@@ -152,6 +152,15 @@ decisions turned out to be the same primitive and are implemented as one:
   is a deliberate third choice, not something that happens to a Last 10 because
   a second season finished loading.
 
+  One exception, added 2026-09-18: a season is not a choice until its **third
+  game** (`SEASON_MIN_GAMES`). In Week 1 "2026" is one game, and scoped to it
+  every number on the page is that game. Until then `current` resolves to All
+  seasons, the newest season is left off the row, and the row says why. Prior
+  seasons stay selectable throughout. This is the player page catching up with
+  the feed, whose rolling windows have spanned the boundary since 2026-09-08 —
+  see PROJECT_NOTES, "The phone scrolled the whole app, and a one-game season
+  was a slab".
+
 Applied at one point per page — `logGames` → `scopeGames` → `allGames` — so the
 chart, splits, verdict, per-game table and every sample-size label narrow
 together. Option counts are computed *with the other selections applied*, so
