@@ -605,6 +605,64 @@ edge starts at **x:-121**, off screen, with no scrollbar to say so because
 negative overflow only clips. Under 560 the panel anchors to `.pp-nav` instead
 of to the button.
 
+### A watch is for one game, and leaves when it is final — 2026-09-21
+
+A prop is a line on one matchup. Until this date a watch stored no game, so it
+sat on the list indefinitely: Alex's Rhyne Howard watch was still there a week
+after the game it was for. His words: *"once the game concludes that pick
+should disappear"*, and the list should say which game each prop is from.
+
+Every watch now carries `game: { opp, home, startsAt }`, stamped by the player
+page from its slate row (`watchGameFromPage`), and the list prints it —
+`LAR vs NYG · 9/21 · 8:15 PM`. `useWatchGames` (in `src/lib/watchGames.js`,
+mounted once in `PropLedger`) drops a watch when the provider reports its game
+**final** — ESPN's `completed`, or StatsAPI's Final/Postponed/Suspended —
+through `fetchTeamGames` in `gamesData.js`. Never from the clock, except a 24h
+backstop for when the schedule cannot be read at all.
+
+Watches saved before this change have no `game`. Their game is resolved as the
+first one the team had not finished when the watch was added (`addedAt`), then
+stamped, then treated like any other. A week-old ATL watch resolves to ATL vs
+CON on 9/17, which is final, so it clears on the first pass.
+
+A watch whose game has not started costs no request. Results are applied by id
+through a functional update, so a watch toggled while a pass is out fetching
+is never overwritten.
+
+## Alt-line rungs sit where the chosen book posts them
+
+Every line and price in the app is still the app's own — a line is the median
+of the player's log, a price is his hit rate converted. **No sportsbook's
+line or price is shown anywhere except the MLB odds panel.** What the Settings
+book now changes is *where the alt-line rungs sit*, because the two books do
+not post the same alternate lines.
+
+`BOOK_LADDERS` in `src/lib/altLines.js` is transcribed from the books' own
+pages, which Claude cannot open (both are blocked in the browser pane). Alex
+screen-recorded them on 2026-09-21, NYG @ LAR:
+
+| | DraftKings | FanDuel |
+|---|---|---|
+| QB pass yards | every 10 yards (150+, 160+ … 280+), the main O/U slotted in as its own rung | every 25 yards, 150+ to 375+; 150+ was the floor for both QBs |
+| Receptions | not recorded | one catch at a time, 1+/2+ up to 4+–7+ |
+
+A market not in the table has not been seen on that book and keeps the generic
+spacing (`rungStep`) rather than a guess. Add rows only from the book's own
+page. Still unrecorded: rushing and receiving yards on both books, DraftKings
+receptions, and every NBA, WNBA and MLB market.
+
+Frames came out of Alex's Snipping Tool recordings with VLC's scene filter —
+there is no ffmpeg or Python on this machine:
+`vlc -I dummy --no-audio --video-filter=scene --scene-format=png --scene-ratio=15 --scene-path=<dir> <file.mp4> vlc://quit`
+(one PNG every 15 frames).
+
+The feed stamps each row with `ladder: bookLadder(book, sport, marketId)`; alt
+rows, the + button, the phone feed and `pickFromRung` all read it, and a saved
+pick keeps its `ladder` so the slip's stepper rebuilds the same rungs after
+the book in Settings changes. The v3 player page's ladder reads the book
+itself. The ALT LINES pill names the book (`ALT LINES · FANDUEL`) whenever a
+market on screen is on its ladder.
+
 ## Space Mono's "@" is unreadable small — there is a font-level fix
 
 Below about 12px the ring closes up and what is left reads as a lowercase "a".

@@ -1588,3 +1588,88 @@ export async function fetchHeadToHead(sport, awayAbbr, homeAbbr) {
     return { error: true };
   }
 }
+
+// ------------------------------------------------------ one team's games
+//
+// A team's schedule as plain rows, { opp, home, startsAt, final }, for the
+// watch list. A watched prop is about one game, and the list has to answer two
+// things about it long after the page that watched it has gone: which game it
+// was, and whether that game is over.
+//
+// `final` is the provider's word, never the clock's -- the same rule as the
+// status block above. A postponed or suspended game counts as over too: the
+// prop it was watched for is not being played.
+//
+// Preseason is skipped. No prop in this app is for a preseason game, and in
+// September the NBA route answers with October's exhibitions ahead of the
+// opener the NBA pages are actually describing.
+const TEAM_GAMES_TTL_MS = 5 * 60 * 1000;
+const teamGamesCache = new Map();
+const ESPN_OVER = /final|postponed|canceled|cancelled|suspended|forfeit/i;
+
+export async function fetchTeamGames(sport, abbr, aroundMs = Date.now()) {
+  if (!sport || !abbr) return null;
+  // MLB is asked for a window around a moment, so the moment is in the key;
+  // ESPN returns the whole season either way.
+  const ck = sport === "mlb" ? `${sport}:${abbr}:${dayKey(new Date(aroundMs))}` : `${sport}:${abbr}`;
+  const hit = teamGamesCache.get(ck);
+  if (hit && Date.now() - hit.at < TEAM_GAMES_TTL_MS) return hit.value;
+
+  let rows = null;
+  try {
+    if (sport === "mlb") {
+      const id = mlbTeamId(abbr);
+      if (!id) return null;
+      const at = new Date(aroundMs);
+      const res = await fetch(
+        `https://statsapi.mlb.com/api/v1/schedule?sportId=1&gameType=${MLB_COUNTED_TYPES}&teamId=${id}&startDate=${dayKey(addDays(at, -2))}&endDate=${dayKey(addDays(at, 10))}`
+      );
+      const data = await res.json();
+      rows = (data?.dates || []).flatMap((d) => d.games || []).map((g) => {
+        const isHome = MLB_ID_ABBR[g.teams?.home?.team?.id] === abbr;
+        const theirs = isHome ? g.teams?.away : g.teams?.home;
+        const status = mlbStatus(g);
+        return {
+          opp: MLB_ID_ABBR[theirs?.team?.id] || "",
+          home: isHome,
+          startsAt: g.gameDate,
+          final: status === GAME_STATUS.FINAL || status === GAME_STATUS.POSTPONED || status === GAME_STATUS.SUSPENDED,
+        };
+      });
+    } else if (ESPN_PATH[sport]) {
+      const probe = await espnTeamSchedule(sport, abbr);
+      if (!probe) return null;
+      const year = Number(probe.season?.year) || new Date().getFullYear();
+      const type = Number(probe.season?.type);
+      let events = probe.events || [];
+      if (type === 1) {
+        events = (await espnTeamSchedule(sport, abbr, { season: year, seasonType: 2 }))?.events || [];
+      } else if (type === 3) {
+        // In the playoffs the probe holds the bracket alone; a prop watched in
+        // the last week of the regular season needs that week too.
+        const reg = await espnTeamSchedule(sport, abbr, { season: year, seasonType: 2 });
+        events = [...(reg?.events || []), ...events];
+      }
+      const norm = (a) => espnAbbr(sport, a);
+      rows = events.map((e) => {
+        const comp = e?.competitions?.[0];
+        const mine = comp?.competitors?.find((c) => norm(c.team?.abbreviation) === abbr);
+        const theirs = comp?.competitors?.find((c) => c !== mine);
+        if (!mine || !theirs || !e.date) return null;
+        const t = comp.status?.type || {};
+        return {
+          opp: norm(theirs.team?.abbreviation) || "",
+          home: mine.homeAway === "home",
+          startsAt: e.date,
+          final: !!t.completed || ESPN_OVER.test(`${t.name || ""} ${t.description || ""}`),
+        };
+      }).filter(Boolean);
+    }
+  } catch {
+    rows = null;
+  }
+  if (!rows) return null;
+  rows.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  teamGamesCache.set(ck, { value: rows, at: Date.now() });
+  return rows;
+}

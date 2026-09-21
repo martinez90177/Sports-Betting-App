@@ -58,6 +58,49 @@ export function rungStep(mainLine) {
   return 25;
 }
 
+// Where each book actually posts its alternate lines, market by market.
+//
+// rungStep above spaces rungs outward from the app's own line, so a 239.5
+// passing line got 214.5 / 264.5 -- rungs no book offers. Alex had switched
+// his book to FanDuel and the ladder did not move, because nothing here knew
+// books differ. They do, and not subtly. Transcribed from both books' own
+// pages, screen-recorded by Alex on 2026-09-21 (NYG @ LAR, Monday night):
+//
+//   DraftKings  Pass Yds    150+, 160+, 170+ ... every 10 yards, with the
+//                           main O/U slotted in as its own rung (Stafford 239+,
+//                           Dart 215+)
+//   FanDuel     Pass Yds    150+, 175+, 200+ ... 375+, every 25 yards, and no
+//                           main-line rung -- the O/U is a separate market.
+//                           Both quarterbacks' ladders started at 150+ though
+//                           DraftKings had their lines 24 yards apart (238.5
+//                           and 214.5), so 150 is FanDuel's floor rather than
+//                           a distance from the line
+//   FanDuel     Receptions  1+, 2+, 3+ ... one catch at a time
+//
+// `step` is the milestone spacing and `min` the lowest milestone, where the
+// book showed one. DraftKings' ladder started at 160+ for Stafford and 150+
+// for Dart, so it has no fixed floor to record.
+//
+// A milestone "N+" is the line N - 0.5, so every grid line is X.5 and the
+// no-push guarantee rungStep documents still holds.
+//
+// A market that is not listed has not been seen on that book, and keeps the
+// generic spacing rather than a guess at what the book posts. Add a row only
+// from the book's own page.
+export const BOOK_LADDERS = {
+  draftkings: { nfl: { passYds: { step: 10 } } },
+  fanduel: { nfl: { passYds: { step: 25, min: 150 }, rec: { step: 1 } } },
+};
+
+// The ladder one book posts for one market, or null when it has not been
+// transcribed. A plain object so it can ride along on a saved pick (see
+// pickFromRung) and the slip can rebuild the same rungs days later without
+// knowing which book is selected now.
+export function bookLadder(book, sport, marketId) {
+  const grid = BOOK_LADDERS[book]?.[sport]?.[marketId];
+  return grid && grid.step > 0 ? { book, step: grid.step, min: grid.min ?? null } : null;
+}
+
 // Feed sample windows are the row keys "l5"/"l10"/"l20"/"all". Rungs are
 // counted over whichever one the feed is currently showing, so the main
 // rung's rate is the *same number* already in that row's cell rather than a
@@ -112,13 +155,27 @@ function rungAt(line, w, isBinary, direction, mainLine) {
 // nothing the last one didn't, and their prices would be the +/-1000 clamp
 // rather than a measurement, which reads as a real number and isn't one. The
 // clamp is a display floor, not a finding.
-function walk(w, mainLine, step, dir, isBinary, direction) {
+//
+// On a book's ladder the rungs are the book's own milestones rather than
+// multiples of the step away from the posted line: the first one is the
+// nearest milestone past the line on that side, then one step at a time.
+function walk(w, mainLine, step, dir, isBinary, direction, ladder = null) {
   const out = [];
+  // Milestone index k is the line k*step - 0.5 ("k*step+"). The first one
+  // strictly past the posted line, so a line that already sits on the grid is
+  // not offered twice.
+  const k0 = ladder
+    ? (dir < 0 ? Math.ceil((mainLine + 0.5) / ladder.step) - 1 : Math.floor((mainLine + 0.5) / ladder.step) + 1)
+    : 0;
   for (let k = 1; k <= MAX_RUNGS_EACH_SIDE; k++) {
-    const line = mainLine + dir * k * step;
+    const line = ladder
+      ? (k0 + dir * (k - 1)) * ladder.step - 0.5
+      : mainLine + dir * k * step;
     // Below zero is not a line anyone can bet, and a line of exactly 0 has no
-    // half-point offset protecting it from a push.
+    // half-point offset protecting it from a push. Below a book's lowest
+    // milestone is not a line that book offers.
     if (line <= 0) break;
+    if (ladder && ladder.min != null && line < ladder.min - 0.5) break;
     const r = rungAt(line, w, isBinary, direction, mainLine);
     out.push(r);
     if (r.hitRate === 0 || r.hitRate === 1) break;
@@ -128,16 +185,21 @@ function walk(w, mainLine, step, dir, isBinary, direction) {
 
 // The ladder for one player + market, ascending by line.
 //
+// `ladder` is a book's grid from bookLadder(); without one the rungs step
+// outward from the posted line by rungStep. The posted line itself is always
+// the main rung either way -- it is the row the ladder hangs off.
+//
 // Binary markets return no rungs at all: a double-double either happened or it
 // didn't, and there is no line to move. Callers must render that as a visible
 // state ("no alt lines for this market") rather than an absent control.
-export function buildRungs({ values, mainLine, isBinary, direction = "over", window = "all" }) {
+export function buildRungs({ values, mainLine, isBinary, direction = "over", window = "all", ladder = null }) {
   if (!values || !values.length || isBinary || mainLine == null) return [];
   const w = windowValues(values, window);
   if (!w.length) return [];
   const step = rungStep(mainLine);
-  const down = walk(w, mainLine, step, -1, isBinary, direction);
-  const up = walk(w, mainLine, step, 1, isBinary, direction);
+  const grid = ladder && ladder.step > 0 ? ladder : null;
+  const down = walk(w, mainLine, step, -1, isBinary, direction, grid);
+  const up = walk(w, mainLine, step, 1, isBinary, direction, grid);
   return [
     ...down.reverse(),
     rungAt(mainLine, w, isBinary, direction, mainLine),

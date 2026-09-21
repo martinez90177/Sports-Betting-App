@@ -1,7 +1,9 @@
 import React from "react";
 import FormPlot, { PLOT, crest } from "./FormPlot.jsx";
 import { probToAmericanOdds, formatOdds } from "../odds.js";
-import { buildRungs } from "../lib/altLines.js";
+import { buildRungs, bookLadder } from "../lib/altLines.js";
+import { useBettingSettings } from "../settings.jsx";
+import { watchGameLabel, watchGameShort } from "../lib/watchGames.js";
 import AgeMark from "./AgeMark.jsx";
 import { STATUS } from "../lib/teamColors.js";
 import ValuePlot from "./ValuePlot.jsx";
@@ -285,12 +287,19 @@ export default function PlayerDetailDesktop({
 
   // Built off the very series the graph draws, so the ladder and the bars
   // can never be counting different games.
+  //
+  // On the rungs of the book picked in Settings, the same ladder the feed's alt
+  // rows use for this market (see BOOK_LADDERS), so the two pages never offer
+  // different lines for one prop.
+  const book = useBettingSettings().sportsbook;
+  const marketId = (markets.find((m) => m.active) || {}).id;
   const rungs = React.useMemo(() => buildRungs({
     values: shown.map((g) => g.v),
     mainLine: chart && chart.marketLine != null ? chart.marketLine : line,
     isBinary: !!(chart && chart.isBinary),
     direction: (chart && chart.direction) || "over",
-  }), [shown, chart, line]);
+    ladder: bookLadder(book, sport, marketId),
+  }), [shown, chart, line, book, sport, marketId]);
 
   // Thin by the reader's own MINIMUM SAMPLE floor when they have set one, and
   // by lib/altLines' own THIN_GAMES when they have not -- never both at once.
@@ -429,9 +438,10 @@ export default function PlayerDetailDesktop({
         <span className="nsb" style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto", minWidth: 0 }}>
           {watched.map((w) => (
             <div
-              key={w.key || `${w.sport}:${w.playerId}:${w.marketId}`}
+              key={w.key || w.id || `${w.sport}:${w.playerId}:${w.marketId}`}
               role="button"
               tabIndex={0}
+              title={[w.name, w.subtitle, watchGameLabel(w)].filter(Boolean).join(" — ")}
               onClick={() => onOpenWatched && onOpenWatched(w)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenWatched && onOpenWatched(w); } }}
               style={{
@@ -442,7 +452,10 @@ export default function PlayerDetailDesktop({
             >
               <span role="img" style={crest(w.team, w.sport, 13)} />
               <span style={{ whiteSpace: "nowrap" }}>{w.label || w.name}</span>
-              {w.prop && <span style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>{w.prop}</span>}
+              {(w.prop || w.subtitle) && <span style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>{w.prop || w.subtitle}</span>}
+              {/* The game the prop is on -- the same line against another
+                  opponent is another prop. */}
+              {watchGameShort(w) && <span style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>· {watchGameShort(w)}</span>}
             </div>
           ))}
           {/* Rule 4: an empty watch list says it is empty. */}

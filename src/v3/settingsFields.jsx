@@ -493,7 +493,7 @@ export function SettingsBody({ section, sportsbooks = [], onOpenWheel }) {
               <Field label="Default sport" hint="Which board the app opens on. Auto picks whatever is in season.">
                 <SelectRow options={opts(SPORT_OPTIONS)} value={b.defaultSport} onChange={(v) => setB("defaultSport", v)} ariaLabel="Default sport" />
               </Field>
-              <Field label="Default sportsbook" hint="Prices on the My Picks slip come from this book.">
+              <Field label="Default sportsbook" hint="Alt lines sit where this book posts them, on the markets its ladder has been mapped for, and My Picks opens it. Prices are still your own hit rates, not the book's.">
                 <Segmented options={bookOptions} value={b.sportsbook} onChange={(v) => setB("sportsbook", v)} ariaLabel="Default sportsbook" />
               </Field>
               <Field label="Bankroll" hint="Optional. Set it and the Ledger reports profit in dollars as well as units. Nothing is sent anywhere — it stays in this browser.">

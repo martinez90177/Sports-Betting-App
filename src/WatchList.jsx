@@ -1,5 +1,6 @@
 import React from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
+import { watchGameLabel } from "./lib/watchGames.js";
 
 // The watch list, and the two controls that open it.
 //
@@ -89,7 +90,7 @@ function WatchPanel({ watched = [], onOpenWatched, onRemoveWatch, onClose, empty
               />
               <div
                 role="button" tabIndex={0}
-                title={`Open ${w.name} — ${w.subtitle || ""}`.trim()}
+                title={[`Open ${w.name}`, w.subtitle, watchGameLabel(w)].filter(Boolean).join(" — ")}
                 onClick={() => { onClose && onClose(); onOpenWatched && onOpenWatched(w); }}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClose && onClose(); onOpenWatched && onOpenWatched(w); } }}
                 style={{ minWidth: 0, flex: 1, cursor: onOpenWatched ? "pointer" : "default" }}
@@ -97,8 +98,15 @@ function WatchPanel({ watched = [], onOpenWatched, onRemoveWatch, onClose, empty
                 <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {w.name}
                 </div>
-                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--dim)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {[w.team, w.subtitle].filter(Boolean).join(" · ")}
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {w.subtitle}
+                </div>
+                {/* Which game the prop is on. A line is a line on one matchup,
+                    and the same words against a different opponent are a
+                    different prop -- see lib/watchGames.js. A watch whose game
+                    could not be found says so rather than reading as timeless. */}
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--dim)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {watchGameLabel(w) || [w.team, "game not recorded"].filter(Boolean).join(" · ")}
                 </div>
               </div>
               {/* The rate it was watched at. Not recomputed -- this list is a
@@ -120,6 +128,11 @@ function WatchPanel({ watched = [], onOpenWatched, onRemoveWatch, onClose, empty
               </span>
             </div>
           ))}
+          {/* Said once, so a prop leaving the list reads as the rule working
+              rather than as something lost. */}
+          <div style={{ padding: "9px 13px", fontFamily: MONO, fontSize: 10, lineHeight: 1.5, color: "var(--dim)" }}>
+            Each prop is for one game and leaves this list when that game is final.
+          </div>
         </div>
       )}
     </div>

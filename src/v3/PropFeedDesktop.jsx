@@ -489,6 +489,9 @@ export default function PropFeedDesktop({
               >
                 <span style={{ fontSize: 13, lineHeight: 1 }}>{altLines.on ? "✓" : "+"}</span>
                 <span>ALT LINES</span>
+                {altLines.on && altLines.book && (
+                  <span style={{ color: "var(--text-2)" }}>· {String(altLines.book).toUpperCase()}</span>
+                )}
               </div>
             )}
             </div>

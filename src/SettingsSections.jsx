@@ -479,7 +479,7 @@ export function BettingSection({ settings, sportsbooks }) {
         </select>
       </Field>
 
-      <Field label="Default sportsbook" hint={`Used for the "Open in ${book.label} →" button in My Picks.`}>
+      <Field label="Default sportsbook" hint={`Alt lines sit where ${book.label} posts them, on the markets its ladder has been mapped for, and My Picks opens it with "Open in ${book.label} →".`}>
         <select className="select" value={b.sportsbook} onChange={(e) => set("sportsbook", e.target.value)} style={{ width: "100%" }}>
           {sportsbooks.map((s) => (
             <option key={s.id} value={s.id}>{s.label}</option>

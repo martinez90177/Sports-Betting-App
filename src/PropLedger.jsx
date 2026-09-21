@@ -17,7 +17,8 @@ import {
   fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflCurrentWeekSlate, fetchNbaOpenerDay,
   dayKey as slateDayKey,
 } from "./lib/gamesData.js";
-import { feedIsHit, buildRungs, combinedLanded, windowValues } from "./lib/altLines.js";
+import { feedIsHit, buildRungs, bookLadder, combinedLanded, windowValues } from "./lib/altLines.js";
+import { useWatchGames, watchGameFromPage } from "./lib/watchGames.js";
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsMobile from "./v3/SettingsMobile.jsx";
 import SettingsPopover from "./v3/SettingsPopover.jsx";
@@ -2440,6 +2441,9 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     // -- the same words as the market tab that is currently underlined.
     subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
     headshotSrc: player ? espnHeadshot(player.espnId) : null,
+    // The game this prop is on. It leaves the watch list when that game is
+    // final -- see lib/watchGames.js.
+    game: watchGameFromPage(base.team, slateGame, nbaNextGameForTeam(base.team)),
     };
   };
 
@@ -8209,6 +8213,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     // -- the same words as the market tab that is currently underlined.
     subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
     headshotSrc: player ? nflHeadshot(player) : null,
+    // The game this prop is on. It leaves the watch list when that game is
+    // final -- see lib/watchGames.js.
+    game: watchGameFromPage(base.team, slateGame, nflNextGameForTeam(base.team)),
     };
   };
 
@@ -10264,6 +10271,9 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     // -- the same words as the market tab that is currently underlined.
     subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
     headshotSrc: player ? wnbaHeadshot(player.espnId) : null,
+    // The game this prop is on. It leaves the watch list when that game is
+    // final -- see lib/watchGames.js.
+    game: watchGameFromPage(base.team, slateGame, wnbaNextGameForTeam(base.team)),
     };
   };
 
@@ -15184,6 +15194,10 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     subtitle: [base.direction === "under" ? "Under" : "Over", base.line, marketLabel].filter((x) => x !== null && x !== undefined && x !== "").join(" "),
     headshotSrc: player ? mlbHeadshot(player.mlbId) : null,
     fallbackSrc: player ? mlbEspnHeadshot(player.id) : null,
+    // The game this prop is on -- the one the page is pinned to, so a
+    // doubleheader's game 2 is not game 1. It leaves the watch list when that
+    // game is final; see lib/watchGames.js.
+    game: watchGameFromPage(base.team, null, nextGame),
     };
   };
 
@@ -17385,6 +17399,9 @@ function pickFromRung(sport, r, rung, { streak, cushion, sampleWindow, status })
     // line", not "the user changed it", and after a reload there is no feed
     // row left to work that out from.
     mainLine: r.line,
+    // The book ladder the row was stepped on, so the slip rebuilds the same
+    // rungs (rungsForPick) even after Settings names a different book.
+    ladder: r.ladder || null,
     hitRate: hitRate ?? null,
     gamesOver: rung ? rung.gamesOver : null,
     gamesCounted: rung ? rung.gamesCounted : null,
@@ -17654,7 +17671,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // Shared between the desktop icon button and the mobile "+ ADD" text
   // button below so the two never drift apart on what a tap actually saves.
   const handleAddClick = () => {
-    const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction, window: sampleWindow });
+    const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction, window: sampleWindow, ladder: r.ladder });
     const mainRung = rungs.find((x) => x.isMain) || null;
     onTogglePick(pickFromRung(sport, r, mainRung, { streak, cushion, sampleWindow, status }));
   };
@@ -18566,7 +18583,7 @@ function altFeedRow(r, line) {
 function feedRowsWithAlts(r) {
   if (r.isBinary || r.line == null || !r.values || !r.values.length) return [r];
   const rungs = buildRungs({
-    values: r.values, mainLine: r.line, isBinary: false, direction: "over", window: "all",
+    values: r.values, mainLine: r.line, isBinary: false, direction: "over", window: "all", ladder: r.ladder,
   });
   if (!rungs.length) return [r];
   return [r, ...rungs.filter((x) => !x.isMain).map((x) => altFeedRow(r, x.line))];
@@ -20242,11 +20259,26 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // Alt lines expand the list before the side is chosen, so the Under feed is
   // the same single inversion of the same rows rather than a second, separately
   // counted set.
+  //
+  // Every row carries the ladder of the book picked in Settings, so an alt row,
+  // the row's own + button and the slip it lands on all step along the same
+  // rungs. Unset for a market that book has not been transcribed for (see
+  // BOOK_LADDERS), which keeps the generic spacing.
+  const book = bettingDefaults.sportsbook;
   const rows = useMemo(() => {
-    const withAlts = linesMode === "alt" ? liveRows.flatMap(feedRowsWithAlts) : liveRows;
+    const booked = liveRows.map((r) => ({ ...r, ladder: bookLadder(book, sport, r.marketId) }));
+    const withAlts = linesMode === "alt" ? booked.flatMap(feedRowsWithAlts) : booked;
     return direction === "under" ? withAlts.map(flipFeedRowToUnder) : withAlts;
-  }, [liveRows, direction, linesMode]);
+  }, [liveRows, direction, linesMode, book, sport]);
   const propGroups = PROP_GROUPS[sport] || [];
+  const bookLabel = (SPORTSBOOKS.find((b) => b.id === book) || SPORTSBOOKS[0]).label;
+  // The markets on screen whose rungs are that book's own, by name. No
+  // selection means every market is listed.
+  const bookLadderMarkets = useMemo(() => {
+    const all = propGroups.flatMap((g) => g.markets);
+    const shown = selectedMarkets.length ? all.filter((m) => selectedMarkets.includes(m.id)) : all;
+    return [...new Set(shown.filter((m) => bookLadder(book, sport, m.id)).map((m) => m.label))];
+  }, [propGroups, selectedMarkets, book, sport]);
   // Display name(s) of the selected prop(s), for the preset chip summary --
   // the stored value is market ids ("pts_reb_ast"), which is not what someone
   // wants to read on a saved-screen card. Joined the same way everywhere a
@@ -21651,7 +21683,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         onTogglePick={(r, line) => {
           // Through the same builder the desktop row uses, so a prop saved
           // from the phone and from the table is one pick, not two.
-          const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction: r.direction, window: sampleWindow });
+          const rungs = buildRungs({ values: r.values, mainLine: r.line, isBinary: r.isBinary, direction: r.direction, window: sampleWindow, ladder: r.ladder });
           const rung = rungs.find((x) => x.line === line) || rungs.find((x) => x.line === r.line) || null;
           onTogglePick(pickFromRung(sport, r, rung, {
             streak: feedStreak(r.values, line, r.isBinary, r.direction),
@@ -22204,7 +22236,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         altLines={{
           on: linesMode === "alt",
           onToggle: () => setLinesMode((m) => (m === "alt" ? "main" : "alt")),
-          note: "Every alternate line, each counted from the same finished games. The posted line stays in the list.",
+          // Named on the pill whenever a market on screen is on that book's
+          // ladder, so switching books in Settings visibly moves the rungs.
+          book: bookLadderMarkets.length ? bookLabel : null,
+          note: bookLadderMarkets.length
+            ? `Alternate lines where ${bookLabel} posts them for ${bookLadderMarkets.join(" and ")}; other markets step from the posted line. Each counted from the same finished games. The posted line stays in the list.`
+            : "Every alternate line, each counted from the same finished games. The posted line stays in the list.",
         }}
         filterCount={feedActiveFilterCount}
         filtersOpen={feedRailOpen}
@@ -23216,6 +23253,7 @@ function rungsForPick(p) {
     // The whole log that was saved. A window narrower than the saved log would
     // recount the leg over fewer games than the number printed beside it.
     window: "all",
+    ladder: p.ladder || null,
   });
 }
 
@@ -24449,6 +24487,9 @@ export default function PropLedger() {
   React.useEffect(() => {
     localStorage.setItem("propPalaceWatch", JSON.stringify(watched));
   }, [watched]);
+  // A watched prop is a line on one game, so it leaves the list once that game
+  // is final, and one saved before games were recorded gets its game looked up.
+  useWatchGames(watched, setWatched);
 
   const watchIds = useMemo(() => new Set(watched.map((w) => w.id)), [watched]);
   const toggleWatch = (item) => {
