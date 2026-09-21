@@ -1780,3 +1780,25 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
   opacity: 1;
   visibility: visible;
 }
+
+/* A sideways scroller that says it is one. Everything else in the frame hides
+   its scrollbars (.nsb) because it scrolls vertically, where the wheel finds it
+   anyway; a table that runs off the right edge has no such cue, so this one
+   keeps a thin, draggable bar. Firefox reads the first two lines, the rest is
+   the WebKit/Blink equivalent at the same 7px as the global rule above. */
+.pp-xscroll { scrollbar-width: thin; scrollbar-color: var(--line-strong, var(--line)) transparent; }
+.pp-xscroll::-webkit-scrollbar { height: 9px; }
+.pp-xscroll::-webkit-scrollbar-thumb { background: var(--line-strong, var(--line)); border-radius: 999px; }
+
+/* Text and buttons that sit inside a .pp-xscroll table but are not columns of
+   it -- the empty note, LOAD MORE, the footnotes. Pinned to the scroller's
+   visible width (--pp-xs-w, set by PropFeedDesktop) so they read in full at
+   any scroll position rather than running 868px wide off the right edge. */
+.pp-xstick { position: sticky; left: 0; width: var(--pp-xs-w, 100%); max-width: 100%; box-sizing: border-box; }
+
+/* Room at the bottom of every scrolling column for the My Picks launcher,
+   which floats 20px in from the bottom-right corner and is 44px tall. Without
+   it the last rows of a column -- a Findings card, an injury line -- sat under
+   the launcher even scrolled all the way down, which no amount of scrolling
+   could fix. 20 + 44 + 20 of air. */
+:root { --fab-clear: 84px; }

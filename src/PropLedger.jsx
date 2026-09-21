@@ -3054,19 +3054,31 @@ let nflDefByMarket = null;
 let nflDefBuiltAt = 0;
 let nflDefBuiltVersion = -1;
 
+// **One table per season, never blended.** Until 2026-09-21 every game the
+// pool held went into one table, which in Week 3 meant a defence's two 2026
+// games sat in with seventeen from 2025 -- a rank that was last season in all
+// but name, and said so nowhere. Alex: *"dont want people jumping the gun on
+// the matchup rating being based on last year, but also don't want people
+// only using one weeks worth of data."* Both are right, so both are kept,
+// ranked separately, each with its own game count, and every surface that
+// shows a rank names its season (see nflDefSplit).
 function buildNflDefenceByMarket() {
-  // market -> opp -> { total, events:Set }
+  // season -> market -> opp -> { total, events:Set }
   const acc = new Map();
   nflPlayerPool().forEach((p) => {
     const markets = NFL_MARKETS.filter((m) => m.pos.includes(p.pos));
     if (!markets.length) return;
     nflFeedGames(p).forEach((g) => {
       if (!g.opp || !g.eventId) return;
+      const season = g.season != null ? Number(g.season) : nflSeasonForDate(g.date);
+      if (!Number.isFinite(season)) return;
+      let bySeason = acc.get(season);
+      if (!bySeason) { bySeason = new Map(); acc.set(season, bySeason); }
       markets.forEach((m) => {
         const v = statValueNFL(g, m.id);
         if (v == null || !Number.isFinite(v)) return;
-        let byTeam = acc.get(m.id);
-        if (!byTeam) { byTeam = new Map(); acc.set(m.id, byTeam); }
+        let byTeam = bySeason.get(m.id);
+        if (!byTeam) { byTeam = new Map(); bySeason.set(m.id, byTeam); }
         let rec = byTeam.get(g.opp);
         if (!rec) { rec = { total: 0, events: new Set() }; byTeam.set(g.opp, rec); }
         rec.total += v;
@@ -3076,22 +3088,26 @@ function buildNflDefenceByMarket() {
   });
 
   const out = {};
-  acc.forEach((byTeam, marketId) => {
-    const rows = [];
-    byTeam.forEach((rec, abbr) => {
-      if (!rec.events.size) return;
-      rows.push({ abbr, perGame: rec.total / rec.events.size });
+  acc.forEach((bySeason, season) => {
+    const perMarket = {};
+    bySeason.forEach((byTeam, marketId) => {
+      const rows = [];
+      byTeam.forEach((rec, abbr) => {
+        if (!rec.events.size) return;
+        rows.push({ abbr, perGame: rec.total / rec.events.size, games: rec.events.size });
+      });
+      // A market only a handful of defences have been measured in cannot be
+      // ranked out of 32 -- the badge would read "#3 of 32" off six teams. Left
+      // out entirely, and the caller falls back to points allowed.
+      if (rows.length < NFL_DEF_MIN_TEAMS) return;
+      rows.sort((a, b) => a.perGame - b.perGame);
+      const table = {};
+      rows.forEach((r, i) => {
+        table[r.abbr] = { rank: i + 1, rating: Math.round(r.perGame * 10) / 10, of: rows.length, games: r.games, season };
+      });
+      perMarket[marketId] = table;
     });
-    // A market only a handful of defences have been measured in cannot be
-    // ranked out of 32 -- the badge would read "#3 of 32" off six teams. Left
-    // out entirely, and the caller falls back to points allowed.
-    if (rows.length < NFL_DEF_MIN_TEAMS) return;
-    rows.sort((a, b) => a.perGame - b.perGame);
-    const table = {};
-    rows.forEach((r, i) => {
-      table[r.abbr] = { rank: i + 1, rating: Math.round(r.perGame * 10) / 10, of: rows.length };
-    });
-    out[marketId] = table;
+    out[season] = perMarket;
   });
   return out;
 }
@@ -3099,24 +3115,98 @@ function buildNflDefenceByMarket() {
 // Rebuilt when the pool's logs have moved, and at most every 1.5s -- the logs
 // land 800 times across a cold load and this walks every one of them, so an
 // unguarded rebuild-per-render is quadratic on exactly the slowest path.
-function nflDefTableFor(market) {
+function nflDefTables() {
   const now = Date.now();
   if (nflDefBuiltVersion !== NFL_LOG_REVISION && now - nflDefBuiltAt > NFL_DEF_REBUILD_MS) {
     nflDefByMarket = buildNflDefenceByMarket();
     nflDefBuiltVersion = NFL_LOG_REVISION;
     nflDefBuiltAt = now;
   }
-  return (nflDefByMarket && nflDefByMarket[market]) || null;
+  return nflDefByMarket || {};
+}
+
+// How many games a defence has to have played this season before its rank
+// this season decides the matchup read. Below it, last season's full sample
+// decides, and this season's rank is shown beside it as what it is -- two or
+// three games. Four is a month of football: enough that one blowout or one
+// backup quarterback no longer sets the number on its own.
+const NFL_DEF_CURRENT_MIN_GAMES = 4;
+
+// Both seasons' ranks for one defence in one market, and which one leads.
+//
+//   current  this season, however few games -- null before its first game
+//   last     the season before, the full sample
+//   lead     whichever decides the matchup read: this season once the
+//            defence has NFL_DEF_CURRENT_MIN_GAMES games, last season until then
+//   other    the one that does not lead, shown beside it
+//
+// Null when neither season could be ranked, and the caller falls back to
+// points allowed.
+function nflDefSplit(market, opp) {
+  if (!market || !opp) return null;
+  const tables = nflDefTables();
+  const season = currentNFLSeason();
+  const current = tables[season]?.[market]?.[opp] || null;
+  const last = tables[season - 1]?.[market]?.[opp] || null;
+  if (!current && !last) return null;
+  const currentLeads = current && (current.games >= NFL_DEF_CURRENT_MIN_GAMES || !last);
+  return {
+    current, last,
+    lead: currentLeads ? current : last,
+    other: currentLeads ? last : current,
+    early: !!current && current.games < NFL_DEF_CURRENT_MIN_GAMES,
+  };
+}
+
+// "'25", the short form a badge has room for.
+const nflSeasonShort = (season) => `'${String(season).slice(-2)}`;
+
+// "2026: #28 of 32 after 2 games" -- the sentence every surface uses for the
+// rank that is not leading, so the feed, the phone card and the player page
+// cannot describe the same number three ways.
+function nflDefOtherText(split) {
+  const o = split && split.other;
+  if (!o) return null;
+  const games = `${o.games} game${o.games === 1 ? "" : "s"}`;
+  return o.season === currentNFLSeason()
+    ? `${o.season} so far: #${o.rank} of ${o.of} after ${games}`
+    : `${o.season}: #${o.rank} of ${o.of} over ${games}`;
+}
+
+// The NFL feed's footnote, read off the logs actually loaded rather than
+// written for one moment in the calendar. It used to say "the 2026 season
+// hasn't started yet" in a sentence typed before kickoff, and was still saying
+// it in Week 3 -- under rows whose form strips already held 2026 games.
+function nflFeedSeasonNote() {
+  const season = currentNFLSeason();
+  const tables = nflDefTables();
+  const hasCurrent = tables[season] && Object.keys(tables[season]).length > 0;
+  return hasCurrent
+    ? `Real ESPN box scores: the ${season} season so far, with ${season - 1} behind it in the L5 / L10 / L20 windows. The ${season} column counts ${season} games only, and every defence rank says which season it is from. Not a live odds feed.`
+    : `Real ESPN box scores from the ${season - 1} season — no ${season} games have been logged yet. Not a live odds feed.`;
 }
 
 // Per-market first, points allowed second. The fallback matters on a market
 // too thin to rank and before the logs land, and it is the reason
 // nflDefCategoryLabel has to ask which one answered.
+//
+// Returns the leading season's entry -- `rank`, `rating`, `of` -- with the
+// split riding along as `split`, so a caller that only wants a number keeps
+// working and one that shows the rank can name both seasons.
 function getNFLDefRank(market, pos, opp) {
-  const table = market ? nflDefTableFor(market) : null;
-  if (table && table[opp]) return table[opp];
-  if (nflTeamDefReal && nflTeamDefReal[opp]) return nflTeamDefReal[opp];
+  const split = nflDefSplit(market, opp);
+  if (split) return { ...split.lead, split };
+  if (nflTeamDefReal && nflTeamDefReal[opp]) return { ...nflTeamDefReal[opp], season: 2025, split: null };
   return null;
+}
+
+// Whether any season has a per-market table for this defence. The label and
+// the points-allowed honesty gate below both need to know which measure
+// answered, not which season.
+function nflDefTableFor(market) {
+  const tables = nflDefTables();
+  const season = currentNFLSeason();
+  return tables[season]?.[market] || tables[season - 1]?.[market] || null;
 }
 
 // ESPN abbreviates Washington as WSH; every other team's abbreviation in the
@@ -3173,7 +3263,7 @@ async function fetchNFLTeamDefense() {
 // actually is rather than claiming a per-market split the data doesn't have.
 function nflDefIsPointsAllowed(opp, market) {
   // Per-market answered, so the label must not say points.
-  if (market && nflDefTableFor(market) && nflDefTableFor(market)[opp]) return false;
+  if (nflDefSplit(market, opp)) return false;
   return !!(nflTeamDefReal && nflTeamDefReal[opp]);
 }
 
@@ -3184,7 +3274,7 @@ function nflDefIsPointsAllowed(opp, market) {
 // difference look like a bug.
 function nflDefCategoryLabel(market, pos, opp) {
   const table = market ? nflDefTableFor(market) : null;
-  if (table && (!opp || table[opp])) {
+  if (table && (!opp || nflDefSplit(market, opp))) {
     const label = NFL_MARKETS.find((m) => m.id === market)?.label;
     return label ? `${label.toLowerCase()} allowed per game` : "allowed per game";
   }
@@ -8629,6 +8719,11 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         allows: (!unplacedPlayer && gameOppDef && gameOppDef.rating != null) ? String(gameOppDef.rating) : null,
         rank: (!unplacedPlayer && gameOppDef) ? `#${gameOppDef.rank} of ${NFL_TEAMS.length}` : null,
         rankWord: unplacedPlayer ? null : (gameOppTier || null),
+        // The season that rank is from, and the other season's beside it --
+        // see nflDefSplit. A Week 3 rank is never read as either last year's
+        // or as settled.
+        rankSeason: (!unplacedPlayer && gameOppDef) ? gameOppDef.season ?? null : null,
+        rankNote: (!unplacedPlayer && gameOppDef && gameOppDef.split) ? nflDefOtherText(gameOppDef.split) : null,
         rankColor: gameOppTier === "soft" ? "var(--pos)" : gameOppTier === "tough" ? "var(--neg)" : "var(--dim)",
         lastMeeting: v2Last ? `${statValueNFL(v2Last, market)} \u00b7 ${axisDateShort(v2Last.date)}` : null,
         // The NFL file's fourth cell is WEATHER, where MLB says PARK and the
@@ -17564,7 +17659,9 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
       // 25px measured -- and the line is already stated in the proposition
       // directly above ("OVER 8.5 RECEPTIONS"), so repeating it here was
       // costing width to say something twice. The title carries the long form.
-      style={{ fontSize: 10.5, color: "var(--dim)", whiteSpace: "nowrap", letterSpacing: "0.04em", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}
+      // Wraps at the track's floor rather than losing "VS LINE" to an
+      // ellipsis: a cut-off figure reads as the figure.
+      style={{ fontSize: 10.5, color: "var(--dim)", letterSpacing: "0.04em", display: "block" }}
     >
       {windowWord} AVG <span style={{ color: "var(--text-2)" }}>{cushionAvg.toFixed(1)}</span>
       {" · "}
@@ -17739,8 +17836,13 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
            Archivo 500 was tried here and rejected. The proposition below it
            is uppercase mono in --text, not accent: it's the row's subject,
            not a link, and colouring it accent made every row look active. */}
-      <div className="feed-prop-link-name" style={{ display: "flex", alignItems: "baseline", gap: 7, minWidth: 0 }}>
-        <span className="pp-display" style={{ fontSize: isNarrow ? 15 : 17, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      {/* The name wraps rather than truncating. At the track's 200px floor
+          "Matthew Stafford" and his team badge do not fit on one line, and
+          the ellipsis turned the row's subject into "Matthew ..." -- the one
+          word on the row that must never be cut. A second line is the honest
+          way to fit it; the badge stays with the last word. */}
+      <div className="feed-prop-link-name" style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 7, minWidth: 0 }}>
+        <span className="pp-display" style={{ fontSize: isNarrow ? 15 : 17, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)", minWidth: 0, overflowWrap: "anywhere" }}>
           {r.name}
         </span>
         {/* The crest beside the abbreviation, both here and on the fixture
@@ -17809,7 +17911,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         <>
           <span
             className="mono"
-            title={`This opponent is #${r.rank} of ${feedTeamCount(sport)} against ${r.rankLabel}`}
+            title={[
+              `This opponent is #${r.rank} of ${feedTeamCount(sport)} against ${r.rankLabel}${r.rankSeason ? ` in ${r.rankSeason}` : ""}.`,
+              r.rankOther ? `${r.rankOther}.` : null,
+              r.rankEarly ? `The ${r.rankSeason} rank decides EASY / TOUGH until this season has ${NFL_DEF_CURRENT_MIN_GAMES} games behind it.` : null,
+            ].filter(Boolean).join(" ")}
             style={{
               display: "inline-block", padding: "1px 6px", borderRadius: 4,
               fontSize: 10, fontWeight: 800, letterSpacing: 0,
@@ -17821,7 +17927,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               whiteSpace: "nowrap",
             }}
           >
-            D #{r.rank}/{feedTeamCount(sport)}
+            D #{r.rank}/{feedTeamCount(sport)}{r.rankSeason ? ` ${nflSeasonShort(r.rankSeason)}` : ""}
           </span>
           {(() => {
             const read = matchupRead;
@@ -17847,6 +17953,15 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               </span>
             );
           })()}
+          {/* The other season, beside the one that leads: this season's rank
+              and how few games it stands on while last season decides, last
+              season's once this one has taken over. Only the NFL splits its
+              ranks by season; the other sports carry neither field. */}
+          {r.rankOtherShort && (
+            <span title={r.rankOther || undefined} style={{ whiteSpace: "nowrap", color: "var(--dim)" }}>
+              {r.rankOtherShort}
+            </span>
+          )}
         </>
       )}
       {/* The streak rides here on the phone only. On desktop it is already the
@@ -19170,6 +19285,15 @@ function buildNFLFeedRows() {
         opp: nextOpp,
         homeGame: nextGame ? nextGame.home : null,
         rank: def ? def.rank : null, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
+        // Which season the rank above is, and the other season's beside it.
+        // The badge, the phone card and the player page all print both, so a
+        // Week 3 rank is never read as either last year's or as settled.
+        rankSeason: def ? def.season ?? null : null,
+        rankOther: def && def.split ? nflDefOtherText(def.split) : null,
+        rankOtherShort: def && def.split && def.split.other
+          ? `${nflSeasonShort(def.split.other.season)} #${def.split.other.rank} · ${def.split.other.games}G`
+          : null,
+        rankEarly: !!(def && def.split && def.split.early),
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
@@ -21057,7 +21181,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedDataDisclaimer = sport === "mlb"
     ? "Live 2026 regular-season game logs (MLB Stats API) for every team on today's real MLB slate. Not a live odds feed."
     : sport === "nfl"
-    ? `Real 2025 regular-season game logs (ESPN Stats API) — the 2026 season hasn't started yet, so this is last season's actual box scores, not a live odds feed.${nflRosterNote}`
+    ? `${nflFeedSeasonNote()}${nflRosterNote}`
     : sport === "wnba"
     ? "Live 2026 regular-season game logs (ESPN Stats API), refreshed each session. Not a live odds feed."
     : sport === "nba"
@@ -21607,6 +21731,40 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     items: [],
   };
 
+  // The dock's hooks run before the phone branch below returns, not after it.
+  // Declared under it they only ran on desktop, so dragging a window across
+  // the phone breakpoint changed how many hooks this page called and React
+  // threw "Rendered fewer hooks than expected" -- the whole feed replaced by
+  // the error screen. The phone ignores what they return.
+  // Unsettled legs only. A graded pick belongs to the Ledger, not the slip.
+  // Memoised so its identity is stable: it is the dependency the dock's read
+  // is memoised on, and a fresh array every render would defeat all of them.
+  const openPicks = React.useMemo(() => (picks || []).filter((pk) => !pk.result), [picks]);
+
+  // THE READ, at dock width. The same hook the full slip and the phone frame
+  // use, so the flag a leg carries here is the flag it carries there -- and
+  // the intent it is judged against is the one stored in settings, which is
+  // why changing it in the dock changes it everywhere at once.
+  //
+  // Memoised on the slip rather than computed inline: this page re-renders on
+  // every filter keystroke, sort and hover, and the slip changes on none of
+  // them. `ledgerCalibration` walks every settled pick, so running it per
+  // keystroke would be paid for by the table, not the dock.
+  const settledPicks = React.useMemo(() => (picks || []).filter((pk) => pk.result), [picks]);
+  const dockCorrelations = React.useMemo(() => parlayCorrelationGroups(openPicks), [openPicks]);
+  const dockCombined = React.useMemo(
+    () => (openPicks.length ? combineParlayOdds(openPicks.map((pk) => pk.odds)) : null),
+    [openPicks]
+  );
+  const dockCalibration = React.useMemo(() => ledgerCalibration(picks || []), [picks]);
+  const dockRead = useMyPicks({
+    legs: openPicks,
+    settled: settledPicks,
+    correlationGroups: dockCorrelations,
+    combinedOdds: dockCombined,
+    calibration: dockCalibration,
+  });
+
   // ---- the phone (see src/v3/PropFeedMobile.jsx) ---------------------------
   //
   // Everything above stays: the same rows, the same filters, the same sort,
@@ -21704,34 +21862,6 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // second table -- and everything above this line (the filtering, the sort,
   // the counts, the empty note) is untouched and shared with the phone.
   const seasonCap = WINDOW_MAX[sport] || 82;
-  // Unsettled legs only. A graded pick belongs to the Ledger, not the slip.
-  // Memoised so its identity is stable: it is the dependency the dock's read
-  // is memoised on, and a fresh array every render would defeat all of them.
-  const openPicks = React.useMemo(() => (picks || []).filter((pk) => !pk.result), [picks]);
-
-  // THE READ, at dock width. The same hook the full slip and the phone frame
-  // use, so the flag a leg carries here is the flag it carries there -- and
-  // the intent it is judged against is the one stored in settings, which is
-  // why changing it in the dock changes it everywhere at once.
-  //
-  // Memoised on the slip rather than computed inline: this page re-renders on
-  // every filter keystroke, sort and hover, and the slip changes on none of
-  // them. `ledgerCalibration` walks every settled pick, so running it per
-  // keystroke would be paid for by the table, not the dock.
-  const settledPicks = React.useMemo(() => (picks || []).filter((pk) => pk.result), [picks]);
-  const dockCorrelations = React.useMemo(() => parlayCorrelationGroups(openPicks), [openPicks]);
-  const dockCombined = React.useMemo(
-    () => (openPicks.length ? combineParlayOdds(openPicks.map((pk) => pk.odds)) : null),
-    [openPicks]
-  );
-  const dockCalibration = React.useMemo(() => ledgerCalibration(picks || []), [picks]);
-  const dockRead = useMyPicks({
-    legs: openPicks,
-    settled: settledPicks,
-    correlationGroups: dockCorrelations,
-    combinedOdds: dockCombined,
-    calibration: dockCalibration,
-  });
 
   // The Filters panel, kept verbatim from the layout this replaces. The mock's
   // rail draws five of this page's controls; the panel owns the rest (defence
@@ -22093,7 +22223,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedTable = (
     <>
       {sortedRows.length === 0 && (
-        <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>{feedEmptyNote}</div>
+        <div className="pp-xstick" style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 14 }}>{feedEmptyNote}</div>
       )}
       {visibleRows.map((r, i) => {
         const rowStatus = resolveRowStatus(r);
@@ -22113,7 +22243,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         );
       })}
       {sortedRows.length > visibleRows.length && (
-        <div style={{ display: "flex", justifyContent: "center", padding: "18px 0 26px" }}>
+        <div className="pp-xstick" style={{ display: "flex", justifyContent: "center", padding: "18px 0 26px" }}>
           <div
             role="button" tabIndex={0}
             onClick={() => setVisibleCount((n) => n + FEED_PAGE_SIZE)}
@@ -22130,10 +22260,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
            is the point: it is wide and lopsided on purpose (see
            FEED_RATE_COLD / FEED_RATE_HOT), and without this the grey reads as
            a missing colour rather than as a deliberate one. */}
-      <div className="pp-mono" style={{ padding: "0 20px 12px", fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)" }}>
+      <div className="pp-mono pp-xstick" style={{ padding: "0 20px 12px", fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)" }}>
         Rates above 65% are green, below 45% red. The middle is a coin flip after vig and stays grey.
       </div>
-      <div style={{ padding: "0 20px 24px", fontSize: 12, color: "var(--dim)" }}>{feedDataDisclaimer}</div>
+      <div className="pp-xstick" style={{ padding: "0 20px 24px", fontSize: 12, color: "var(--dim)" }}>{feedDataDisclaimer}</div>
     </>
   );
 

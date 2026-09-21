@@ -24,6 +24,12 @@ import React from "react";
 const MONO = "'Space Mono', monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
+// The feed row grid's own minimum: its four tracks' floors (34 + 200 + 180 +
+// 380), three 14px gaps and 16px of padding either side -- see .feed-grid in
+// index.css. Narrower than this the table scrolls sideways rather than
+// clipping its last columns.
+const FEED_TABLE_MIN = 34 + 200 + 180 + 380 + 3 * 14 + 2 * 16;
+
 const railLabel = {
   fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)",
 };
@@ -179,6 +185,25 @@ export default function PropFeedDesktop({
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  // The sideways scroller's visible width, as a CSS variable. Notes and
+  // buttons under the table (.pp-xstick) pin to it, so they stay readable at
+  // the scroller's left edge while the columns scroll under them, instead of
+  // being laid out 868px wide and cut off mid-sentence. The table column
+  // changes width without the window doing so (the rail or the dock opens),
+  // so a ResizeObserver, with the window's resize as the fallback for pages
+  // that never fire one.
+  const xscrollRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const el = xscrollRef.current;
+    if (!el) return undefined;
+    const set = () => el.style.setProperty("--pp-xs-w", `${el.clientWidth}px`);
+    set();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(set) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener("resize", set);
+    return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", set); };
   }, []);
 
 
@@ -386,7 +411,10 @@ export default function PropFeedDesktop({
         {/* ---- the table column ----------------------------------------- */}
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
           <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 8, padding: "12px 20px", borderBottom: "1px solid var(--line)" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+            {/* Wraps. The count and the benched note were both no-wrap and
+                no-shrink, so in a window near the phone breakpoint they ran
+                115px past this column and were clipped mid-sentence. */}
+            <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 14, rowGap: 4 }}>
               {countLabel && <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--text-2)", whiteSpace: "nowrap" }}>{countLabel}</span>}
               {/* Says why the feed is short, and undoes it. Arriving here from
                   one game's Matchup page narrows the list to that game, and a
@@ -412,7 +440,7 @@ export default function PropFeedDesktop({
                   <span style={{ color: "var(--dim)" }}>×</span>
                 </span>
               )}
-              {benchedLabel && <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)", whiteSpace: "nowrap" }}>{benchedLabel}</span>}
+              {benchedLabel && <span style={{ flex: "0 1 auto", minWidth: 0, fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{benchedLabel}</span>}
               <span style={{ marginLeft: "auto", flex: "1 1 auto", textAlign: "right", fontFamily: MONO, fontSize: 10, color: "var(--amber-ink)", minWidth: 0 }}>
                 {/* The whole chain, not just the dropdown's name for its own
                     tiebreak. `sorted by easiest matchup` beside a list whose
@@ -423,10 +451,14 @@ export default function PropFeedDesktop({
                 {sortNote}
               </span>
             </div>
+            {/* Wraps rather than scrolls. The pills sat in a hidden-scrollbar
+                strip, so in a narrow window "Most consistent" and "Trending
+                up" slid under ALT LINES with nothing to say they were there.
+                Five pills and a button fit on two lines at any desktop width. */}
             {(sorts.length > 0 || altLines) && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", rowGap: 8 }}>
             {sorts.length > 0 && (
-              <div className="nsb" style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto", flex: "1 1 auto", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
                 <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>SORT</span>
                 {sorts.map((s) => (
                   <div
@@ -498,10 +530,26 @@ export default function PropFeedDesktop({
             )}
           </div>
 
-          {header}
+          {/* Header and rows scroll sideways together, with a scrollbar you
+              can see and drag.
 
-          <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
-            {rows}
+              The row grid cannot go below 868px (see .feed-grid). Whenever the
+              column was narrower than that -- a laptop, a half-screen window,
+              a pane dragged narrow -- everything past the fourth rate cell was
+              clipped by this column's `overflow: hidden`, with no scrollbar
+              to say it was there. Alex, 2026-09-21: *"if it doesnt [fit] that
+              a scroller becomes present to make over by mouse drag."*
+
+              One horizontal scroller around both, so the column labels never
+              drift from the columns they label. Vertical scrolling stays on
+              the rows alone, as before. */}
+          <div ref={xscrollRef} className="pp-xscroll" style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflowX: "auto", overflowY: "hidden" }}>
+            <div style={{ flex: "1 1 auto", minHeight: 0, minWidth: FEED_TABLE_MIN, display: "flex", flexDirection: "column" }}>
+              {header}
+              <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+                {rows}
+              </div>
+            </div>
           </div>
         </div>
 

@@ -240,7 +240,7 @@ export default function GamesDesktop({
             </span>
           </div>
 
-          <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "18px 24px 28px" }}>
+          <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "18px 24px var(--fab-clear)" }}>
             {loading && games.length === 0 && (
               <div style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>Loading the slate…</div>
             )}

@@ -487,6 +487,13 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
               <span style={{ fontSize: 14, fontWeight: 600 }}>
                 {r.rank != null ? `#${r.rank}${r.rankLabel ? ` · ${r.rankLabel}` : ""}` : "Not ranked"}
               </span>
+              {/* Which season that rank is, and the other one -- see
+                  nflDefSplit. NFL rows only; other sports carry neither. */}
+              {r.rank != null && r.rankSeason && (
+                <span style={{ fontFamily: MONO, fontSize: 10.5, lineHeight: 1.45, color: "var(--dim)" }}>
+                  {`${r.rankSeason} season.${r.rankOther ? ` ${r.rankOther}.` : ""}`}
+                </span>
+              )}
             </div>
             <div style={{ border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface-1)", padding: "11px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>IMPLIED</span>

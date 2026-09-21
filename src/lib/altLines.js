@@ -64,32 +64,58 @@ export function rungStep(mainLine) {
 // passing line got 214.5 / 264.5 -- rungs no book offers. Alex had switched
 // his book to FanDuel and the ladder did not move, because nothing here knew
 // books differ. They do, and not subtly. Transcribed from both books' own
-// pages, screen-recorded by Alex on 2026-09-21 (NYG @ LAR, Monday night):
+// pages, screen-recorded by Alex on 2026-09-21 (NYG @ LAR, Monday night), the
+// FanDuel rush + receiving ladder from its phone app:
 //
-//   DraftKings  Pass Yds    150+, 160+, 170+ ... every 10 yards, with the
-//                           main O/U slotted in as its own rung (Stafford 239+,
-//                           Dart 215+)
-//   FanDuel     Pass Yds    150+, 175+, 200+ ... 375+, every 25 yards, and no
-//                           main-line rung -- the O/U is a separate market.
-//                           Both quarterbacks' ladders started at 150+ though
-//                           DraftKings had their lines 24 yards apart (238.5
-//                           and 214.5), so 150 is FanDuel's floor rather than
-//                           a distance from the line
-//   FanDuel     Receptions  1+, 2+, 3+ ... one catch at a time
+//                  DraftKings                     FanDuel
+//   Pass yds       every 10 (150+, 160+ ...)      every 25 from 150+ to 375+
+//   Receptions     2+, 3+, 4+ ... one at a time   1+, 2+, 3+ ... one at a time
+//   Rec yds        15, 25, 40, then every 10      5-30 by 5, 40-110 by 10,
+//                                                 then 125, 150
+//   Rush yds       15, 20, 25, 30, then every 10  5-30 by 5, then 40 ... 80
+//   Rush+rec yds   25, 40, then every 10          10-30 by 5, 40-110 by 10,
+//                                                 then 125, 150, 175
 //
-// `step` is the milestone spacing and `min` the lowest milestone, where the
-// book showed one. DraftKings' ladder started at 160+ for Stafford and 150+
-// for Dart, so it has no fixed floor to record.
+// DraftKings also slots each player's main O/U into its ladder as a rung of
+// its own (Stafford 239+, Adams 62+); the posted line is always the main rung
+// here, so that part is already true of every ladder.
 //
-// A milestone "N+" is the line N - 0.5, so every grid line is X.5 and the
-// no-push guarantee rungStep documents still holds.
+// Two things the recordings did not reach, both written down rather than
+// hidden: FanDuel's rushing ladders were not expanded past 80+, so above that
+// they follow FanDuel's own receiving and rush+rec grid (110, then 125, 150);
+// and every ladder past its highest milestone continues in its last step.
+// Neither matters often -- a walk stops at the first rung the sample never
+// reaches.
+//
+// A ladder is `marks` -- milestones "N+" as the book prints them, lowest first,
+// where the lowest is the book's floor -- and `every`, the step past the last
+// mark: the next multiples of it. A milestone "N+" is the line N - 0.5, so
+// every grid line is X.5 and the no-push guarantee rungStep documents holds.
 //
 // A market that is not listed has not been seen on that book, and keeps the
 // generic spacing rather than a guess at what the book posts. Add a row only
 // from the book's own page.
+const range = (from, to, by) => Array.from({ length: Math.floor((to - from) / by) + 1 }, (_, i) => from + i * by);
+const FD_YARDS = [...range(5, 30, 5), ...range(40, 110, 10)];
 export const BOOK_LADDERS = {
-  draftkings: { nfl: { passYds: { step: 10 } } },
-  fanduel: { nfl: { passYds: { step: 25, min: 150 }, rec: { step: 1 } } },
+  draftkings: {
+    nfl: {
+      passYds: { marks: [150], every: 10 },
+      rec: { marks: [2], every: 1 },
+      recYds: { marks: [15, 25, 40], every: 10 },
+      rushYds: { marks: [15, 20, 25, 30], every: 10 },
+      scrim: { marks: [25, 40], every: 10 },
+    },
+  },
+  fanduel: {
+    nfl: {
+      passYds: { marks: [150], every: 25 },
+      rec: { marks: [1], every: 1 },
+      recYds: { marks: FD_YARDS, every: 25 },
+      rushYds: { marks: FD_YARDS, every: 25 },
+      scrim: { marks: FD_YARDS.filter((m) => m >= 10), every: 25 },
+    },
+  },
 };
 
 // The ladder one book posts for one market, or null when it has not been
@@ -98,7 +124,23 @@ export const BOOK_LADDERS = {
 // knowing which book is selected now.
 export function bookLadder(book, sport, marketId) {
   const grid = BOOK_LADDERS[book]?.[sport]?.[marketId];
-  return grid && grid.step > 0 ? { book, step: grid.step, min: grid.min ?? null } : null;
+  return grid ? { book, marks: grid.marks, every: grid.every } : null;
+}
+
+// Every line on a ladder up to `hi`, ascending. Also reads the one-hour-old
+// shape `{ step, min }` that picks saved before milestone lists carry.
+function ladderLines(ladder, hi) {
+  const marks = Array.isArray(ladder.marks) && ladder.marks.length
+    ? ladder.marks.slice()
+    : [ladder.min != null ? ladder.min : ladder.step];
+  const every = ladder.every || ladder.step;
+  if (!(every > 0)) return [];
+  let m = marks[marks.length - 1];
+  while (m < hi && marks.length < 2000) {
+    m = (Math.floor(m / every) + 1) * every;
+    marks.push(m);
+  }
+  return marks.map((n) => n - 0.5);
 }
 
 // Feed sample windows are the row keys "l5"/"l10"/"l20"/"all". Rungs are
@@ -157,25 +199,17 @@ function rungAt(line, w, isBinary, direction, mainLine) {
 // clamp is a display floor, not a finding.
 //
 // On a book's ladder the rungs are the book's own milestones rather than
-// multiples of the step away from the posted line: the first one is the
-// nearest milestone past the line on that side, then one step at a time.
-function walk(w, mainLine, step, dir, isBinary, direction, ladder = null) {
+// multiples of a step away from the posted line: `lines` is that side's
+// milestones, nearest the posted line first. It ends at the book's floor, so a
+// rung below the lowest milestone is never offered.
+function walk(w, mainLine, step, dir, isBinary, direction, lines = null) {
   const out = [];
-  // Milestone index k is the line k*step - 0.5 ("k*step+"). The first one
-  // strictly past the posted line, so a line that already sits on the grid is
-  // not offered twice.
-  const k0 = ladder
-    ? (dir < 0 ? Math.ceil((mainLine + 0.5) / ladder.step) - 1 : Math.floor((mainLine + 0.5) / ladder.step) + 1)
-    : 0;
   for (let k = 1; k <= MAX_RUNGS_EACH_SIDE; k++) {
-    const line = ladder
-      ? (k0 + dir * (k - 1)) * ladder.step - 0.5
-      : mainLine + dir * k * step;
+    const line = lines ? lines[k - 1] : mainLine + dir * k * step;
+    if (line == null) break;
     // Below zero is not a line anyone can bet, and a line of exactly 0 has no
-    // half-point offset protecting it from a push. Below a book's lowest
-    // milestone is not a line that book offers.
+    // half-point offset protecting it from a push.
     if (line <= 0) break;
-    if (ladder && ladder.min != null && line < ladder.min - 0.5) break;
     const r = rungAt(line, w, isBinary, direction, mainLine);
     out.push(r);
     if (r.hitRate === 0 || r.hitRate === 1) break;
@@ -197,9 +231,11 @@ export function buildRungs({ values, mainLine, isBinary, direction = "over", win
   const w = windowValues(values, window);
   if (!w.length) return [];
   const step = rungStep(mainLine);
-  const grid = ladder && ladder.step > 0 ? ladder : null;
-  const down = walk(w, mainLine, step, -1, isBinary, direction, grid);
-  const up = walk(w, mainLine, step, 1, isBinary, direction, grid);
+  // Far enough up the book's ladder that the walk always stops on its own
+  // rule (a rung the sample never reaches) before it runs out of milestones.
+  const grid = ladder ? ladderLines(ladder, Math.max(mainLine, ...w) + 200) : null;
+  const down = walk(w, mainLine, step, -1, isBinary, direction, grid && grid.filter((l) => l < mainLine).reverse());
+  const up = walk(w, mainLine, step, 1, isBinary, direction, grid && grid.filter((l) => l > mainLine));
   return [
     ...down.reverse(),
     rungAt(mainLine, w, isBinary, direction, mainLine),

@@ -542,9 +542,12 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       if (softest && softCut && softest.rank >= softCut) {
         reasons.push({
           kind: "matchup",
-          label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}`,
-          title: `${softest.opp || "Opponent"} ranks #${softest.rank} of ${teamCount}`,
-          cite: `Softest defence any prop on this card faces, measured in ${softest.marketLabel || "that prop’s own market"} rather than overall.`,
+          // NFL ranks name their season (see nflDefSplit in PropLedger): in
+          // September the one deciding "soft" is last season's, and a chip
+          // that did not say so would read as this season's.
+          label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}${softest.rankSeason ? ` · ${softest.rankSeason}` : ""}`,
+          title: `${softest.opp || "Opponent"} ranks #${softest.rank} of ${teamCount}${softest.rankSeason ? ` in ${softest.rankSeason}` : ""}${softest.rankOther ? `. ${softest.rankOther}` : ""}`,
+          cite: `Softest defence any prop on this card faces, measured in ${softest.marketLabel || "that prop’s own market"} rather than overall${softest.rankSeason ? `, on the ${softest.rankSeason} season${softest.rankOther ? ` (${softest.rankOther})` : ""}` : ""}.`,
         });
       }
 

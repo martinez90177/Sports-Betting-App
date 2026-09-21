@@ -101,7 +101,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
         </span>
       </div>
 
-      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "36px 32px 40px", display: "flex", flexDirection: "column", gap: 28 }}>
+      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "36px 32px var(--fab-clear)", display: "flex", flexDirection: "column", gap: 28 }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 560px", gap: 32, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <h2 style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 40, lineHeight: 1.12, letterSpacing: "-0.02em", margin: 0, textWrap: "balance" }}>

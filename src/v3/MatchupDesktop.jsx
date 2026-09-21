@@ -123,7 +123,7 @@ export default function MatchupDesktop({
         )}
       </div>
 
-      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "20px 28px 30px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "20px 28px var(--fab-clear)", display: "flex", flexDirection: "column", gap: 18 }}>
         {/* ---- probables ------------------------------------------------- */}
         {probables && probables.length > 0 && (
           <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 }}>

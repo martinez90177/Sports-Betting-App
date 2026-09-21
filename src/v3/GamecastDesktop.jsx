@@ -93,7 +93,7 @@ export default function GamecastDesktop({
 
       <div style={{ flex: "1 1 auto", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr)", gridTemplateColumns: "minmax(0, 1fr) 392px" }}>
         {/* ---- score, linescore, leaders --------------------------------- */}
-        <div className="nsb" style={{ overflowY: "auto", padding: "20px 24px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="nsb" style={{ overflowY: "auto", padding: "20px 24px var(--fab-clear)", display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ ...card, flex: "0 0 auto" }}>
             {sides.map((s, i) => (
               <div key={s.side || i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 18px", borderBottom: i === 0 ? "1px solid var(--line)" : "none" }}>
@@ -164,7 +164,7 @@ export default function GamecastDesktop({
         </div>
 
         {/* ---- props in play --------------------------------------------- */}
-        <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", padding: "20px 20px 30px", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", padding: "20px 20px var(--fab-clear)", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
             <span style={micro}>PROPS IN PLAY</span>
             <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>

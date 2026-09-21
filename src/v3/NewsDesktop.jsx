@@ -108,7 +108,7 @@ export default function NewsDesktop({
             </span>
           </div>
 
-          <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+          <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", paddingBottom: "var(--fab-clear)" }}>
             {loading && items.length === 0 && (
               <div style={{ padding: "22px 24px", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>Reading the wire…</div>
             )}
@@ -170,7 +170,7 @@ export default function NewsDesktop({
         </div>
 
         {/* ---- rail ------------------------------------------------------- */}
-        <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", padding: "20px 20px 30px", display: "flex", flexDirection: "column", gap: 18 }}>
+        <div className="nsb" style={{ borderLeft: "1px solid var(--line)", overflowY: "auto", padding: "20px 20px var(--fab-clear)", display: "flex", flexDirection: "column", gap: 18 }}>
           <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", padding: 15, display: "flex", flexDirection: "column", gap: 10 }}>
             <span style={micro}>AVAILABILITY</span>
             {AVAIL.map(([label, colour]) => (

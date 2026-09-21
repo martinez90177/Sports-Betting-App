@@ -713,7 +713,13 @@ export default function PlayerDetailDesktop({
       value: rankParts[0] || "—",
       // Amber for any ranked tier: green and red mean cleared and missed
       // everywhere else on this page, so a rank must not borrow them.
-      sub: rankParts[1] ? `OF ${rankParts[1]}${context && context.rankWord ? ` · ${String(context.rankWord).toUpperCase()}` : ""}` : "NOT RANKED",
+      sub: rankParts[1]
+        ? `OF ${rankParts[1]}${context && context.rankWord ? ` · ${String(context.rankWord).toUpperCase()}` : ""}${context && context.rankSeason ? ` · ${context.rankSeason}` : ""}`
+        : "NOT RANKED",
+      // The other season's rank, when the page has one (NFL). Printed under
+      // the cell rather than only in a tooltip: it is the half of the answer
+      // that stops a two-game rank or a last-year rank being taken on its own.
+      note: rankParts[1] && context && context.rankNote ? context.rankNote : null,
       tone: rankParts[1] ? "var(--status-questionable)" : "var(--dim)",
     },
   ];
@@ -793,6 +799,7 @@ export default function PlayerDetailDesktop({
                 <span style={cellLabel}>{c.label}</span>
                 <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: c.tone || "var(--text)" }}>{c.value}</span>
                 <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{c.sub}</span>
+                {c.note && <span style={{ fontFamily: MONO, fontSize: 10, lineHeight: 1.4, color: "var(--text-2)", marginTop: 2 }}>{c.note}</span>}
               </div>
             ))}
           </div>

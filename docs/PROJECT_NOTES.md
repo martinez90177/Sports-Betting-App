@@ -643,13 +643,24 @@ screen-recorded them on 2026-09-21, NYG @ LAR:
 
 | | DraftKings | FanDuel |
 |---|---|---|
-| QB pass yards | every 10 yards (150+, 160+ … 280+), the main O/U slotted in as its own rung | every 25 yards, 150+ to 375+; 150+ was the floor for both QBs |
-| Receptions | not recorded | one catch at a time, 1+/2+ up to 4+–7+ |
+| Pass yards | every 10 (150+, 160+ …) | every 25, 150+ to 375+ |
+| Receptions | 2+, 3+ … one at a time | 1+, 2+ … one at a time |
+| Receiving yards | 15, 25, 40, then every 10 | 5–30 by 5, 40–110 by 10, then 125, 150 |
+| Rushing yards | 15, 20, 25, 30, then every 10 | 5–30 by 5, then 40 … 80 by 10 |
+| Rush + rec yards | 25, 40, then every 10 | 10–30 by 5, 40–110 by 10, then 125, 150, 175 |
 
-A market not in the table has not been seen on that book and keeps the generic
-spacing (`rungStep`) rather than a guess. Add rows only from the book's own
-page. Still unrecorded: rushing and receiving yards on both books, DraftKings
-receptions, and every NBA, WNBA and MLB market.
+Recorded 2026-09-21, NYG @ LAR: the first two rows from the first pair of
+recordings, the rest from six more that afternoon (FanDuel rush + rec from its
+phone app). DraftKings also slots each player’s main O/U into its ladder as a
+rung; the posted line is always the main rung here, so that is already true.
+
+A ladder is `{ marks, every }`: the book’s own milestones lowest first (the
+lowest is its floor), then multiples of `every` past the last one. FanDuel’s
+rushing ladders were not expanded past 80+ in the recording, so above that they
+follow its receiving grid. A market not in the table keeps the generic spacing
+(`rungStep`) rather than a guess; add rows only from the book’s own page.
+Still unrecorded: pass attempts, completions, TDs and every NBA, WNBA and MLB
+market on both books.
 
 Frames came out of Alex's Snipping Tool recordings with VLC's scene filter —
 there is no ffmpeg or Python on this machine:
@@ -1707,3 +1718,59 @@ driven against them — the same payload twice, once with the Thursday game
 
 The Games page is deliberately untouched: it is the slate view, its job is to
 show the week including what has been played, and it reads its own week fetch.
+
+## A page must call the same hooks at every width
+
+`PropFeedPage` returned early for the phone layout and declared the My Picks
+dock’s hooks (`useMemo`s and `useMyPicks`) *below* that return. They only
+ran on desktop, so dragging a window across the 900px phone breakpoint changed
+how many hooks the component called and React threw “Rendered fewer hooks than
+expected” — the whole feed replaced by the error screen. It had been there
+since 2026-09-05 and only showed when a window was resized live; a reload at
+either width was fine. Alex found it on 2026-09-21 by dragging the browser pane.
+
+The hooks now run above the phone branch. Any early `return` for a layout has
+to come after the last hook in the component. A throwaway scanner (functions
+whose top-level body has a `return` followed by a `use…(` call) found no
+other case in `src/`, and flags the original when run against the old file.
+
+The same pass fixed what a narrow desktop window did to the feed: the table
+clipped its last columns with no scrollbar (it now scrolls sideways under a
+visible bar, `.pp-xscroll`, with the notes under it pinned by `.pp-xstick`),
+names and averages were ellipsised (they wrap), the sort pills slid under ALT
+LINES (they wrap), and the last rows of Findings, Injuries and the other
+desktop columns sat under the floating My Picks launcher (`--fab-clear`).
+The phone card’s 74px chart now draws crests only at every width — at 600–900px
+it had been adding abbreviation and date rows that pushed the bars up through
+the player’s name.
+
+## NFL defence ranks: one per season, and the badge says which
+
+Until 2026-09-21 the per-market defence table (`buildNflDefenceByMarket`)
+ranked every game in the pool together, so in Week 2 a defence's one 2026 game
+sat in with seventeen from 2025 -- a rank that was last season in all but name,
+on a badge that said nothing about seasons. Alex: *"dont want people jumping
+the gun on the matchup rating being based on last year, but also don't want
+people only using one weeks worth of data."* Asked which should decide, he left
+it to judgement ("do the best thing possible").
+
+What was built:
+
+- Each season is ranked on its own, with the number of games behind each
+  defence (`nflDefSplit`).
+- **Last season decides** EASY / MID / TOUGH, the "Easiest matchup" sort and
+  the rank filter until the defence has played `NFL_DEF_CURRENT_MIN_GAMES` (4)
+  games this season; from then on this season decides. Four is a month of
+  football -- enough that one blowout or one backup quarterback no longer sets
+  the number alone.
+- **Both are always on screen.** Feed badge: `D #19/32 '25  MID  '26 #5 · 1G`
+  (hover for the sentence). Phone card and both player pages: the season under
+  the rank and "2026 so far: #5 of 32 after 1 game" beside it. The Board's
+  softest-defence chip names its season too.
+
+Only the NFL is split. MLB, the NBA and the WNBA play most nights, so their
+current season reaches a real sample in days, not a month.
+
+The feed's NFL footnote used to be a sentence typed before kickoff ("the 2026
+season hasn't started yet") and was still up in Week 2. It is now built from the
+logs actually loaded (`nflFeedSeasonNote`).

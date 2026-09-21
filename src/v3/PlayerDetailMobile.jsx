@@ -479,9 +479,17 @@ export default function PlayerDetailMobile({
           {rankParts[0] || "—"}
         </span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: "#5c6b7a" }}>
-          {[rankParts[1] ? `OF ${rankParts[1]}` : null, rankWord].filter(Boolean).join(" · ") || "NOT RANKED"}
+          {[rankParts[1] ? `OF ${rankParts[1]}` : null, rankWord, rankParts[1] && context && context.rankSeason ? String(context.rankSeason) : null].filter(Boolean).join(" · ") || "NOT RANKED"}
         </span>
       </div>
+      {/* The other season's rank, across the card's full width -- a third of
+          a phone is no room for a sentence, and a tooltip is no use on touch.
+          NFL only; see nflDefSplit in PropLedger. */}
+      {rankParts[1] && context && context.rankNote && (
+        <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--line)", padding: "8px 12px", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.45, color: "var(--text-2)" }}>
+          Matchup is {context.rankSeason}. {context.rankNote}.
+        </div>
+      )}
     </div>
   );
 
@@ -881,7 +889,8 @@ export default function PlayerDetailMobile({
       <div style={{ padding: "0 18px 0", display: "flex", flexDirection: "column", gap: 12 }}>
         {[
           context && context.allows && { key: "allows", label: String(context.allowsLabel || "").toUpperCase(), value: context.allows },
-          context && context.rank && { key: "rank", label: "DEFENCE RANK, THIS MARKET", value: [context.rank, titleCase(context.rankWord)].filter(Boolean).join(" · ") },
+          context && context.rank && { key: "rank", label: context.rankSeason ? `DEFENCE RANK, THIS MARKET · ${context.rankSeason}` : "DEFENCE RANK, THIS MARKET", value: [context.rank, titleCase(context.rankWord)].filter(Boolean).join(" · ") },
+          context && context.rank && context.rankNote && { key: "rank-other", label: "THE OTHER SEASON", value: context.rankNote },
           context && context.lastMeeting && { key: "last", label: "LAST MEETING", value: context.lastMeeting },
           context && context.park && { key: "park", label: String(context.parkLabel || "").toUpperCase(), value: context.park },
           band && band.venue && { key: "venue", label: "VENUE", value: band.venue },

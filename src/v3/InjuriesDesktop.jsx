@@ -162,7 +162,7 @@ export default function InjuriesDesktop({
             <span style={{ textAlign: "right" }}>STATUS</span>
           </div>
 
-          <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}>
+          <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", paddingBottom: "var(--fab-clear)" }}>
             {loading && rows.length === 0 && (
               <div style={{ padding: "22px 24px", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>Reading the wire…</div>
             )}

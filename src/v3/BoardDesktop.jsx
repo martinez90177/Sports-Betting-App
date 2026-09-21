@@ -112,7 +112,7 @@ export default function BoardDesktop({
       </div>
 
       {/* ---- the one scrolling body ------------------------------------- */}
-      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "22px 32px 30px", display: "flex", flexDirection: "column", gap: 22 }}>
+      <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "22px 32px var(--fab-clear)", display: "flex", flexDirection: "column", gap: 22 }}>
         {loading && (
           <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>Loading the slate…</span>
         )}

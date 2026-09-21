@@ -27,7 +27,14 @@ export const PLOT = {
   // Player Detail (frame 1c): a 176px box over a 146px span, 52px gutter.
   player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261, axisW: 0 },
   // A Prop Feed row (frame 1b): 74px box, 52px span, 46px gutter.
-  feed: { plotH: 74, span: 52, gutter: 46, handleW: 42, handleH: 28, trackW: 265, axisW: 0 },
+  //
+  // Crests only under the bars, at every width. The box is a fixed 74px and
+  // was sized for the crest row the mock draws at 390; on a wider phone-layout
+  // screen (a phone on its side, a small tablet) the columns crossed the abbr
+  // and date thresholds, 53px of labels moved into a 74px box, and the bars
+  // were pushed up through the player's name while ten full dates ran into
+  // each other. The player page is where the dates are.
+  feed: { plotH: 74, span: 52, gutter: 46, handleW: 42, handleH: 28, trackW: 265, axisW: 0, crestOnly: true },
   // Desktop Player Detail (`PropPalace Desktop v3.dc.html` frame 1a): the
   // frame's own 268px box over a 224px span, 58px gutter.
   //
@@ -164,7 +171,12 @@ export default function FormPlot({
   // Measured off the same track the columns are, so the cap is a real width
   // rather than a guess at one -- see BAR_COLS.
   const barMax = barMaxFor(trackW, n);
-  const lay = labels ? layFor(n, trackW) : { crest: false, abbr: false, date: false, val: layFor(n, trackW).val, labelH: 0 };
+  const full = layFor(n, trackW);
+  const lay = !labels
+    ? { crest: false, abbr: false, date: false, val: full.val, labelH: 0 }
+    : g.crestOnly
+      ? { ...full, abbr: false, date: false, labelH: full.crest ? CREST_MT + CREST_PX + COL_GAP : 0 }
+      : full;
   const recent = React.useMemo(() => games.map((x) => ({ v: x.v })), [games]);
   const scale = feedFormScale(recent, line, isBinary, { height: g.span + PEDESTAL, pedestal: PEDESTAL });
   const hit = (v) => (direction === "under" ? v < line : v > line);
