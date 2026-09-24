@@ -149,7 +149,7 @@ export default function GamecastDesktop({
               <span style={micro}>LEADERS</span>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {leaders.map((l) => (
-                  <div key={l.cat} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                  <div key={`${l.cat}|${l.team || ""}|${l.name}`} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                     <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>{l.cat}</span>
                     <span style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</span>

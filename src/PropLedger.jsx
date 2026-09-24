@@ -18554,6 +18554,14 @@ function feedRowPlaysEnough(r, teamGames, sport) {
   // backup's own total and he clears it. That is how Minnesota's third
   // quarterback ranked beside starters.
   //
+  // Listed out comes first, and does not wait on the charts: a depth chart can
+  // run days behind an injury report. On 2026-09-24 GB's still had Jayden Reed
+  // at WR2 after he was ruled out, and he ranked third for receptions on a game
+  // where every book had pulled his props.
+  if (sport === "nfl") {
+    const id = r.espnId || r.logId;
+    if (id && NFL_ROSTER_STATUS[String(id)] === "out") return false;
+  }
   // Null while the charts are still out, and a team that did not answer is
   // not filtered at all -- showing a backup is a smaller error than hiding a
   // starter, and "we could not read the chart" is not a claim about a player.
@@ -22395,13 +22403,13 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         toggleNote={regularsOnly
           ? (sport === "nfl"
             // Says which rule is running, because they are different claims.
-            ? "Off the published depth chart — three receivers, one tight end, one of everything else. Off, the whole roster is back in."
+            ? "Off the published depth chart — three receivers, one tight end, one of everything else — less anyone listed out. Off, the whole roster is back in."
             : "A reserve clears a low line more easily than a starter does. Off, they are back in.")
           : "Reserves included."}
         countLabel={`${filteredRows.length} of ${rows.length} props`}
         narrowedTo={narrowedToGame}
         benchedLabel={regularsOnly && feedSummary.benched > 0
-          ? `${feedSummary.benched} hidden · ${sport === "nfl" ? "not on the depth chart's starting side" : "under half their team's games"}`
+          ? `${feedSummary.benched} hidden · ${sport === "nfl" ? "listed out, or not on the depth chart's starting side" : "under half their team's games"}`
           : null}
         // The real ordering, in the order it is applied. "Biggest role" is the
         // one mode that outranks hit rate (see FEED_SORT_MODES.primary), so it
@@ -24276,13 +24284,15 @@ const NFL_DEFAULT_MARKET_BY_POS = { QB: "passYds", RB: "rushYds", WR: "rec", TE:
 // and their real hit rate against it. `minGames` mirrors the thin-sample
 // floor used everywhere else in the app (ABSENCE_MIN_GAMES/buildRungs) --
 // under it, the caller labels the read thin rather than printing a rate.
-function playerPropRead({ sport, player, market, marketLabel, games, statValue, headshotSrc, fallbackSrc, status }) {
+function playerPropRead({ sport, player, market, marketLabel, games, statValue, headshotSrc, fallbackSrc, status, lineFor, lastN }) {
   const finished = games || [];
   if (finished.length < 3) return null;
-  const values = finished.map(statValue).filter((v) => Number.isFinite(v));
-  if (values.length < 3) return null;
-  const avg = values.reduce((a, b) => a + b, 0) / values.length;
-  const line = ceilToHalfOdd(avg);
+  const allValues = finished.map(statValue).filter((v) => Number.isFinite(v));
+  if (allValues.length < 3) return null;
+  const avg = allValues.reduce((a, b) => a + b, 0) / allValues.length;
+  const line = lineFor ? lineFor(allValues) : ceilToHalfOdd(avg);
+  // Games are oldest first, so a window is the tail.
+  const values = lastN ? allValues.slice(-lastN) : allValues;
   const hits = values.filter((v) => v > line).length;
   return {
     sport, playerId: player.id, name: player.name, team: player.team, pos: player.pos,
@@ -24355,7 +24365,11 @@ async function getTopPropsForMatchup(sport, awayAbbr, homeAbbr, { limit = 4 } = 
     return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
   }
   if (sport === "nfl") {
-    const players = [...(NFL_TEAM_ROSTERS[awayAbbr]?.players || []), ...(NFL_TEAM_ROSTERS[homeAbbr]?.players || [])];
+    // Reconciled against the live pool, the same way the teammate rail and
+    // opposing-lineup sheet are (nflLiveSide) -- the raw NFL_TEAM_ROSTERS side
+    // is Week 1 2026 typed by hand, and a since-cut or since-signed player
+    // (a kicker, most often) does not wait for anyone to notice.
+    const players = [...(nflLiveSide(NFL_TEAM_ROSTERS[awayAbbr])?.players || []), ...(nflLiveSide(NFL_TEAM_ROSTERS[homeAbbr])?.players || [])];
     const reads = players.map((p) => {
       const market = NFL_DEFAULT_MARKET_BY_POS[p.pos];
       if (!market) return null;
@@ -24364,14 +24378,30 @@ async function getTopPropsForMatchup(sport, awayAbbr, homeAbbr, { limit = 4 } = 
       // separately, so an id has to be resolved through both -- the same
       // reconciliation nflHeadshot does internally.
       const espnId = p.espnId || NFL_ESPN_ID[p.id];
+      const status = espnId ? NFL_ROSTER_STATUS[String(espnId)] : undefined;
+      // A read on tonight has to be about someone playing tonight. On the
+      // 2026-09-24 ATL @ GB page three of the four were listed out or on IR
+      // and the fourth was the backup quarterback. Same starter rule the feed
+      // applies (feedRowPlaysEnough); a team whose chart did not load is not
+      // filtered.
+      if (status === "out") return null;
+      if (NFL_STARTERS && NFL_STARTERS.teams.has(p.team) && espnId && !NFL_STARTERS.starters.has(String(espnId))) return null;
+      // The feed's log, line and default window (nflFeedGames, fairFeedLine,
+      // L10), so this row and the player's feed row print the same numbers.
+      // getNFLGames alone is one season: in Week 3 that is two games, under
+      // the three-game floor, so everyone who had played this year was
+      // skipped and the panel filled with players who had not.
       return playerPropRead({
         sport, player: p, market, marketLabel,
-        games: getNFLGames(p) || [], statValue: (g) => statValueNFL(g, market),
+        games: nflFeedGames(p) || [], statValue: (g) => statValueNFL(g, market),
+        lineFor: fairFeedLine, lastN: 10,
         headshotSrc: nflHeadshot(p),
-        status: espnId ? NFL_ROSTER_STATUS[String(espnId)] : undefined,
+        status,
       });
     }).filter(Boolean);
-    return reads.sort((a, b) => b.gamesCounted - a.gamesCounted).slice(0, limit);
+    // Most of them count a full ten now, so the tiebreak is the feed's own
+    // default sort: best hit rate over the window.
+    return reads.sort((a, b) => (b.gamesCounted - a.gamesCounted) || (b.hitRate - a.hitRate)).slice(0, limit);
   }
   if (sport === "nba") {
     // Sliced per team for the same reason MLB is: an unsliced combined list
@@ -24407,7 +24437,9 @@ function getPropsCountForGame(sport, awayAbbr, homeAbbr) {
     return players.length * WNBA_MARKETS_CORE.length;
   }
   if (sport === "nfl") {
-    const players = [...(NFL_TEAM_ROSTERS[awayAbbr]?.players || []), ...(NFL_TEAM_ROSTERS[homeAbbr]?.players || [])];
+    // Same reconciliation as getTopPropsForMatchup, so the chip's count and
+    // the panel's names are never counting two different rosters.
+    const players = [...(nflLiveSide(NFL_TEAM_ROSTERS[awayAbbr])?.players || []), ...(nflLiveSide(NFL_TEAM_ROSTERS[homeAbbr])?.players || [])];
     return players.reduce((sum, p) => sum + NFL_MARKETS.filter((m) => m.pos.includes(p.pos)).length, 0);
   }
   if (sport === "nba") {
@@ -24888,7 +24920,9 @@ export default function PropLedger() {
     // a starter.
     fetchNflStarters(currentNFLSeason()).then((res) => {
       if (cancelled || !res) return;
-      NFL_STARTERS = res;
+      // The depth charts are keyed by ESPN's abbreviations and every row by
+      // ours; left raw, Washington (WSH vs WAS) was never filtered at all.
+      NFL_STARTERS = { ...res, teams: new Set([...res.teams].map(nflOurAbbr)) };
       bumpNflRefresh();
     }).catch(() => {});
 
@@ -25055,7 +25089,12 @@ export default function PropLedger() {
     return rows.map((r) => {
       const status = pickStatus({ sport: boardSport, gradeId: r.gradeId, espnId: r.espnId });
       return status ? { ...r, status } : r;
-    });
+    })
+      // An NFL player listed out is not a prop anyone can take -- the books pull
+      // it. On 2026-09-24 the ATL @ GB card counted Luke Musgrave out and then
+      // put his receptions forward as a prop worth reading. The card still says
+      // who is out; that reason reads the injury report, not these rows.
+      .filter((r) => !(boardSport === "nfl" && r.status === "out"));
     // mlbStatusVersion: pickStatus reads a module-level Map, so the 40-man
     // rosters landing is invisible to React without it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
