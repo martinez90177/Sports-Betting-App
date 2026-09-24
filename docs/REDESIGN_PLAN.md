@@ -2741,3 +2741,34 @@ Overflowing scroll containers, counted directly (`scrollWidth > clientWidth`):
   in its four-column form with 308.5 accent-marked as the main line.
 - **1440** — none; hero on one row, six columns, unchanged from the mock apart
   from the roster tabs, which now fit.
+
+## The Board's cards open into a brief — 2026-09-21
+
+**A departure from `PropPalace Board v4 part 2.dc.html`, asked for by Alex.**
+The mock's tier cards are static; the app had wired the whole card to the Prop
+Feed, filtered to the game. Alex: *"this page makes the board seem useless,
+because just clicking it brings you to prop feed. is there not a way to …
+make the page useful for insight?"* A chip reading "1 PROP AT 70%+" answered
+by ~190 feed rows was a count with nothing behind it.
+
+Every card now opens in place (desktop: across the full row; phone: in the
+column) into `BoardBrief` (`src/v3/boardShared.jsx`), which is the hero's own
+layout lifted out so the two cannot drift:
+
+- **What's behind it** — each reason with its citation, plus what it counted:
+  the players the availability report lists out (avatar, red dot), and the
+  props on the card that face the soft defence, each one a link to its player.
+- **Cleared the bar** — the props that passed the Wilson ≥ 70% test, up to
+  five, with their strips. A quiet game shows **Closest to the bar** instead:
+  its three best-supported props, labelled as the near misses they are.
+- **This game's props →** still goes to the feed, one click further in.
+
+The hero uses the same component, which also fixed its prop links: they
+called `onOpenProp(p)` with one object where `goToProp` takes
+`(sport, playerId, marketId)`, so no hero prop could open its player. The
+hero's avatars also gained their availability dot (CLAUDE.md rule 1).
+
+**Open, found while testing:** on 2026-09-21 the WNBA Board and Feed list
+props for teams with no game on the slate (POR, TOR …) — every WNBA card read
+"POR @" with no opponent, and opening one of those players lands on "isn't on a
+WNBA game we can read today". Older than this change; not yet investigated.

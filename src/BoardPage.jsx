@@ -520,11 +520,32 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       //    one; the other two leagues simply never fire this reason rather
       //    than reporting zero, which would read as "nobody is hurt".
       const outCount = (outByTeam.get(`${sport}:${teamA}`) || 0) + (outByTeam.get(`${sport}:${teamB}`) || 0);
+      // Who, not just how many -- the brief lists them (see BoardBrief). Off
+      // the same report the count is, so the list and the chip cannot differ.
+      const outPlayers = outCount > 0
+        ? (injuryRows || []).filter((p) => p.status === "out" && p.sport === sport && (p.team === teamA || p.team === teamB))
+        : [];
       if (outCount > 0) reasons.push({
         kind: "out",
         label: `${outCount} OUT`,
         title: `${outCount} listed out`,
         cite: `From the availability report for ${teamA || "both sides"} and ${teamB || "their opponent"} — counted, not inferred from a news item.`,
+        players: outPlayers.map((p) => ({
+          key: p.key || `${p.team}:${p.name}`,
+          name: p.name,
+          team: p.team,
+          position: p.position || null,
+          // Rule 1: a named player gets an avatar with their dot. They are on
+          // this list because the report says out, so the dot is red by
+          // construction, not by assumption.
+          avatarNode: (
+            <PlayerAvatar
+              name={p.name} alt={p.name} sport={sport} team={p.team} espnId={p.espnId}
+              headshotSrc={p.headshotSrc} fallbackSrc={p.fallbackSrc} status="out"
+              size={26} inset={2} surface="var(--surface-1)"
+            />
+          ),
+        })),
       });
 
       // 3. The softest opposing defence any prop on this card faces, in that
@@ -540,7 +561,14 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       // chip and the word printed on a row cannot disagree about "soft".
       const softCut = teamCount ? Math.floor(teamCount - teamCount / 3) + 1 : null;
       if (softest && softCut && softest.rank >= softCut) {
+        // The props on this card that actually face that defence in that
+        // market -- the reason is about them, so the brief names them.
+        const facing = g.rows.filter((r) => r.opp === softest.opp && r.marketId === softest.marketId).slice(0, 4);
         reasons.push({
+          props: facing.map((r) => ({
+            key: r.key, playerId: r.playerId, marketId: r.marketId, name: r.name,
+            prop: `${r.direction === "under" ? "Under" : "Over"} ${r.line} ${r.marketLabel || ""}`.trim(),
+          })),
           kind: "matchup",
           // NFL ranks name their season (see nflDefSplit in PropLedger): in
           // September the one deciding "soft" is last season's, and a chip
@@ -561,8 +589,21 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
     const cardOf = ({ g, reasons }, hero) => {
       const away = g.rows[0]?.homeGame ? g.rows[0]?.opp : g.rows[0]?.team;
       const home = g.rows[0]?.homeGame ? g.rows[0]?.team : g.rows[0]?.opp;
-      const props = hero
-        ? g.rows.slice(0, 3).map((r) => {
+      // Every card carries its brief now, not just the hero -- a card that
+      // only said "1 PROP AT 70%+" and then sent you to a 190-row feed was a
+      // count with nothing behind it. Alex, 2026-09-21: *"this page makes the
+      // board seem useless, because just clicking it brings you to prop feed."*
+      //
+      // The props that cleared the bar, in the order the card already ranks
+      // them (g.rows is sorted on the same Wilson bound). When none did, the
+      // three that came closest, labelled as that -- a quiet game still has a
+      // nearest miss, and saying which is more use than saying nothing.
+      const strongRows = g.rows.filter((r) => {
+        const s = rateFor(r, activeSplits);
+        return s && s.rate != null && s.n >= minGames && wilsonLower(s.over, s.n) >= 0.7;
+      });
+      const briefRows = strongRows.length ? strongRows.slice(0, 5) : g.rows.slice(0, 3);
+      const props = briefRows.map((r) => {
           const s = rateFor(r, activeSplits);
           return {
             key: r.key,
@@ -578,16 +619,17 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
             line: r.line,
             isBinary: r.isBinary,
             direction: r.direction,
+            // Rule 1: the avatar carries its availability dot. The hero drew
+            // these without one; boardRows already resolves `status`.
             avatarNode: (
               <PlayerAvatar
                 name={r.name} alt={r.name} sport={sport} team={r.team}
-                headshotSrc={r.avatar} fallbackSrc={r.avatarFallback}
+                headshotSrc={r.avatar} fallbackSrc={r.avatarFallback} status={r.status || undefined}
                 size={32} inset={2} surface="var(--surface-1)"
               />
             ),
           };
-        })
-        : [];
+        });
       return {
         key: g.key,
         away: away || "", home: home || "",
@@ -604,6 +646,11 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
           ? `Nothing on this card cleared a bar: no prop at 70% on ${minGames}+ games, no soft matchup, and nothing on either availability report.`
           : "",
         props,
+        // Which question the props list answers: the ones that cleared the
+        // bar, or -- when none did -- the ones nearest to it.
+        propsKind: strongRows.length ? "strong" : "closest",
+        strongCount: strongRows.length,
+        minGames,
         rest: `${Math.max(0, g.rows.length - props.length)} more props in this game`,
         rows: g.rows,
       };

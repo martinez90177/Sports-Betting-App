@@ -1,6 +1,6 @@
 import React from "react";
 import { crest } from "./FormPlot.jsx";
-import { TONE, TIERS, atStyle, MiniStrip } from "./boardShared.jsx";
+import { TONE, TIERS, atStyle, BoardBrief } from "./boardShared.jsx";
 
 // A transcription of frame `1b` in `v3 Mocks/PropPalace Board v4 part 2.dc.html`
 // — the desktop Board. That file is THE Board; the v3 mobile and desktop
@@ -76,6 +76,13 @@ export default function BoardDesktop({
     return () => window.removeEventListener("resize", measure);
   }, []);
 
+  // One card open at a time: a second click on the same card closes it, a
+  // click on another moves the brief there. Reset when the league changes --
+  // a key from the NFL slate means nothing on the WNBA one.
+  const [openKey, setOpenKey] = React.useState(null);
+  const toggle = (k) => setOpenKey((cur) => (cur === k ? null : k));
+  React.useEffect(() => { setOpenKey(null); }, [sport]);
+
   const tierMark = (tone) => ({
     width: 8, height: 8, borderRadius: 2, background: tone, display: "block", flex: "0 0 auto",
   });
@@ -149,61 +156,12 @@ export default function BoardDesktop({
               </span>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "420px minmax(0, 1fr)" }}>
-              <div style={{ borderRight: "1px solid var(--line)", padding: "18px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-                <span style={railMicro}>WHY IT LEADS</span>
-                {/* Every line is a counted fact with the count beside it. A
-                    reason with nothing behind it never fires, so this list is
-                    shorter on some cards rather than padded. */}
-                {(hero.why || []).map((w) => (
-                  <div key={w.title} style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
-                    <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: (TONE[w.kind] || TONE.none).fg, display: "block", flex: "0 0 auto" }} />
-                    <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600 }}>{w.title}</span>
-                      <span style={{ fontSize: 12, lineHeight: 1.5, color: "var(--dim)", textWrap: "pretty" }}>{w.cite}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {(hero.props || []).map((p) => (
-                  <div key={p.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 20px", borderBottom: "1px solid #20242b", minHeight: 44 }}>
-                    <span style={{ position: "relative", flex: "0 0 auto" }}>{p.avatarNode}</span>
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => onOpenProp && onOpenProp(p)}
-                      onKeyDown={(e) => { if (e.key === "Enter") onOpenProp && onOpenProp(p); }}
-                      title={`Open ${p.name} — ${String(p.prop).toLowerCase()}, on Player Detail`}
-                      style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "0 0 150px", cursor: "pointer" }}
-                    >
-                      <span style={{ fontSize: 14.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
-                      <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.prop}</span>
-                    </span>
-                    <MiniStrip games={p.bars} line={p.line} isBinary={p.isBinary} direction={p.direction} height={66} />
-                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}>
-                      <span style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: p.rate >= 0.7 ? "var(--pos)" : p.rate >= 0.6 ? "var(--status-questionable)" : "var(--text-2)" }}>
-                        {`${Math.round(p.rate * 100)}%`}
-                      </span>
-                      <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{`${p.hits} of ${p.n}`}</span>
-                    </span>
-                  </div>
-                ))}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 20px" }}>
-                  <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)" }}>{hero.rest}</span>
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onOpenGameProps && onOpenGameProps(hero)}
-                    onKeyDown={(e) => { if (e.key === "Enter") onOpenGameProps && onOpenGameProps(hero); }}
-                    style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer" }}
-                  >
-                    OPEN IN FEED →
-                  </span>
-                </div>
-              </div>
-            </div>
+            {/* The brief every card now opens into (see BoardBrief), which is
+                the hero’s own layout lifted out so the two cannot drift. It
+                also fixed the hero’s prop links: they called onOpenProp(p)
+                with one object where the handler takes (sport, player,
+                market), so no prop on the hero could open its player. */}
+            <BoardBrief card={hero} sport={sport} whyLabel="WHY IT LEADS" onOpenProp={onOpenProp} onOpenGameProps={onOpenGameProps} />
           </div>
         )}
 
@@ -220,16 +178,27 @@ export default function BoardDesktop({
               {t.games.map((g) => (
                 <div
                   key={g.key}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onOpenGameProps && onOpenGameProps(g)}
-                  onKeyDown={(e) => { if (e.key === "Enter") onOpenGameProps && onOpenGameProps(g); }}
                   style={{
-                    border: `1px solid ${g.quiet ? "var(--line)" : "var(--line-strong, var(--line))"}`,
-                    borderRadius: 12, background: g.quiet ? "transparent" : "var(--surface-1)",
-                    cursor: "pointer", display: "flex", flexDirection: "column",
+                    border: `1px solid ${openKey === g.key ? "var(--amber)" : g.quiet ? "var(--line)" : "var(--line-strong, var(--line))"}`,
+                    borderRadius: 12, background: g.quiet && openKey !== g.key ? "transparent" : "var(--surface-1)",
+                    display: "flex", flexDirection: "column", overflow: "hidden",
+                    // An open card takes the whole row, so its brief has the
+                    // hero’s width to lay out in rather than a third of it.
+                    gridColumn: openKey === g.key ? "1 / -1" : "auto",
                   }}
                 >
+                  {/* The card opens in place into its brief. It used to go
+                      straight to the Prop Feed, which answered "what is behind
+                      this chip" with 190 unsorted-for-that-question rows. The
+                      feed is still one click away, inside the brief. */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={openKey === g.key}
+                    onClick={() => toggle(g.key)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(g.key); } }}
+                    style={{ cursor: "pointer", display: "flex", flexDirection: "column" }}
+                  >
                   <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "14px 15px 11px" }}>
                     <span role="img" style={crest(g.away, sport, 18)} />
                     <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14 }}>{String(g.away).toUpperCase()}</span>
@@ -263,10 +232,20 @@ export default function BoardDesktop({
                         );
                       })}
                     </div>
-                    {g.quiet && (
+                    {g.quiet && openKey !== g.key && (
                       <span style={{ fontSize: 11.5, lineHeight: 1.45, color: "var(--dim)" }}>{g.quietWhy}</span>
                     )}
+                    {/* Says the card opens, and into what -- a card that did
+                        something different on click from what it used to has
+                        to say so rather than surprise. */}
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--amber-ink)" }}>
+                      {openKey === g.key ? "▴ CLOSE" : g.quiet ? "▾ CLOSEST PROPS" : "▾ WHAT’S BEHIND IT"}
+                    </span>
                   </div>
+                  </div>
+                  {openKey === g.key && (
+                    <BoardBrief card={g} sport={sport} onOpenProp={onOpenProp} onOpenGameProps={onOpenGameProps} />
+                  )}
                 </div>
               ))}
             </div>

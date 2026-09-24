@@ -21,7 +21,7 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
 // TONE, TIERS, atStyle and MiniStrip moved to boardShared.jsx when the
 // desktop frame started drawing the same ones. Same values, one definition.
-import { TONE, TIERS, atStyle, MiniStrip } from "./boardShared.jsx";
+import { TONE, TIERS, atStyle, MiniStrip, BoardBrief } from "./boardShared.jsx";
 
 
 function PropRow({ p, sport, onOpen }) {
@@ -77,6 +77,11 @@ export default function BoardMobile({
   onOpenProp,
   onOpenGameProps,
 }) {
+  // Tap a card to open its brief (see BoardBrief); tap again to close. The
+  // hero stays open, as the mock draws it. Reset on a league change.
+  const [openKey, setOpenKey] = React.useState(null);
+  const toggle = (k) => setOpenKey((cur) => (cur === k ? null : k));
+  React.useEffect(() => { setOpenKey(null); }, [sport]);
   return (
     <>
       <div
@@ -136,6 +141,14 @@ export default function BoardMobile({
                   opacity: g.quiet ? 0.8 : 1,
                 }}
               >
+                <div
+                  role={g.hero ? undefined : "button"}
+                  tabIndex={g.hero ? undefined : 0}
+                  aria-expanded={g.hero ? undefined : openKey === g.key}
+                  onClick={g.hero ? undefined : () => toggle(g.key)}
+                  onKeyDown={g.hero ? undefined : (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(g.key); } }}
+                  style={{ cursor: g.hero ? "default" : "pointer" }}
+                >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "13px 14px 11px" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0, flex: "1 1 auto" }}>
                     <span role="img" style={crest(g.away, sport, 20)} />
@@ -177,6 +190,24 @@ export default function BoardMobile({
                   )}
                 </div>
 
+                {/* A quiet game is shown rather than dropped, and says what it
+                    was missing. */}
+                {g.quiet && openKey !== g.key && (
+                  <div style={{ padding: "0 14px 10px" }}>
+                    <span style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--dim)", textWrap: "pretty" }}>{g.quietWhy}</span>
+                  </div>
+                )}
+                {!g.hero && (
+                  <div style={{ padding: "0 14px 12px", fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--amber-ink)" }}>
+                    {openKey === g.key ? "▴ CLOSE" : g.quiet ? "▾ CLOSEST PROPS" : "▾ WHAT’S BEHIND IT"}
+                  </div>
+                )}
+                </div>
+
+                {!g.hero && openKey === g.key && (
+                  <BoardBrief card={g} sport={sport} wide={false} onOpenProp={onOpenProp} onOpenGameProps={onOpenGameProps} />
+                )}
+
                 {g.hero && g.props.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--surface-2)", display: "flex", flexDirection: "column" }}>
                     {g.props.map((p) => (
@@ -201,14 +232,6 @@ export default function BoardMobile({
                         OPEN IN FEED →
                       </span>
                     </div>
-                  </div>
-                )}
-
-                {/* A quiet game is shown rather than dropped, and says what it
-                    was missing. */}
-                {g.quiet && (
-                  <div style={{ padding: "0 14px 13px" }}>
-                    <span style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--dim)", textWrap: "pretty" }}>{g.quietWhy}</span>
                   </div>
                 )}
               </div>
