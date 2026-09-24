@@ -164,6 +164,45 @@ export default function ValuePlot({
 
   const zeros = games.filter((v) => v === 0).length;
 
+  // The totals under the runs, so nobody adds "2 ×28 + 3 ×10 + 4" in their
+  // head. Alex, 2026-09-24: *"is there a way to show the total value that went
+  // over instead of making people add it up themselves."*
+  //
+  // After the sort the cleared games are one block -- the right end for an
+  // over, the left end for an under -- so each side gets one bracket spanning
+  // its own bars, in its own colour, with its count. The cleared side is the
+  // one asked for and always prints; the missed side prints only where it
+  // would not run into it.
+  const missed = total - cleared;
+  const verb = direction === "under" ? "under" : "over";
+  const clearedFrom = direction === "under" ? 0 : missed;
+  const missedFrom = direction === "under" ? cleared : 0;
+  const TOTAL_CH = 6.1;  // one mono character at 10px
+  const brackets = [];
+  if (plotW) {
+    const place = (from, count, text) => {
+      const x0 = from * slot;
+      const x1 = (from + count) * slot;
+      const tw = text.length * TOTAL_CH;
+      // Centred under its block where it fits, otherwise held inside the
+      // plot against the block's outer end, so a two-game tail still labels.
+      let left = (x0 + x1) / 2 - tw / 2;
+      if (left < 0) left = 0;
+      if (left + tw > plotW) left = plotW - tw;
+      return { x0, x1, left, right: left + tw, text };
+    };
+    const won = cleared > 0
+      ? place(clearedFrom, cleared, `${cleared} game${cleared === 1 ? "" : "s"} ${verb} ${line}`)
+      : { ...place(direction === "under" ? 0 : total, 0, `none ${verb} ${line}`), empty: true };
+    brackets.push({ key: "won", tone: "pos", ...won });
+    if (missed > 0) {
+      const lost = place(missedFrom, missed, `${missed} missed`);
+      const clash = lost.right + 8 > won.left && lost.left < won.right + 8;
+      if (!clash) brackets.push({ key: "lost", tone: "neg", ...lost });
+      else brackets.push({ key: "lost", tone: "neg", ...lost, text: null });
+    }
+  }
+
   return (
     <div style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -272,6 +311,37 @@ export default function ValuePlot({
               </span>
             ))}
           </div>
+
+          {/* The two sides of the line, totalled. A bracket spans each side's
+              bars so the number is visibly the count of *those* bars. */}
+          {brackets.length > 0 && (
+            <div style={{ position: "relative", height: 22 }}>
+              {brackets.map((b) => {
+                const colour = b.tone === "pos" ? "var(--pos)" : "color-mix(in srgb, var(--neg) 70%, transparent)";
+                return (
+                  <React.Fragment key={b.key}>
+                    {b.x1 > b.x0 && (
+                      <span style={{
+                        position: "absolute", top: 1, left: b.x0, width: Math.max(1, b.x1 - b.x0 - 1), height: 4,
+                        borderLeft: `1px solid ${colour}`, borderRight: `1px solid ${colour}`, borderBottom: `1px solid ${colour}`,
+                        boxSizing: "border-box",
+                      }} />
+                    )}
+                    {b.text && (
+                      <span style={{
+                        position: "absolute", top: 8, left: b.left,
+                        fontFamily: MONO, fontSize: 10, lineHeight: 1, whiteSpace: "nowrap",
+                        fontWeight: b.tone === "pos" && !b.empty ? 700 : 400,
+                        color: b.tone === "pos" && !b.empty ? "var(--pos)" : "var(--dim)",
+                      }}>
+                        {b.text}
+                      </span>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
