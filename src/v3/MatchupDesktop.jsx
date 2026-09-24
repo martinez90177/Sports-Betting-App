@@ -1,6 +1,7 @@
 import React from "react";
 import { crest } from "./FormPlot.jsx";
 import H2HMeetings from "./H2HMeetings.jsx";
+import TeamRankings from "./TeamRankings.jsx";
 
 // A transcription of frame `2f` in `v3 Mocks/PropPalace Desktop v3.dc.html`.
 //
@@ -51,6 +52,9 @@ export default function MatchupDesktop({
   readScope = null,
   onOpenRead,
   renderAvatar,
+  // NFL only: each side's offense against the other's defense. See
+  // TeamRankings.
+  ranks = null,
 }) {
   const frameRef = React.useRef(null);
   const [height, setHeight] = React.useState(null);
@@ -303,6 +307,13 @@ export default function MatchupDesktop({
             </span>
           </div>
         </div>
+
+        {/* ---- team rankings (NFL) ---------------------------------------- */}
+        {ranks && (
+          <div style={{ flex: "0 0 auto" }}>
+            <TeamRankings sport={sport} data={ranks} />
+          </div>
+        )}
       </div>
     </div>
   );

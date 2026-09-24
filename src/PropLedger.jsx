@@ -3080,8 +3080,9 @@ function buildNflDefenceByMarket() {
         let byTeam = bySeason.get(m.id);
         if (!byTeam) { byTeam = new Map(); bySeason.set(m.id, byTeam); }
         let rec = byTeam.get(g.opp);
-        if (!rec) { rec = { total: 0, events: new Set() }; byTeam.set(g.opp, rec); }
-        rec.total += v;
+        if (!rec) { rec = { total: 0, events: new Set(), best: new Map() }; byTeam.set(g.opp, rec); }
+        if (NFL_LONGEST_MARKETS.has(m.id)) rec.best.set(g.eventId, Math.max(rec.best.get(g.eventId) ?? -Infinity, v));
+        else rec.total += v;
         rec.events.add(g.eventId);
       });
     });
@@ -3094,7 +3095,8 @@ function buildNflDefenceByMarket() {
       const rows = [];
       byTeam.forEach((rec, abbr) => {
         if (!rec.events.size) return;
-        rows.push({ abbr, perGame: rec.total / rec.events.size, games: rec.events.size });
+        const total = rec.best.size ? [...rec.best.values()].reduce((a, b) => a + b, 0) : rec.total;
+        rows.push({ abbr, perGame: total / rec.events.size, games: rec.events.size });
       });
       // A market only a handful of defences have been measured in cannot be
       // ranked out of 32 -- the badge would read "#3 of 32" off six teams. Left
@@ -3275,6 +3277,9 @@ function nflDefIsPointsAllowed(opp, market) {
 function nflDefCategoryLabel(market, pos, opp) {
   const table = market ? nflDefTableFor(market) : null;
   if (table && (!opp || nflDefSplit(market, opp))) {
+    // A defence makes sacks; it does not "allow" sacks taken. Rank 1 is still
+    // the one that most suppresses the stat -- here, the fewest sacks.
+    if (market === "sacked") return "sacks made per game";
     const label = NFL_MARKETS.find((m) => m.id === market)?.label;
     return label ? `${label.toLowerCase()} allowed per game` : "allowed per game";
   }
@@ -4292,10 +4297,14 @@ const NFL_MARKETS = [
   { id: "passAtt", label: "Pass Attempts", pos: ["QB"] },
   { id: "comp", label: "Completions", pos: ["QB"] },
   { id: "int", label: "INT", pos: ["QB"] },
+  { id: "longPass", label: "Longest Completion", pos: ["QB"] },
+  { id: "sacked", label: "Sacks Taken", pos: ["QB"] },
   { id: "rushYds", label: "Rush Yds", pos: ["QB", "RB"] },
   { id: "passRushYds", label: "Pass + Rush Yds", pos: ["QB"] },
   { id: "rushAtt", label: "Rush Att", pos: ["RB"] },
+  { id: "longRush", label: "Longest Rush", pos: ["QB", "RB"] },
   { id: "rec", label: "Receptions", pos: ["RB", "WR", "TE"] },
+  { id: "tgt", label: "Targets", pos: ["RB", "WR", "TE"] },
   { id: "recYds", label: "Rec Yds", pos: ["RB", "WR", "TE"] },
   { id: "longRec", label: "Longest Reception", pos: ["WR"] },
   { id: "scrim", label: "Rush + Rec Yds", pos: ["RB", "WR"] },
@@ -4339,9 +4348,9 @@ const nflRailMarket = (pos, market) => {
 // player's position at render time, and empty groups (e.g. Kicking for a QB)
 // are skipped by MarketSectionGrid.
 const NFL_MARKET_SECTIONS = [
-  { label: "Passing", ids: ["passYds", "comp", "passAtt", "passTd", "int"] },
-  { label: "Rushing", ids: ["rushYds", "rushAtt"] },
-  { label: "Receiving", ids: ["rec", "recYds", "longRec"] },
+  { label: "Passing", ids: ["passYds", "comp", "passAtt", "passTd", "int", "longPass", "sacked"] },
+  { label: "Rushing", ids: ["rushYds", "rushAtt", "longRush"] },
+  { label: "Receiving", ids: ["rec", "tgt", "recYds", "longRec"] },
   { label: "Combos", ids: ["passRushYds", "scrim"] },
   { label: "Milestones", ids: ["anytimeTd"], pills: true },
   { label: "Kicking", ids: ["fgm", "fga", "xpm", "kickPts"] },
@@ -4587,9 +4596,17 @@ function normalizeNFLGame(g, player) {
     // players whose logs were real, because this dropped the id between the
     // parser and the page. Anything a surface needs must be named here.
     eventId: g.eventId,
+    result: g.result, teamScore: g.teamScore, oppScore: g.oppScore,
     comp: g.comp || 0, att: g.att || 0, passYds: g.passYds || 0, passTd: g.passTd || 0, int: g.int || 0,
     rushAtt: g.rushAtt || 0, rushYds: g.rushYds || 0, rushTd: g.rushTd || 0,
-    rec: g.rec || 0, tgt: g.tgt || 0, recYds: g.recYds || 0, recTd: g.recTd || 0,
+    // Targets stay null where the source never had the column (NFL.com, see
+    // lib/nflcomLog.js). This was `|| 0`, which turned "not recorded" into
+    // "never targeted" for every reader downstream -- the same three fields
+    // below are kept null for the same reason.
+    rec: g.rec || 0, tgt: g.tgt == null ? null : g.tgt, recYds: g.recYds || 0, recTd: g.recTd || 0,
+    longPass: g.longPass == null ? null : g.longPass,
+    sacked: g.sacked == null ? null : g.sacked,
+    longRush: g.longRush == null ? null : g.longRush,
     fgm: g.fgm || 0, fga: g.fga || 0, xpm: g.xpm || 0, xpa: g.xpa || 0,
   };
   // g.long comes through as a real value on rows parsed from ESPN's gamelog
@@ -4650,6 +4667,11 @@ const NFL_STAT_NAME_MAP = {
   receivingYards: "recYds",
   receivingTouchdowns: "recTd",
   longReception: "long",
+  longPassing: "longPass",
+  // On a passer's log "sacks" is ESPN's SACK column, "Total Sacks" -- the
+  // times he was sacked, not sacks he made.
+  sacks: "sacked",
+  longRushing: "longRush",
 };
 
 // "2-3" (made-attempts, as ESPN formats kicking stats) -> [2, 3]
@@ -4690,6 +4712,17 @@ function parseNFLGameLogResponse(data, season) {
       const opp = NFL_ESPN_ABBR_FIX[oppAbbr] || oppAbbr || "???";
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       const teamAbbr = meta.team?.abbreviation;
+      // The final score from this player's side, for the game-result splits.
+      // Sided by team id rather than by atVs: ESPN writes "vs" for a neutral
+      // site whichever side was the designated visitor, so atVs had Atlanta
+      // at home for its 2025 Berlin game, which Indianapolis hosted.
+      const homeScore = parseFloat(meta.homeTeamScore);
+      const awayScore = parseFloat(meta.awayTeamScore);
+      const teamId = meta.team?.id != null ? String(meta.team.id) : null;
+      const isHomeSide = teamId && meta.homeTeamId != null
+        ? teamId === String(meta.homeTeamId)
+        : meta.atVs !== "@";
+      const scored = Number.isFinite(homeScore) && Number.isFinite(awayScore);
       const game = {
         date: (meta.gameDate || "").slice(0, 10),
         opp,
@@ -4700,6 +4733,9 @@ function parseNFLGameLogResponse(data, season) {
         // joins a teammate's game roster against this.
         eventId,
         home: meta.atVs !== "@",
+        result: ["W", "L", "T"].includes(meta.gameResult) ? meta.gameResult : undefined,
+        teamScore: scored ? (isHomeSide ? homeScore : awayScore) : undefined,
+        oppScore: scored ? (isHomeSide ? awayScore : homeScore) : undefined,
       };
       Object.entries(NFL_STAT_NAME_MAP).forEach(([espnKey, ourKey]) => {
         game[ourKey] = num(stats[espnKey]);
@@ -4752,7 +4788,9 @@ async function fetchNFLPlayerGameLog(espnId, season = currentNFLSeason()) {
   // and `season`. A leftover v2 payload has neither, so the log-scoping
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
-  const cacheKey = `nfl_gamelog_v4_${key}`;
+  // v5: result, scores, longest pass/rush and sacks taken. A v4 payload has
+  // none of them, and the game-result filter would silently offer nothing.
+  const cacheKey = `nfl_gamelog_v5_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -4948,6 +4986,13 @@ const statValueNFL = (g, market) => {
     case "recYds": return g.recYds;
     case "scrim": return g.rushYds + g.recYds;
     case "longRec": return g.long;
+    // These four can be null: a source without the column (NFL.com) never
+    // recorded them, and nflLogMeasures keeps such a log off the market
+    // rather than reading the gap as zero.
+    case "longPass": return g.longPass;
+    case "sacked": return g.sacked;
+    case "longRush": return g.longRush;
+    case "tgt": return g.tgt;
     case "passAtt": return g.att;
     // Touchdowns this player SCORED -- rushing and receiving. Passing is
     // deliberately not in here.
@@ -4975,6 +5020,38 @@ const statValueNFL = (g, market) => {
     default: return 0;
   }
 };
+
+// Whether every game in a log carries a number for this market. A log that
+// does not (NFL.com has no targets, longest rush or sacks column) is not
+// offered the market at all -- a hit rate over games where the stat was never
+// recorded is a count of blanks. An empty log answers true, so a page that is
+// still loading does not snap its selected market away.
+function nflLogMeasures(games, market) {
+  return (games || []).every((g) => Number.isFinite(statValueNFL(g, market)));
+}
+
+// Game script, from the final score ESPN records for each game.
+//
+// "close" is one score: a final margin of eight or fewer, the most a single
+// touchdown and two-point try can close. A game with no score on record (an
+// NFL.com log, a hand-transcribed one) satisfies no option but "all" -- it is
+// left out, not counted as a win or a loss, and the control says how many.
+const NFL_ONE_SCORE = 8;
+function nflScriptKnown(g) {
+  return !!g && !!g.result && Number.isFinite(g.teamScore) && Number.isFinite(g.oppScore);
+}
+function nflScriptMatch(g, script) {
+  if (!nflScriptKnown(g)) return false;
+  if (script === "won") return g.result === "W";
+  if (script === "lost") return g.result === "L";
+  if (script === "close") return Math.abs(g.teamScore - g.oppScore) <= NFL_ONE_SCORE;
+  return true;
+}
+
+// Defence ranks for these are the longest play conceded per game, not the
+// sum of every player's longest -- adding a WR1's 40 to a TE's 12 describes
+// no play that happened.
+const NFL_LONGEST_MARKETS = new Set(["longRec", "longPass", "longRush"]);
 
 // NFL equivalent of battingRateAgg -- rolls a set of game logs up into the
 // rate stats shown on the detailed stat row above the chart. Every rate is
@@ -6807,6 +6884,7 @@ const RAIL_UNIT = {
   rec: "REC", recYds: "REC YDS", rushYds: "RUSH YDS", passYds: "PASS YDS", targets: "TGT",
   passTd: "PASS TD", passAtt: "ATT", comp: "COMP", int: "INT", rushAtt: "CAR",
   anytimeTd: "TD", scrim: "SCRIM YDS", passRushYds: "PASS+RUSH", longRec: "LONG REC",
+  longPass: "LONG CMP", sacked: "SACKED", longRush: "LONG RUSH", tgt: "TGT",
   fgm: "FGM", fga: "FGA", xpm: "XPM", kickPts: "KICK PTS",
   h: "H", hr: "HR", rbi: "RBI", r: "R", tb: "TB", bb: "BB", so: "K", sb: "SB",
   hrrbi: "H+R+RBI",
@@ -7776,6 +7854,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v3Custom = useCustomWindow("nfl");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
+  // Game result: "all" | "won" | "lost" | "close". See nflScriptMatch.
+  const [script, setScript] = useState("all");
   // 1 (not 0) is this control's neutral value -- the slider bottoms out at 1
   // and the preset row below labels 1 as "Any snaps". Defaulting to 50 meant
   // the page loaded with a real filter already narrowing the sample and
@@ -7801,6 +7881,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setSide("all");
     setLastN(10);
     setOpponent("all");
+    setScript("all");
     setMinSnapPct(1);
     setMaxSnapPct(100);
     setSnapRangeEnabled(false);
@@ -7886,7 +7967,10 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     const mk = nflRailMarket(p.pos, market);
     return railMetaLine(p.pos, railStats.get(p.id), mk, NFL_MARKETS.find((m) => m.id === mk)?.label);
   }, [railStats, market]);
-  const playerMarkets = useMemo(() => NFL_MARKETS.filter((m) => m.pos.includes(player.pos)), [player]);
+  const playerMarkets = useMemo(
+    () => NFL_MARKETS.filter((m) => m.pos.includes(player.pos) && nflLogMeasures(allGames, m.id)),
+    [player, allGames]
+  );
   const seasonAvg = useMemo(() => {
     const stats = NFL_SNAPSHOT_STATS[player.pos] || [];
     const n = allGames.length || 1;
@@ -8001,6 +8085,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       if (side === "home" && !game.home) return false;
       if (side === "away" && game.home) return false;
       if (opponent !== "all" && game.opp !== opponent) return false;
+      if (script !== "all" && !nflScriptMatch(game, script)) return false;
       // A game with no recorded snap share can't be shown to satisfy a
       // non-default snap filter, so it's excluded rather than waved through.
       // Previously the `snapPct !== null` guard exempted those games
@@ -8020,7 +8105,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, minSnapPct, maxSnapPct, snapFilterActive, lastN, applyRange, teammateSplits.apply]);
+  }, [allGames, side, opponent, script, minSnapPct, maxSnapPct, snapFilterActive, lastN, applyRange, teammateSplits.apply]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -8068,12 +8153,13 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     let n = 0;
     if (side !== 'all') n += 1;
     if (opponent !== 'all') n += 1;
+    if (script !== 'all') n += 1;
     if (lastN !== 10) n += 1;
     if (snapFilterActive) n += 1;
     n += teammateChips.length;
     n += scopeFilterCount(logScope);
     return n;
-  }, [side, opponent, lastN, snapFilterActive, logScope, teammateChips.length]);
+  }, [side, opponent, script, lastN, snapFilterActive, logScope, teammateChips.length]);
 
   const splitCells = buildHitRateSplits({
     sport: "nfl",
@@ -8549,7 +8635,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v3Windows = buildWindows({
     sport: "nfl", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
     custom: v3Custom.custom, setCustom: v3Custom.setCustom,
-    onReset: () => { setLastN(DEFAULT_WINDOW.nfl); setSide("all"); setOpponent("all"); },
+    onReset: () => { setLastN(DEFAULT_WINDOW.nfl); setSide("all"); setOpponent("all"); setScript("all"); },
   });
   const v3Splits = buildSplits({
     side, setSide,
@@ -8557,6 +8643,36 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
     starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
   });
+  // GAME RESULT -- how he does by the way the game went. Counted over the
+  // scoped log (before the window), so "Lost · 7 games" is every loss in view
+  // and L10 under it means his last ten losses. Its own group rather than a
+  // SPLITS row, so it composes with Home/Away instead of replacing it.
+  const v3Script = useMemo(() => {
+    const c = { all: allGames.length, won: 0, lost: 0, close: 0, unknown: 0 };
+    allGames.forEach((g) => {
+      if (!nflScriptKnown(g)) { c.unknown += 1; return; }
+      if (nflScriptMatch(g, "won")) c.won += 1;
+      if (nflScriptMatch(g, "lost")) c.lost += 1;
+      if (nflScriptMatch(g, "close")) c.close += 1;
+    });
+    // A log with no scores at all has nothing to split, so no dead control.
+    if (c.unknown === c.all) return null;
+    const n = (k) => `${k} ${k === 1 ? "game" : "games"}`;
+    const opt = (id, label, count) => ({ id, label, count: n(count), active: script === id, onPick: () => setScript(id) });
+    return {
+      title: "GAME RESULT",
+      options: [
+        opt("all", "All", c.all),
+        opt("won", "Won", c.won),
+        opt("lost", "Lost", c.lost),
+        opt("close", "1 score", c.close),
+      ],
+      note: [
+        `1 score: decided by ${NFL_ONE_SCORE} points or fewer.`,
+        c.unknown > 0 ? `${c.unknown} of ${c.all} games have no final score on record and count only under All.` : null,
+      ].filter(Boolean).join(" "),
+    };
+  }, [allGames, script]);
   const v3RenderAvatar = (p, size) => (
     <PlayerAvatar
       key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nfl" team={p.team}
@@ -8655,6 +8771,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       minSample={sampleFloor(minSample)}
       windows={v3Windows}
       splits={v3Splits}
+      script={v3Script}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -16331,8 +16448,9 @@ function buildWNBAFeedRows() {
 
 const NFL_MARKET_CATEGORY = {
   passYds: "Passing", passTd: "Passing", passAtt: "Passing", passRushYds: "Passing", comp: "Passing", int: "Passing",
-  rushYds: "Rushing", rushAtt: "Rushing",
-  rec: "Receiving", recYds: "Receiving", longRec: "Receiving", scrim: "Receiving",
+  longPass: "Passing", sacked: "Passing",
+  rushYds: "Rushing", rushAtt: "Rushing", longRush: "Rushing",
+  rec: "Receiving", tgt: "Receiving", recYds: "Receiving", longRec: "Receiving", scrim: "Receiving",
   anytimeTd: "Touchdowns",
   fgm: "Kicking", fga: "Kicking", xpm: "Kicking", kickPts: "Kicking",
 };
@@ -19260,7 +19378,7 @@ function buildNFLFeedRows() {
     }
     const nextOpp = nextGame ? nextGame.opp : null;
     const gameDate = nextGame ? nextGame.date : null;
-    const applicableMarkets = NFL_MARKETS.filter((m) => m.pos.includes(player.pos));
+    const applicableMarkets = NFL_MARKETS.filter((m) => m.pos.includes(player.pos) && nflLogMeasures(games, m.id));
     // Which of `games` belong to the year the season column is headed by. A
     // one-season log answers "all of them" and the column is unchanged; a
     // merged one answers "the newest slice", so a cell headed 2026 counts 2026

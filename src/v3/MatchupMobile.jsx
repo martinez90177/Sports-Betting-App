@@ -2,6 +2,7 @@ import React from "react";
 import PlayerAvatar from "../PlayerAvatar.jsx";
 import { crest } from "./FormPlot.jsx";
 import H2HMeetings from "./H2HMeetings.jsx";
+import TeamRankings from "./TeamRankings.jsx";
 
 // A transcription of frame `3c` in `v3 Mocks/PropPalace Mobile v3.dc.html`.
 //
@@ -53,6 +54,7 @@ export default function MatchupMobile({
   readScope,
   onOpenRead,
   slipDock = null,
+  ranks = null,            // NFL only, see TeamRankings
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -288,6 +290,12 @@ export default function MatchupMobile({
               />
             )}
           </div>
+        </div>
+      )}
+
+      {ranks && (
+        <div style={{ padding: "16px 16px 0" }}>
+          <TeamRankings sport={sport} data={ranks} compact />
         </div>
       )}
 

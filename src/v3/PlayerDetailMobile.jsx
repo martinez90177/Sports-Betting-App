@@ -205,6 +205,8 @@ export default function PlayerDetailMobile({
   // Opposing-starter handedness, MLB batters only. Alex asked for it; no mock
   // draws it. Same control and same wording as the desktop rail.
   hands = null,
+  // Each game's final result, NFL only. Same counted group as `hands`.
+  script = null,
   // Where the output lands, under the form graph on the Form tab.
   distribution = null,
   injuryTeams = null,    // [{ abbr, slug, sport, players: [{ id, name, note, status, effect }] }]
@@ -499,6 +501,12 @@ export default function PlayerDetailMobile({
   const activeSeason = seasonOptions.find((s) => s.active);
   const activeWindow = ((windows && windows.options) || []).find((w) => w.active);
   const activeSplit = (splits || []).find((s) => s.active);
+  // The starter and game-result groups live in the same sheet, so the chip
+  // that opens it has to show when one of them is narrowing the log too --
+  // otherwise the chart is filtered with nothing on the bar saying so.
+  const activeGroupPick = [hands, script]
+    .map((g) => g && (g.options || []).find((o) => o.active && o.id !== "all"))
+    .find(Boolean);
   const activeMarket = markets.find((m) => m.active);
 
   const controlBar = (
@@ -543,8 +551,8 @@ export default function PlayerDetailMobile({
           </div>
         )}
         {splits && splits.length > 0 && (
-          <div onClick={() => setSheet("splits")} style={chip(!!activeSplit && !splits[0].active)}>
-            {(activeSplit && !splits[0].active ? activeSplit.label : "Splits")} ▾
+          <div onClick={() => setSheet("splits")} style={chip((!!activeSplit && !splits[0].active) || !!activeGroupPick)}>
+            {(activeSplit && !splits[0].active ? activeSplit.label : activeGroupPick ? activeGroupPick.label : "Splits")} ▾
           </div>
         )}
         {/* Only where the page can actually answer it. A chip that opens an
@@ -1205,14 +1213,16 @@ export default function PlayerDetailMobile({
           </div>
         )}
 
-        {showSplits && hands && hands.options && hands.options.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {showSplits && [hands && { title: "OPPOSING STARTER", ...hands }, script]
+          .filter((grp) => grp && grp.options && grp.options.length > 0)
+          .map((grp) => (
+          <div key={grp.title} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-              <span style={sectionLabel}>OPPOSING STARTER</span>
-              {hands.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
+              <span style={sectionLabel}>{grp.title}</span>
+              {grp.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-              {hands.options.map((h) => (
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${grp.options.length}, 1fr)`, gap: 8 }}>
+              {grp.options.map((h) => (
                 <div key={h.id} onClick={pickAndClose(h.onPick)} style={{ ...pill(h.active), flexDirection: "column", gap: 0, minHeight: 46 }}>
                   <span>{h.label}</span>
                   {/* Each side states the games it can account for. */}
@@ -1220,11 +1230,11 @@ export default function PlayerDetailMobile({
                 </div>
               ))}
             </div>
-            {/* A game whose starter could not be resolved is dropped from
-                both sides rather than counted as the other hand. */}
-            {hands.note && <span style={sheetNote}>{hands.note}</span>}
+            {/* A game the filter could not resolve is dropped from every
+                option rather than counted as one of them. */}
+            {grp.note && <span style={sheetNote}>{grp.note}</span>}
           </div>
-        )}
+        ))}
 
         {showSplits && splits && splits.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

@@ -175,6 +175,9 @@ export default function PlayerDetailDesktop({
   // Opposing-starter handedness, MLB batters only. Not a mock control --
   // see the note on the group below.
   hands = null,
+  // Final result of each game, NFL only -- the same counted-option group as
+  // `hands`, with its own title. Composes with SPLITS rather than joining it.
+  script = null,
   injuryTeams = null,
   lineups = null,
   renderAvatar = null,
@@ -621,14 +624,16 @@ export default function PlayerDetailDesktop({
         </div>
       )}
 
-      {hands && hands.options && hands.options.length > 0 && (
-        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
+      {[hands && { title: "OPPOSING STARTER", ...hands }, script]
+        .filter((grp) => grp && grp.options && grp.options.length > 0)
+        .map((grp) => (
+        <div key={grp.title} style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-            <span style={railLabel}>OPPOSING STARTER</span>
-            {hands.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
+            <span style={railLabel}>{grp.title}</span>
+            {grp.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
-            {hands.options.map((h) => (
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${grp.options.length}, minmax(0, 1fr))`, gap: 6 }}>
+            {grp.options.map((h) => (
               <div
                 key={h.id}
                 role="radio"
@@ -645,12 +650,12 @@ export default function PlayerDetailDesktop({
               </div>
             ))}
           </div>
-          {/* What the filter cannot see. A game whose starter could not be
-              resolved is dropped from both sides rather than counted as the
-              other hand, so the reader is told how many that is. */}
-          {hands.note && <span style={railNote}>{hands.note}</span>}
+          {/* What the filter cannot see. A game it could not resolve is
+              dropped from every option rather than counted as one of them,
+              so the reader is told how many that is. */}
+          {grp.note && <span style={railNote}>{grp.note}</span>}
         </div>
-      )}
+      ))}
       {splits && splits.length > 0 && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
           <span style={railLabel}>SPLITS</span>

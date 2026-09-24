@@ -7,6 +7,16 @@ import { useIsPhone } from "./lib/useIsNarrow.js";
 import MatchupMobile from "./v3/MatchupMobile.jsx";
 import MatchupDesktop from "./v3/MatchupDesktop.jsx";
 import { mlbPitchHandCache, fetchMLBPitcherHands } from "./lib/mlbPitchers.js";
+import { fetchNflTeamRankings, nflSeasonNow } from "./lib/nflTeamStats.js";
+
+// "2-1" / "1-1-1" -> games played. The slate carries each team's record, which
+// is enough to decide which season the rankings open on without asking ESPN.
+const recordGames = (rec) => String(rec || "")
+  .split("-").map(Number).filter(Number.isFinite).reduce((a, b) => a + b, 0);
+
+// Under this many games a season's ranks lead nothing -- the same four the
+// per-market defence ranks use (NFL_DEF_CURRENT_MIN_GAMES in PropLedger).
+const RANKS_CURRENT_MIN_GAMES = 4;
 
 // Matchup Overview -- the page a GameCard opens.
 //
@@ -276,6 +286,33 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
     return () => { cancelled = true; };
   }, [game.sport, game.away.abbr, game.home.abbr]);
 
+  // NFL team rankings, one season at a time: last season until both teams
+  // have four games in this one, then this one. The other is a tap away and
+  // is only fetched when tapped -- a season is 32 requests.
+  const rankNow = nflSeasonNow();
+  const minPlayed = Math.min(recordGames(game.away.record), recordGames(game.home.record));
+  const defaultRankSeason = minPlayed >= RANKS_CURRENT_MIN_GAMES ? rankNow : rankNow - 1;
+  const [rankPick, setRankPick] = useState(null);
+  const rankSeason = rankPick ?? defaultRankSeason;
+  const [ranksBySeason, setRanksBySeason] = useState({});
+  // Set on every mount, not just initialised: StrictMode's rehearsal unmount
+  // runs the cleanup, and a ref left false after it drops every answer.
+  const mountedRef = React.useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  useEffect(() => {
+    if (game.sport !== "nfl" || ranksBySeason[rankSeason] !== undefined) return;
+    setRanksBySeason((p) => ({ ...p, [rankSeason]: "loading" }));
+    // Not cancelled on a season switch: the answer is kept per season, so a
+    // fetch that lands after the reader has moved on still fills its slot.
+    fetchNflTeamRankings(rankSeason)
+      .then((d) => { if (mountedRef.current) setRanksBySeason((p) => ({ ...p, [rankSeason]: d || "error" })); })
+      .catch(() => { if (mountedRef.current) setRanksBySeason((p) => ({ ...p, [rankSeason]: "error" })); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.sport, rankSeason]);
+
   useEffect(() => {
     if (!getTopProps) { setTopProps(null); return undefined; }
     let cancelled = false;
@@ -456,6 +493,28 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
       })),
       readScope: "FROM TONIGHT'S SLATE",
       onOpenRead: (r) => onOpenProp && onOpenProp(r.sport, r.key, r.market, { name: r.name, team: r.team }),
+      ranks: game.sport !== "nfl" ? null : (() => {
+        const rs = ranksBySeason[rankSeason];
+        const d = rs && typeof rs === "object" ? rs : null;
+        const side = (t) => ({ abbr: t.abbr, ...((d && d.teams[t.abbr]) || {}) });
+        return {
+          season: rankSeason,
+          loading: rs === undefined || rs === "loading",
+          error: rs === "error",
+          teamsLoaded: d ? d.teamsLoaded : 0,
+          teamsTotal: d ? d.teamsTotal : 32,
+          away: side(game.away),
+          home: side(game.home),
+          seasons: [rankNow - 1, rankNow].map((s) => ({
+            id: s,
+            // The season in progress names how old it is, so its ranks are
+            // never read as settled.
+            label: s === rankNow && minPlayed > 0 ? `${s} · ${minPlayed} GP` : String(s),
+            active: s === rankSeason,
+            onPick: () => setRankPick(s),
+          })),
+        };
+      })(),
     };
 
     if (!isPhone) {

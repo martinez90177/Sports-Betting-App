@@ -2772,3 +2772,45 @@ hero's avatars also gained their availability dot (CLAUDE.md rule 1).
 props for teams with no game on the slate (POR, TOR …) — every WNBA card read
 "POR @" with no opponent, and opening one of those players lands on "isn't on a
 WNBA game we can read today". Older than this change; not yet investigated.
+
+## Game day, ATL @ GB — 2026-09-24
+
+Alex asked for the site checked against Outlier and PropsMadness before
+Thursday night, then for four of the resulting suggestions. PropPalace's game
+logs matched Outlier's game for game on eleven players.
+
+**Fixed (`152be55`).** The game page's "Props with a read" was recommending
+players who were out, on IR or backing up; the feed's Starters only let
+ruled-out players through (a depth chart lags the injury report — GB still had
+Jayden Reed at WR2); the Board counted out players' props; Washington was never
+starter-filtered (WSH vs WAS); the live gamecast doubled its leaders.
+
+**Built, from the competitor pass:**
+
+- **Game result filter** (NFL player page, desktop rail and phone sheet):
+  All / Won / Lost / 1 score (≤ 8 points), each with its game count, composing
+  with Home/Away. Scores come off ESPN's gamelog, sided by team id — its `atVs`
+  calls a neutral site "vs" for the visitor. Games with no score (NFL.com logs)
+  count only under All, and the rail says how many.
+- **Four NFL markets** from columns ESPN's logs already carry: Longest
+  Completion, Sacks Taken, Longest Rush, Targets. A log without the column is
+  not offered the market (`nflLogMeasures`); `normalizeNFLGame` now keeps
+  targets null where it was turning "not recorded" into 0. Defence ranks for
+  the three "longest" markets use the per-game max, not the sum — which also
+  corrects the existing Longest Reception rank.
+- **Team rankings** on the NFL matchup page (`src/lib/nflTeamStats.js`,
+  `src/v3/TeamRankings.jsx`): nine offense-vs-defense stats, ranked by us
+  across the 32 (ESPN's own opponent ranks run past 32), total yards on net
+  passing. Opens on last season until both teams have four games, the same
+  rule as the defence ranks; the other season is one tap and is only fetched
+  then.
+- **"Similar players vs [opponent]" was already built** (`77fc7ce`) — it was
+  suggested before checking.
+
+**Open.** Book lines via The Odds API are Alex's call (free tier: 1 credit per
+market per game, ~130/month for primetime-only). The app's own line sits
+below the books' on most receiving props (London 3.5 vs 5.5). RB committees
+are hidden by a one-RB depth chart (GB's Kaleb Johnson is RB3 with the top
+rush line). The Board leads with a Sunday game on a Thursday. The MLB
+opposing-starter filter resolves 0 of 139 games for Bobby Witt Jr. on
+production — found while regression-testing, not investigated.
