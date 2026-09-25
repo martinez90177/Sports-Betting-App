@@ -1,6 +1,7 @@
 import React from "react";
 import FormPlot, { PLOT, crest } from "./FormPlot.jsx";
 import ValuePlot from "./ValuePlot.jsx";
+import WindowNumber from "./WindowNumber.jsx";
 import { probToAmericanOdds, formatOdds } from "../odds.js";
 import { STATUS } from "../lib/teamColors.js";
 
@@ -499,7 +500,8 @@ export default function PlayerDetailMobile({
   const tabs = ["Form", "Matchup", "Log", "Injuries", "News"];
   const seasonOptions = (seasons && seasons.options) || [];
   const activeSeason = seasonOptions.find((s) => s.active);
-  const activeWindow = ((windows && windows.options) || []).find((w) => w.active);
+  const activeWindow = ((windows && windows.options) || []).find((w) => w.active)
+    || (windows && windows.currentLabel ? { label: windows.currentLabel } : null);
   const activeSplit = (splits || []).find((s) => s.active);
   // The starter and game-result groups live in the same sheet, so the chip
   // that opens it has to show when one of them is narrowing the log too --
@@ -1143,7 +1145,30 @@ export default function PlayerDetailMobile({
             <span style={sectionLabel}>WINDOW</span>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
               {windows.options.map((w) => (
-                <div key={w.id} onClick={pickAndClose(w.onPick)} style={pill(w.active)}>{w.label}</div>
+                <div key={w.id} onClick={pickAndClose(w.onPick)} style={pill(w.active, { position: "relative" })}>
+                  {w.label}
+                  {/* Always shown here, because a phone has no hover to reveal
+                      it on. A 22px target inside the chip's corner; the sheet
+                      stays open so the row can be tidied in one visit. */}
+                  {w.onRemove && (
+                    <span
+                      role="button"
+                      aria-label={`Remove saved window ${w.label}`}
+                      onClick={(e) => { e.stopPropagation(); w.onRemove(); }}
+                      style={{
+                        // -6, not -8: the grid's gap is 8, and a full 8px
+                        // overhang put the × flush against the next chip.
+                        position: "absolute", top: -6, right: -6, width: 22, height: 22,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        borderRadius: 6, border: "1px solid var(--line-strong, var(--line))",
+                        background: "var(--surface-2)", color: "var(--text-2)",
+                        fontSize: 13, lineHeight: 1, cursor: "pointer",
+                      }}
+                    >
+                      ×
+                    </span>
+                  )}
+                </div>
               ))}
             </div>
             {windows.custom && (
@@ -1157,9 +1182,19 @@ export default function PlayerDetailMobile({
                     >
                       −
                     </div>
-                    <span style={{ minWidth: 66, textAlign: "center", fontFamily: MONO, fontSize: 15, fontWeight: 700 }}>
-                      {`L${windows.custom.value}`}
-                    </span>
+                    {/* Tap the number to type one. The keyboard's Go uses it
+                        at once and closes the sheet, as tapping a chip does --
+                        SAVE is still what keeps it on the bar. */}
+                    <WindowNumber
+                      value={windows.custom.value}
+                      min={windows.custom.min}
+                      max={windows.custom.max}
+                      onType={windows.custom.onType}
+                      onEnter={(v) => { windows.custom.onType(v, true); setSheet(null); }}
+                      fontSize={15}
+                      style={{ minWidth: 66, height: 44 }}
+                    />
+
                     <div
                       onClick={windows.custom.onUp}
                       style={{ width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: "1px solid var(--line)", color: "var(--text-2)", fontSize: 18, cursor: "pointer" }}

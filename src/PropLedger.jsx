@@ -54,7 +54,7 @@ import { fetchStatcast } from "./lib/statcast.js";
 // alone; the other three sports draw their chart and hero through the v3 frame.
 import { PlayerHeaderCard, GameByGameChart } from "./PlayerDetail.jsx";
 import MinSampleControl, { loadSamplePresets, saveSamplePresets, seedSampleValue, saveSampleValue, sampleScale, MIN_SAMPLE_ALL } from "./MinSampleControl.jsx";
-import FeedFormStrip, { feedFormScale } from "./FormGraph.jsx";
+import FeedFormStrip, { feedFormScale, trailingRun } from "./FormGraph.jsx";
 import SupportingStats from "./v3/SupportingStats.jsx";
 import SimilarPlayers from "./v3/SimilarPlayers.jsx";
 import LandingPage from "./LandingPage.jsx";
@@ -2682,7 +2682,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // Each is the state this page already holds, offered through the shape the
   // sheet renders -- not a second copy of it.
   const v3Windows = buildWindows({
-    sport: "nba", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    sport: "nba", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave, onRemove: v3Custom.onRemove,
     custom: v3Custom.custom, setCustom: v3Custom.setCustom,
     onReset: () => { setLastN(DEFAULT_WINDOW.nba); setSide("all"); setOpponent("all"); },
   });
@@ -8633,7 +8633,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
 
   // ---- v3 mobile props (see src/v3/PlayerDetailMobile.jsx) ------------------
   const v3Windows = buildWindows({
-    sport: "nfl", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    sport: "nfl", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave, onRemove: v3Custom.onRemove,
     custom: v3Custom.custom, setCustom: v3Custom.setCustom,
     onReset: () => { setLastN(DEFAULT_WINDOW.nfl); setSide("all"); setOpponent("all"); setScript("all"); },
   });
@@ -10691,7 +10691,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
 
   // ---- v3 mobile props (see src/v3/PlayerDetailMobile.jsx) ------------------
   const v3Windows = buildWindows({
-    sport: "wnba", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    sport: "wnba", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave, onRemove: v3Custom.onRemove,
     custom: v3Custom.custom, setCustom: v3Custom.setCustom,
     onReset: () => { setLastN(DEFAULT_WINDOW.wnba); setSide("all"); setOpponent("all"); },
   });
@@ -15719,7 +15719,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
   // other three carry -- it restricts the sample to the team actually next on
   // the schedule rather than to any team in history.
   const v3Windows = buildWindows({
-    sport: "mlb", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave,
+    sport: "mlb", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave, onRemove: v3Custom.onRemove,
     custom: v3Custom.custom, setCustom: v3Custom.setCustom,
     onReset: () => { setLastN(DEFAULT_WINDOW.mlb); setSide("all"); setH2h(false); },
     // The frame's last window. `h2h` is the page's own state for "only the
@@ -17712,6 +17712,12 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   const [dragLine, setDragLine] = useState(null);
   const lineVal = dragLine == null ? r.line : dragLine;
   const adjusted = dragLine != null && dragLine !== r.line;
+  // On the posted line, the whole log's run -- "14 straight" is true even when
+  // the strip only draws ten of them. On a dragged line, the bars' own run,
+  // since the log was never counted against that number.
+  const run = adjusted
+    ? trailingRun(r.recent, lineVal, r.isBinary, direction, streak, true)
+    : { len: Math.abs(streak), hit: streak > 0, show: Math.abs(streak) >= 3 };
 
   const startLineDrag = (e) => {
     e.preventDefault();
@@ -18082,13 +18088,20 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           )}
         </>
       )}
-      {/* The streak rides here on the phone only. On desktop it is already the
-           second half of the form graph's caption; the phone card has no
-           caption (see FeedFormStrip's `caption` prop), so without this the run
-           would go unstated on mobile entirely. */}
-      {isNarrow && Math.abs(streak) >= 3 && (
-        <span style={{ whiteSpace: "nowrap" }}>
-          · {Math.abs(streak)} {streak > 0 ? "straight" : "cold"}
+      {/* The streak rides beside the matchup, on the phone and on desktop.
+           Desktop used to print it as a caption under the bars, and that line
+           sat empty on every row without a run. Alex, 2026-09-24: *"thats way
+           too empty for players not currently on a streak."* Counted by the
+           same helper the rule under the bars is drawn from, so a dragged line
+           moves both together.
+
+           No leading "·": coloured and bold, it separates itself the way the
+           MID / TOUGH word does, and the two characters are what pushed an
+           NFL row's line ("'26 #11 · 2G · 6 STRAIGHT", 185px in a 179px
+           column) onto a third line. */}
+      {run.show && (
+        <span style={{ whiteSpace: "nowrap", color: run.hit ? "var(--pos)" : "var(--neg)", fontWeight: 700 }}>
+          {run.len} {run.hit ? "straight" : "cold"}
         </span>
       )}
     </div>
@@ -18114,10 +18127,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         onDragLine={startLineDrag}
         onResetLine={resetLine}
         values
-        // The six rate cells to the right each print their own sample, so the
-        // caption keeps only what they do not say: the run, and the playoff
-        // count. See captionCounts in FormGraph.
+        // The six rate cells to the right each print their own sample, and the
+        // run is printed beside the matchup, so the caption keeps only the
+        // playoff count. See captionCounts in FormGraph.
         captionCounts={false}
+        runCaption={false}
       />
       {formAnchor && <FeedFormPopover r={r} direction={direction} anchor={formAnchor} line={lineVal} />}
     </div>

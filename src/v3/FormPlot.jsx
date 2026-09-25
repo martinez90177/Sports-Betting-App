@@ -25,7 +25,7 @@ export const PEDESTAL = 9;
 // one -- the two phone sizes have no width to spend on it.
 export const PLOT = {
   // Player Detail (frame 1c): a 176px box over a 146px span, 52px gutter.
-  player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261, axisW: 0 },
+  player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261, axisW: 0, zones: true },
   // A Prop Feed row (frame 1b): 74px box, 52px span, 46px gutter.
   //
   // Crests only under the bars, at every width. The box is a fixed 74px and
@@ -43,10 +43,13 @@ export const PLOT = {
   // was treating the symptom: the real fault was `layFor` guessing the label
   // stack's height instead of measuring it, and that fix (COL_GAP / CREST_PX /
   // CREST_MT / LABEL_LINE, below) is what actually stopped the overlap and is
-  // kept. The size went back to the frame -- see docs/V3_PARKED_CHANGES.md B3
-  // and B4, which is where a taller graph and a value-scale gutter wait for a
-  // decision rather than being taken silently here.
-  desktop: { plotH: 268, span: 224, gutter: 58, handleW: 52, handleH: 32, trackW: 780, axisW: 0 },
+  // kept. The size went back to the frame -- see docs/V3_PARKED_CHANGES.md B3.
+  //
+  // The value-scale gutter (B4) is back, by Alex's call rather than by
+  // drift. 2026-09-24, pointing at Outlier's chart: *"maybe also add y axis
+  // values somewhere to help make this look less plain ... it feels like my
+  // charts on player detail pages are missing some life."* Same 268px box.
+  desktop: { plotH: 268, span: 224, gutter: 58, handleW: 52, handleH: 32, trackW: 780, axisW: 36, dateLadder: true, zones: true },
 };
 
 export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);
@@ -92,10 +95,37 @@ const CREST_PX = 16;
 const CREST_MT = 2;
 const LABEL_LINE = 13;
 
-export function layFor(n, trackW) {
+// The desktop plot's date ladder, after PropsMadness: a date under every bar
+// for as long as one fits, and past that a date on every Nth bar rather than
+// none at all. Alex, 2026-09-24: *"it's a little weird that it only becomes
+// logos and not anything to do with dates."* The old single-line "Sep 15"
+// needed a 44px column, so at 1920 wide L20 (43.6px) lost its dates by less
+// than half a pixel, and at 1100 wide L20 (18.6px) lost every label.
+//
+//   40px+   crest, "@ CHC", "Sep 15"  -- "@ CHC" is the widest label, 37px
+//   20px+   crest, "Sep" over "15"    -- stacked, 18px wide
+//   below   "Sep" over "15" on every Nth bar, no crest, N set so the labels
+//           sit at least DATE_PITCH apart
+//
+// All three tiers cost the same 53px or less, which is the room the frame's
+// 268px box leaves under its tallest bar -- so the bars never lose height to
+// the labels. Opt-in per size: the phone plot's 176px box has no such room.
+const DATE_PITCH = 44;
+
+export function layFor(n, trackW, g = {}) {
   const gap = gapFor(n);
   const per = n > 0 ? (trackW - gap * (n - 1)) / n : 0;
   const crest = per >= 20;
+  if (g.dateLadder && n > 0) {
+    const wide = per >= 40;
+    const every = per >= 20 ? 1 : Math.max(2, Math.ceil(DATE_PITCH / (per + gap)));
+    // Two text lines either way: "@ CHC" over "Sep 15", or "Sep" over "15".
+    // Each line's COL_GAP is the gap above it, so without a crest the first
+    // line's already covers the gap under the bar -- adding the trailing one
+    // as well dropped every bar 3px below the rule.
+    const stack = (crest ? CREST_MT + CREST_PX : 0) + 2 * (COL_GAP + LABEL_LINE);
+    return { crest, abbr: wide, date: true, stacked: !wide, every, val: per >= 20, labelH: stack + (crest ? COL_GAP : 0) };
+  }
   const abbr = per >= 34;
   const date = per >= 44;
   // The leading COL_GAP is the gap between the bar and the first label, so the
@@ -103,7 +133,17 @@ export function layFor(n, trackW) {
   const stack = (crest ? CREST_MT + CREST_PX : 0)
     + (abbr ? COL_GAP + LABEL_LINE : 0)
     + (date ? COL_GAP + LABEL_LINE : 0);
-  return { crest, abbr, date, val: per >= 20, labelH: stack ? stack + COL_GAP : 0 };
+  return { crest, abbr, date, stacked: false, every: 1, val: per >= 20, labelH: stack ? stack + COL_GAP : 0 };
+}
+
+// "Sep" and "15" for the stacked label, read off the ISO date rather than
+// split out of the display string, whose order is the reader's locale's.
+function dateParts(iso) {
+  if (!iso) return null;
+  const t = Date.parse(typeof iso === "string" && iso.length === 10 ? `${iso}T12:00:00` : iso);
+  if (Number.isNaN(t)) return null;
+  const d = new Date(t);
+  return { mon: d.toLocaleDateString(undefined, { month: "short" }), day: String(d.getDate()) };
 }
 
 // Same URL pattern as lib/gamesData.js teamLogo(), drawn as a background so no
@@ -171,9 +211,9 @@ export default function FormPlot({
   // Measured off the same track the columns are, so the cap is a real width
   // rather than a guess at one -- see BAR_COLS.
   const barMax = barMaxFor(trackW, n);
-  const full = layFor(n, trackW);
+  const full = layFor(n, trackW, g);
   const lay = !labels
-    ? { crest: false, abbr: false, date: false, val: full.val, labelH: 0 }
+    ? { crest: false, abbr: false, date: false, stacked: false, every: 1, val: full.val, labelH: 0 }
     : g.crestOnly
       ? { ...full, abbr: false, date: false, labelH: full.crest ? CREST_MT + CREST_PX + COL_GAP : 0 }
       : full;
@@ -181,32 +221,30 @@ export default function FormPlot({
   const scale = feedFormScale(recent, line, isBinary, { height: g.span + PEDESTAL, pedestal: PEDESTAL });
   const hit = (v) => (direction === "under" ? v < line : v > line);
 
-  // Three marks on the value scale: the axis top, its middle and its floor.
+  // Gridlines on round numbers, the way a reader expects a scale to count:
+  // 50 / 100 / 150 on passing yards, 1 / 2 / 3 on hits. Up to about eight, on
+  // a step of 1, 2 or 5 times a power of ten -- five left a passing-yards
+  // chart with three lines on it -- and never below 1, because a "0.5 hits"
+  // gridline is a value no game can have.
   //
-  // Read off the same `scale` the bars are drawn with rather than off the raw
-  // games, so a tick always sits where a bar of that value would end. Snapped
-  // to the axis's own step (5 above 100, 1 below), and de-duplicated -- a flat
-  // log with a 0.6 pad can land all three on the same number, and printing it
-  // three times reads as a broken axis rather than a short one.
+  // It used to be three marks -- top, middle, floor -- snapped to the axis's
+  // own step, which printed numbers like 394 / 281 / 167 that a reader has to
+  // do arithmetic with. Read off the same `scale` the bars are drawn with, so
+  // a line always sits exactly where a bar of that value ends.
   //
-  // The outer two round INWARD -- floor the top, ceil the floor -- because
-  // nearest-rounding pushes them off the end of a padded axis and they then get
-  // filtered away. Measured: Goff's window runs 166.9 to 394.1, where nearest-5
-  // gives 395 and 165, both outside, leaving a scale with one mark on it.
+  // Zero is left to the axis rule: the bars stand on a 9px pedestal, so value
+  // zero is not the rule's own height and a "0" line would float above it.
   const axisTicks = React.useMemo(() => {
     if (isBinary || !(g.axisW > 0)) return [];
-    const lo = scale.axisMin;
     const hi = scale.axisMin + scale.span;
-    // The label grid, not the drag grid -- those parted company when the drag
-    // went to one unit so it could reach a line a book would post.
-    const s = scale.tickStep ?? (scale.step >= 5 ? 5 : 1);
-    const ticks = [
-      Math.floor(hi / s) * s,
-      Math.round((lo + (hi - lo) / 2) / s) * s,
-      Math.ceil(lo / s) * s,
-    ];
-    return [...new Set(ticks)].filter((t) => t >= lo && t <= hi);
-  }, [isBinary, g.axisW, scale.axisMin, scale.span, scale.step, scale.tickStep]);
+    const raw = hi / 8;
+    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    const f = raw / pow;
+    const step = Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow);
+    const ticks = [];
+    for (let t = step; t <= hi + 1e-9; t += step) ticks.push(Math.round(t * 100) / 100);
+    return ticks;
+  }, [isBinary, g.axisW, scale.axisMin, scale.span]);
   const canDrag = !isBinary && marketLine != null && typeof onDragLine === "function";
 
   const posLine = rawLine != null ? rawLine : line;
@@ -245,8 +283,50 @@ export default function FormPlot({
     window.addEventListener("pointercancel", up);
   };
 
+  // Ticks whose line would land above the box, or crowd the top edge.
+  const shownTicks = axisTicks.filter((t) => scale.y(t) + lay.labelH <= g.plotH - 8);
+  const lineY = scale.y(posLine) + lay.labelH;
+  // The side of the line a game has to land on to count, washed green; the
+  // other side red. Flips with the direction, so the Under view colours the
+  // floor rather than the ceiling.
+  const upper = direction === "under" ? "var(--neg)" : "var(--pos)";
+  const lower = direction === "under" ? "var(--pos)" : "var(--neg)";
+  const zoneBox = { position: "absolute", left: g.axisW || 0, right: g.gutter, pointerEvents: "none" };
+
   return (
     <div style={{ position: "relative", height: g.plotH }}>
+      {/* Drawn first, so the bars paint over them. Strongest at the line and
+          fading away from it, after Outlier: the reader sees at a glance which
+          side of the line a bar has to reach, and the wash moves as the line
+          is dragged. Alex, 2026-09-24: *"you see how the background on
+          outlier has a green/red faded background depending on where the bar
+          falls? Can you do something like this to spice up the chart?"* Not on
+          a binary market, whose line is not a height. */}
+      {g.zones && !isBinary && (
+        <>
+          <span
+            style={{
+              ...zoneBox, top: 0, bottom: lineY,
+              background: `linear-gradient(to top, color-mix(in srgb, ${upper} 16%, transparent), color-mix(in srgb, ${upper} 2%, transparent))`,
+            }}
+          />
+          <span
+            style={{
+              ...zoneBox, bottom: lay.labelH, height: Math.max(0, lineY - lay.labelH),
+              background: `linear-gradient(to bottom, color-mix(in srgb, ${lower} 14%, transparent), color-mix(in srgb, ${lower} 3%, transparent))`,
+            }}
+          />
+        </>
+      )}
+      {g.axisW > 0 && shownTicks.map((t) => (
+        <span
+          key={`grid-${t}`}
+          style={{
+            ...zoneBox, bottom: scale.y(t) + lay.labelH,
+            borderTop: "1px solid color-mix(in srgb, var(--line) 70%, transparent)",
+          }}
+        />
+      ))}
       <div
         ref={trackRef}
         onPointerDown={onZoom ? (e) => {
@@ -354,27 +434,46 @@ export default function FormPlot({
               {/* Explicit line boxes, because layFor above budgets for them.
                   Left to the font's own metrics these drift a pixel or two per
                   face and the axis rule stops meeting the bars. */}
-              {lay.date && (
+              {lay.date && !lay.stacked && (
                 <span style={{ fontFamily: MONO, fontSize: 10, lineHeight: `${LABEL_LINE}px`, color: "var(--dim)", whiteSpace: "nowrap" }}>{gm.date}</span>
               )}
+              {lay.date && lay.stacked && (() => {
+                // Thinned from the newest game back, so the last bar -- the
+                // one a reader looks at first -- always carries its date. A
+                // bar without one still gets the empty box, or its bar would
+                // drop below the others' baseline.
+                const parts = (n - 1 - i) % lay.every === 0 ? dateParts(gm.iso) : null;
+                const line = { fontFamily: MONO, fontSize: 10, lineHeight: `${LABEL_LINE}px`, height: LABEL_LINE, color: "var(--dim)", whiteSpace: "nowrap" };
+                return (
+                  <span
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: COL_GAP,
+                      // A thinned label is wider than its column and would be
+                      // clipped by the track at either end, so the two end
+                      // bars hold theirs inside the plot.
+                      alignSelf: lay.every > 1 && i === n - 1 ? "flex-end" : lay.every > 1 && i === 0 ? "flex-start" : undefined,
+                    }}
+                  >
+                    <span style={line}>{parts ? parts.mon : ""}</span>
+                    <span style={line}>{parts ? parts.day : ""}</span>
+                  </span>
+                );
+              })()}
             </div>
           );
         })}
       </div>
 
-      {/* The value scale, where there is a gutter to put it in.
-          Three marks: the top of the axis, its midpoint and its floor -- enough
-          to read a bar's height without counting, which is all a scale on a
-          ten-column plot needs to do. Rounded to the axis's own step so the
-          numbers are the ones the bars are drawn against, and the whole thing
-          is skipped on a binary market, where the only values are 0 and 1. */}
-      {g.axisW > 0 && !isBinary && axisTicks.map((t) => (
+      {/* The value scale, where there is a gutter to put it in, level with
+          its gridline. Skipped on a binary market, where the only values are
+          0 and 1. */}
+      {g.axisW > 0 && shownTicks.map((t) => (
         <span
           key={t}
           style={{
-            position: "absolute", left: 0, width: g.axisW - 6, textAlign: "right",
+            position: "absolute", left: 0, width: g.axisW - 8, textAlign: "right",
             bottom: scale.y(t) + lay.labelH - 6,
-            fontFamily: MONO, fontSize: 9.5, lineHeight: "12px", color: "var(--dim)",
+            fontFamily: MONO, fontSize: 10, lineHeight: "12px", color: "var(--dim)",
             pointerEvents: "none", zIndex: 1, whiteSpace: "nowrap",
           }}
         >

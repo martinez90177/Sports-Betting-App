@@ -7,6 +7,7 @@ import { watchGameLabel, watchGameShort } from "../lib/watchGames.js";
 import AgeMark from "./AgeMark.jsx";
 import { STATUS } from "../lib/teamColors.js";
 import ValuePlot from "./ValuePlot.jsx";
+import WindowNumber from "./WindowNumber.jsx";
 
 // A transcription of frame `1a` in `v3 Mocks/PropPalace Desktop v3.dc.html`,
 // the largest frame in the bundle.
@@ -220,6 +221,9 @@ export default function PlayerDetailDesktop({
   const shown = zoom ? games.slice(zoom[0], zoom[1] + 1) : games;
 
   const [picked, setPicked] = React.useState(null);
+  // The saved-window pill under the pointer or focus, which is the only one
+  // that shows its ×.
+  const [hoverWin, setHoverWin] = React.useState(null);
 
   // The alt-line ladder, folded away by default so the graph owns the screen.
   //
@@ -786,9 +790,37 @@ export default function PlayerDetailDesktop({
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {windows.options.map((w) => (
                 <div key={w.id} role="button" tabIndex={0} onClick={w.onPick}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.onPick(); } }}
-                  style={railPill(w.active)}>
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.onPick(); }
+                    else if (w.onRemove && (e.key === "Delete" || e.key === "Backspace")) { e.preventDefault(); w.onRemove(); }
+                  }}
+                  onMouseEnter={w.onRemove ? () => setHoverWin(w.id) : undefined}
+                  onMouseLeave={w.onRemove ? () => setHoverWin(null) : undefined}
+                  onFocus={w.onRemove ? () => setHoverWin(w.id) : undefined}
+                  onBlur={w.onRemove ? () => setHoverWin(null) : undefined}
+                  style={{ ...railPill(w.active), position: "relative" }}>
                   {w.label}
+                  {/* Saved windows only, and only on hover or focus: the ×
+                      is how a window saved by mistake leaves the bar, and
+                      shown on every chip at once it would read as a row of
+                      things asking to be closed. */}
+                  {w.onRemove && hoverWin === w.id && (
+                    <span
+                      role="button"
+                      aria-label={`Remove saved window ${w.label}`}
+                      title={`Remove ${w.label}`}
+                      onClick={(e) => { e.stopPropagation(); setHoverWin(null); w.onRemove(); }}
+                      style={{
+                        position: "absolute", top: -7, right: -7, width: 16, height: 16,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        borderRadius: 5, border: "1px solid var(--line-strong, var(--line))",
+                        background: "var(--surface-2)", color: "var(--text-2)",
+                        fontFamily: MONO, fontSize: 11, lineHeight: 1, cursor: "pointer",
+                      }}
+                    >
+                      ×
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -798,9 +830,16 @@ export default function PlayerDetailDesktop({
                 <div role="button" tabIndex={0} onClick={windows.custom.onDown}
                   onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onDown(); }}
                   style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", borderRadius: 6, color: "var(--text-2)", cursor: "pointer" }}>−</div>
-                <span style={{ minWidth: 30, textAlign: "center", fontFamily: MONO, fontSize: 13, fontWeight: 700 }}>
-                  {`L${windows.custom.value}`}
-                </span>
+                {/* Boxed, because a bare number between two buttons does not
+                    look like somewhere to type. */}
+                <WindowNumber
+                  value={windows.custom.value}
+                  min={windows.custom.min}
+                  max={windows.custom.max}
+                  onType={windows.custom.onType}
+                  style={{ minWidth: 46, height: 28, padding: "0 6px", boxSizing: "border-box", border: "1px solid var(--line)", borderRadius: 6, background: "var(--surface-1)" }}
+                />
+
                 <div role="button" tabIndex={0} onClick={windows.custom.onUp}
                   onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onUp(); }}
                   style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", borderRadius: 6, color: "var(--text-2)", cursor: "pointer" }}>+</div>

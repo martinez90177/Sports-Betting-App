@@ -99,16 +99,36 @@ const windowLabel = (w) => (w === "all" ? "Season" : `L${w}`);
 // sample outright -- every meeting with tonight's opponent, however far back --
 // where a split narrows the window already chosen. Omitted when there is no
 // opponent to name.
-export function buildWindows({ sport, lastN, setLastN, saved = [], onSave, custom, setCustom, onReset, h2h = null }) {
+export function buildWindows({ sport, lastN, setLastN, saved = [], onSave, onRemove, custom, setCustom, onReset, h2h = null }) {
   const base = WINDOWS[sport] || WINDOWS.nba;
   const ids = base.concat(saved.filter((w) => !base.includes(w)));
+  // 2 is the floor a window can mean anything at; the ceiling is the league's
+  // own season length.
+  const max = WINDOW_MAX[sport] || 82;
+  const clamp = (n) => Math.max(2, Math.min(max, Math.round(n)));
+  // Every way of choosing a window leaves H2H first, as a pill does -- H2H
+  // replaces the sample outright, so a custom window applied under it
+  // changed nothing on screen.
+  const use = (n) => { if (h2h && h2h.active && h2h.onClear) h2h.onClear(); setLastN(n); };
   return {
-    options: ids.map((w) => ({
-      id: String(w),
-      label: windowLabel(w),
-      active: !(h2h && h2h.active) && String(lastN) === String(w),
-      onPick: () => { if (h2h && h2h.onClear) h2h.onClear(); setLastN(w); },
-    })).concat(h2h && h2h.oppAbbr ? [{
+    options: ids.map((w) => {
+      const own = !base.includes(w);
+      return {
+        id: String(w),
+        label: windowLabel(w),
+        active: !(h2h && h2h.active) && String(lastN) === String(w),
+        onPick: () => { if (h2h && h2h.onClear) h2h.onClear(); setLastN(w); },
+        // Only a window the reader saved can be removed; the sport's own
+        // four are the frame's. Removing the one in use drops back to the
+        // default, so the row never loses sight of which window is on.
+        onRemove: own && onRemove
+          ? () => {
+              onRemove(w);
+              if (!(h2h && h2h.active) && String(lastN) === String(w)) setLastN(DEFAULT_WINDOW[sport] || 10);
+            }
+          : null,
+      };
+    }).concat(h2h && h2h.oppAbbr ? [{
       id: "h2h",
       label: `H2H vs ${h2h.oppAbbr}`,
       active: !!h2h.active,
@@ -117,15 +137,32 @@ export function buildWindows({ sport, lastN, setLastN, saved = [], onSave, custo
     custom: setCustom
       ? {
           value: custom,
-          // 2 is the floor a window can mean anything at; the ceiling is the
-          // league's own season length.
-          onUp: () => setCustom(Math.min(WINDOW_MAX[sport] || 82, custom + 1)),
-          onDown: () => setCustom(Math.max(2, custom - 1)),
-          // SAVE selects it *and* keeps it on the bar for later. Apply-only is
-          // the sheet's DONE button, which commits whatever is showing.
-          onSave: () => { setLastN(custom); onSave && onSave(custom); },
+          min: 2,
+          max,
+          onUp: () => setCustom(clamp(custom + 1)),
+          onDown: () => setCustom(clamp(custom - 1)),
+          // A typed number, clamped to the league's range. With `now` it is
+          // also used at once -- Enter in the field is APPLY, not SAVE.
+          onType: (n, now) => {
+            const v = clamp(n);
+            setCustom(v);
+            if (now) use(v);
+          },
+          // APPLY tries it now and nothing more -- it does not join `saved`,
+          // so it never gains a pill of its own. Without this, every value
+          // stepped through on the way to the one actually wanted stuck to
+          // the bar forever, because the desktop button labelled APPLY called
+          // the same function SAVE did (`onApply || onSave`, with `onApply`
+          // never defined). SAVE is the only path that persists, matching its
+          // own caption: "keeps it on the rail."
+          onApply: () => use(custom),
+          onSave: () => { use(custom); onSave && onSave(custom); },
         }
       : null,
+    // The window in use, named even when no pill is -- a typed or applied
+    // window is not saved, so it has no pill to light up, and the phone's
+    // chip read a bare "Window" over a 26-game chart.
+    currentLabel: h2h && h2h.active ? `H2H vs ${h2h.oppAbbr}` : windowLabel(lastN),
     onReset,
   };
 }

@@ -179,6 +179,22 @@ export function feedFormScale(recent, line, isBinary, opts = {}) {
   };
 }
 
+// The trailing run the strip underlines, so anything that prints it in words
+// counts the same games the rule is drawn under.
+//
+// Recomputed from the bars whenever the line has been dragged -- a streak
+// counted against the posted line would contradict the bars now on screen.
+export function trailingRun(recent, lineVal, isBinary, direction, streak, adjusted) {
+  const hits = (recent || []).map((g) => feedIsHit(g.v, lineVal, isBinary, direction));
+  if (!hits.length) return { len: 0, hit: false, show: false };
+  let runLength = 1;
+  for (let i = hits.length - 2; i >= 0 && hits[i] === hits[hits.length - 1]; i--) runLength++;
+  const live = adjusted || streak == null;
+  const len = live ? runLength : Math.min(Math.abs(streak), hits.length);
+  const hit = live ? hits[hits.length - 1] : streak > 0;
+  return { len, hit, show: len >= 3 };
+}
+
 export default function FeedFormStrip({
   // `size` names one of the five contexts above. Explicit height/gap/gutter
   // still win, so the call sites that predate the size table keep rendering
@@ -195,6 +211,10 @@ export default function FeedFormStrip({
   // the caption's "7 of 10" restated the lit cell's "7/10" an inch away. Alex,
   // 2026-09-10: *"I dont want it to be like old repeating info ya know."*
   captionCounts = true,
+  // Whether the caption also states the run. Off where the row already says it
+  // elsewhere -- the desktop feed row prints it beside the matchup, so its
+  // caption would otherwise be a line held empty on every row without one.
+  runCaption = true,
   // Print each game's value inside its own bar. Opt-in rather than always on:
   // a numeral needs a bar wide enough to hold it, and the board card (64px
   // over eight columns) and the phone strip (48px) do not have one. The feed
@@ -228,16 +248,7 @@ export default function FeedFormStrip({
   const cols = Math.max(slots ?? MIN_SLOTS, n);
   const shortfall = cols - n;
 
-  // The trailing run is recomputed from these bars rather than taken from
-  // `streak` whenever the line has been dragged -- a streak counted against
-  // the posted line would contradict the bars now on screen.
-  let runLength = 1;
-  for (let i = hits.length - 2; i >= 0 && hits[i] === hits[hits.length - 1]; i--) runLength++;
-  const runHit = hits[hits.length - 1];
-  const useLiveRun = adjusted || streak == null;
-  const shownRun = useLiveRun ? runLength : Math.min(Math.abs(streak), recent.length);
-  const shownRunHit = useLiveRun ? runHit : streak > 0;
-  const showRun = shownRun >= 3;
+  const { len: shownRun, hit: shownRunHit, show: showRun } = trailingRun(recent, lineVal, r.isBinary, direction, streak, adjusted);
   const poCount = recent.reduce((n, g) => n + (g.po ? 1 : 0), 0);
   const runFill = shownRunHit ? "var(--pos-solid, var(--pos))" : "var(--neg)";
   const runInk = shownRunHit ? "var(--pos)" : "var(--neg)";
@@ -498,17 +509,27 @@ export default function FeedFormStrip({
       {/* Counts first: "N of M" is the sample the bars above actually draw,
            shown every time so a hit rate is never on screen without its own
            sample size next to it. */}
-      {caption && (
-        <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: showRun ? runInk : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
-          {/* The rule under the bars says *which* games; this says what the
-               rule means, in the same place the sample and the streak are
-               already stated. A grey line nobody can name is the dot problem
-               again with a different shape. */}
-          {captionCounts ? `${hitCount} of ${recent.length}` : ""}
-          {showRun ? `${captionCounts ? " · " : ""}${shownRun} ${shownRunHit ? "straight" : "cold"}` : ""}
-          {poCount > 0 ? `${captionCounts || showRun ? " · " : ""}${poCount} PO` : ""}
-        </div>
-      )}
+      {(() => {
+        if (!caption) return null;
+        // The rule under the bars says *which* games; this says what the rule
+        // means, in the same place the sample and the streak are already
+        // stated. A grey line nobody can name is the dot problem again with a
+        // different shape.
+        const runText = runCaption && showRun ? `${shownRun} ${shownRunHit ? "straight" : "cold"}` : "";
+        const text = [
+          captionCounts ? `${hitCount} of ${recent.length}` : "",
+          runText,
+          poCount > 0 ? `${poCount} PO` : "",
+        ].filter(Boolean).join(" · ");
+        // Nothing to say, no line: an empty caption still held its margin,
+        // which is the gap Alex circled under every row without a streak.
+        if (!text) return null;
+        return (
+          <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: runText ? runInk : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
+            {text}
+          </div>
+        );
+      })()}
     </div>
   );
 }

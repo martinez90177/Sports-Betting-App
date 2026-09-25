@@ -74,6 +74,9 @@ describe what Alex wants, not how it should look; the v3 frame decides that.
 2. **Market strip centred** across the top (asked for, never built).
 3. **Graph taller** — 330px over a 250 span, up from 268/224.
 4. **Value scale** in a left gutter on the graph (390 / 280 / 170).
+   **Taken 2026-09-24**, Alex's call: a 36px gutter on the desktop plot with
+   round-number gridlines, plus Outlier-style green/red washes either side of
+   the line (`PLOT.desktop` in `src/v3/FormPlot.jsx`). The box stays 268px.
 5. **Alt lines collapsed** behind a disclosure so the graph gets the page.
 6. **Roster tabs lead with the subject's own team.**
 7. **Keyboard walk** — left/right through the roster, up/down through markets.
