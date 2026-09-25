@@ -59,6 +59,11 @@ export default function PropFeedMobile({
   hasMore,
   marketLabel,
   onOpenMarkets,
+  // [{ id, label, active, disabled, title, onPick }] -- the same list, order
+  // and greying as the desktop board. When given, the market chip opens the
+  // sheet, which carries them.
+  markets = null,
+  marketNote = null,
   direction,
   onToggleDirection,
   sampleWindow,
@@ -101,7 +106,10 @@ export default function PropFeedMobile({
     >
       <div className="nsb" style={{ display: "flex", gap: 8, padding: "10px 16px", overflowX: "auto" }}>
         <div onClick={() => setRefineOpen(true)} style={chip(true)}>{String(sport).toUpperCase()} ▾</div>
-        <div onClick={onOpenMarkets} style={chip(false)}>{marketLabel} ▾</div>
+        {/* The market chip opens the sheet the markets are in. It called
+            onOpenMarkets, which set a flag only the desktop layout reads, so
+            on a phone it did nothing and the market could not be changed. */}
+        <div onClick={markets ? () => setRefineOpen(true) : onOpenMarkets} style={chip(false)}>{marketLabel} ▾</div>
         <div onClick={onToggleDirection} style={chip(true)}>{direction === "under" ? "Under" : "Over"} ▾</div>
         <div onClick={() => setRefineOpen(true)} style={chip(false)}>
           {(windows.find((w) => w.id === sampleWindow) || {}).label || "L10"} ▾
@@ -190,6 +198,28 @@ export default function PropFeedMobile({
             ))}
           </div>
         </div>
+
+        {markets && markets.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={sectionLabel}>MARKET</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {markets.map((m) => (
+                <div
+                  key={m.id}
+                  role="button"
+                  aria-pressed={!!m.active}
+                  aria-disabled={!!m.disabled}
+                  title={m.title}
+                  onClick={m.disabled ? undefined : m.onPick}
+                  style={{ ...pill(m.active), minHeight: 38, fontSize: 12, opacity: m.disabled ? 0.32 : 1, cursor: m.disabled ? "not-allowed" : "pointer" }}
+                >
+                  {m.label}
+                </div>
+              ))}
+            </div>
+            {marketNote && <span style={{ fontSize: 12, color: "var(--dim)" }}>{marketNote}</span>}
+          </div>
+        )}
 
         {/* The game picker, in the sheet that owns every other pool control.
             It reached this frame through nothing at all before -- see the

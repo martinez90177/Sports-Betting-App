@@ -790,9 +790,27 @@ input.pp-search:focus, input.pp-search:focus-visible {
      The mock's sum to 868 and leave 35px of slack. Measured in the browser at
      1440, not derived: scrollWidth === clientWidth === 903 on both the header
      and the rows. */
+  /* PROPOSITION is 212-268 rather than the mock's 200-262 because the avatar
+     inside it is 46, not 38 (see FeedRow). Alex, 2026-09-25: *"any way to
+     make their pictures bigger ... I just feel like they're kinda small."*
+
+     The floor rises by twice what the photo gains (+8 photo, -2 gap: +6 net,
+     floor +12), not once. Between its floor and its cap this track shares
+     every spare pixel equally with FORM, so a floor raised by only the
+     photo's growth hands the text back half of it: at 1440 an 18px-bigger
+     photo cost the text 9px and seven names -- Davante Adams, Jonathan
+     Taylor, George Pickens -- pushed their team code onto a second line.
+     Doubled, the text is never narrower than it was, at any window.
+
+     The price is FORM's, and it is why the photo is 46 and not the 54 it
+     briefly was: in the same shared band the graph gives up half the floor's
+     rise. At 54 that was 14px of chart at 1440 and Alex saw it -- *"i can
+     tell it compromised the size of the graphs."* At 46 it is 6px, and
+     nothing once the window is wide enough for FORM to reach its 250 cap.
+     The minima sum to 880, inside the 903 the table gets at the mock's 1440. */
   grid-template-columns:
     34px
-    minmax(200px, 262px)
+    minmax(212px, 268px)
     minmax(180px, 250px)
     minmax(380px, 1fr);
   column-gap: 14px;

@@ -18,6 +18,7 @@ import {
   dayKey as slateDayKey,
 } from "./lib/gamesData.js";
 import { feedIsHit, buildRungs, bookLadder, combinedLanded, windowValues } from "./lib/altLines.js";
+import { fetchBookMarkets, bookOffers } from "./lib/bookMarkets.js";
 import { useWatchGames, watchGameFromPage } from "./lib/watchGames.js";
 import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/calibration.js";
 import SettingsMobile from "./v3/SettingsMobile.jsx";
@@ -198,12 +199,17 @@ const defTier = (rank, teams, direction) => {
 // "easy" is the feed's own word for a soft defence -- soft is a fact about the
 // defence, easy is what it means for the side the row is on (see
 // feedMatchupRead) -- and it colours the same, because it is the same tier.
-// Mid returns --dim deliberately: the middle third is the case with nothing to
-// say, and colouring it would spend attention on a non-signal.
+// Mid is --warn: a traffic light, green / yellow / red. It was --dim, on the
+// reasoning that the middle third has nothing to say -- and on the feed that
+// made a mid badge the same grey as the line it sits on, so it read as no
+// badge at all. Alex, 2026-09-25: *"the easy and tough easily pop out which i
+// love, but the mid just blends in with the background."* --warn and not
+// --status-questionable, the same call intentRead.js makes for CHECK: the
+// availability yellow belongs to injury dots, and a matchup is not one.
 const tierColor = (t) => (
   t === "soft" || t === "easy" ? "var(--green)"
     : t === "tough" ? "var(--red)"
-      : "var(--dim)"
+      : "var(--warn)"
 );
 
 // Team abbreviation -> ESPN team-logo CDN slug (mostly lowercase of the
@@ -281,6 +287,27 @@ function gameHasConcluded(game) {
     || s.includes("postponed")
     || s.includes("suspended")
     || s.includes("cancel");
+}
+
+// An NFL game is over when ESPN says so, or four and a half hours after its
+// kickoff, whichever comes first.
+//
+// The clock is the backstop for the morning after. Alex, 2026-09-25, the
+// night Atlanta played at Green Bay: *"make sure that friday mornings the
+// thursday night football stuff is gone. maybe even something like 1 am est
+// would work too."* A regulation game runs about three and a quarter hours
+// and overtime rarely adds forty minutes, so four and a half clears a
+// Thursday 8:15 ET kickoff at 12:45 ET -- inside his 1am -- even when the
+// provider is slow to flip the game to final. A weather delay long enough to
+// outlast it is rare, and a game that far past kickoff has nothing left to
+// bet before it anyway.
+const NFL_GAME_OVER_MS = 4.5 * 60 * 60 * 1000;
+// How often an open tab re-reads the week's slate (see the NFL data effect).
+const NFL_SLATE_RECHECK_MS = 5 * 60 * 1000;
+function nflGameOver(game, now = Date.now()) {
+  if (gameHasConcluded(game)) return true;
+  const t = Date.parse(game && (game.startsAt || game.date));
+  return Number.isFinite(t) && now - t > NFL_GAME_OVER_MS;
 }
 
 // Is this ISO timestamp on the viewer's own calendar day? The WNBA slate
@@ -3426,7 +3453,7 @@ const NFL_ESPN_ID = {
   buf_cook: "4379399", buf_davis: "4429501", buf_kincaid: "4385690", buf_bass: "3917232",
   hou_stroud: "4432577", hou_collins: "4258173", hou_dell: "4366031", hou_hutchinson: "4686422",
   hou_montgomery: "4035538", hou_marks: "4429059", hou_schultz: "3117256", hou_fairbairn: "2971573",
-  mia_willis: "4242512", mia_waddle: "4372016", mia_mwashington: "4569603", mia_marshall: "4362630",
+  mia_willis: "4242512", mia_mwashington: "4569603", mia_marshall: "4362630",
   mia_achane: "4429160", mia_wright: "4682745", mia_dulcich: "4367209", mia_patterson: "4243371",
   lv_cousins: "14880", lv_tucker: "4428718", lv_thornton: "4432775", lv_sjackson: "4361332",
   lv_jeanty: "4890973", lv_mwashington: "4686658", lv_bowers: "4432665", lv_gay: "4249087",
@@ -3739,7 +3766,9 @@ const TEXANS_PLAYERS = [
 ];
 const DOLPHINS_PLAYERS = [
   { id: "mia_willis", name: "Malik Willis", team: "MIA", pos: "QB" },
-  { id: "mia_waddle", name: "Jaylen Waddle", team: "MIA", pos: "WR" },
+  // No Jaylen Waddle here: he is `waddle`, on Denver. A second row for him,
+  // mapped to the same ESPN id, let the live roster merge into this one while
+  // `waddle` stood as well, and Denver's rail listed him twice.
   { id: "mia_mwashington", name: "Malik Washington", team: "MIA", pos: "WR" },
   { id: "mia_marshall", name: "Terrace Marshall Jr.", team: "MIA", pos: "WR" },
   { id: "mia_achane", name: "De'Von Achane", team: "MIA", pos: "RB" },
@@ -3853,6 +3882,32 @@ let NFL_ROSTER_STATUS = {};
 // Null until the depth charts land, which is the state that means "do not
 // filter" -- see feedRowPlaysEnough.
 let NFL_STARTERS = null;
+
+// The chart's starters with anyone listed out replaced by the next man down,
+// as a Set of ESPN ids -- what "starting" means to every surface that asks.
+//
+// The chart alone said Jayden Daniels, ruled out with a dislocated elbow, was
+// Washington's starter and Marcus Mariota was not. The feed already dropped
+// Daniels for being out, so with Starters Only on Washington had no
+// quarterback in the feed at all. Now the man the chart lists next inherits
+// the spot, at every prop slot: QB1, RB1, the formation's receivers and tight
+// ends, the kicker. Rebuilt whenever the charts or the injury report change.
+let NFL_STARTER_SET = { base: null, status: null, set: null };
+function nflStarterSet() {
+  if (!NFL_STARTERS) return null;
+  if (NFL_STARTER_SET.base === NFL_STARTERS && NFL_STARTER_SET.status === NFL_ROSTER_STATUS) return NFL_STARTER_SET.set;
+  const set = new Set(NFL_STARTERS.starters);
+  Object.values(NFL_STARTERS.depth || {}).forEach((d) => {
+    [["qb", 1], ["rb", 1], ["wr", d.wrStart || 3], ["te", d.teStart || 1], ["pk", 1]].forEach(([slot, n]) => {
+      (d[slot] || [])
+        .filter((id) => NFL_ROSTER_STATUS[String(id)] !== "out")
+        .slice(0, n)
+        .forEach((id) => set.add(String(id)));
+    });
+  });
+  NFL_STARTER_SET = { base: NFL_STARTERS, status: NFL_ROSTER_STATUS, set };
+  return set;
+}
 
 // Only the positions this app prices. An ESPN NFL roster is ~96 athletes
 // including the offensive line and the whole defense, none of whom have a prop
@@ -3990,7 +4045,14 @@ function nflRailOrder(players) {
     const p = byEspn.get(String(id));
     if (p && !taken.has(p.id)) { taken.add(p.id); lead.push(p); }
   };
-  const list = (slot) => d[slot] || [];
+  // The lead spots skip anyone listed out, and the next man on the chart
+  // takes his place -- the chart lags the injury report. Alex, 2026-09-25:
+  // *"jayden daniels is confirmed out with mariota starting and you still
+  // have him ... as the starting qb on side rail."* ESPN had Daniels Out
+  // (dislocated elbow) and still charted him QB1 over Mariota. He stays on
+  // the rail, on the bench with his OUT pill; he is just not the starter.
+  // Doubtful and questionable players keep their spot: they may yet play.
+  const list = (slot) => (d[slot] || []).filter((id) => NFL_ROSTER_STATUS[String(id)] !== "out");
   // Workloads are read off the team's newest season only. getNFLGames hands
   // back last season's log for anyone with no games in this one yet, so
   // without this a back who has not played a snap in 2026 -- Seattle's Zach
@@ -4015,8 +4077,9 @@ function nflRailOrder(players) {
   list("te").slice(0, d.teStart || 1).forEach(take);
   list("pk").slice(0, 1).forEach(take);
 
+  // Bench order is the whole chart, out players included, in their places.
   const rank = new Map();
-  ["qb", "wr", "rb", "te", "pk"].forEach((slot) => list(slot).forEach((id, i) => {
+  ["qb", "wr", "rb", "te", "pk"].forEach((slot) => (d[slot] || []).forEach((id, i) => {
     if (!rank.has(String(id))) rank.set(String(id), i);
   }));
   const posAt = (p) => { const i = NFL_RAIL_POS_ORDER.indexOf(p.pos); return i < 0 ? NFL_RAIL_POS_ORDER.length : i; };
@@ -4049,6 +4112,18 @@ function nflRailOrder(players) {
 //                        and he averages fifteen; Green Bay lists Kaleb
 //                        Johnson third on 7.5 beside MarShawn Lloyd's 9.7.
 //
+// And a deeper back is judged only on games the chart's RB2 also played,
+// while RB2 is healthy. Alex, 2026-09-25, of Denver: *"with jonah coleman it
+// looks like he only played bc rj harvey missed week 2 ... if the rb2 is
+// healthy and rb3 picked up stats because rb2 missed a game, this should not
+// qualify the rb3."* He was right: Coleman's 13 touches were all in the one
+// game Harvey sat out, and he did not play in the one Harvey did. Kendre
+// Miller's nine at New Orleans were the same -- the week Kamara was out. A
+// back who earned his share *beside* a healthy RB2 keeps it: Seattle's
+// George Holani, Green Bay's Kaleb Johnson, Minnesota's Jordan Mason. When
+// RB2 is listed out this week the gate lifts, because then the man below him
+// really is the second back.
+//
 // Checked against 2026 weeks 1-2, all 32 teams: Rodriguez (6.0 beside Tuten's
 // 15.5), Monangai (12.0 / 20.5) and Corum (11.5 / 14.0) are in; Dallas's
 // second back (2.5 beside Javonte's 16.5) is out, and so are Jacksonville's
@@ -4066,8 +4141,15 @@ function nflCommitteeBacks(rbIds, byEspn, { team, season }) {
   const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
   const leadLog = logOf(byEspn.get(String(rbIds[0])));
   const leadBy = new Map(leadLog.map((g) => [g.eventId, touches(g)]));
+  // Only a second back we can see: one missing from the pool has no log to
+  // gate on, and gating on an empty log would silently empty the committee.
+  const rb2 = byEspn.get(String(rbIds[1]));
+  const rb2Healthy = rb2 && NFL_ROSTER_STATUS[String(rbIds[1])] !== "out";
+  const rb2Played = new Set(logOf(rb2).map((g) => g.eventId));
   return rbIds.slice(1).filter((id, i) => {
-    const mine = logOf(byEspn.get(String(id)));
+    const deep = i >= 1;
+    const mine = logOf(byEspn.get(String(id)))
+      .filter((g) => !deep || !rb2Healthy || rb2Played.has(g.eventId));
     if (!mine.length) return false;
     const shared = mine.filter((g) => leadBy.has(g.eventId));
     const games = (shared.length ? shared : mine).slice(-COMMITTEE_WINDOW);
@@ -4075,7 +4157,6 @@ function nflCommitteeBacks(rbIds, byEspn, { team, season }) {
     const leadPer = shared.length
       ? mean(games.map((g) => leadBy.get(g.eventId)))
       : mean(leadLog.slice(-COMMITTEE_WINDOW).map(touches));
-    const deep = i >= 1;
     if (per < (deep ? 7 : 6)) return false;
     return !leadPer || per / leadPer >= (deep ? 0.5 : 1 / 3);
   });
@@ -7488,7 +7569,7 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
       }}>
         <span style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>{footerLabel(d)}</span>
         <span className="mono" style={{ color: tierColor(tier), fontWeight: 600, whiteSpace: "nowrap" }}>
-          #{d.defRank} def{tier === "soft" ? " · soft" : tier === "tough" ? " · tough" : ""}
+          #{d.defRank} def{tier === "soft" ? " · soft" : tier === "tough" ? " · tough" : " · mid"}
         </span>
       </div>
     </div>
@@ -16785,6 +16866,12 @@ function buildPropGroups(markets, categoryMap, categoryOrder) {
 // for WNBA), so the *unfiltered* full market list here just determines what
 // the picker offers to search/browse; buildNFLFeedRows/buildWNBAFeedRows
 // naturally return zero rows for a market a given player doesn't have.
+// The markets the feed's market board leads with, per sport, in order --
+// see orderedMarkets in PropFeedPage. The rest follow in their groups' order.
+const FEED_MARKET_LEAD = {
+  nfl: ["passYds", "passRushYds", "passTd", "rushYds", "scrim", "recYds", "rec", "anytimeTd"],
+};
+
 const PROP_GROUPS = {
   nba: buildPropGroups(MARKETS, NBA_MARKET_CATEGORY, NBA_FEED_CATEGORIES),
   wnba: buildPropGroups(WNBA_MARKETS, WNBA_MARKET_CATEGORY, WNBA_FEED_CATEGORIES),
@@ -16814,7 +16901,10 @@ const PROP_QUICK_PICKS = {
 // meaning "all" used to carry as a string. Picking an item toggles it and
 // keeps the panel open, since checking several is now a normal thing to do
 // in one visit; only the backdrop/Escape/"All Props" close it.
-function PropTypePicker({ groups, values, onChange, fill = false }) {
+// `unavailable(id)` -> a short reason ("not at FanDuel") for a market the
+// reader's book has not posted -- greyed and inert, as on the desktop board --
+// or null.
+function PropTypePicker({ groups, values, onChange, fill = false, unavailable = null }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const deferredSearch = React.useDeferredValue(search);
@@ -16918,21 +17008,26 @@ function PropTypePicker({ groups, values, onChange, fill = false }) {
               </div>
               {g.markets.map((m) => {
                 const checked = values.includes(m.id);
+                const off = unavailable ? unavailable(m.id) : null;
                 return (
                   <div
                     key={m.id}
                     role="button"
                     aria-pressed={checked}
-                    onClick={() => toggle(m.id)}
+                    aria-disabled={!!off}
+                    title={off || undefined}
+                    onClick={off ? undefined : () => toggle(m.id)}
                     style={{
-                      padding: "8px 12px", cursor: "pointer", fontSize: 13,
+                      padding: "8px 12px", cursor: off ? "not-allowed" : "pointer", fontSize: 13,
                       display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                       color: checked ? "var(--amber)" : "var(--text)",
                       background: checked ? "var(--amber-dim)" : "transparent",
+                      opacity: off ? 0.4 : 1,
                     }}
                   >
                     {m.label}
                     {checked && <span className="mono" style={{ fontSize: 12 }}>✓</span>}
+                    {off && <span className="mono" style={{ fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{off}</span>}
                   </div>
                 );
               })}
@@ -17997,15 +18092,17 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // Two calls would be two chances for the chip and the word to disagree about
   // the same defence.
   const matchupRead = feedMatchupRead(r.rank, sport, direction);
-  // Null on a middle-third defence, and that is the whole rule: the badge and
-  // the word both tint only at the two ends. A mid row keeps --text on the
-  // number, because the rank is data a reader still has to be able to read --
-  // dimming it would cost legibility to say "nothing to report".
-  const matchupTone = matchupRead && matchupRead !== "mid" ? tierColor(matchupRead) : null;
+  // All three tiers tint now, mid included -- see tierColor for why.
+  const matchupTone = matchupRead ? tierColor(matchupRead) : null;
   const streak = feedStreak(r.values, r.line, r.isBinary, direction);
   const cushion = feedCushion(r.values, r.line, r.isBinary, sampleWindow, direction);
   const [formAnchor, setFormAnchor] = useState(null);
-  const avatarSize = isNarrow ? 34 : 38;
+  // 46 on the desktop table, whose PROPOSITION track was widened so that the
+  // name beside it never has less room than it did at 38 (see .feed-grid for
+  // why that took twice the photo's growth, and why 46 rather than 54: the
+  // graph pays for it). The photo is a 436px ESPN crop, so it is sharp at any
+  // size here. The narrow card layout keeps its 34.
+  const avatarSize = isNarrow ? 34 : 46;
   const dotSize = Math.round(avatarSize * 0.3);
 
   // ---- draggable line (redesign handoff) ----
@@ -18364,10 +18461,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             // ladder footer and the matchup blocks already use -- this word was
             // the one place that stated a tier and drew it flat.
             //
-            // Only the two ends carry colour and weight. Mid stays exactly as
-            // the rest of this line reads, because a middle-third defence is
-            // the row where the matchup is not the story, and marking all
-            // three would leave nothing standing out from anything.
+            // All three carry colour and weight: green, yellow, red.
             return (
               <span
                 title={`${read === "easy" ? "A soft" : read === "tough" ? "A tough" : "A middling"} matchup for this market, on this side`}
@@ -18597,7 +18691,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
       }}
     >
       {addBtn}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
         {avatarEl}
         <div style={{ minWidth: 0 }}>
           {propositionBlock}
@@ -19017,7 +19111,7 @@ function feedRowPlaysEnough(r, teamGames, sport) {
   if (sport === "nfl" && NFL_STARTERS) {
     if (!NFL_STARTERS.teams.has(r.team)) return true;
     if (!r.logId) return true;
-    return NFL_STARTERS.starters.has(String(r.logId));
+    return nflStarterSet().has(String(r.logId));
   }
   const total = teamGames.get(r.team);
   if (!total || r.nAll == null) return true;
@@ -20765,7 +20859,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       time: matchupTimeLabel(g.date),
       startsAt: g.date,
       note: "",
-      concluded: gameHasConcluded(g),
+      concluded: nflGameOver(g),
     }));
   }, [nflSlate]);
 
@@ -20855,6 +20949,48 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   }, [liveRows, direction, linesMode, book, sport]);
   const propGroups = PROP_GROUPS[sport] || [];
   const bookLabel = (SPORTSBOOKS.find((b) => b.id === book) || SPORTSBOOKS[0]).label;
+
+  // Which markets the reader's book has posted, measured per sport (see
+  // lib/bookMarkets.js and api/book-markets.js). Null until it loads, and
+  // null greys nothing out.
+  const [bookMenus, setBookMenus] = useState(null);
+  React.useEffect(() => {
+    let live = true;
+    setBookMenus(null);
+    fetchBookMarkets(sport).then((m) => { if (live) setBookMenus(m); });
+    return () => { live = false; };
+  }, [sport]);
+  // false only when the book's own menu for this week's games leaves it out.
+  const marketOffered = React.useCallback(
+    (marketId) => bookOffers(bookMenus, book, sport, marketId),
+    [bookMenus, book, sport]
+  );
+
+  // The market board's order. NFL leads with the eight markets that are
+  // bet most and posted everywhere, in the order Alex set, 2026-09-25:
+  // *"pass yards, pass and rush yards, pass td, rushing yards, rushing and
+  // receiving yards, receiving yards, receptions, anytime td, and then you
+  // can put all the other ones left next."* The rest follow in their groups'
+  // order. Other sports keep their groups' order.
+  const orderedMarkets = useMemo(() => {
+    const all = propGroups.flatMap((g) => g.markets);
+    const lead = FEED_MARKET_LEAD[sport] || [];
+    const first = lead.map((id) => all.find((m) => m.id === id)).filter(Boolean);
+    return [...first, ...all.filter((m) => !lead.includes(m.id))];
+  }, [propGroups, sport]);
+
+  // A market the book stops offering -- the reader switched books, or the
+  // menus loaded after the page opened on it -- leaves the selection rather
+  // than sitting selected and empty. If that empties it, the feed goes back
+  // to its first market the book does offer, the way it opens.
+  React.useEffect(() => {
+    if (!bookMenus || !selectedMarkets.length) return;
+    const kept = selectedMarkets.filter((id) => marketOffered(id) !== false);
+    if (kept.length === selectedMarkets.length) return;
+    const fallback = orderedMarkets.find((m) => marketOffered(m.id) !== false);
+    setSelectedMarkets(kept.length ? kept : fallback ? [fallback.id] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookMenus, book, sport]);
   // The markets on screen whose rungs are that book's own, by name. No
   // selection means every market is listed.
   const bookLadderMarkets = useMemo(() => {
@@ -21120,9 +21256,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // below depends on this array, and without a stable reference it would
   // re-run its own sort on *every* render (a keystroke, a hover, an
   // unrelated state change) regardless of whether the actual row set changed.
+  //
+  // And never a market the reader's book does not post: with nothing selected
+  // the feed is "every market", and that means every market *there is a bet
+  // on* at their book.
   const marketRows = useMemo(
-    () => (selectedMarkets.length ? rows.filter((r) => selectedMarkets.includes(r.marketId)) : rows),
-    [rows, selectedMarkets]
+    () => (selectedMarkets.length ? rows.filter((r) => selectedMarkets.includes(r.marketId)) : rows)
+      .filter((r) => marketOffered(r.marketId) !== false),
+    [rows, selectedMarkets, marketOffered]
   );
 
   // Odds range: the left handle (oddsMinX) maps to the highest probability
@@ -22224,6 +22365,29 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     calibration: dockCalibration,
   });
 
+  // The market pills, for both layouts: the desktop header board and the
+  // phone's REFINE sheet draw the same list, in the same order, greyed the
+  // same way, so the two cannot disagree about what the reader's book offers.
+  const feedMarketTabs = orderedMarkets.map((m) => {
+    const offered = marketOffered(m.id);
+    return {
+      id: m.id, label: m.label,
+      active: selectedMarkets.includes(m.id),
+      // Greyed and inert where the reader's book has its menu up for this
+      // week's games and this market is not on it.
+      disabled: offered === false,
+      title: offered === false ? `${bookLabel} has not posted ${m.label} for this week's games` : undefined,
+      // Multi-select, which this page has always been. The mock's tabs are
+      // single-select, but which markets are on is data, not layout.
+      onPick: () => setSelectedMarkets((cur) => (cur.includes(m.id) ? cur.filter((x) => x !== m.id) : cur.concat(m.id))),
+    };
+  });
+  // Named under the markets when anything is greyed, so a grey pill says
+  // whose menu it is missing from.
+  const feedMarketNote = feedMarketTabs.some((t) => t.disabled)
+    ? `Greyed out: not posted at ${bookLabel} this week. Change books in Settings.`
+    : null;
+
   // ---- the phone (see src/v3/PropFeedMobile.jsx) ---------------------------
   //
   // Everything above stays: the same rows, the same filters, the same sort,
@@ -22253,6 +22417,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         onLoadMore={() => setVisibleCount((n) => n + FEED_PAGE_SIZE)}
         marketLabel={activeMarketLabel || "All markets"}
         onOpenMarkets={() => setFeedFiltersOpen(true)}
+        markets={feedMarketTabs}
+        marketNote={feedMarketNote}
         direction={direction}
         onToggleDirection={() => setDirection((d) => (d === "under" ? "over" : "under"))}
         sampleWindow={sampleWindow}
@@ -22388,7 +22554,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <PropTypePicker groups={propGroups} values={selectedMarkets} onChange={setSelectedMarkets} fill />
+                <PropTypePicker groups={propGroups} values={selectedMarkets} onChange={setSelectedMarkets} fill
+                  unavailable={(id) => (marketOffered(id) === false ? `not at ${bookLabel}` : null)} />
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>{screensButton}</div>
@@ -22811,13 +22978,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         setDefaultPresetId={setDefaultPresetId}
       />
       <PropFeedDesktop
-        marketTabs={propGroups.flatMap((g) => g.markets).map((m) => ({
-          id: m.id, label: m.label,
-          active: selectedMarkets.includes(m.id),
-          // Multi-select, which this page has always been. The mock's tabs are
-          // single-select, but which markets are on is data, not layout.
-          onPick: () => setSelectedMarkets((cur) => (cur.includes(m.id) ? cur.filter((x) => x !== m.id) : cur.concat(m.id))),
-        }))}
+        marketTabs={feedMarketTabs}
+        marketNote={feedMarketNote}
         directions={[
           { id: "over", label: "OVER", active: direction !== "under", onPick: () => setDirection("over") },
           { id: "under", label: "UNDER", active: direction === "under", onPick: () => setDirection("under") },
@@ -24836,7 +24998,7 @@ async function getTopPropsForMatchup(sport, awayAbbr, homeAbbr, { limit = 4 } = 
       // applies (feedRowPlaysEnough); a team whose chart did not load is not
       // filtered.
       if (status === "out") return null;
-      if (NFL_STARTERS && NFL_STARTERS.teams.has(p.team) && espnId && !NFL_STARTERS.starters.has(String(espnId))) return null;
+      if (NFL_STARTERS && NFL_STARTERS.teams.has(p.team) && espnId && !nflStarterSet().has(String(espnId))) return null;
       // The feed's log, line and default window (nflFeedGames, fairFeedLine,
       // L10), so this row and the player's feed row print the same numbers.
       // getNFLGames alone is one season: in Week 3 that is two games, under
@@ -25227,7 +25389,14 @@ export default function PropLedger() {
     // This week's real fixtures. One request for the whole slate, through the
     // same calendar-anchored mechanism the Board and the player pages already
     // use (fetchNflCurrentWeekSlate) -- not 32 per-team schedule lookups.
-    fetchNflCurrentWeekSlate().then((slate) => {
+    //
+    // Read again every five minutes, and the moment a hidden tab comes back.
+    // It was read once, on mount, so a tab opened before Thursday's kickoff
+    // went on listing that game's props into Friday -- nothing after the first
+    // read could take a finished game off. The rebuild behind it (every NFL
+    // feed row) only runs when a game has actually changed state.
+    let slateKey = null;
+    const applySlate = (slate) => {
       if (cancelled || !slate) return;
       // Readable games first -- an empty answer is not a week with no games,
       // it is a week we could not read, and overwriting a slate already on
@@ -25258,7 +25427,14 @@ export default function PropLedger() {
       // cell that does not appear. The calendar rolls to the next week within
       // its own fifteen-minute TTL (see weekInProgress), and the slate that
       // arrives then is next week's.
-      const toPlay = readable.filter((g) => !gameHasConcluded(g));
+      //
+      // nflGameOver rather than gameHasConcluded alone: final, or four and a
+      // half hours past kickoff, so the morning after never waits on the
+      // provider's flag.
+      const toPlay = readable.filter((g) => !nflGameOver(g));
+      const key = readable.map((g) => `${g.away.abbr}@${g.home.abbr}:${nflGameOver(g) ? 1 : 0}:${g.startsAt || ""}`).join("|");
+      if (key === slateKey) return;
+      slateKey = key;
       const byTeam = {};
       toPlay.forEach((g) => {
         byTeam[g.away.abbr] = { opp: g.home.abbr, home: false, date: g.startsAt };
@@ -25269,7 +25445,7 @@ export default function PropLedger() {
       // it. Both end up with no fixture and no props, and the feed's skip list
       // is read by a person, so it says which -- see buildNFLFeedRows.
       NFL_PLAYED_THIS_WEEK = new Set(
-        readable.filter((g) => gameHasConcluded(g)).flatMap((g) => [g.away.abbr, g.home.abbr])
+        readable.filter((g) => nflGameOver(g)).flatMap((g) => [g.away.abbr, g.home.abbr])
           .filter((abbr) => !byTeam[abbr])
       );
       // The same games again, paired into the shape the player page's matchup
@@ -25294,7 +25470,12 @@ export default function PropLedger() {
       }).filter(Boolean);
       if (paired.length) NFL_LIVE_MATCHUPS = paired;
       bumpNflRefresh();
-    }).catch(() => {});
+    };
+    fetchNflCurrentWeekSlate().then(applySlate).catch(() => {});
+    const recheckSlate = () => fetchNflCurrentWeekSlate({ force: true }).then(applySlate).catch(() => {});
+    const slateTimer = setInterval(recheckSlate, NFL_SLATE_RECHECK_MS);
+    const onTabBack = () => { if (document.visibilityState === "visible") recheckSlate(); };
+    document.addEventListener("visibilitychange", onTabBack);
 
     // Stores a player's log, and behind it last season's -- but only when the
     // log just stored is an IN-PROGRESS season.
@@ -25394,7 +25575,11 @@ export default function PropLedger() {
       );
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearInterval(slateTimer);
+      document.removeEventListener("visibilitychange", onTabBack);
+    };
   }, []);
 
   // NBA: the sport that had no real data at all until this. Live rosters give

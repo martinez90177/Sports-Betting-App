@@ -32,10 +32,13 @@ const LEAGUE_PATH = {
   mlb: "baseball/mlb",
 };
 
-// Rosters move on transaction days, not on the hour. A day-keyed cache with a
-// TTL inside it means at most one fetch per team per session per day, and a
-// same-day redeploy doesn't re-pull thirty teams.
-const ROSTER_TTL_MS = 6 * 60 * 60 * 1000;
+// Rosters move on transaction days, but the injury designations riding on
+// them move by the hour -- Friday's final report, Sunday's inactives -- and
+// every availability dot, the rails' lead spots and the feed's Starters Only
+// are read off them. Six hours meant a player ruled out at noon could still
+// be starting on a page opened that morning. An hour is one request per team
+// per hour per session, and a day-keyed cache still rolls at 3am ET.
+const ROSTER_TTL_MS = 60 * 60 * 1000;
 
 // The slate day in ET, rolling at 3am -- so a roster fetched at 1am still
 // belongs to "last night", the same boundary the MLB and WNBA caches use.

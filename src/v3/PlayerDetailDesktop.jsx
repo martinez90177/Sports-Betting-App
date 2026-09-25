@@ -592,7 +592,15 @@ export default function PlayerDetailDesktop({
             <span style={railLabel}>{grp.title}</span>
             {grp.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(${grp.options.length}, minmax(0, 1fr))`, gap: 6 }}>
+          {/* Two to a row once there are four, the way MINIMUM SAMPLE below
+              lays out its four. Four across a 231px rail left each box 49px,
+              "1 score" broke onto two lines, and that one box stood a line
+              taller than the three beside it. Alex, 2026-09-25: *"these arent
+              level because of the way 1 score stacks ... i like the idea but
+              it needs better execution."* Two across gives every label a line
+              of its own (nowrap holds it there), so every box is the same two
+              lines -- the name, then the games behind it. */}
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${grp.options.length > 3 ? 2 : grp.options.length}, minmax(0, 1fr))`, gap: 6 }}>
             {grp.options.map((h) => (
               <div
                 key={h.id}
@@ -601,9 +609,9 @@ export default function PlayerDetailDesktop({
                 tabIndex={0}
                 onClick={h.onPick}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); h.onPick(); } }}
-                style={{ ...railPill(h.active), justifyContent: "center", flexDirection: "column", gap: 0, minHeight: 42 }}
+                style={{ ...railPill(h.active), justifyContent: "center", flexDirection: "column", gap: 1, minHeight: 44, padding: "0 8px" }}
               >
-                <span>{h.label}</span>
+                <span style={{ whiteSpace: "nowrap" }}>{h.label}</span>
                 {/* Each side states the games it can actually account for,
                     so the control never implies the whole log. */}
                 <span style={{ fontFamily: MONO, fontSize: 9.5, color: "var(--dim)" }}>{h.count}</span>

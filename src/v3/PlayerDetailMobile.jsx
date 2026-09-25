@@ -1264,10 +1264,13 @@ export default function PlayerDetailMobile({
               <span style={sectionLabel}>{grp.title}</span>
               {grp.loading && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>Loading…</span>}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${grp.options.length}, 1fr)`, gap: 8 }}>
+            {/* Two to a row once there are four, and labels held to one
+                line, so every box is the same height -- the desktop rail's
+                rule, for the same reason ("1 score" wrapping). */}
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${grp.options.length > 3 ? 2 : grp.options.length}, 1fr)`, gap: 8 }}>
               {grp.options.map((h) => (
                 <div key={h.id} onClick={pickAndClose(h.onPick)} style={{ ...pill(h.active), flexDirection: "column", gap: 0, minHeight: 46 }}>
-                  <span>{h.label}</span>
+                  <span style={{ whiteSpace: "nowrap" }}>{h.label}</span>
                   {/* Each side states the games it can account for. */}
                   <span style={{ fontFamily: MONO, fontSize: 9.5, color: "var(--dim)" }}>{h.count}</span>
                 </div>

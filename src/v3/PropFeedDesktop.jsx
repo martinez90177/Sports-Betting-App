@@ -24,11 +24,11 @@ import React from "react";
 const MONO = "'Space Mono', monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 
-// The feed row grid's own minimum: its four tracks' floors (34 + 200 + 180 +
+// The feed row grid's own minimum: its four tracks' floors (34 + 212 + 180 +
 // 380), three 14px gaps and 16px of padding either side -- see .feed-grid in
 // index.css. Narrower than this the table scrolls sideways rather than
 // clipping its last columns.
-const FEED_TABLE_MIN = 34 + 200 + 180 + 380 + 3 * 14 + 2 * 16;
+const FEED_TABLE_MIN = 34 + 212 + 180 + 380 + 3 * 14 + 2 * 16;
 
 const railLabel = {
   fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)",
@@ -48,9 +48,68 @@ const railPill = (sel) => ({
   color: sel ? "var(--amber-ink)" : "var(--text-2)",
 });
 
+// One market in the header board. A compact pill rather than the frame's
+// underlined tab: an underline marks one choice on one line, and this is a
+// multi-select that wraps, where a filled pill is what "on" looks like. Every
+// pill carries a border, transparent when off, so switching one on never
+// changes its width and reflows the lines.
+const marketChip = (on, disabled) => ({
+  flex: "0 0 auto", minHeight: 28, display: "inline-flex", alignItems: "center", padding: "0 10px",
+  borderRadius: 6, fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em",
+  whiteSpace: "nowrap", cursor: disabled ? "not-allowed" : "pointer",
+  border: `1px solid ${on ? "var(--amber)" : "transparent"}`,
+  background: on ? "var(--amber-dim)" : "transparent",
+  color: on ? "var(--amber-ink)" : "var(--text-2)",
+  opacity: disabled ? 0.32 : 1,
+});
+
+const CHIP_GAP = 4;
+
+// The pills, in order, split into the fewest lines that fit `avail`, and
+// among splits with that many lines the one whose longest line is shortest --
+// so two lines come out about even rather than a full first line and a stub.
+// Alex, 2026-09-25: *"the top line goes way over the 2nd they should be as
+// even as possible."* Order is never changed, only where the lines break.
+function balanceLines(widths, avail) {
+  const n = widths.length;
+  if (!n || !(avail > 0)) return null;
+  const pre = [0];
+  widths.forEach((w, i) => { pre[i + 1] = pre[i] + w; });
+  const span = (i, j) => pre[j + 1] - pre[i] + CHIP_GAP * (j - i);
+  const total = span(0, n - 1);
+  for (let lines = Math.max(1, Math.ceil(total / avail)); lines <= n; lines++) {
+    // best[k][j]: the narrowest widest-line for the first j+1 pills on k+1 lines.
+    const best = Array.from({ length: lines }, () => new Array(n).fill(Infinity));
+    const cut = Array.from({ length: lines }, () => new Array(n).fill(-1));
+    for (let j = 0; j < n; j++) best[0][j] = span(0, j);
+    for (let k = 1; k < lines; k++) {
+      for (let j = k; j < n; j++) {
+        for (let i = k; i <= j; i++) {
+          const v = Math.max(best[k - 1][i - 1], span(i, j));
+          if (v < best[k][j]) { best[k][j] = v; cut[k][j] = i; }
+        }
+      }
+    }
+    if (best[lines - 1][n - 1] <= avail) {
+      const out = [];
+      let j = n - 1;
+      for (let k = lines - 1; k >= 0; k--) {
+        const i = k === 0 ? 0 : cut[k][j];
+        out.unshift([i, j]);
+        j = i - 1;
+      }
+      return out;
+    }
+  }
+  return null;
+}
+
 export default function PropFeedDesktop({
   // ---- market tabs and the direction pair ----
+  // [{ id, label, active, disabled, title, onPick }], in the order to draw.
   marketTabs = [],
+  // A line under the board, when it has something to say about it.
+  marketNote = null,
   directions = [],
   filterCount = 0,
   filtersOpen = true,
@@ -83,83 +142,64 @@ export default function PropFeedDesktop({
   // ---- anything the page draws over the frame (banners, sheets) ----
   overlays = null,
 }) {
-  // The market strip scrolls, and now says so.
+  // Every market on screen at once, grouped, wrapping onto a second line --
+  // no scroller.
   //
-  // Frame 1c has nine baseball markets and they fit 1440px with room over.
-  // Football has seventeen and they do not -- 588px of them sat past the right
-  // edge with nothing on screen suggesting more existed, so half the markets
-  // were unreachable unless you guessed you could drag the strip. Alex,
-  // 2026-09-09: *"the markets are going off the top header and are unclickable,
-  // fix this by fitting them or creating a scroller and left right arrow
-  // clicker."*
+  // Frame 1c has nine baseball markets on one line of underlined tabs, and
+  // they fit. Football has twenty-one, which want 2,255px against the 1,100 a
+  // 1632px window gives this row, so the strip scrolled behind two arrows and
+  // half the markets were off screen at any moment. Alex, 2026-09-25: *"the
+  // scrolling left to right just seems a bit dumb because they don't all fit
+  // and i want things to be easy and all in one go for users."*
   //
-  // Not a deviation from the frame -- the frame simply never had a sport with
-  // enough markets to overflow. The tabs keep the mock's underline styling.
+  // So the board wraps instead, onto lines balanced by balanceLines. It is
+  // measured, not guessed: the pills are drawn once as a plain wrap, their
+  // widths read, and the lines set from those -- and again whenever the board
+  // changes width. Until then the plain wrap is what shows, so nothing is ever
+  // missing, only unevenly broken for a frame.
   //
-  // Both arrows always render, dimmed and inert at their edge, so the strip
-  // does not reflow as you scroll it.
-  const stripRef = React.useRef(null);
-  const [stripEdge, setStripEdge] = React.useState({ left: false, right: false });
-
-  const measureStrip = React.useCallback(() => {
-    const el = stripRef.current;
-    if (!el) return;
-    setStripEdge({
-      left: el.scrollLeft > 2,
-      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
-    });
-  }, []);
-
-  React.useEffect(() => {
-    const el = stripRef.current;
+  // The lines are kept with the labels they were measured for, and used only
+  // while those are the labels on screen. Kept bare, a switch from baseball's
+  // fourteen markets to football's twenty-one went on slicing football to the
+  // first fourteen, and the re-measure -- reading the pills on screen -- only
+  // ever saw those fourteen, so seven markets vanished for good.
+  const boardRef = React.useRef(null);
+  const labelsKey = marketTabs.map((m) => m.label).join("|");
+  const [layout, setLayout] = React.useState(null);
+  const lines = layout && layout.key === labelsKey ? layout.lines : null;
+  React.useLayoutEffect(() => {
+    const el = boardRef.current;
     if (!el) return undefined;
-    measureStrip();
-    el.addEventListener("scroll", measureStrip, { passive: true });
-    window.addEventListener("resize", measureStrip);
-    return () => {
-      el.removeEventListener("scroll", measureStrip);
-      window.removeEventListener("resize", measureStrip);
+    const measure = () => {
+      const pills = [...el.querySelectorAll("[data-market-chip]")];
+      if (pills.length !== marketTabs.length) return;
+      const next = balanceLines(pills.map((p) => p.getBoundingClientRect().width), el.clientWidth);
+      setLayout((prev) => (prev && prev.key === labelsKey && JSON.stringify(prev.lines) === JSON.stringify(next)
+        ? prev
+        : { key: labelsKey, lines: next }));
     };
-  }, [measureStrip, marketTabs.length]);
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => { if (ro) ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [labelsKey]);
 
-  // Selecting a market from the filters rail can select one that is off
-  // screen. Bring it back rather than leaving the strip looking unchanged.
-  //
-  // Keyed on the active market's id, NOT on `marketTabs`. The array is rebuilt
-  // on every render, so depending on it re-ran this effect continuously and
-  // snapped the strip back to the selected tab the instant anyone scrolled it
-  // -- the arrows appeared to do nothing at all. Only a real change of
-  // selection should move the strip.
-  const activeMarketId = (marketTabs.find((m) => m.active) || {}).id;
-  React.useEffect(() => {
-    const el = stripRef.current;
-    if (!el) return;
-    const on = el.querySelector('[data-market-active="true"]');
-    if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeMarketId]);
-
-  const nudgeStrip = (dir) => {
-    const el = stripRef.current;
-    if (el) el.scrollBy({ left: dir * Math.max(180, el.clientWidth * 0.6), behavior: "smooth" });
-  };
-
-  const stripArrow = (dir, live) => (
+  const chipFor = (m) => (
     <div
+      key={m.id}
       role="button"
-      tabIndex={live ? 0 : -1}
-      aria-label={dir < 0 ? "Earlier markets" : "Later markets"}
-      aria-disabled={!live}
-      onClick={live ? () => nudgeStrip(dir) : undefined}
-      onKeyDown={(e) => { if (live && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); nudgeStrip(dir); } }}
-      style={{
-        flex: "0 0 auto", width: 22, alignSelf: "stretch", display: "flex",
-        alignItems: "center", justifyContent: "center",
-        fontFamily: MONO, fontSize: 12, userSelect: "none",
-        cursor: live ? "pointer" : "default",
-        color: live ? "var(--dim-strong)" : "var(--line)",
-      }}
+      tabIndex={m.disabled ? -1 : 0}
+      aria-pressed={!!m.active}
+      aria-disabled={!!m.disabled}
+      title={m.title}
+      data-market-chip=""
+      data-market-active={m.active ? "true" : "false"}
+      onClick={m.disabled ? undefined : m.onPick}
+      onKeyDown={(e) => { if (!m.disabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); m.onPick && m.onPick(); } }}
+      style={marketChip(m.active, m.disabled)}
     >
-      {dir < 0 ? "‹" : "›"}
+      {m.label}
     </div>
   );
 
@@ -221,7 +261,7 @@ export default function PropFeedDesktop({
       }}
     >
       {/* ---- market tabs, direction pair, filters button ----------------- */}
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 18, padding: "0 32px 0 18px", borderBottom: "1px solid var(--line)", minWidth: 0 }}>
+      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "flex-start", gap: 18, padding: "8px 32px 8px 18px", borderBottom: "1px solid var(--line)", minWidth: 0 }}>
         {/* FILTERS on the left, over the rail it opens.
             It sat at the far right of this row, and the panel it toggles
             slides in on the far left — Alex: *"the filters button being on
@@ -253,48 +293,25 @@ export default function PropFeedDesktop({
             )}
           </div>
         </div>
-        {stripArrow(-1, stripEdge.left)}
-        <div ref={stripRef} className="nsb" style={{ display: "flex", alignItems: "center", gap: 26, overflowX: "auto", minWidth: 0, flex: "1 1 auto" }}>
-        {marketTabs.map((m) => (
-          <div
-            key={m.id}
-            role="button"
-            tabIndex={0}
-            data-market-active={m.active ? "true" : "false"}
-            onClick={m.onPick}
-            onKeyDown={(e) => { if (e.key === "Enter") m.onPick && m.onPick(); }}
-            style={{
-              padding: "13px 0", fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.08em",
-              whiteSpace: "nowrap", cursor: "pointer",
-              color: m.active ? "var(--text)" : "var(--dim)",
-              borderBottom: m.active ? "2px solid var(--amber)" : "2px solid transparent",
-            }}
-          >
-            {m.label}
-          </div>
-        ))}
-        </div>
-        {stripArrow(1, stripEdge.right)}
-        <span style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 10 }}>
-          {directions.map((d) => (
-            <div
-              key={d.id}
-              role="button"
-              tabIndex={0}
-              onClick={d.onPick}
-              onKeyDown={(e) => { if (e.key === "Enter") d.onPick && d.onPick(); }}
-              style={{
-                minHeight: 30, display: "flex", alignItems: "center", padding: "0 13px", borderRadius: 7,
-                fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer",
-                border: `1px solid ${d.active ? "var(--amber)" : "var(--line)"}`,
-                background: d.active ? "var(--amber-dim)" : "transparent",
-                color: d.active ? "var(--amber-ink)" : "var(--dim)",
-              }}
-            >
-              {d.label}
+        {/* The board: every market, on balanced lines (see balanceLines).
+            `flex: 1 1 0` so its width is the row's to give, never its own
+            content's -- the lines are computed from that width. */}
+        <div ref={boardRef} style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+          {lines ? (
+            lines.map(([from, to]) => (
+              <div key={from} style={{ display: "flex", alignItems: "center", gap: CHIP_GAP }}>
+                {marketTabs.slice(from, to + 1).map(chipFor)}
+              </div>
+            ))
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: CHIP_GAP }}>
+              {marketTabs.map(chipFor)}
             </div>
-          ))}
-        </span>
+          )}
+          {marketNote && (
+            <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", padding: "2px 10px 0" }}>{marketNote}</span>
+          )}
+        </div>
       </div>
 
       {/* ---- the three columns ------------------------------------------ */}
@@ -455,7 +472,7 @@ export default function PropFeedDesktop({
                 strip, so in a narrow window "Most consistent" and "Trending
                 up" slid under ALT LINES with nothing to say they were there.
                 Five pills and a button fit on two lines at any desktop width. */}
-            {(sorts.length > 0 || altLines) && (
+            {(sorts.length > 0 || altLines || directions.length > 0) && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", rowGap: 8 }}>
             {sorts.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
@@ -501,6 +518,34 @@ export default function PropFeedDesktop({
                 the controls that change *what is in the list* live, and it is
                 one line under the count it moves. Legible off as well as on:
                 a real border and a surface behind it rather than dim text. */}
+            {/* OVER / UNDER, then ALT LINES, together at the right of the sort
+                row. The side pair sat in the top corner of the page, the far
+                end of a row of markets it has nothing to do with. Alex,
+                2026-09-25: *"the over under buttons being all the way in the
+                corner doesnt make sense, move them to the empty space"* --
+                here, beside the other two controls that change which rows the
+                list holds. */}
+            <div style={{ flex: "0 0 auto", marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            {directions.map((d) => (
+              <div
+                key={d.id}
+                role="button"
+                tabIndex={0}
+                aria-pressed={!!d.active}
+                onClick={d.onPick}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); d.onPick && d.onPick(); } }}
+                style={{
+                  minHeight: 30, display: "flex", alignItems: "center", padding: "0 13px", borderRadius: 8,
+                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
+                  border: `1px solid ${d.active ? "var(--amber)" : "var(--line-strong)"}`,
+                  background: d.active ? "var(--amber-dim)" : "transparent",
+                  color: d.active ? "var(--amber-ink)" : "var(--dim)",
+                }}
+              >
+                {d.label}
+              </div>
+            ))}
+            {directions.length > 0 && altLines && <span style={{ width: 1, height: 20, background: "var(--line)", margin: "0 4px" }} />}
             {altLines && (
               <div
                 role="button"
@@ -510,7 +555,7 @@ export default function PropFeedDesktop({
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); altLines.onToggle(); } }}
                 title={altLines.note || undefined}
                 style={{
-                  flex: "0 0 auto", marginLeft: "auto",
+                  flex: "0 0 auto",
                   minHeight: 30, display: "flex", alignItems: "center", gap: 8,
                   padding: "0 14px", borderRadius: 8, cursor: "pointer",
                   fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", whiteSpace: "nowrap",
@@ -526,6 +571,7 @@ export default function PropFeedDesktop({
                 )}
               </div>
             )}
+            </div>
             </div>
             )}
           </div>
