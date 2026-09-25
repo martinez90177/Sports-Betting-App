@@ -501,6 +501,27 @@ const NBA_SLUG_BY_ESPN_ID = Object.fromEntries(
   ALL_NBA_PLAYERS.filter((p) => p.espnId).map((p) => [String(p.espnId), p.id])
 );
 
+// The calendar day a game was played on, as the league schedules it -- US
+// Eastern -- from ESPN's gamelog timestamp.
+//
+// The three ESPN parsers took `gameDate.slice(0, 10)`, which is the *UTC*
+// date, so anything starting at 8pm ET or later was filed under the next
+// day: Seattle's Wednesday-night opener as Thursday, every Sunday and Monday
+// night game a day late, and in basketball every West Coast tip. Alex saw it
+// as Similar Players and the chart disagreeing about when a game was.
+// NFL.com's log (lib/nflcomLog.js) and MLB's already date by the local day;
+// now all of them do.
+const ET_DAY_PARTS = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+function espnGameDay(iso) {
+  if (!iso) return "";
+  const s = String(iso);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const t = Date.parse(s);
+  if (!Number.isFinite(t)) return s.slice(0, 10);
+  const part = Object.fromEntries(ET_DAY_PARTS.formatToParts(new Date(t)).map((p) => [p.type, p.value]));
+  return `${part.year}-${part.month}-${part.day}`;
+}
+
 // Same shape as parseWNBAGameLogResponse, and the same compromise on rebounds:
 // ESPN reports a combined "totalRebounds" with no offensive/defensive split,
 // so the real total goes to dreb and oreb stays 0 rather than inventing a
@@ -537,7 +558,7 @@ function parseNBAGameLogResponse(data, season) {
       const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
       const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
       return {
-        date: (meta.gameDate || "").slice(0, 10),
+        date: espnGameDay(meta.gameDate),
         opp: nbaTeamAbbr(meta.opponent.abbreviation),
         // The player's *own* team for this game, which is not derivable from
         // the roster: a traded player's roster entry says where he is now, and
@@ -589,7 +610,8 @@ async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
   // and `season`. A leftover v1 payload has neither, so the log-scoping
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
-  const cacheKey = `nba_gamelog_v3_${key}`;
+  // v4: dates are the Eastern game day (espnGameDay), not the UTC one.
+  const cacheKey = `nba_gamelog_v4_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -2667,8 +2689,11 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v2RestLabel = (() => {
     const last = allGames.length ? allGames[allGames.length - 1] : null;
     if (!last || !last.date || !matchup.date) return null;
-    const prev = new Date(last.date).getTime();
-    const next = new Date(matchup.date).getTime();
+    // Whole days between two game days. This subtracted the log's date, read
+    // as UTC midnight, from the next tip's timestamp -- right only while the
+    // log's date was itself a day late, and a day out once it was not.
+    const prev = Date.parse(`${espnGameDay(last.date)}T00:00:00Z`);
+    const next = Date.parse(`${espnGameDay(matchup.date)}T00:00:00Z`);
     if (!Number.isFinite(prev) || !Number.isFinite(next)) return null;
     const days = Math.round((next - prev) / 86400000) - 1;
     if (!Number.isFinite(days) || days < 0) return null;
@@ -4851,7 +4876,7 @@ function parseNFLGameLogResponse(data, season) {
         : meta.atVs !== "@";
       const scored = Number.isFinite(homeScore) && Number.isFinite(awayScore);
       const game = {
-        date: (meta.gameDate || "").slice(0, 10),
+        date: espnGameDay(meta.gameDate),
         opp,
         team: teamAbbr ? (NFL_ESPN_ABBR_FIX[teamAbbr] || teamAbbr) : undefined,
         seasonType,
@@ -4917,7 +4942,10 @@ async function fetchNFLPlayerGameLog(espnId, season = currentNFLSeason()) {
   // missing entirely is harder to notice than one showing wrong numbers.
   // v5: result, scores, longest pass/rush and sacks taken. A v4 payload has
   // none of them, and the game-result filter would silently offer nothing.
-  const cacheKey = `nfl_gamelog_v5_${key}`;
+  // v6: dates are the Eastern game day (espnGameDay) -- a v5 payload files
+  // every night game a day late, and mixed with fresh logs would put one
+  // game on two different days.
+  const cacheKey = `nfl_gamelog_v6_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -9900,7 +9928,7 @@ function parseWNBAGameLogResponse(data, season) {
       const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
       const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
       return {
-        date: (meta.gameDate || "").slice(0, 10),
+        date: espnGameDay(meta.gameDate),
         opp: meta.opponent.abbreviation,
         team: meta.team?.abbreviation,
         seasonType,
@@ -9939,7 +9967,8 @@ async function fetchWNBAPlayerGameLog(espnId, season = WNBA_LOG_SEASON) {
   // and `season`. A leftover v2 payload has neither, so the log-scoping
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
-  const cacheKey = `wnba_gamelog_v4_${key}`;
+  // v5: dates are the Eastern game day (espnGameDay), not the UTC one.
+  const cacheKey = `wnba_gamelog_v5_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -10927,8 +10956,11 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   const v2RestLabel = (() => {
     const last = allGames.length ? allGames[allGames.length - 1] : null;
     if (!last || !last.date || !matchup.date) return null;
-    const prev = new Date(last.date).getTime();
-    const next = new Date(matchup.date).getTime();
+    // Whole days between two game days. This subtracted the log's date, read
+    // as UTC midnight, from the next tip's timestamp -- right only while the
+    // log's date was itself a day late, and a day out once it was not.
+    const prev = Date.parse(`${espnGameDay(last.date)}T00:00:00Z`);
+    const next = Date.parse(`${espnGameDay(matchup.date)}T00:00:00Z`);
     if (!Number.isFinite(prev) || !Number.isFinite(next)) return null;
     const days = Math.round((next - prev) / 86400000) - 1;
     if (!Number.isFinite(days) || days < 0) return null;
@@ -19232,14 +19264,16 @@ function pickGameIsFinal(p) {
   return Number.isFinite(start) && Date.now() - start > PICK_SETTLE_DELAY_MS;
 }
 
-// Game logs date a game by its *local* start, while a pick stores the
-// schedule's UTC timestamp -- a 10pm ET first pitch is already tomorrow in
-// UTC. So the match is "same calendar day give or take one", taking the
-// closest candidate, rather than a string equality that would silently miss
-// every late West-coast game.
+// Game logs date a game by the day it is played (espnGameDay; MLB's own
+// dates), while a pick stores the schedule's UTC timestamp -- a 10pm ET
+// first pitch is already tomorrow in UTC. So the pick's timestamp is read as
+// the same Eastern day first, and an exact day wins. That matters on a
+// back-to-back: the pick's UTC day is the *second* game's day, and "closest"
+// used to be able to pick it. The day-either-side tolerance stays, for a
+// log that dates by a venue's own local day.
 function findLoggedGame(games, isoDate) {
   if (!games || !games.length || !isoDate) return null;
-  const target = Date.parse(isoDate.slice(0, 10) + "T00:00:00Z");
+  const target = Date.parse(espnGameDay(isoDate) + "T00:00:00Z");
   if (!Number.isFinite(target)) return null;
   let best = null;
   let bestGap = Infinity;

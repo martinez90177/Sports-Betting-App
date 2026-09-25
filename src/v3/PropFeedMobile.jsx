@@ -469,7 +469,10 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
             color: games.length && liveHits / games.length >= 0.6 ? "var(--pos)" : "var(--status-questionable)",
           }}
         >
-          {games.length ? `${liveHits} of ${games.length} · ${straight} straight` : "no sample"}
+          {/* The run only once it is one -- three, the same floor the
+              desktop strip's trailingRun uses. It printed unconditionally,
+              so a player whose last game missed read "8 of 10 · 0 straight". */}
+          {games.length ? `${liveHits} of ${games.length}${straight >= 3 ? ` · ${straight} straight` : ""}` : "no sample"}
         </span>
       </div>
 

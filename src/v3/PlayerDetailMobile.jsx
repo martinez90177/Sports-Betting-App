@@ -649,7 +649,8 @@ export default function PlayerDetailMobile({
             color: games.length && hits / games.length >= 0.6 ? "var(--pos)" : "var(--status-questionable)",
           }}
         >
-          {games.length ? `${hits} of ${games.length} · ${straight} straight` : "no sample"}
+          {/* Same rule as the feed row: a run is named from three. */}
+          {games.length ? `${hits} of ${games.length}${straight >= 3 ? ` · ${straight} straight` : ""}` : "no sample"}
         </span>
 
         {picked && (
