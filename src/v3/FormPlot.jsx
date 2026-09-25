@@ -1,5 +1,6 @@
 import React from "react";
 import { feedFormScale } from "../FormGraph.jsx";
+import { seasonLabel } from "../LogScope.jsx";
 
 // The v3 form graph, at whichever size a screen asks for.
 //
@@ -22,10 +23,22 @@ const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 export const PEDESTAL = 9;
 
 // `axisW` is a left gutter for the value scale, and only the desktop plot has
-// one -- the two phone sizes have no width to spend on it.
+// one. The phone player plot puts its scale in the tag's right-hand gutter
+// (`axisRight`); the feed strip has none.
 export const PLOT = {
   // Player Detail (frame 1c): a 176px box over a 146px span, 52px gutter.
-  player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, trackW: 261, axisW: 0, zones: true },
+  //
+  // Its value scale rides in the right-hand gutter, in the line tag's own
+  // column, and costs the bars no width. Alex, 2026-09-25, of the left-hand
+  // version that preceded it: *"that graph is too tight together, that y axis
+  // is causing too much room to be sacrificed"* -- it took 26px off a track
+  // whose L10 columns are 21px against a 20px floor, and bought them back by
+  // closing the gaps between bars. The gutter under the tag was sitting empty.
+  // The tag is itself a value on the scale; a mark it would cover is left off,
+  // and the tag is *drawn* 24px tall (`tagH`) inside its 30px touch target so
+  // that it covers fewer -- drawn at 30, a 250.5 line hid both the 200 and
+  // the 300 and left "100" standing alone. The thumb still gets all 30.
+  player: { plotH: 176, span: 146, gutter: 52, handleW: 46, handleH: 30, tagH: 24, trackW: 261, axisW: 0, axisRight: true, ticks: 5, zones: true, seasons: true },
   // A Prop Feed row (frame 1b): 74px box, 52px span, 46px gutter.
   //
   // Crests only under the bars, at every width. The box is a fixed 74px and
@@ -49,7 +62,7 @@ export const PLOT = {
   // drift. 2026-09-24, pointing at Outlier's chart: *"maybe also add y axis
   // values somewhere to help make this look less plain ... it feels like my
   // charts on player detail pages are missing some life."* Same 268px box.
-  desktop: { plotH: 268, span: 224, gutter: 58, handleW: 52, handleH: 32, trackW: 780, axisW: 36, dateLadder: true, zones: true },
+  desktop: { plotH: 268, span: 224, gutter: 58, handleW: 52, handleH: 32, trackW: 780, axisW: 36, dateLadder: true, zones: true, seasons: true },
 };
 
 export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);
@@ -74,8 +87,22 @@ export const gapFor = (n) => (n <= 10 ? 6 : n <= 20 ? 4 : n <= 30 ? 3 : 2);
 // columns are already narrower than the cap and nothing here applies.
 export const BAR_COLS = 10;
 
-export const barMaxFor = (trackW, n) =>
-  Math.max(0, (trackW - gapFor(n) * (BAR_COLS - 1)) / BAR_COLS);
+// A zoomed plot lets its bars grow to the width a six-game page would draw.
+// Held to the ten-game cap, zooming an L10 in to five games drew the same five
+// bars at the same width with wider gaps between them -- fewer bars, not a
+// closer look -- and Alex, 2026-09-25: *"something funny about the zoom
+// feature something seems a bit off."* Six rather than no cap at all, so a
+// two-game zoom is still two bars and never the full-width slab BAR_COLS was
+// written to stop.
+export const ZOOM_BAR_COLS = 6;
+
+export const barMaxFor = (trackW, n, cols = BAR_COLS) =>
+  Math.max(0, (trackW - gapFor(n) * (cols - 1)) / cols);
+
+// The strip above the plot that carries its header, and on hover the game
+// under the pointer. 24px of readout over a 5px caret.
+const LANE_H = 30;
+const READOUT_H = 24;
 
 // Labels are all-or-nothing per kind, gated on the column's measured width.
 // A kind that fits for some columns and not others is the overlap the desktop
@@ -182,13 +209,21 @@ export default function FormPlot({
   // its own already-windowed, already-filtered series, so the zoom composes
   // with every other control rather than replacing them.
   onZoom = null,
-  // (index | null) => node, drawn as a hint that a click opens the detail
-  // card. The card carries the data; this is a hint.
+  // True while the caller is showing a zoomed slice -- see ZOOM_BAR_COLS.
+  zoomed = false,
+  // (index) => node, the game under the pointer, drawn in the lane above the
+  // plot with a hint that a click opens the detail card.
   tooltipFor = null,
+  // (from, to) => node, what a drag has selected so far, in the same lane.
+  rangeFor = null,
+  // The row above the plot -- market, sample, hints. It gives its place to
+  // the readout while one is showing.
+  header = null,
 }) {
   const g = PLOT[size] || PLOT.player;
   const [hover, setHover] = React.useState(null);
   const [dragSel, setDragSel] = React.useState(null);
+  const dragging = React.useRef(false);
   const [rawLine, setRawLine] = React.useState(null);
   const n = games.length;
 
@@ -210,7 +245,7 @@ export default function FormPlot({
 
   // Measured off the same track the columns are, so the cap is a real width
   // rather than a guess at one -- see BAR_COLS.
-  const barMax = barMaxFor(trackW, n);
+  const barMax = barMaxFor(trackW, n, zoomed ? ZOOM_BAR_COLS : BAR_COLS);
   const full = layFor(n, trackW, g);
   const lay = !labels
     ? { crest: false, abbr: false, date: false, stacked: false, every: 1, val: full.val, labelH: 0 }
@@ -234,17 +269,19 @@ export default function FormPlot({
   //
   // Zero is left to the axis rule: the bars stand on a 9px pedestal, so value
   // zero is not the rule's own height and a "0" line would float above it.
+  const hasAxis = g.axisW > 0 || !!g.axisRight;
   const axisTicks = React.useMemo(() => {
-    if (isBinary || !(g.axisW > 0)) return [];
+    if (isBinary || !hasAxis) return [];
     const hi = scale.axisMin + scale.span;
-    const raw = hi / 8;
+    // Fewer on the phone's 146px span, so the marks stay ~40px apart.
+    const raw = hi / (g.ticks || 8);
     const pow = Math.pow(10, Math.floor(Math.log10(raw)));
     const f = raw / pow;
     const step = Math.max(1, (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow);
     const ticks = [];
     for (let t = step; t <= hi + 1e-9; t += step) ticks.push(Math.round(t * 100) / 100);
     return ticks;
-  }, [isBinary, g.axisW, scale.axisMin, scale.span]);
+  }, [isBinary, hasAxis, g.ticks, scale.axisMin, scale.span]);
   const canDrag = !isBinary && marketLine != null && typeof onDragLine === "function";
 
   const posLine = rawLine != null ? rawLine : line;
@@ -286,6 +323,44 @@ export default function FormPlot({
   // Ticks whose line would land above the box, or crowd the top edge.
   const shownTicks = axisTicks.filter((t) => scale.y(t) + lay.labelH <= g.plotH - 8);
   const lineY = scale.y(posLine) + lay.labelH;
+  // On the right-hand scale a mark shares its column with the line tag, so
+  // one the tag would cover is left off: half the tag, half a 12px label and
+  // a pixel between them.
+  const labelTicks = g.axisRight
+    ? shownTicks.filter((t) => Math.abs(scale.y(t) + lay.labelH - lineY) >= (g.tagH || g.handleH) / 2 + 7)
+    : shownTicks;
+
+  // Where one season hands over to the next, marked on the chart. Alex,
+  // 2026-09-25, of an L10 that ran from last November into this September:
+  // *"there's no like header or anything stating 2026 ... I feel like there
+  // should be something on the chart that indicates the change in season."*
+  // Nothing on the plot said that eight bars and the last two were a summer
+  // apart. Read off each game's own `season`, never its date -- January is
+  // last season in the NFL -- and drawn only when every game carries one.
+  const seasonRuns = React.useMemo(() => {
+    if (!g.seasons) return [];
+    const runs = [];
+    games.forEach((gm, i) => {
+      const s = gm.raw && gm.raw.season != null ? Number(gm.raw.season) : NaN;
+      const last = runs[runs.length - 1];
+      if (last && last.season === s) last.to = i;
+      else runs.push({ season: s, from: i, to: i });
+    });
+    return runs.length > 1 && runs.every((r) => Number.isFinite(r.season)) ? runs : [];
+  }, [g.seasons, games]);
+  // Column geometry, the same arithmetic the flex track does.
+  const pitch = n ? (trackW + gapFor(n)) / n : 0;
+  const colX = (i) => (g.axisW || 0) + i * pitch;
+  const colMid = (i) => colX(i) + (pitch - gapFor(n)) / 2;
+  // The column under a pointer, with each gap split between the two bars
+  // either side of it. Hover used to be per-bar enter/leave, so the readout
+  // blinked off in every 6px gap; and the zoom drag counted columns as equal
+  // slices of the track, ignoring the gaps, so toward the right-hand end the
+  // highlight and the bar under the pointer drifted apart.
+  const colAt = (clientX, box) => {
+    const p = n ? (box.width + gapFor(n)) / n : 1;
+    return Math.max(0, Math.min(n - 1, Math.floor((clientX - box.left + gapFor(n) / 2) / p)));
+  };
   // The side of the line a game has to land on to count, washed green; the
   // other side red. Flips with the direction, so the Under view colours the
   // floor rather than the ceiling.
@@ -293,8 +368,106 @@ export default function FormPlot({
   const lower = direction === "under" ? "var(--pos)" : "var(--neg)";
   const zoneBox = { position: "absolute", left: g.axisW || 0, right: g.gutter, pointerEvents: "none" };
 
+  // Under the dates, a bracket per season spanning its own columns, named in
+  // the middle -- a timeline's way of grouping, and it never sits on a bar.
+  // A label that would run into the one before it is dropped rather than
+  // overlapped, which only happens when a season has a game or two on a long
+  // window.
+  const seasonRow = seasonRuns.length > 1 ? (() => {
+    const CH = 6.1;
+    const lo = g.axisW || 0;
+    const hi = lo + trackW;
+    let prevRight = -Infinity;
+    const marks = seasonRuns.map((r) => {
+      const x0 = colX(r.from);
+      const x1 = colX(r.to) + pitch - gapFor(n);
+      const text = seasonLabel(r.season, sport);
+      const w = text.length * CH;
+      let left = Math.min(Math.max((x0 + x1) / 2 - w / 2, lo), hi - w);
+      const show = left >= prevRight + 6;
+      if (show) prevRight = left + w;
+      return { key: r.season, x0, x1, left, text: show ? text : null };
+    });
+    return (
+      <div style={{ position: "relative", height: 21, userSelect: "none" }} aria-label={`Seasons: ${seasonRuns.map((r) => seasonLabel(r.season, sport)).join(", ")}`}>
+        {marks.map((m) => (
+          <React.Fragment key={m.key}>
+            <span
+              style={{
+                position: "absolute", top: 0, left: m.x0, width: Math.max(1, m.x1 - m.x0), height: 5,
+                boxSizing: "border-box", borderLeft: "1px solid var(--line-strong, var(--line))",
+                borderRight: "1px solid var(--line-strong, var(--line))", borderBottom: "1px solid var(--line-strong, var(--line))",
+              }}
+            />
+            {m.text && (
+              <span style={{ position: "absolute", top: 9, left: m.left, fontFamily: MONO, fontSize: 10, lineHeight: "12px", letterSpacing: "0.04em", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                {m.text}
+              </span>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  })() : null;
+
+  // What the lane above the plot shows: a drag's selection once it spans two
+  // games, otherwise the game under the pointer.
+  //
+  // It used to float over the plot itself, pinned 8px inside its top edge --
+  // exactly where the tallest bars end -- so hovering the best game of the
+  // window covered it. Alex, 2026-09-25: *"you see how the hover info tab
+  // kinda blocks the bars when looking at them?"* The lane is the header's own
+  // row, which the readout borrows, so nothing on the plot is ever under it.
+  const selecting = !!dragSel && dragSel[1] > dragSel[0];
+  const whole = selecting && dragSel[0] === 0 && dragSel[1] === n - 1;
+  const readout = selecting && rangeFor
+    ? {
+      at: (colX(dragSel[0]) + colX(dragSel[1]) + pitch - gapFor(n)) / 2,
+      body: rangeFor(dragSel[0], dragSel[1]),
+      hint: whole ? "narrow it to zoom" : "release to zoom",
+    }
+    : !selecting && hover != null && hover < n && tooltipFor
+      ? { at: colMid(hover), body: tooltipFor(hover), hint: onPickBar ? "click for the full line" : null }
+      : null;
+  // Slid along its own width as it crosses the track -- left-aligned over the
+  // first bar, centred over the middle one, right-aligned over the last -- so
+  // it never runs off the card at either end. The caret stays on the column.
+  const frac = readout ? Math.max(0, Math.min(1, (readout.at - (g.axisW || 0)) / (trackW || 1))) : 0;
+  const lane = (header || tooltipFor) ? (
+    <div style={{ position: "relative", height: LANE_H, userSelect: "none" }}>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", visibility: readout ? "hidden" : "visible" }}>
+        {header}
+      </div>
+      {readout && (
+        <>
+          <div
+            style={{
+              position: "absolute", top: 0, height: READOUT_H, left: readout.at, transform: `translateX(-${frac * 100}%)`,
+              maxWidth: "100%", overflow: "hidden",
+              display: "flex", alignItems: "center", gap: 12, padding: "0 10px", boxSizing: "border-box",
+              borderRadius: 6, border: "1px solid var(--line-strong, var(--line))", background: "var(--surface-1)",
+              fontFamily: MONO, fontSize: 11, whiteSpace: "nowrap", pointerEvents: "none",
+            }}
+          >
+            <span style={{ color: "var(--text)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{readout.body}</span>
+            {readout.hint && <span style={{ color: "var(--dim)" }}>{readout.hint}</span>}
+          </div>
+          <span
+            style={{
+              position: "absolute", top: READOUT_H, left: readout.at, transform: "translateX(-50%)", width: 0, height: 0,
+              borderLeft: "5px solid transparent", borderRight: "5px solid transparent",
+              borderTop: "5px solid var(--line-strong, var(--line))", pointerEvents: "none",
+            }}
+          />
+        </>
+      )}
+    </div>
+  ) : null;
+
   return (
-    <div style={{ position: "relative", height: g.plotH }}>
+    <>
+    {lane}
+    <div style={{ position: "relative", height: g.plotH, userSelect: "none" }}>
       {/* Drawn first, so the bars paint over them. Strongest at the line and
           fading away from it, after Outlier: the reader sees at a glance which
           side of the line a bar has to reach, and the wash moves as the line
@@ -318,7 +491,7 @@ export default function FormPlot({
           />
         </>
       )}
-      {g.axisW > 0 && shownTicks.map((t) => (
+      {hasAxis && shownTicks.map((t) => (
         <span
           key={`grid-${t}`}
           style={{
@@ -327,34 +500,77 @@ export default function FormPlot({
           }}
         />
       ))}
+      {/* The season break itself, down the gap between the last game of one
+          season and the first of the next, from the top of the plot to the
+          rule. The row under the dates names the two sides. */}
+      {seasonRuns.slice(1).map((r) => (
+        <span
+          key={`season-${r.season}`}
+          style={{
+            position: "absolute", top: 0, bottom: lay.labelH, left: colX(r.from) - gapFor(n) / 2,
+            borderLeft: "1px dashed var(--dim)", pointerEvents: "none",
+          }}
+        />
+      ))}
+      {/* A drag's selection, as one band across its columns rather than a
+          tint per column, so the gaps inside it read as part of it. Under
+          the bars; the bars outside it dim. */}
+      {selecting && (
+        <span
+          style={{
+            position: "absolute", top: 0, bottom: 0, left: colX(dragSel[0]),
+            width: colX(dragSel[1]) + pitch - gapFor(n) - colX(dragSel[0]),
+            background: "color-mix(in srgb, var(--amber) 14%, transparent)",
+            borderLeft: "1.5px solid var(--amber)", borderRight: "1.5px solid var(--amber)",
+            borderRadius: 3, boxSizing: "border-box", pointerEvents: "none",
+          }}
+        />
+      )}
       <div
         ref={trackRef}
+        onPointerMove={tooltipFor ? (e) => setHover(colAt(e.clientX, e.currentTarget.getBoundingClientRect())) : undefined}
+        onPointerLeave={tooltipFor ? () => { if (!dragging.current) setHover(null); } : undefined}
         onPointerDown={onZoom ? (e) => {
+          if (e.button !== 0) return;
           // Both halves are required. preventDefault stops the browser
           // starting its own selection; userSelect below stops it painting
           // one anyway. Either alone still leaves the blue smear.
           e.preventDefault();
           const box = e.currentTarget.getBoundingClientRect();
-          const at = (x) => {
-            const frac = (x - box.left) / (box.width || 1);
-            return Math.max(0, Math.min(n - 1, Math.floor(frac * n)));
-          };
-          const start = at(e.clientX);
+          const startX = e.clientX;
+          const start = colAt(startX, box);
           let last = start;
-          const move = (ev) => { last = at(ev.clientX); setDragSel([Math.min(start, last), Math.max(start, last)]); };
-          const up = () => {
+          let moved = false;
+          dragging.current = true;
+          const move = (ev) => {
+            // A few pixels of wobble in a click is not a drag.
+            if (!moved && Math.abs(ev.clientX - startX) < 4) return;
+            moved = true;
+            last = colAt(ev.clientX, box);
+            setDragSel([Math.min(start, last), Math.max(start, last)]);
+          };
+          const up = (ev) => {
             window.removeEventListener("pointermove", move);
             window.removeEventListener("pointerup", up);
+            window.removeEventListener("pointercancel", up);
+            dragging.current = false;
             setDragSel(null);
+            setHover(null);
             const lo = Math.min(start, last);
             const hi = Math.max(start, last);
             // A drag under two columns is a click, not a zoom -- so a
             // mis-aimed tap on a bar opens its card instead of collapsing
-            // the graph to one game.
-            if (hi - lo >= 1) onZoom(lo, hi);
+            // the graph to one game. A drag across every column is not a
+            // zoom either: it would redraw the same chart with a RESET
+            // ZOOM button on it.
+            // The hover is cleared either way: the pointer may have been
+            // released off the plot, and after a zoom the columns move under
+            // it. The next pointermove over the track picks the right one up.
+            if (moved && ev.type === "pointerup" && hi - lo >= 1 && !(lo === 0 && hi === n - 1)) onZoom(lo, hi);
           };
           window.addEventListener("pointermove", move);
           window.addEventListener("pointerup", up);
+          window.addEventListener("pointercancel", up);
         } : undefined}
         style={{
           position: "absolute", left: g.axisW || 0, right: g.gutter, top: 0, bottom: 0,
@@ -373,15 +589,12 @@ export default function FormPlot({
             <div
               key={`${gm.iso || gm.date || i}-${i}`}
               onClick={onPickBar ? () => onPickBar(i) : undefined}
-              onPointerEnter={tooltipFor ? () => setHover(i) : undefined}
-              onPointerLeave={tooltipFor ? () => setHover(null) : undefined}
               style={{
                 flex: "1 1 0", minWidth: 0, height: "100%", display: "flex",
                 flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 3,
                 cursor: onPickBar ? "pointer" : "default",
-                background: (dragSel && i >= dragSel[0] && i <= dragSel[1])
-                  ? "rgba(143,164,240,0.16)"
-                  : picked === i || hover === i ? "rgba(255,255,255,0.05)" : "transparent",
+                background: !selecting && (picked === i || hover === i) ? "rgba(255,255,255,0.05)" : "transparent",
+                opacity: selecting && (i < dragSel[0] || i > dragSel[1]) ? 0.35 : 1,
                 borderRadius: 3,
                 userSelect: "none",
               }}
@@ -467,11 +680,16 @@ export default function FormPlot({
       {/* The value scale, where there is a gutter to put it in, level with
           its gridline. Skipped on a binary market, where the only values are
           0 and 1. */}
-      {g.axisW > 0 && shownTicks.map((t) => (
+      {hasAxis && labelTicks.map((t) => (
         <span
           key={t}
           style={{
-            position: "absolute", left: 0, width: g.axisW - 8, textAlign: "right",
+            position: "absolute",
+            // Right-hand: centred in the tag's own column, so the marks and
+            // the tag read as one scale.
+            ...(g.axisRight
+              ? { right: 0, width: g.handleW, textAlign: "center" }
+              : { left: 0, width: g.axisW - 6, textAlign: "right" }),
             bottom: scale.y(t) + lay.labelH - 6,
             fontFamily: MONO, fontSize: 10, lineHeight: "12px", color: "var(--dim)",
             pointerEvents: "none", zIndex: 1, whiteSpace: "nowrap",
@@ -495,41 +713,31 @@ export default function FormPlot({
           borderTop: "1.5px dashed var(--text)", pointerEvents: "none", zIndex: 2,
         }}
       />
+      {/* The touch target is handleH tall; what is drawn inside it may be
+          shorter (`tagH`), centred, so the target never shrinks with it. */}
       <div
         onPointerDown={startDrag}
         style={{
           position: "absolute", right: 0, bottom: scale.y(posLine) - g.handleH / 2 + lay.labelH,
           width: g.handleW, height: g.handleH, display: "flex", alignItems: "center",
-          justifyContent: "center", borderRadius: 7, background: "var(--amber)", color: "#ffffff",
-          fontFamily: MONO, fontSize: size === "feed" ? 11 : 12, fontWeight: 700,
           cursor: canDrag ? "grab" : "default",
-          touchAction: "none", userSelect: "none", boxShadow: "0 2px 8px rgba(0,0,0,0.5)", zIndex: 3,
+          touchAction: "none", userSelect: "none", zIndex: 3,
         }}
       >
-        {line}
-      </div>
-
-      {/* The hover hint. Date, opponent, value and over/under against the
-          current line -- and it says outright that a click opens the card,
-          because the card is what carries the data. */}
-      {tooltipFor && hover != null && (
-        <div
+        <span
           style={{
-            position: "absolute", zIndex: 4, pointerEvents: "none",
-            // Measured across the track, not the box: the axis gutter and the
-            // handle gutter are both outside the columns, so a plain percentage
-            // of the container drifts the hint off its own bar.
-            left: `calc(${g.axisW || 0}px + ${((hover + 0.5) / (n || 1))} * (100% - ${(g.axisW || 0) + g.gutter}px))`,
-            transform: "translateX(-50%)", bottom: g.plotH - 8,
-            display: "flex", flexDirection: "column", gap: 3, whiteSpace: "nowrap",
-            padding: "8px 11px", borderRadius: 8, border: "1px solid var(--line)",
-            background: "var(--surface-2)", boxShadow: "0 10px 26px rgba(0,0,0,0.55)",
+            width: "100%", height: g.tagH || g.handleH, display: "flex", alignItems: "center",
+            justifyContent: "center", borderRadius: 7, background: "var(--amber)", color: "#ffffff",
+            fontFamily: MONO, fontSize: size === "feed" ? 11 : 12, fontWeight: 700,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
           }}
         >
-          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--text)" }}>{tooltipFor(hover)}</span>
-          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>click for the full line</span>
-        </div>
-      )}
+          {line}
+        </span>
+      </div>
+
     </div>
+    {seasonRow}
+    </>
   );
 }

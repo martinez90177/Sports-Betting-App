@@ -1,5 +1,5 @@
 import React from "react";
-import FormPlot, { PLOT, crest } from "./FormPlot.jsx";
+import FormPlot, { crest } from "./FormPlot.jsx";
 import { probToAmericanOdds, formatOdds } from "../odds.js";
 import { buildRungs, bookLadder } from "../lib/altLines.js";
 import { useBettingSettings } from "../settings.jsx";
@@ -8,6 +8,7 @@ import AgeMark from "./AgeMark.jsx";
 import { STATUS } from "../lib/teamColors.js";
 import ValuePlot from "./ValuePlot.jsx";
 import WindowNumber from "./WindowNumber.jsx";
+import SeasonNote from "./SeasonNote.jsx";
 
 // A transcription of frame `1a` in `v3 Mocks/PropPalace Desktop v3.dc.html`,
 // the largest frame in the bundle.
@@ -216,11 +217,20 @@ export default function PlayerDetailDesktop({
 
   // A slice of the already-windowed, already-filtered series -- so the zoom
   // composes with every other control rather than replacing them (§3).
+  //
+  // Cleared whenever the series itself changes, not just its length. Keyed on
+  // the length alone, a zoom on one quarterback's L10 carried onto the next
+  // quarterback opened from the rail -- same market, same ten games -- and
+  // showed him a slice nobody had asked for.
   const [zoom, setZoom] = React.useState(null);
-  React.useEffect(() => { setZoom(null); }, [chart && chart.games && chart.games.length, marketLabel]);
+  const seriesKey = games.map((g) => `${g.iso || g.date}:${g.v}`).join("|");
+  React.useEffect(() => { setZoom(null); }, [seriesKey, marketLabel]);
   const shown = zoom ? games.slice(zoom[0], zoom[1] + 1) : games;
 
   const [picked, setPicked] = React.useState(null);
+  // `picked` is an index into `shown`, so it cannot outlive the slice it was
+  // an index into.
+  React.useEffect(() => { setPicked(null); }, [zoom]);
   // The saved-window pill under the pointer or focus, which is the only one
   // that shows its ×.
   const [hoverWin, setHoverWin] = React.useState(null);
@@ -659,8 +669,32 @@ export default function PlayerDetailDesktop({
   // odds feed. Identical to the phone frame's cell, off the same array.
   const impliedText = shown.length ? formatOdds(probToAmericanOdds(hits / shown.length)) : "—";
   const rankParts = String((context && context.rank) || "").split(" of ");
-  const three = [
+
+  // Average and median over the same games the chart draws, each with its
+  // distance from the line -- tinted by which side of it the figure lands.
+  // Alex, 2026-09-25, of the three wide cells this strip used to be: *"either
+  // missing some data or are so big that there's all that empty space."*
+  // Outlier leads its chart with the same pair: the median is the one a
+  // single 330-yard game cannot drag. No hit rate here -- "5 of 10" is under
+  // the chart and in LAST 10 below it.
+  const shownVals = shown.map((g) => g.v).filter(Number.isFinite);
+  const avg = shownVals.length ? shownVals.reduce((a, b) => a + b, 0) / shownVals.length : null;
+  const ordered = [...shownVals].sort((a, b) => a - b);
+  const mid = ordered.length >> 1;
+  const median = !ordered.length ? null : ordered.length % 2 ? ordered[mid] : (ordered[mid - 1] + ordered[mid]) / 2;
+  const fmtStat = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+  const vsLine = (v) => {
+    if (v == null || line == null) return null;
+    const d = v - line;
+    return `${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(1)} VS LINE`;
+  };
+  const sideTone = (v) => (v == null || line == null ? null : hitOf(v) ? "var(--pos)" : "var(--neg)");
+  const allowed = context && context.allowedOfficial;
+
+  const strip = [
     { key: "line", label: "LINE", value: verdict ? verdict.line : "—", sub: String(marketLabel || "").toUpperCase(), tone: null },
+    { key: "avg", label: "AVERAGE", value: avg == null ? "—" : avg.toFixed(1), sub: vsLine(avg) || "NO GAMES IN WINDOW", subTone: sideTone(avg) },
+    { key: "median", label: "MEDIAN", value: median == null ? "—" : fmtStat(median), sub: vsLine(median) || "NO GAMES IN WINDOW", subTone: sideTone(median) },
     { key: "implied", label: "IMPLIED", value: impliedText, sub: shown.length ? `FROM ${shown.length} GAMES` : "NO GAMES IN WINDOW", tone: null },
     {
       key: "matchup",
@@ -675,6 +709,10 @@ export default function PlayerDetailDesktop({
       // the cell rather than only in a tooltip: it is the half of the answer
       // that stops a two-game rank or a last-year rank being taken on its own.
       note: rankParts[1] && context && context.rankNote ? context.rankNote : null,
+      // The official figure behind the rank, where the page has one (NFL
+      // yardage markets, from ESPN's team statistics). The rank alone says
+      // "#6"; this says what #6 means in yards.
+      extra: allowed ? `${allowed.value} ${String(allowed.label).toUpperCase()}` : null,
       tone: rankParts[1] ? "var(--status-questionable)" : "var(--dim)",
     },
   ];
@@ -707,30 +745,45 @@ export default function PlayerDetailDesktop({
         </div>
       ) : null}
 
-      {/* The hero wraps rather than overflowing.
-          It was one unwrappable row — a 68px avatar (104 now), a name block floored at
-          330px, and a three-cell strip pinned `flex: 0 0 auto` — which needs
-          about 780px. The mock is 1440 wide and the centre track there has
-          it; at 1252 (an iPad in landscape, a 13" laptop) the track is 748
-          and the strip ran 44px past the end of it. `.nsb` hides the
-          scrollbar, so what a reader sees is not a scroller: it is LINE /
-          IMPLIED / MATCHUP sliced down the middle by the roster rail.
+      {/* The hero, as an ESPN profile lays one out: who he is on the left,
+          his season on the right, and the prop underneath across the full
+          width, directly over the chart it is about.
 
-          Wrapping is the fix rather than a new breakpoint, because the
-          desktop handoff's own rule is that the rails collapse and the layout
-          does not change shape again. At 1440 nothing moves. */}
-      <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", rowGap: 14 }}>
+          It was one wrapping row -- avatar, name, then the LINE / IMPLIED /
+          MATCHUP strip pushed right with `marginLeft: auto`. The matchup cell
+          carries a note ("2026 so far: #9 of 32 after 2 games") that makes
+          all three cells wide, so on most screens the strip wrapped, kept its
+          right alignment, and left a hole under the avatar. Alex, 2026-09-25:
+          *"why is there a gap here?"* -- and, of the same space: *"basic
+          season stats are missing, things like yards per game, touchdowns
+          per game ... the simple but useful data you see like when you pull
+          up their profile on ESPN."*
+
+          Those per-game numbers already existed: every sport page passes them
+          as `seasonStats`, and the phone page shows them. This page read
+          `player.stats`, a field nothing passes, so the frame's per-game row
+          never once rendered. Likewise the identity line read `player.meta`
+          -- a rail row's field -- where the pages pass `identity`, which is
+          why "Jacksonville Jaguars · quarterback" never appeared beside the
+          crest. */}
+      <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", rowGap: 14 }}>
         <div style={{ position: "relative", flex: "0 0 auto" }}>
           {renderAvatar ? renderAvatar(player, 104) : null}
         </div>
-        <div style={{ flex: "1 1 260px", minWidth: 260, display: "flex", flexDirection: "column", gap: 7 }}>
+        {/* No `minWidth` floor: a flex item's own minimum is its content, and
+            the name line does not wrap -- so the block can never be squeezed
+            narrower than the name, which a fixed 260 let happen, running
+            "Trevor Lawrence #16" into the season numbers beside it. When the
+            two do not fit, the season block wraps instead. */}
+        <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 7 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 11, whiteSpace: "nowrap" }}>
             <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 34, letterSpacing: "-0.015em" }}>{player && player.name}</span>
             {player && player.jersey && <span style={{ fontFamily: MONO, fontSize: 22, color: "var(--dim)" }}>{`#${player.jersey}`}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span role="img" style={crest(player && player.team, sport, 15)} />
-            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--dim)" }}>{player && player.meta}</span>
+            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--dim)" }}>{player && player.identity}</span>
             {st && <span style={pill(st.dot, "color-mix(in srgb, currentColor 14%, transparent)")}>{st.label}</span>}
           </div>
           {player && player.pills && player.pills.length > 0 && (
@@ -743,35 +796,49 @@ export default function PlayerDetailDesktop({
             </div>
           )}
         </div>
-        {/* `0 1 auto` and a `minWidth: 0` on every cell, so the strip gives
-            ground before the row wraps and never forces the track wider than
-            it is. Grid items default to `min-width: auto`, which is what let
-            three cells refuse to compress at all. */}
-        <div style={{ marginLeft: "auto", flex: "0 1 auto", minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
-            {three.map((c, i) => (
-              <div key={c.key} style={{ padding: "13px 16px", minWidth: 0, borderRight: i < 2 ? "1px solid var(--line)" : "none", display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={cellLabel}>{c.label}</span>
-                <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: c.tone || "var(--text)" }}>{c.value}</span>
-                <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{c.sub}</span>
-                {c.note && <span style={{ fontFamily: MONO, fontSize: 10, lineHeight: 1.4, color: "var(--text-2)", marginTop: 2 }}>{c.note}</span>}
-              </div>
-            ))}
-          </div>
-          {/* The frame's `perGame` row: the season's per-game snapshot, which
-              is what `player.stats` already carries -- not the season *splits*,
-              which are the six-cell strip under the graph. */}
-          {player && player.stats && player.stats.length > 0 && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-2)", padding: "8px 18px" }}>
-              {player.stats.slice(0, 4).map((g) => (
-                <div key={g.label} style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700 }}>{g.value}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)" }}>{g.label}</span>
+        {/* The season, per game, over the games the SEASON rail has in scope
+            -- and it says which, because a per-game figure without its sample
+            is the one thing this app does not print. Counted off the log like
+            everything else; not the season *splits*, which are the six-cell
+            strip under the graph. */}
+        {player && player.seasonStats && player.seasonStats.length > 0 && (
+          // Grows to fill its line with the numbers spread across it, beside
+          // the name or -- on a narrower screen -- on a line of its own, so
+          // neither case leaves the hole this block exists to fill.
+          <div style={{ flex: "1 1 300px", minWidth: 0, display: "flex", flexDirection: "column", gap: 9 }}>
+            <span style={cellLabel}>
+              {["PER GAME", player.seasonScope && player.seasonScope.label, player.seasonScope && `${player.seasonScope.games} GP`].filter(Boolean).join(" · ")}
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${player.seasonStats.length}, minmax(0, 1fr))`, columnGap: 18 }}>
+              {player.seasonStats.map((g) => (
+                <div key={g.label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, lineHeight: 1 }}>{g.value}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>{g.label}</span>
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
+
+      {/* The prop, across the full width. `minWidth: 0` on every cell, so the
+          strip compresses rather than forcing the track wider than it is --
+          grid items default to `min-width: auto`, which is what once let
+          three cells refuse to compress at all. */}
+      {/* MATCHUP takes a wider track: it is the one cell with sentences in
+          it, and at equal widths it wrapped to four lines beside four cells
+          holding one number each. */}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${strip.length - 1}, minmax(0, 1fr)) minmax(0, 1.7fr)`, border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
+        {strip.map((c, i) => (
+          <div key={c.key} style={{ padding: "13px 14px", minWidth: 0, borderRight: i < strip.length - 1 ? "1px solid var(--line)" : "none", display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={cellLabel}>{c.label}</span>
+            <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: c.tone || "var(--text)" }}>{c.value}</span>
+            <span style={{ fontFamily: MONO, fontSize: 10, color: c.subTone || "var(--dim)" }}>{c.sub}</span>
+            {c.extra && <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--text-2)" }}>{c.extra}</span>}
+            {c.note && <SeasonNote text={c.note} />}
+          </div>
+        ))}
+      </div>
       </div>
 
       <div style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-2)", padding: "16px 18px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -859,25 +926,11 @@ export default function PlayerDetailDesktop({
             )}
           </div>
         )}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.16em", color: "var(--dim)" }}>
-            {`${String(marketLabel || "").toUpperCase()}`}
-          </span>
-          <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{`${shown.length} GAMES`}</span>
-          {zoom && (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={() => setZoom(null)}
-              onKeyDown={(e) => { if (e.key === "Enter") setZoom(null); }}
-              style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", padding: "4px 9px", borderRadius: 6, border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)", cursor: "pointer" }}
-            >
-              RESET ZOOM
-            </span>
-          )}
-          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>DRAG THE TAB TO MOVE THE LINE</span>
-        </div>
-        <div style={{ position: "relative", height: PLOT.desktop.plotH }}>
+        {/* A column, not a fixed-height box: FormPlot draws the header lane,
+            its own 268px plot, and under it the season row when the window
+            spans two. The header rides in FormPlot's lane so the hover
+            readout can take its place instead of landing on the bars. */}
+        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
           <FormPlot
             size="desktop"
             games={shown}
@@ -889,11 +942,68 @@ export default function PlayerDetailDesktop({
             onDragLine={chart && chart.onDragLine}
             onPickBar={(i) => setPicked(i)}
             picked={picked}
+            zoomed={!!zoom}
             onZoom={(from, to) => setZoom(zoom ? [zoom[0] + from, zoom[0] + to] : [from, to])}
+            header={
+              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 14, whiteSpace: "nowrap" }}>
+                <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.16em", color: "var(--dim)" }}>
+                  {`${String(marketLabel || "").toUpperCase()}`}
+                </span>
+                {/* Zoomed, the count says what it is a slice of and where. */}
+                <span style={{ fontFamily: MONO, fontSize: 11, color: zoom ? "var(--text-2)" : "var(--dim)" }}>
+                  {zoom && shown.length
+                    ? `${shown.length} OF ${games.length} GAMES · ${String(shown[0].date).toUpperCase()} – ${String(shown[shown.length - 1].date).toUpperCase()}`
+                    : `${shown.length} GAMES`}
+                </span>
+                {zoom && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setZoom(null)}
+                    onKeyDown={(e) => { if (e.key === "Enter") setZoom(null); }}
+                    style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", padding: "4px 9px", borderRadius: 6, border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)", cursor: "pointer" }}
+                  >
+                    RESET ZOOM
+                  </span>
+                )}
+                {/* Zoom had no hint anywhere on the page; the tab did. */}
+                <span style={{ marginLeft: "auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>
+                  {zoom ? "ESC ZOOMS BACK OUT · DRAG THE TAB TO MOVE THE LINE" : "DRAG ACROSS BARS TO ZOOM · DRAG THE TAB TO MOVE THE LINE"}
+                </span>
+              </div>
+            }
             tooltipFor={(i) => {
               const g = shown[i];
-              if (!g) return "";
-              return `${g.date} · ${g.home === false ? "@" : "vs"} ${g.opp} · ${g.v} · ${hitOf(g.v) ? "OVER" : "UNDER"}`;
+              if (!g) return null;
+              // Over/under against the line itself, and coloured by whether
+              // it counted -- on an Under view those are different things,
+              // and this used to print OVER for every game that cleared one.
+              const side = g.v > line ? "OVER" : g.v < line ? "UNDER" : "PUSH";
+              return (
+                <>
+                  {`${String(g.date).toUpperCase()} · ${g.home === false ? "@" : "VS"} ${g.opp} · `}
+                  <b style={{ color: hitOf(g.v) ? "var(--pos)" : "var(--neg)" }}>{g.v}</b>
+                  {` · ${side}`}
+                </>
+              );
+            }}
+            // A drag says what it has caught before it is let go -- the dates,
+            // the count and the hit rate -- so the selection is worth making
+            // even without the zoom that follows it.
+            rangeFor={(lo, hi) => {
+              const sel = shown.slice(lo, hi + 1);
+              const k = sel.length;
+              if (!k) return null;
+              const hitN = sel.filter((g) => hitOf(g.v)).length;
+              const mean = Math.round((sel.reduce((s, g) => s + g.v, 0) / k) * 10) / 10;
+              const dir = chart && chart.direction === "under" ? "UNDER" : "OVER";
+              return (
+                <>
+                  {`${String(sel[0].date).toUpperCase()} – ${String(sel[k - 1].date).toUpperCase()} · ${k} GAMES · `}
+                  <b style={{ color: hitN / k >= 0.6 ? "var(--pos)" : "var(--text)" }}>{`${hitN} OF ${k} ${dir} ${line}`}</b>
+                  {!(chart && chart.isBinary) && ` · AVG ${mean}`}
+                </>
+              );
             }}
           />
         </div>
@@ -905,11 +1015,19 @@ export default function PlayerDetailDesktop({
       {/* The frame's six-cell strip. Every cell states its own sample, and
           a cell with too few games behind it says so rather than showing a
           percentage the sample cannot carry. */}
+      {/* Every cell, not the first six: with the reader's own window and both
+          seasons it can run to seven, and a seventh cut off would be AWAY. The
+          reader's own cell is marked in the accent -- the colour of the YOUR
+          OWN control it follows -- and says so on hover. */}
       {log && log.splitCells && log.splitCells.length > 0 && (
-        <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: `repeat(${Math.min(6, log.splitCells.length)}, 1fr)`, border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
-          {log.splitCells.slice(0, 6).map((c, i) => (
-            <div key={c.label} style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 3, borderRight: i < Math.min(6, log.splitCells.length) - 1 ? "1px solid var(--line)" : "none" }}>
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)" }}>{c.label}</span>
+        <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: `repeat(${log.splitCells.length}, minmax(0, 1fr))`, border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)" }}>
+          {log.splitCells.map((c, i) => (
+            <div
+              key={c.label}
+              title={c.own ? "Your own window -- follows the number in YOUR OWN above the chart" : undefined}
+              style={{ padding: "12px 14px", minWidth: 0, display: "flex", flexDirection: "column", gap: 3, borderRight: i < log.splitCells.length - 1 ? "1px solid var(--line)" : "none" }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: c.own ? "var(--amber-ink)" : "var(--dim)", whiteSpace: "nowrap" }}>{c.label}</span>
               <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: c.tone || "var(--text)" }}>{c.value}</span>
               <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{c.sub}</span>
             </div>
@@ -1165,7 +1283,10 @@ export default function PlayerDetailDesktop({
               page you are reading is worse than an unsplit one. */}
           {(() => {
             const roster = activeRail.players || [];
-            const hasStat = (p) => typeof p.meta === "string" && p.meta.includes("·");
+            // A rail that marks its own rows (`tier`, the NFL depth chart)
+            // is split where it says; one that does not, on the stat line.
+            const marked = roster.some((p) => p.tier);
+            const hasStat = (p) => (marked ? p.tier === "lead" : typeof p.meta === "string" && p.meta.includes("·"));
             const core = roster.filter(hasStat);
             const bench = roster.filter((p) => !hasStat(p));
             const split = core.length > 0 && bench.length > 0;

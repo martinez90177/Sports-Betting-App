@@ -45,7 +45,9 @@ import { TEAM_ESPN_IDS, rosterDayKey } from "./rosters.js";
 // player is a claim about him; failing to fetch is a claim about us.
 
 const DEPTH_TTL_MS = 6 * 60 * 60 * 1000;
-const CACHE_KEY = "pp_nfl_depth_v1";
+// v2: the cache also carries each team's ranked lists (see `depth` below);
+// a v1 entry has none and would leave the roster rail unordered for a day.
+const CACHE_KEY = "pp_nfl_depth_v2";
 
 let memory = null;
 
@@ -57,6 +59,7 @@ function readCache() {
     if (!stored) return null;
     const parsed = JSON.parse(stored);
     if (parsed.dayKey !== dayKey || Date.now() - parsed.fetchedAt >= DEPTH_TTL_MS) return null;
+    if (!parsed.data || !parsed.data.depth) return null;
     memory = parsed;
     return parsed.data;
   } catch {
@@ -93,6 +96,10 @@ function refId(athlete) {
   return /^\d+$/.test(id) ? id : null;
 }
 
+// The slots the roster rail orders by, each as ESPN ids in depth order. `pk`
+// lives in the Special Teams group, the rest in the offensive formation.
+const RAIL_SLOTS = ["qb", "rb", "wr", "te", "pk"];
+
 async function fetchTeamStarters(espnTeamId, season) {
   const res = await fetch(
     `https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/seasons/${season}/teams/${espnTeamId}/depthcharts`
@@ -101,17 +108,27 @@ async function fetchTeamStarters(espnTeamId, season) {
   const items = data && data.items;
   if (!Array.isArray(items) || !items.length) return null;
   const ids = [];
+  // The whole ladder at each skill slot, not just its starters -- the rail
+  // shows the bench in chart order too. `wrStart` / `teStart` are how many of
+  // each the formation puts on the field ("3WR 1TE" -> 3 and 1).
+  const depth = {};
   items.forEach((group) => {
     Object.entries(group.positions || {}).forEach(([slot, pos]) => {
-      const depth = startersAt(slot, group.name);
-      (pos.athletes || []).forEach((a) => {
-        if (Number(a.rank) > depth) return;
+      const starts = startersAt(slot, group.name);
+      const ranked = (pos.athletes || []).slice().sort((a, b) => Number(a.rank) - Number(b.rank));
+      ranked.forEach((a) => {
+        if (Number(a.rank) > starts) return;
         const id = refId(a);
         if (id) ids.push(id);
       });
+      if (RAIL_SLOTS.includes(slot) && !depth[slot]) {
+        depth[slot] = ranked.map(refId).filter(Boolean);
+        if (slot === "wr") depth.wrStart = starts;
+        if (slot === "te") depth.teStart = starts;
+      }
     });
   });
-  return ids.length ? ids : null;
+  return ids.length ? { ids, depth } : null;
 }
 
 // Every starting ESPN id in the league, plus the coverage behind it.
@@ -129,8 +146,8 @@ export async function fetchNflStarters(season) {
   const results = await Promise.all(
     entries.map(async ([abbr, id]) => {
       try {
-        const ids = await fetchTeamStarters(id, season);
-        return ids ? { abbr, ids } : null;
+        const team = await fetchTeamStarters(id, season);
+        return team ? { abbr, ...team } : null;
       } catch {
         return null;
       }
@@ -142,6 +159,8 @@ export async function fetchNflStarters(season) {
   const data = {
     ids: good.flatMap((r) => r.ids),
     teams: good.map((r) => r.abbr),
+    // Keyed by ESPN's abbreviation, like `teams`; the caller maps WSH.
+    depth: Object.fromEntries(good.map((r) => [r.abbr, r.depth])),
     teamsLoaded: good.length,
     teamsTotal: entries.length,
   };

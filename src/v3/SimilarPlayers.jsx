@@ -26,15 +26,25 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 const SUPPORT = 10;
 const MAX_ROWS = 12;
 
+// Games left out as cameos are counted on the card, not silently absent --
+// see nflSimilarGameCounts in PropLedger.jsx for what makes one.
+const droppedNote = (n) =>
+  `${n} ${n === 1 ? "appearance" : "appearances"} left out: games they neither started nor played a real part in.`;
+
+// A bare "2026-09-20" is read at local noon, the way the chart reads it. As
+// `new Date(iso)` it was UTC midnight, which is the previous evening anywhere
+// in the Americas -- every date on this card printed a day early, so the
+// Super Bowl sat on Feb 7.
 const shortDate = (iso) => {
   if (!iso) return "";
-  const d = new Date(iso);
+  const s = String(iso);
+  const d = new Date(s.length === 10 ? `${s}T12:00:00` : s);
   return Number.isNaN(d.getTime())
-    ? String(iso).slice(5)
+    ? s.slice(5)
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
 
-export default function SimilarPlayers({ rows, line, marketLabel, opp, position, mode, onMode, roleUnitLabel }) {
+export default function SimilarPlayers({ rows, dropped = 0, line, marketLabel, opp, position, mode, onMode, roleUnitLabel }) {
   if (!opp) return null;
 
   const cleared = rows.filter((r) => r.v > line).length;
@@ -86,6 +96,7 @@ export default function SimilarPlayers({ rows, line, marketLabel, opp, position,
           {mode === "role"
             ? `No ${position} carrying a comparable workload has faced ${opp} in the logs loaded. Try ALL ${String(position || "").toUpperCase()}.`
             : `No ${position} in the pool has faced ${opp} in the logs loaded.`}
+          {dropped > 0 && ` ${droppedNote(dropped)}`}
         </div>
       ) : (
         <>
@@ -157,6 +168,7 @@ export default function SimilarPlayers({ rows, line, marketLabel, opp, position,
             Each game is graded against tonight's line of {line}, not against whatever line
             that game was posted at — there is no line history here to grade them by.
             {mode === "role" && roleUnitLabel ? ` Comparable means a workload within about half again this player's ${roleUnitLabel}.` : ""}
+            {dropped > 0 ? ` ${droppedNote(dropped)}` : ""}
           </div>
         </>
       )}

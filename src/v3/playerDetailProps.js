@@ -7,7 +7,20 @@
 // Nothing here holds state or fetches. Each page passes its own values and
 // setters in; the shapes out are exactly what PlayerDetailMobile renders.
 
-import { logScopeOptions, resolveSeason, SEASON_MIN_GAMES } from "../LogScope.jsx";
+import { logScopeOptions, resolveSeason, SEASON_MIN_GAMES, seasonLabel } from "../LogScope.jsx";
+
+// What a set of season averages was counted over, so the numbers never stand
+// without their sample: "2025 · 18 GP", or "2025–2026 · 20 GP" while the
+// season rail is on All seasons. NBA spans read "2 seasons", because
+// "2024-25–2025-26" is not something anyone should have to parse.
+export function seasonScope(games, sport) {
+  const list = games || [];
+  const ys = [...new Set(list.map((g) => Number(g.season)).filter(Number.isFinite))].sort((a, b) => a - b);
+  let label = null;
+  if (ys.length === 1) label = seasonLabel(ys[0], sport);
+  else if (ys.length > 1) label = sport === "nba" ? `${ys.length} seasons` : `${ys[0]}–${ys[ys.length - 1]}`;
+  return { label, games: list.length };
+}
 
 // A season's length decides what a window means: 162 games make "last 18"
 // meaningless and 17 make "last 30" impossible. From

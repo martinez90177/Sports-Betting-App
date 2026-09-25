@@ -31,7 +31,7 @@ import NavBar, { NAV_TABS } from "./NavBar.jsx";
 // The v3 router: below 900px this is the mobile mock, above it still the v2
 // desktop transcription. See src/v3/PlayerDetail.jsx.
 import PlayerDetailV2 from "./v3/PlayerDetail.jsx";
-import { buildWindows, buildSplits, buildSeasons, buildSlate, buildSamples, sampleFloor, DEFAULT_WINDOW, WINDOW_MAX, WINDOWS } from "./v3/playerDetailProps.js";
+import { buildWindows, buildSplits, buildSeasons, buildSlate, buildSamples, sampleFloor, seasonScope, DEFAULT_WINDOW, WINDOW_MAX, WINDOWS } from "./v3/playerDetailProps.js";
 import useCustomWindow from "./v3/useCustomWindow.js";
 import PropFeedMobile from "./v3/PropFeedMobile.jsx";
 import PropFeedDesktop from "./v3/PropFeedDesktop.jsx";
@@ -45,7 +45,9 @@ import useMyPicks from "./v3/useMyPicks.js";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import { venueWord } from "./lib/venue.js";
+import { fetchNflTeamRankings } from "./lib/nflTeamStats.js";
 import { fetchNflStarters } from "./lib/nflDepth.js";
+import { fetchNflGameStarters } from "./lib/nflGameStarters.js";
 import TeamLogo from "./TeamLogo.jsx";
 import { usagePills, roleSentence } from "./lib/usagePills.js";
 import { fetchStatcast } from "./lib/statcast.js";
@@ -2876,6 +2878,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
           { label: "AST", value: seasonAvg.ast.toFixed(1) },
           { label: "MIN", value: seasonAvg.min.toFixed(1) },
         ],
+        seasonScope: seasonScope(allGames, "nba"),
         avatar: (
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nba" team={player.team}
@@ -2917,7 +2920,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: nbaNextGameForTeam(player?.team),
-        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba", sampleFloor(minSample)),
+        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "nba", sampleFloor(minSample), v3Custom.custom),
       }}
       workload={{
         // The frame draws a workload filter in the rail -- MINUTES on the two
@@ -3927,6 +3930,130 @@ function nflLiveSide(side) {
   });
   left.forEach((p) => players.push(p));
   return { ...side, players };
+}
+
+// A side's roster in the order its depth chart states, split into the players
+// the rail leads with and the bench behind them.
+//
+// The rail used to keep the hand-written arrays' order, which was typed once
+// and never followed the chart: Jacksonville read Thomas, Meyers, Washington
+// while ESPN had Washington at WR1. Alex, 2026-09-25: *"it should show in
+// depth chart order when showing positions. so parker washington should be
+// the first wr shown, then btj bc hes wr2, then jakobi."* And the lead group
+// was really "whoever the hand-written array named", so a back who joined in
+// the spring -- Chris Rodriguez Jr., splitting Jacksonville's carries with
+// Tuten -- could never be in it at all.
+//
+// Leads with: QB1, the lead back and any back sharing his work (see
+// nflCommitteeBacks), as many receivers and tight ends as the chart's own
+// formation starts ("3WR 1TE"), and the kicker. Everyone else follows by
+// position in the same order, chart order within it, and anyone the chart does
+// not list comes last.
+//
+// Null when this team's chart has not loaded, and the caller keeps the
+// roster's order: no chart is not a reason to invent one.
+const NFL_RAIL_POS_ORDER = ["QB", "RB", "FB", "WR", "TE", "K"];
+function nflRailOrder(players) {
+  const team = players && players[0] && players[0].team;
+  const d = team && NFL_STARTERS && NFL_STARTERS.depth && NFL_STARTERS.depth[team];
+  if (!d) return null;
+  const idOf = (p) => String(p.espnId || NFL_ESPN_ID[p.id] || "");
+  const byEspn = new Map(players.map((p) => [idOf(p), p]));
+  const lead = [];
+  const taken = new Set();
+  const take = (id) => {
+    const p = byEspn.get(String(id));
+    if (p && !taken.has(p.id)) { taken.add(p.id); lead.push(p); }
+  };
+  const list = (slot) => d[slot] || [];
+  // Workloads are read off the team's newest season only. getNFLGames hands
+  // back last season's log for anyone with no games in this one yet, so
+  // without this a back who has not played a snap in 2026 -- Seattle's Zach
+  // Charbonnet, Arizona's James Conner -- was judged on his 2025 carries and
+  // joined the committee. Before Week 1 the newest season is last year's for
+  // everyone, which is the right thing to read then.
+  const season = players.reduce((hi, p) => getNFLGames(p).reduce(
+    (h, g) => (g.team === team && Number(g.season) > h ? Number(g.season) : h), hi), 0);
+  // Backs before receivers -- Alex, 2026-09-25: *"put the rb's before the
+  // wr's"*. QB, RB, WR, TE, K, the order a depth chart reads.
+  //
+  // The chart is followed as published at every slot but the backs'. Checked
+  // across the 2026 Week 3 slate for starters it lists who are not being
+  // used; each one looked into -- Denver's Marvin Mims, Tampa Bay's Jalen
+  // McMillan, Las Vegas's Brock Bowers, Indianapolis's Darius Slayton -- was
+  // a player back from injury or covering for one listed out, which is the
+  // chart being right, not stale.
+  list("qb").slice(0, 1).forEach(take);
+  list("rb").slice(0, 1).forEach(take);
+  nflCommitteeBacks(list("rb"), byEspn, { team, season }).forEach(take);
+  list("wr").slice(0, d.wrStart || 3).forEach(take);
+  list("te").slice(0, d.teStart || 1).forEach(take);
+  list("pk").slice(0, 1).forEach(take);
+
+  const rank = new Map();
+  ["qb", "wr", "rb", "te", "pk"].forEach((slot) => list(slot).forEach((id, i) => {
+    if (!rank.has(String(id))) rank.set(String(id), i);
+  }));
+  const posAt = (p) => { const i = NFL_RAIL_POS_ORDER.indexOf(p.pos); return i < 0 ? NFL_RAIL_POS_ORDER.length : i; };
+  const bench = players
+    .filter((p) => !taken.has(p.id))
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => posAt(a.p) - posAt(b.p)
+      || (rank.has(idOf(a.p)) ? rank.get(idOf(a.p)) : 999) - (rank.has(idOf(b.p)) ? rank.get(idOf(b.p)) : 999)
+      || a.i - b.i)
+    .map(({ p }) => p);
+  return { lead, bench };
+}
+
+// Backs behind the lead one who carry a real share of the work -- a committee
+// rather than a handcuff. Alex, 2026-09-25: *"make sure committee's like this
+// and like deandre swift/monangai, kyren/corum is included because those guys
+// really play. but for guys like javonte williams whos handcuff never plays,
+// they dont need to be put there."*
+//
+// Measured off this season's logs with this team, in the games the two backs
+// shared (so a lead back's missed week does not make his backup look like a
+// partner), last six of them:
+//
+//   the chart's RB2      6+ touches a game and at least a third of the lead
+//                        back's. Six is lib/role.js's line between a
+//                        contributor and a rotational body.
+//   anyone deeper        7+ and at least half. The chart already calls him a
+//                        third-stringer, so it takes a real workload to
+//                        overrule it -- Minnesota lists Jordan Mason fourth
+//                        and he averages fifteen; Green Bay lists Kaleb
+//                        Johnson third on 7.5 beside MarShawn Lloyd's 9.7.
+//
+// Checked against 2026 weeks 1-2, all 32 teams: Rodriguez (6.0 beside Tuten's
+// 15.5), Monangai (12.0 / 20.5) and Corum (11.5 / 14.0) are in; Dallas's
+// second back (2.5 beside Javonte's 16.5) is out, and so are Jacksonville's
+// fourth (Abdullah, 4.5) and the six-touch third-stringers -- the Rams'
+// Rivers, Philadelphia's Shipley, Carolina's Brooks.
+//
+// A touch is a carry or a target -- a reception where the source kept no
+// targets, which undercounts rather than invents.
+
+const COMMITTEE_WINDOW = 6;
+function nflCommitteeBacks(rbIds, byEspn, { team, season }) {
+  if (!rbIds || rbIds.length < 2) return [];
+  const touches = (g) => (g.rushAtt || 0) + (g.tgt != null ? g.tgt : g.rec || 0);
+  const logOf = (p) => (p ? getNFLGames(p).filter((g) => g.team === team && Number(g.season) === season && g.eventId) : []);
+  const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+  const leadLog = logOf(byEspn.get(String(rbIds[0])));
+  const leadBy = new Map(leadLog.map((g) => [g.eventId, touches(g)]));
+  return rbIds.slice(1).filter((id, i) => {
+    const mine = logOf(byEspn.get(String(id)));
+    if (!mine.length) return false;
+    const shared = mine.filter((g) => leadBy.has(g.eventId));
+    const games = (shared.length ? shared : mine).slice(-COMMITTEE_WINDOW);
+    const per = mean(games.map(touches));
+    const leadPer = shared.length
+      ? mean(games.map((g) => leadBy.get(g.eventId)))
+      : mean(leadLog.slice(-COMMITTEE_WINDOW).map(touches));
+    const deep = i >= 1;
+    if (per < (deep ? 7 : 6)) return false;
+    return !leadPer || per / leadPer >= (deep ? 0.5 : 1 / 3);
+  });
 }
 
 // Each entry is one week's matchup the Prop Ledger can scout -- the "matchup
@@ -4960,6 +5087,16 @@ function buildNflSimilarGames({ position, opp, market, excludeId, subjectRole, m
       const ratio = theirs / subjectRole;
       if (ratio < SIMILAR_ROLE_LO || ratio > SIMILAR_ROLE_HI) return;
     }
+    // His workload that season with that team, for nflSimilarGameCounts --
+    // computed once per season rather than once per game.
+    const roleBy = new Map();
+    const roleFor = (g) => {
+      const k = `${g.season}|${g.team}`;
+      if (!roleBy.has(k)) {
+        roleBy.set(k, roleValue({ sport: "nfl", games: games.filter((x) => x.season === g.season && x.team === g.team), position }));
+      }
+      return roleBy.get(k);
+    };
     games.forEach((g) => {
       if (g.opp !== opp) return;
       const v = statValueNFL(g, market);
@@ -4967,10 +5104,56 @@ function buildNflSimilarGames({ position, opp, market, excludeId, subjectRole, m
       out.push({
         key: `${p.id}:${g.eventId || g.date}`,
         name: p.name, team: g.team, date: g.date, season: g.season, home: g.home, v,
+        eventId: g.eventId || null,
+        espnId: p.espnId || NFL_ESPN_ID[p.id] || null,
+        game: g,
+        seasonRole: roleFor(g),
       });
     });
   });
   return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+
+// Whether a game belongs in Similar Players at all: he started it, or he
+// played a real part in it.
+//
+// Every game a player logged against the opponent went in, and a log has a
+// row for any appearance -- so Mason Rudolph's kneel-downs against New England
+// read as a 0-yard passing game and dragged the card's average down by a
+// sixth. Alex, 2026-09-25: *"subs like mason rudolph should only show here if
+// they actually played in the game and took meaningful snaps ... for wr's make
+// sure it isn't showing guys with 0 yards who barely played and is not a
+// meaningful rotation player ... i dont want garbage time stuff in here."*
+//
+// There are no snap counts in this app (normalizeNFLGame's snapPct is an
+// estimate, and nothing is filtered on an estimate). What is measured:
+//
+//   started it     ESPN's per-game starting lineup (lib/nflGameStarters.js).
+//                  Darnold's 13-yard opener, left hurt, counts; he started.
+//   real volume    without a start: 10 pass attempts (a quarterback who
+//                  replaced an injured starter, as Lock did; a mop-up series
+//                  is not ten), 6 carries-plus-targets for a back, 3 targets
+//                  for a receiver or tight end.
+//   a rotation     his workload that season with that team -- at least 20
+//   player         attempts, 6 touches or 4 targets a game (3 for a tight
+//                  end). A regular's quiet game is a real result and stays;
+//                  it is the deep reserve's cameo that goes.
+//
+// Where the source kept no targets, receptions stand in, which undercounts
+// rather than invents.
+const SIMILAR_VOLUME = { QB: 10, RB: 6, WR: 3, TE: 3 };
+const SIMILAR_ROTATION = { QB: 20, RB: 6, WR: 4, TE: 3 };
+function nflSimilarGameCounts(row, position, starters) {
+  const started = starters && starters.get(`${row.eventId}|${row.team}`);
+  if (started && row.espnId && started.has(String(row.espnId))) return true;
+  const g = row.game || {};
+  const targets = g.tgt != null ? g.tgt : g.rec || 0;
+  if (position === "K") return (g.fga || 0) + (g.xpa || 0) > 0;
+  const volume = position === "QB" ? g.att || 0
+    : position === "RB" ? (g.rushAtt || 0) + targets
+    : targets;
+  if (SIMILAR_VOLUME[position] != null && volume >= SIMILAR_VOLUME[position]) return true;
+  return SIMILAR_ROTATION[position] != null && row.seasonRole != null && row.seasonRole >= SIMILAR_ROTATION[position];
 }
 
 const statValueNFL = (g, market) => {
@@ -6767,8 +6950,8 @@ function indoorConditions(slateGame) {
   };
 }
 
-// Frame 1a's six-cell strip: three rolling windows, the current season, then
-// home and away. Every cell carries a rate and the count behind it -- "62%"
+// Frame 1a's rate strip: rolling windows, the seasons, then home and away.
+// Every cell carries a rate and the count behind it -- "62%"
 // over "8/13" -- because a percentage with its sample out of sight is the one
 // number this app will not show.
 //
@@ -6792,7 +6975,15 @@ function indoorConditions(slateGame) {
 // at 55%, but amber in this app is an availability colour (CLAUDE.md rule 2)
 // and there is no rate-amber token -- a 60% cell tinted #e8b13a would read as
 // "questionable" beside avatars where that is exactly what it means.
-function frameSplitCells(logGames, valueOf, hit, sport, minSample = 0) {
+//
+// The short windows are gone, and the reader's own window leads instead.
+// Alex, 2026-09-25: *"we don't need a Last 3 and Last 5 thats kinda silly"* --
+// and asked for the number typed into YOUR OWN to show its hit rate here. So
+// the first cell follows that stepper live (`own`, flagged so the strip can
+// mark it as the reader's), the sport's standard windows of ten and up follow
+// with any the reader's number duplicates dropped, and both seasons get a
+// cell, the way Outlier shows 2026 beside 2025.
+function frameSplitCells(logGames, valueOf, hit, sport, minSample = 0, custom = null) {
   const games = (logGames || []).filter(Boolean);
   if (!games.length) return null;
   const recent = [...games].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
@@ -6814,14 +7005,20 @@ function frameSplitCells(logGames, valueOf, hit, sport, minSample = 0) {
     };
   };
 
-  const wins = (WINDOWS[sport] || WINDOWS.nba).filter((w) => typeof w === "number").slice(0, 3);
-  const cells = wins.map((w) => cell(`LAST ${w}`, recent.slice(0, w)));
+  const own = Number.isFinite(custom) && custom >= 2 ? Math.round(custom) : null;
+  const wins = (WINDOWS[sport] || WINDOWS.nba)
+    .filter((w) => typeof w === "number" && w >= 10 && w !== own)
+    .slice(0, 2);
+  const cells = [];
+  if (own) cells.push({ ...cell(`LAST ${own}`, recent.slice(0, own)), own: true });
+  wins.forEach((w) => cells.push(cell(`LAST ${w}`, recent.slice(0, w))));
 
-  // The current season, named the way every other season control names it.
+  // This season and the last, named the way every other season control
+  // names them.
   const years = [...new Set(games.map((g) => Number(g.season)).filter(Number.isFinite))].sort((a, b) => b - a);
-  if (years.length) {
-    cells.push(cell(seasonLabel(years[0], sport), games.filter((g) => Number(g.season) === years[0])));
-  }
+  years.slice(0, 2).forEach((y) => {
+    cells.push(cell(seasonLabel(y, sport), games.filter((g) => Number(g.season) === y)));
+  });
 
   // Home and away read off the same boolean the SPLITS radio filters on, so
   // the cell and the split can never disagree about which games are which.
@@ -7955,14 +8152,19 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   //
   // NFL_REAL_GAME_LOGS is filled by an effect on mount, hence the dataVersion
   // dependency -- same reasoning as allGames above.
+  //
+  // Over the live sides the rails draw, not matchup.teamA/B. Those are the
+  // hand-written arrays, so a player the live roster added -- a spring
+  // signing -- never had a figure, and the desktop rail, which reads "has a
+  // figure" as "is a core player", filed him under Bench whatever he did.
   const railStats = useMemo(() => {
     const m = new Map();
-    [...(matchup?.teamA?.players || []), ...(matchup?.teamB?.players || [])].forEach((p) => {
+    [...(teamRoster?.players || []), ...(oppRoster?.players || [])].forEach((p) => {
       const mk = nflRailMarket(p.pos, market);
       m.set(p.id, mk ? railSeasonAvg(getNFLGames(p), (g) => statValueNFL(g, mk)) : null);
     });
     return m;
-  }, [matchup, market, dataVersion]);
+  }, [teamRoster, oppRoster, market, dataVersion]);
   const railMeta = React.useCallback((p) => {
     const mk = nflRailMarket(p.pos, market);
     return railMetaLine(p.pos, railStats.get(p.id), mk, NFL_MARKETS.find((m) => m.id === mk)?.label);
@@ -8203,6 +8405,31 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     && (player.team !== ((oppRoster.players[0] || {}).team));
   const gameOppAbbr = gameOppRoster.players[0]?.team;
   const gameOppDef = gameOppAbbr ? getNFLDefRank(market, player.pos, gameOppAbbr) : null;
+  // What tonight's defence gives up per game, from ESPN's own team
+  // statistics -- the official figure, for the same season the MATCHUP rank
+  // is from. Deliberately not the pool's per-market average: that one misses
+  // every player no longer in the pool, which is why the pool only ever
+  // surfaces a rank. Only markets with a clean official counterpart get one.
+  const officialRankSeason = gameOppDef && gameOppDef.season != null ? Number(gameOppDef.season) : null;
+  const [officialDef, setOfficialDef] = useState({});
+  React.useEffect(() => {
+    if (!officialRankSeason || officialDef[officialRankSeason] !== undefined) return undefined;
+    let live = true;
+    setOfficialDef((p) => ({ ...p, [officialRankSeason]: null }));
+    fetchNflTeamRankings(officialRankSeason)
+      .then((d) => { if (live) setOfficialDef((p) => ({ ...p, [officialRankSeason]: d || false })); })
+      .catch(() => { if (live) setOfficialDef((p) => ({ ...p, [officialRankSeason]: false })); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [officialRankSeason]);
+  const officialAllowed = (() => {
+    const row = { passYds: ["passYds", "pass yds"], recYds: ["passYds", "pass yds"], rushYds: ["rushYds", "rush yds"], passRushYds: ["yards", "yds"] }[market];
+    const table = officialRankSeason ? officialDef[officialRankSeason] : null;
+    const cell = row && table && gameOppAbbr && table.teams[gameOppAbbr] ? table.teams[gameOppAbbr].def[row[0]] : null;
+    return cell && Number.isFinite(cell.value)
+      ? { value: cell.value.toFixed(1), label: `${row[1]} allowed / g`, season: officialRankSeason }
+      : null;
+  })();
   // The slate row for this fixture, if the slate has it (see
   // usePlayerSlateGame). Out of season -- or when the log's opponent is not
   // who the slate has this team facing -- this stays null and the kickoff
@@ -8497,7 +8724,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     () => roleValue({ sport: "nfl", games: allGames, position: player?.pos }),
     [allGames, player]
   );
-  const nflSimilarRows = useMemo(
+  const nflSimilarAll = useMemo(
     () => buildNflSimilarGames({
       position: player?.pos,
       opp: nflNext ? nflNext.opp : null,
@@ -8511,6 +8738,26 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [player, market, nflNext && nflNext.opp, similarMode, nflSubjectRole, dataVersion]
   );
+  // Who started each of those games, fetched once per game and kept -- see
+  // lib/nflGameStarters.js. Until it answers, a game is judged on volume and
+  // role alone, so a starter hurt on his first series appears when it lands.
+  const [similarStarters, setSimilarStarters] = useState(null);
+  const similarGamesKey = useMemo(
+    () => [...new Set(nflSimilarAll.filter((r) => r.eventId && r.team).map((r) => `${r.eventId}|${r.team}`))].sort().join(","),
+    [nflSimilarAll]
+  );
+  React.useEffect(() => {
+    if (!similarGamesKey) return undefined;
+    let live = true;
+    const games = similarGamesKey.split(",").map((k) => { const [eventId, team] = k.split("|"); return { eventId, team }; });
+    fetchNflGameStarters(games).then((m) => { if (live) setSimilarStarters(m); }).catch(() => {});
+    return () => { live = false; };
+  }, [similarGamesKey]);
+  const nflSimilarRows = useMemo(
+    () => nflSimilarAll.filter((r) => nflSimilarGameCounts(r, player?.pos, similarStarters)),
+    [nflSimilarAll, player, similarStarters]
+  );
+  const nflSimilarDropped = nflSimilarAll.length - nflSimilarRows.length;
 
   const matchupBins = useMemo(() => {
     const counts = new Map();
@@ -8531,10 +8778,15 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // wide screen this is nothing and the rails do the switching; between 480
   // and 1100 the rails have folded away (see .pp-pd-grid) and this is what
   // replaces them.
+  // Depth-chart order here too, so the tablet strip and the rails agree.
+  const depthOrdered = (roster) => {
+    const o = roster && nflRailOrder(roster.players);
+    return o ? { ...roster, players: [...o.lead, ...o.bench] } : roster;
+  };
   const v2MobileNav = (
     <MobilePlayerNav
-      teamA={teamRoster}
-      teamB={oppRoster}
+      teamA={depthOrdered(teamRoster)}
+      teamB={depthOrdered(oppRoster)}
       activeId={playerId}
       onSelect={(id) => { setPlayerId(id); setLine(null); setOpponent("all"); }}
       headshotSrc={(p) => nflHeadshot(p)}
@@ -8583,7 +8835,18 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // The dot is ESPN's injury designation for that athlete, off the same
   // per-team roster response the pool itself comes from. A player ESPN has no
   // designation for still draws no dot -- unknown is never a colour.
-  const v2Rail = (roster) => ((roster || {}).players || []).map((pl) => ({
+  //
+  // In depth-chart order once the charts are in, each row marked as a lead
+  // player or bench -- see nflRailOrder. Before then, roster order with no
+  // marks, and the desktop rail splits on the stat line as it always did.
+  const v2Rail = (roster) => {
+    const players = (roster || {}).players || [];
+    const order = nflRailOrder(players);
+    const leadIds = order ? new Set(order.lead.map((p) => p.id)) : null;
+    return (order ? [...order.lead, ...order.bench] : players).map((pl) => v2RailRow(pl, leadIds));
+  };
+  const v2RailRow = (pl, leadIds) => ({
+    tier: leadIds ? (leadIds.has(pl.id) ? "lead" : "bench") : undefined,
     id: pl.id,
     name: pl.name,
     // Carried through so the v3 mobile dock can render its own 40px avatar
@@ -8600,8 +8863,8 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     // on an active player -- see the WNBA rail for why.
     statusWord: nflStatusOf(pl) === "out" || nflStatusOf(pl) === "questionable" ? nflStatusOf(pl) : null,
     dotRing: "var(--surface-1)",
-    // No batting order here, and no starter/depth-chart feed either, so the
-    // rail stays in roster order rather than inventing a hierarchy.
+    // No batting order in this sport. The depth chart is the row order
+    // itself (v2Rail above), not a number printed on the row.
     order: null,
     avatar: (
       <PlayerAvatar
@@ -8611,7 +8874,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       />
     ),
     onSelect: () => { setPlayerId(pl.id); setLine(null); setOpponent("all"); },
-  }));
+  });
 
   const v2Meetings = allGames.filter((g) => g.opp === gameOppAbbr);
   const v2Last = v2Meetings.length ? v2Meetings[v2Meetings.length - 1] : null;
@@ -8816,7 +9079,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       ownRail={{
         label: v2AwayRoster.label,
         players: v2Rail(v2AwayRoster),
-        legend: "Dots are ESPN's injury report. Rail order is the roster's, not a depth chart.",
+        legend: nflRailOrder((v2AwayRoster || {}).players)
+          ? "Dots are ESPN's injury report. Order is ESPN's depth chart; a second back is listed when he carries a real share of the work."
+          : "Dots are ESPN's injury report. Rail order is the roster's until the depth chart loads.",
       }}
       oppRail={{ label: v2HomeRoster.label, players: v2Rail(v2HomeRoster) }}
       // The band is built from the matchup, which is always there. The slate
@@ -8841,6 +9106,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         // or as settled.
         rankSeason: (!unplacedPlayer && gameOppDef) ? gameOppDef.season ?? null : null,
         rankNote: (!unplacedPlayer && gameOppDef && gameOppDef.split) ? nflDefOtherText(gameOppDef.split) : null,
+        // ESPN's official per-game figure for this market's side of the
+        // ball, same season as the rank above. See officialAllowed.
+        allowedOfficial: unplacedPlayer ? null : officialAllowed,
         rankColor: gameOppTier === "soft" ? "var(--pos)" : gameOppTier === "tough" ? "var(--neg)" : "var(--dim)",
         lastMeeting: v2Last ? `${statValueNFL(v2Last, market)} \u00b7 ${axisDateShort(v2Last.date)}` : null,
         // The NFL file's fourth cell is WEATHER, where MLB says PARK and the
@@ -8870,6 +9138,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         pills: usagePills({ sport: "nfl", games: filtered, position: player.pos }),
         role: roleSentence({ sport: "nfl", games: filtered, position: player.pos }),
         seasonStats: seasonAvg.map((s) => ({ label: s.label, value: s.value.toFixed(s.decimals) })),
+        seasonScope: seasonScope(allGames, "nfl"),
         avatar: (
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="nfl" team={player.team}
@@ -8913,7 +9182,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValueNFL(g, market)),
         upcoming: nflNextGameForTeam(player?.team),
-        splitCells: frameSplitCells(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl", sampleFloor(minSample)),
+        splitCells: frameSplitCells(logGames, (g) => statValueNFL(g, market), (v) => v > v2LiveLine, "nfl", sampleFloor(minSample), v3Custom.custom),
       }}
       valueOfMarket={(g, id) => statValueNFL(g, id)}
       chart={{
@@ -8938,6 +9207,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
           />
           <SimilarPlayers
             rows={nflSimilarRows}
+            dropped={nflSimilarDropped}
             line={v2LiveLine}
             marketLabel={marketLabel}
             opp={nflNext ? nflNext.opp : null}
@@ -10943,6 +11213,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
           { label: "AST", value: seasonAvg.ast.toFixed(1) },
           { label: "MIN", value: seasonAvg.min.toFixed(1) },
         ],
+        seasonScope: seasonScope(allGames, "wnba"),
         avatar: (
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="wnba" team={player.team}
@@ -10985,7 +11256,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       log={{
         rows: buildLogRows(allGames, filtered, (g) => statValue(g, market, rebSplit)),
         upcoming: wnbaNextGameForTeam(player?.team),
-        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba", sampleFloor(minSample)),
+        splitCells: frameSplitCells(logGames, (g) => statValue(g, market, rebSplit), (v) => v > v2LiveLine, "wnba", sampleFloor(minSample), v3Custom.custom),
       }}
       workload={{
         // The mock scales the WNBA 0-40, against the NBA 40-minute-plus 42.
@@ -16088,6 +16359,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
           ? [{ label: "K/G", value: seasonAvg.k }, { label: "ER/G", value: seasonAvg.er }, { label: "BB/G", value: seasonAvg.bb }]
           : [{ label: "H/G", value: seasonAvg.h }, { label: "HR/G", value: seasonAvg.hr }, { label: "RBI/G", value: seasonAvg.rbi }]
         ).map((s) => ({ label: s.label, value: s.value.toFixed(2) })),
+        seasonScope: seasonScope(allGames, "mlb"),
         avatar: (
           <PlayerAvatar
             key={player.id} name={player.name} alt={player.name} sport="mlb" team={player.team}
@@ -16133,7 +16405,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
         rows: buildLogRows(allGames, filtered, statValueFn),
         upcoming: nextGame,
         unit: isPitcher ? "starts" : "games",
-        splitCells: frameSplitCells(logGames, statValueFn, (v) => v > liveLine, "mlb", sampleFloor(minSample)),
+        splitCells: frameSplitCells(logGames, statValueFn, (v) => v > liveLine, "mlb", sampleFloor(minSample), v3Custom.custom),
       }}
       valueOfMarket={(g, id) => (isPitcher ? statValueMLBPitcher(g, id) : statValueMLB(g, id))}
       chart={{
@@ -18088,18 +18360,11 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           )}
         </>
       )}
-      {/* The streak rides beside the matchup, on the phone and on desktop.
-           Desktop used to print it as a caption under the bars, and that line
-           sat empty on every row without a run. Alex, 2026-09-24: *"thats way
-           too empty for players not currently on a streak."* Counted by the
-           same helper the rule under the bars is drawn from, so a dragged line
-           moves both together.
-
-           No leading "·": coloured and bold, it separates itself the way the
-           MID / TOUGH word does, and the two characters are what pushed an
-           NFL row's line ("'26 #11 · 2G · 6 STRAIGHT", 185px in a 179px
-           column) onto a third line. */}
-      {run.show && (
+      {/* The streak rides beside the matchup on the phone card only, which
+           has no tag gutter. Desktop states it in the chart's gutter, beside
+           the bars it counts -- Alex, 2026-09-25, of it sitting here: *"I dont
+           like it being with the other stats on the left."* */}
+      {isNarrow && run.show && (
         <span style={{ whiteSpace: "nowrap", color: run.hit ? "var(--pos)" : "var(--neg)", fontWeight: 700 }}>
           {run.len} {run.hit ? "straight" : "cold"}
         </span>
@@ -18127,12 +18392,34 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         onDragLine={startLineDrag}
         onResetLine={resetLine}
         values
-        // The six rate cells to the right each print their own sample, and the
-        // run is printed beside the matchup, so the caption keeps only the
-        // playoff count. See captionCounts in FormGraph.
+        // Taller than the strip's 60px default, so the chart fills the row
+        // rather than sitting at the top of it. Alex, 2026-09-25: *"find a
+        // way to fit the graphs into its slot better as there's too much
+        // space underneath it."*
+        height={72}
+        // The rate cells state every sample, so no counts; the run is stated
+        // in the tag's gutter; so the strip draws no caption of its own.
         captionCounts={false}
         runCaption={false}
+        runInGutter
       />
+      {/* The average against the line, under the chart it summarises -- it
+          moved here from under the player's name, where it was the fifth
+          line of a crowded column. Always present, so the space under the
+          chart is never a blank reserved for something that is not there.
+          While the line is dragged it becomes the reset control, same as it
+          always has. A yes/no market has no tag gutter to hold the run, so
+          the run joins this line instead. */}
+      {(lineNote || (r.isBinary && run.show)) && (
+        <div style={{ marginTop: 6, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+          {lineNote || <span />}
+          {r.isBinary && run.show && (
+            <span className="pp-mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap", color: run.hit ? "var(--pos)" : "var(--neg)" }}>
+              {run.len} {run.hit ? "STRAIGHT" : "COLD"}
+            </span>
+          )}
+        </div>
+      )}
       {formAnchor && <FeedFormPopover r={r} direction={direction} anchor={formAnchor} line={lineVal} />}
     </div>
   );
@@ -18286,11 +18573,9 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               reference information, not part of the proposition, and including
               it would make the click target sprawl over most of the row. */}
           <div style={{ marginTop: 3 }}>{oppRankLine}</div>
-          {/* What the LINE column used to carry, now that it has none. Not
-              the line value itself -- the proposition above already names it,
-              and a third copy was what made the middle of the row feel
-              crammed -- but the two things only that cell said. */}
-          {lineNote && <div style={{ marginTop: 3 }}>{lineNote}</div>}
+          {/* The average-vs-line note that sat here is under the chart now
+              (see formCell): who, what, and against whom is what this column
+              is for, and a fifth line was what made it crowded. */}
           {/* The ladder toggle has no column of its own any more. It sits
               here, under the prop it opens alt lines for, and only when the
               Lines control is asking for them. */}
@@ -25012,7 +25297,12 @@ export default function PropLedger() {
       slugFor: (p) => NFL_SLUG_BY_ESPN_ID[p.espnId],
     }).then((res) => {
       if (cancelled || !res) return;
+      // ESPN's rosters call a kicker "PK"; every NFL map here says "K".
+      // Filtered on the raw abbreviation, every kicker the hand-written
+      // arrays did not already carry was dropped -- no log, no props, and a
+      // hole where the Jets', Giants' and Saints' kickers belong on the rail.
       NFL_LIVE_PLAYERS = res.players
+        .map((p) => (p.pos === "PK" ? { ...p, pos: "K" } : p))
         .filter((p) => NFL_PROP_POSITIONS.has(p.pos))
         .map((p) => ({
           id: p.id || `nfl_${p.espnId}`,
@@ -25054,7 +25344,11 @@ export default function PropLedger() {
       if (cancelled || !res) return;
       // The depth charts are keyed by ESPN's abbreviations and every row by
       // ours; left raw, Washington (WSH vs WAS) was never filtered at all.
-      NFL_STARTERS = { ...res, teams: new Set([...res.teams].map(nflOurAbbr)) };
+      NFL_STARTERS = {
+        ...res,
+        teams: new Set([...res.teams].map(nflOurAbbr)),
+        depth: Object.fromEntries(Object.entries(res.depth || {}).map(([abbr, d]) => [nflOurAbbr(abbr), d])),
+      };
       bumpNflRefresh();
     }).catch(() => {});
 

@@ -2,6 +2,7 @@ import React from "react";
 import FormPlot, { PLOT, crest } from "./FormPlot.jsx";
 import ValuePlot from "./ValuePlot.jsx";
 import WindowNumber from "./WindowNumber.jsx";
+import SeasonNote from "./SeasonNote.jsx";
 import { probToAmericanOdds, formatOdds } from "../odds.js";
 import { STATUS } from "../lib/teamColors.js";
 
@@ -85,11 +86,6 @@ const resultPill = (over) => ({
 const START_WORD = { mlb: "FIRST PITCH", nfl: "KICKOFF", nba: "TIP-OFF", wnba: "TIP-OFF" };
 
 const titleCase = (s) => (s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : s);
-
-const fmtRate = (hits, n) => (n ? `${Math.round((hits / n) * 100)}%` : "—");
-
-// The tone the mock uses on a rate figure. Its own thresholds, kept.
-const rateTone = (p) => (p >= 0.7 ? "var(--pos)" : p >= 0.55 ? "var(--status-questionable)" : "var(--text-2)");
 
 // One With/Without card, as frame 1c's `card()` builds it.
 //
@@ -488,9 +484,13 @@ export default function PlayerDetailMobile({
       {/* The other season's rank, across the card's full width -- a third of
           a phone is no room for a sentence, and a tooltip is no use on touch.
           NFL only; see nflDefSplit in PropLedger. */}
+      {/* The same pill-and-bold treatment as the desktop cell, so the other
+          season's rank does not read as one more dim caption -- see
+          SeasonNote. */}
       {rankParts[1] && context && context.rankNote && (
-        <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--line)", padding: "8px 12px", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.45, color: "var(--text-2)" }}>
-          Matchup is {context.rankSeason}. {context.rankNote}.
+        <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--line)", padding: "4px 12px 9px", fontFamily: MONO, fontSize: 10.5, lineHeight: 1.45, color: "var(--text-2)" }}>
+          <span style={{ display: "block", marginTop: 4 }}>{`Matchup above is ${context.rankSeason}.`}</span>
+          <SeasonNote text={context.rankNote} size={11.5} />
         </div>
       )}
     </div>
@@ -581,19 +581,21 @@ export default function PlayerDetailMobile({
   // ---- Form --------------------------------------------------------------
   const picked = barSel != null && games[barSel] ? games[barSel] : null;
 
-  // The strip reads the *season* log, not the window -- otherwise the third
-  // cell restates the second whenever the window happens to be L10, which is
-  // the default on three of four sports. Same array, same line, three depths.
   const seasonGames = (log && log.rows) || [];
-  const splitCells = [
-    { key: "l5", label: "LAST 5", games: seasonGames.slice(-5), edge: true },
-    { key: "l10", label: "LAST 10", games: seasonGames.slice(-10), edge: true },
-    { key: "season", label: "SEASON", games: seasonGames, edge: false },
-  ].map((s) => {
-    const h = s.games.filter((g) => hitOf(g.v)).length;
-    const p = s.games.length ? h / s.games.length : 0;
-    return { ...s, value: fmtRate(h, s.games.length), sub: `${h}/${s.games.length}`, tone: rateTone(p) };
-  });
+  // The same cells the desktop strip draws, from the same builder -- the
+  // reader's own window first, the standard windows, both seasons, home and
+  // away -- so the phone and the desktop can never state different rates for
+  // one player. It had its own LAST 5 / LAST 10 / SEASON trio until Alex,
+  // 2026-09-25: *"we don't need a Last 3 and Last 5 thats kinda silly"*, and
+  // *"i want the phone to match but dont make it mess anything up on mobile."*
+  //
+  // Three to a row, wrapping, rather than one row squeezed to seven or a
+  // strip that scrolls: a cell off the edge of a scroller is a rate nobody
+  // finds. The last cell stretches over whatever its row has left, so a row
+  // of two never ends in an empty box.
+  const splitCells = (log && log.splitCells) || [];
+  const splitCols = 3;
+  const splitTail = splitCells.length % splitCols;
 
   const straight = (() => {
     let run = 0;
@@ -691,26 +693,31 @@ export default function PlayerDetailMobile({
         )}
       </div>
 
-      <div
-        style={{
-          border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)",
-          display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
-        }}
-      >
-        {splitCells.map((s) => (
-          <div
-            key={s.key}
-            style={{
-              padding: "10px 11px", display: "flex", flexDirection: "column", gap: 2,
-              borderRight: s.edge ? "1px solid var(--line)" : "none",
-            }}
-          >
-            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)" }}>{s.label}</span>
-            <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: s.tone }}>{s.value}</span>
-            <span style={{ fontFamily: MONO, fontSize: 10, color: "#5c6b7a" }}>{s.sub}</span>
-          </div>
-        ))}
-      </div>
+      {splitCells.length > 0 && (
+        // The grid lines are the 1px gaps showing the border colour through,
+        // so they fall right however the rows wrap.
+        <div
+          style={{
+            border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", background: "var(--line)",
+            display: "grid", gridTemplateColumns: `repeat(${splitCols}, minmax(0, 1fr))`, gap: 1,
+          }}
+        >
+          {splitCells.map((s, i) => (
+            <div
+              key={s.label}
+              style={{
+                padding: "10px 11px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2,
+                background: "var(--surface-1)",
+                gridColumn: splitTail && i === splitCells.length - 1 ? `span ${splitCols - splitTail + 1}` : undefined,
+              }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: s.own ? "var(--amber-ink)" : "var(--dim)", whiteSpace: "nowrap" }}>{s.label}</span>
+              <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: s.tone }}>{s.value}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: "#5c6b7a", whiteSpace: "nowrap" }}>{s.sub}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {player.seasonStats && player.seasonStats.length > 0 && (
         <div

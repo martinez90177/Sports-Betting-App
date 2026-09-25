@@ -215,6 +215,9 @@ export default function FeedFormStrip({
   // elsewhere -- the desktop feed row prints it beside the matchup, so its
   // caption would otherwise be a line held empty on every row without one.
   runCaption = true,
+  // State the run in the line tag's gutter instead, beside the bars it
+  // counts. The desktop feed row's choice; see the label itself.
+  runInGutter = false,
   // Print each game's value inside its own bar. Opt-in rather than always on:
   // a numeral needs a bar wide enough to hold it, and the board card (64px
   // over eight columns) and the phone strip (48px) do not have one. The feed
@@ -249,7 +252,6 @@ export default function FeedFormStrip({
   const shortfall = cols - n;
 
   const { len: shownRun, hit: shownRunHit, show: showRun } = trailingRun(recent, lineVal, r.isBinary, direction, streak, adjusted);
-  const poCount = recent.reduce((n, g) => n + (g.po ? 1 : 0), 0);
   const runFill = shownRunHit ? "var(--pos-solid, var(--pos))" : "var(--neg)";
   const runInk = shownRunHit ? "var(--pos)" : "var(--neg)";
 
@@ -266,32 +268,10 @@ export default function FeedFormStrip({
   // bars where some carry a value and some do not reads as missing data.
   const showValues = values && recent.every((g) => Math.abs(g.v) < 100);
 
-  // Playoff games, as bands rather than dots.
-  //
-  // They were a 3px dot on a track of their own under each playoff bar, and
-  // Alex: *"the dots is a little silly."* Fair — a dot is a mark you have to
-  // already know the meaning of, it sat on a track that cost every affected
-  // row 6px, and nothing on the screen said what it was for.
-  //
-  // A tinted band behind the columns instead. It is the standard chart device
-  // for "this stretch is a different phase", it reads at any bar width
-  // (these are 7-14px, which is why the "PO" tag used on the chart axis and
-  // in the game log could not come along), it groups a run into one shape
-  // rather than three unexplained specks, and it costs no vertical space at
-  // all. Where a band is wide enough to hold them, the letters PO ride at its
-  // top — so the thing finally says what it is.
-  //
-  // Built as runs, not one span: a window that reaches back across a season
-  // boundary can hold two separate postseasons, and one band stretched over
-  // the regular-season games between them would be a claim about games that
-  // were not playoff games.
-  const playoffRuns = [];
-  recent.forEach((g, i) => {
-    if (!g.po) return;
-    const last = playoffRuns[playoffRuns.length - 1];
-    if (last && last.to === i - 1) last.to = i;
-    else playoffRuns.push({ from: i, to: i });
-  });
+  // Playoff games carry no mark on the strip. Four were tried -- dots, a
+  // band, a rule under the columns, and a "1 PO" count in the caption -- and
+  // Alex, 2026-09-25: *"I dont like this whole PO thing."* A playoff game is
+  // still its own bar, and its hover title says it was one.
   const draggable = !!onDragLine && !r.isBinary;
   // The tag is what makes the gutter necessary, so both follow the same flag.
   const showTag = !r.isBinary && (draggable || tag);
@@ -452,40 +432,35 @@ export default function FeedFormStrip({
               {Number(lineVal).toFixed(1)}
             </span>
           )}
-        </div>
 
-        {/* Playoff games, marked as a rule under the columns they cover.
-
-             Three attempts to get this right. A 3px dot per game was "a
-             little silly" -- a mark you have to already know the meaning of.
-             A tinted band behind the columns read, at a single game, as a
-             giant black bar sitting behind a real one: Alex, of Trevor
-             Lawrence's last game, *"what is that giant black bar"*. Anything
-             drawn *in* the plot competes with the bars, because in this chart
-             a rectangle already means a number.
-
-             So it lives under the plot, where nothing else does: a 2px rule
-             spanning each run of playoff games, on the same grid as the bars
-             so it sits exactly under them. The caption names it in words, so
-             nobody has to work out what a grey line means.
-
-             Runs rather than one span: a window reaching across a season
-             boundary can hold two postseasons, and one rule stretched over
-             the regular-season games between them would be a claim about
-             games that were not playoff games. */}
-        {playoffRuns.length > 0 && (
-          <div style={{ ...grid, marginTop: 3 }} aria-hidden>
-            {playoffRuns.map((run) => (
+          {/* The run, stated in the tag's own gutter -- beside the bars it
+              counts and the rule under them, costing the row no height. It
+              takes whichever end of the gutter the tag is not in, and moves
+              if a drag puts the tag there. Alex, 2026-09-25, of the run
+              printed with the matchup: *"I like the 'straight' idea, but I
+              dont like it being with the other stats on the left."* */}
+          {runInGutter && showRun && showTag && (() => {
+            const LABEL_H = 22;
+            const tagLo = lineY - 14;
+            const tagHi = lineY + 14;
+            const atBottom = tagLo >= LABEL_H + 2 || tagHi > H - LABEL_H - 2;
+            return (
               <span
-                key={`po-${run.from}`}
+                className="pp-mono"
+                title={`${shownRun} ${shownRunHit ? "straight games over" : "straight games under"} the line`}
                 style={{
-                  gridColumn: `${run.from + 1} / ${run.to + 2}`,
-                  height: 2, borderRadius: 1, background: "var(--dim)",
+                  position: "absolute", right: -GUT, width: 42, height: LABEL_H,
+                  ...(atBottom ? { bottom: 0 } : { top: 0 }),
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  color: runInk, lineHeight: 1, pointerEvents: "none",
                 }}
-              />
-            ))}
-          </div>
-        )}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{shownRun}</span>
+                <span style={{ fontSize: 8, letterSpacing: "0.08em", marginTop: 2 }}>{shownRunHit ? "STRAIGHT" : "COLD"}</span>
+              </span>
+            );
+          })()}
+        </div>
 
         {/* The run rule sits under the trailing bars only, so the words
              below tie to the games above. Laid out on the same grid as the
@@ -519,7 +494,6 @@ export default function FeedFormStrip({
         const text = [
           captionCounts ? `${hitCount} of ${recent.length}` : "",
           runText,
-          poCount > 0 ? `${poCount} PO` : "",
         ].filter(Boolean).join(" · ");
         // Nothing to say, no line: an empty caption still held its margin,
         // which is the gap Alex circled under every row without a streak.
