@@ -541,60 +541,6 @@ export default function PlayerDetailDesktop({
         </div>
       )}
 
-      {windows && windows.options && (
-        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 9 }}>
-          <span style={railLabel}>WINDOW</span>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-            {windows.options.filter((w) => w.id !== "h2h").map((w) => (
-              <div key={w.id} role="button" tabIndex={0} onClick={w.onPick}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.onPick(); } }}
-                style={railPill(w.active)}>
-                {w.label}
-              </div>
-            ))}
-          </div>
-          {/* The frame gives H2H its own full-width row under the grid. */}
-          {windows.options.filter((w) => w.id === "h2h").map((w) => (
-            <div key={w.id} role="button" tabIndex={0} onClick={w.onPick}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.onPick(); } }}
-              style={railPillC(w.active)}>
-              {w.label}
-            </div>
-          ))}
-          {windows.custom && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>YOUR OWN</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <div role="button" tabIndex={0} onClick={windows.custom.onDown}
-                  onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onDown(); }}
-                  style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", borderRadius: 6, color: "var(--text-2)", cursor: "pointer" }}>−</div>
-                <span style={{ flex: "1 1 auto", textAlign: "center", fontFamily: MONO, fontSize: 14, fontWeight: 700 }}>
-                  {`L${windows.custom.value}`}
-                </span>
-                <div role="button" tabIndex={0} onClick={windows.custom.onUp}
-                  onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onUp(); }}
-                  style={{ width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", borderRadius: 6, color: "var(--text-2)", cursor: "pointer" }}>+</div>
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                {/* Apply uses it now, Save keeps it on the rail -- two controls
-                    because they are two different intentions. */}
-                <div role="button" tabIndex={0} onClick={windows.custom.onApply || windows.custom.onSave}
-                  onKeyDown={(e) => { if (e.key === "Enter") (windows.custom.onApply || windows.custom.onSave)(); }}
-                  style={{ flex: "1 1 0", height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber)", color: "var(--accent-on)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer" }}>
-                  APPLY
-                </div>
-                <div role="button" tabIndex={0} onClick={windows.custom.onSave}
-                  onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onSave(); }}
-                  style={{ flex: "1 1 0", height: 34, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber-dim)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer" }}>
-                  SAVE
-                </div>
-              </div>
-              <span style={railNote}>Apply uses it now. Save keeps it on the rail.</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {workload && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 11, borderTop: "1px solid var(--line)", paddingTop: 18 }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
@@ -825,6 +771,55 @@ export default function PlayerDetailDesktop({
       </div>
 
       <div style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-2)", padding: "16px 18px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* WINDOW moved here from the left rail, 2026-09-24. Alex: "this
+            window and your own might be better off being placed at the top
+            of the graph section... i feel like the window and your own being
+            on the side is a tiny bit weird" -- Outlier and PropsMadness both
+            put their window tabs directly on the chart, and this app's own
+            phone build already does the same (a chip row under the tabs)
+            while desktop buried it at the bottom of a long rail, under the
+            whole market list. Same options, same handlers -- only the
+            surface moved. */}
+        {windows && windows.options && windows.options.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, rowGap: 8 }}>
+            <span style={railLabel}>WINDOW</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {windows.options.map((w) => (
+                <div key={w.id} role="button" tabIndex={0} onClick={w.onPick}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.onPick(); } }}
+                  style={railPill(w.active)}>
+                  {w.label}
+                </div>
+              ))}
+            </div>
+            {windows.custom && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>YOUR OWN</span>
+                <div role="button" tabIndex={0} onClick={windows.custom.onDown}
+                  onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onDown(); }}
+                  style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", borderRadius: 6, color: "var(--text-2)", cursor: "pointer" }}>−</div>
+                <span style={{ minWidth: 30, textAlign: "center", fontFamily: MONO, fontSize: 13, fontWeight: 700 }}>
+                  {`L${windows.custom.value}`}
+                </span>
+                <div role="button" tabIndex={0} onClick={windows.custom.onUp}
+                  onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onUp(); }}
+                  style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", borderRadius: 6, color: "var(--text-2)", cursor: "pointer" }}>+</div>
+                {/* Apply uses it now, Save keeps it on the bar for later --
+                    two controls because they are two different intentions. */}
+                <div role="button" tabIndex={0} onClick={windows.custom.onApply || windows.custom.onSave}
+                  onKeyDown={(e) => { if (e.key === "Enter") (windows.custom.onApply || windows.custom.onSave)(); }}
+                  style={{ height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber)", color: "var(--accent-on)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", cursor: "pointer" }}>
+                  APPLY
+                </div>
+                <div role="button" tabIndex={0} onClick={windows.custom.onSave}
+                  onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onSave(); }}
+                  style={{ height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber-dim)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", cursor: "pointer" }}>
+                  SAVE
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
           <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.16em", color: "var(--dim)" }}>
             {`${String(marketLabel || "").toUpperCase()}`}
