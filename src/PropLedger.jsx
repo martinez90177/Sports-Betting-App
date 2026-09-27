@@ -26359,7 +26359,13 @@ export default function PropLedger() {
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
         <LazyPane minHeight={400}>
-          <MismatchReportPage />
+          <MismatchReportPage
+            onOpenProp={(card) => {
+              const p = nflPlayerPool().find((x) => x.espnId === card.player.espnId);
+              goToProp("nfl", p ? p.id : card.player.espnId, card.marketId, { name: card.player.name });
+            }}
+            onViewGameProps={goToGameProps}
+          />
         </LazyPane>
         </MaybeV3Shell>
       )}
