@@ -24,20 +24,44 @@ import { fetchNflCurrentWeekSlate } from "./gamesData.js";
 // WR-specific one, the same way MLB's RBI badge says "opp runs allowed / 9"
 // instead of implying a stat that was never measured.
 
-// This season is more predictive of the roster on the field now; last season
-// is a bigger sample as a sanity check against small early splits. The split
-// itself is a chosen weighting, not a measured one -- open to revision.
-const CURRENT_WEIGHT = 0.6;
-const PRIOR_WEIGHT = 0.4;
+// Which market the measured defensive stat actually speaks to, position by
+// position -- the same headline-market call the prop feed's own roster rail
+// already makes (NFL_RAIL_MARKET_BY_POS in PropLedger.jsx): yardage for a
+// pass-catcher rather than receptions, because yardage is what a yards-allowed
+// defensive rank predicts and receptions is a separate, unmeasured thing.
+export const MARKET_LABEL = { QB: "Pass Yds", RB: "Rush Yds", WR: "Rec Yds", TE: "Rec Yds" };
+// Same market, as PropLedger's own NFL_MARKETS ids -- what goToProp/the feed
+// filter actually need, as opposed to MARKET_LABEL's display text.
+export const MARKET_ID = { QB: "passYds", RB: "rushYds", WR: "recYds", TE: "recYds" };
 
-// slot -> nflDepth.js's RAIL_SLOTS key, the def-rank row it's judged against,
-// and how many of the depth chart's ranked list actually start (the offensive
-// formation's own count for WR/TE, one apiece otherwise).
+// Every market the report grades, the positions that can be bet in it (from
+// PropLedger's NFL_MARKETS), and the defensive row each position is judged
+// against. The row is the number that market actually lives on -- catches
+// allowed for receptions, touchdowns allowed for anytime TD -- never a yards
+// rank standing in for a touchdown one. Where no position-specific split
+// exists, the label on the card says which team number was used.
+//
+// Anytime TD splits by how the position scores: a receiver's touchdown is a
+// passing touchdown allowed, a back's or quarterback's is a rushing one.
+export const MARKETS = [
+  { id: "passYds", label: "Pass Yds", positions: ["QB"], row: () => "passYds" },
+  { id: "passRushYds", label: "Pass + Rush Yds", positions: ["QB"], row: () => "yards" },
+  { id: "passTd", label: "Pass TD", positions: ["QB"], row: () => "passTd" },
+  { id: "rushYds", label: "Rush Yds", positions: ["QB", "RB"], row: () => "rushYds" },
+  { id: "scrim", label: "Rush + Rec Yds", positions: ["RB", "WR"], row: () => "yards" },
+  { id: "recYds", label: "Rec Yds", positions: ["RB", "WR", "TE"], row: () => "passYds" },
+  { id: "rec", label: "Receptions", positions: ["RB", "WR", "TE"], row: () => "completions" },
+  { id: "anytimeTd", label: "Anytime TD", positions: ["QB", "RB", "WR", "TE"], row: (pos) => (pos === "WR" || pos === "TE" ? "passTd" : "rushTd") },
+];
+
+// slot -> nflDepth.js's RAIL_SLOTS key, and how many of the depth chart's
+// ranked list actually start (the offensive formation's own count for WR/TE,
+// one apiece otherwise).
 const SLOTS = [
-  { slot: "qb", pos: "QB", rowId: "passYds", count: () => 1 },
-  { slot: "rb", pos: "RB", rowId: "rushYds", count: () => 1 },
-  { slot: "wr", pos: "WR", rowId: "passYds", count: (depth) => depth.wrStart || 3 },
-  { slot: "te", pos: "TE", rowId: "passYds", count: (depth) => depth.teStart || 1 },
+  { slot: "qb", pos: "QB", count: () => 1 },
+  { slot: "rb", pos: "RB", count: () => 1 },
+  { slot: "wr", pos: "WR", count: (depth) => depth.wrStart || 3 },
+  { slot: "te", pos: "TE", count: (depth) => depth.teStart || 1 },
 ];
 
 const toEspnAbbr = (abbr) => (abbr === "WAS" ? "WSH" : abbr);
@@ -50,25 +74,43 @@ function softness(defCell) {
   return (defCell.rank - 1) / (defCell.of - 1);
 }
 
-function blendedSoftness(currentTeam, priorTeam, rowId) {
+// Graded on this season alone. It was a 60/40 blend with last season, which
+// let a defense's 2025 reputation outvote what it is doing now: the Chargers,
+// 28th against the pass through three games of 2026, read as a LEAN because
+// they were 5th in 2025. Alex, 2026-09-27: "the chargers have been horrible
+// this year." Last season is still on every card, as context beside the
+// number that decides the tier, not inside it. Before Week 1, when this season
+// has no rank at all, last season is the only answer and is used.
+function matchupSoftness(currentTeam, priorTeam, rowId) {
   const cur = currentTeam ? softness(currentTeam.def[rowId]) : null;
-  const prior = priorTeam ? softness(priorTeam.def[rowId]) : null;
-  if (cur == null && prior == null) return null;
-  if (cur == null) return prior;
-  if (prior == null) return cur;
-  return cur * CURRENT_WEIGHT + prior * PRIOR_WEIGHT;
+  if (cur != null) return cur;
+  return priorTeam ? softness(priorTeam.def[rowId]) : null;
 }
 
-// Thresholds on the blended 0-1 softness score. Chosen to read the same way
+// Mean per-game value across every team that answered -- what "soft" is
+// measured against in the card's own sentence.
+function leagueAverage(stats, rowId) {
+  const vals = Object.values(stats?.teams || {})
+    .map((t) => t.def?.[rowId]?.value)
+    .filter(Number.isFinite);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+
+// Thresholds on the 0-1 softness score. Chosen to read the same way
 // the tiers already do elsewhere in the app (a top slice, a middle slice, a
 // long tail that isn't worth a card) -- not derived from any distribution.
+// Below LEAN is TOUGH rather than absent: the page hides those by default,
+// but a reader searching for one player needs to be told his matchup graded
+// tough, not left wondering whether he was checked at all.
 function tierFor(score) {
   if (score == null) return null;
   if (score >= 0.8) return "SMASH";
   if (score >= 0.6) return "FAV";
   if (score >= 0.4) return "LEAN";
-  return null;
+  return "TOUGH";
 }
+
+const DEF_ROWS = ["passYds", "rushYds", "yards", "completions", "passTd", "rushTd"];
 
 // { games, cards, ready, teamsLoaded, teamsTotal, season }. `cards` is empty
 // and `ready` is false when any of the four real sources didn't answer -- the
@@ -97,6 +139,8 @@ export async function fetchNflWeeklyMismatches() {
   };
 
   const cards = [];
+  const leagueAvg = Object.fromEntries(DEF_ROWS.map((r) => [r, leagueAverage(currentStats, r)]));
+  const leagueAvgPrior = Object.fromEntries(DEF_ROWS.map((r) => [r, leagueAverage(priorStats, r)]));
 
   for (const game of slate.games) {
     const sides = [
@@ -114,27 +158,37 @@ export async function fetchNflWeeklyMismatches() {
       const playersById = new Map(roster.players.map((p) => [p.espnId, p]));
       const byId = roster.byId || {};
 
-      SLOTS.forEach(({ slot, pos, rowId, count }) => {
+      SLOTS.forEach(({ slot, pos, count }) => {
         const ids = depth[slot] || [];
-        const score = blendedSoftness(currentStats.teams[defAbbr], priorStats?.teams?.[defAbbr], rowId);
-        const tier = tierFor(score);
-        if (!tier) return;
         ids.slice(0, count(depth)).forEach((espnId) => {
           const player = playersById.get(espnId);
           if (!player) return; // on the depth chart but not on the roster fetch -- dropped, not filled in
-          cards.push({
-            id: `${game.id}-${player.espnId}`,
-            player,
-            status: byId[espnId],
-            pos,
-            team: offAbbr,
-            opp: defAbbr,
-            game,
-            rowId,
-            defCurrent: currentStats.teams[defAbbr]?.def?.[rowId] || null,
-            defPrior: priorStats?.teams?.[defAbbr]?.def?.[rowId] || null,
-            score,
-            tier,
+          MARKETS.forEach((m) => {
+            if (!m.positions.includes(pos)) return;
+            const rowId = m.row(pos);
+            const score = matchupSoftness(currentStats.teams[defAbbr], priorStats?.teams?.[defAbbr], rowId);
+            const tier = tierFor(score);
+            if (!tier) return; // defense unranked on this row -- no grade to give
+            cards.push({
+              id: `${game.id}-${player.espnId}-${m.id}`,
+              player,
+              status: byId[espnId],
+              pos,
+              market: m.label,
+              marketId: m.id,
+              headline: MARKET_ID[pos] === m.id,
+              team: offAbbr,
+              opp: defAbbr,
+              game,
+              rowId,
+              defCurrent: currentStats.teams[defAbbr]?.def?.[rowId] || null,
+              defPrior: priorStats?.teams?.[defAbbr]?.def?.[rowId] || null,
+              defGames: currentStats.teams[defAbbr]?.games ?? null,
+              leagueAvg: leagueAvg[rowId],
+              leagueAvgPrior: leagueAvgPrior[rowId],
+              score,
+              tier,
+            });
           });
         });
       });
@@ -142,9 +196,29 @@ export async function fetchNflWeeklyMismatches() {
   }
 
   cards.sort((a, b) => b.score - a.score);
+
+  // Every defense on this week's slate, both rows, this season and last -- so
+  // the page can judge "softest overall" from the ranks themselves rather than
+  // from however many cards a defense happened to generate.
+  const defenses = {};
+  slate.games.forEach((g) => {
+    [g.home.abbr, g.away.abbr].forEach((abbr) => {
+      const cur = currentStats.teams[abbr];
+      if (!cur) return;
+      defenses[abbr] = {
+        passYds: cur.def.passYds || null,
+        rushYds: cur.def.rushYds || null,
+        passYdsPrior: priorStats?.teams?.[abbr]?.def?.passYds || null,
+        rushYdsPrior: priorStats?.teams?.[abbr]?.def?.rushYds || null,
+        softness: [softness(cur.def.passYds), softness(cur.def.rushYds)].filter((x) => x != null),
+      };
+    });
+  });
+
   return {
     games: slate.games,
     cards,
+    defenses,
     ready: true,
     teamsLoaded: currentStats.teamsLoaded,
     teamsTotal: currentStats.teamsTotal,

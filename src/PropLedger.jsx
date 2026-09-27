@@ -26365,6 +26365,14 @@ export default function PropLedger() {
               goToProp("nfl", p ? p.id : card.player.espnId, card.marketId, { name: card.player.name });
             }}
             onViewGameProps={goToGameProps}
+            fetchLogs={async (espnId) => {
+              const season = currentNFLSeason();
+              const [current, prior] = await Promise.all([
+                fetchNFLPlayerGameLog(espnId, season),
+                fetchNFLPlayerGameLog(espnId, season - 1),
+              ]);
+              return { current: current || [], prior: prior || [] };
+            }}
           />
         </LazyPane>
         </MaybeV3Shell>

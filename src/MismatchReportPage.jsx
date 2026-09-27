@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { crest } from "./v3/FormPlot.jsx";
 import useIsNarrow from "./lib/useIsNarrow.js";
-import { fetchNflWeeklyMismatches } from "./lib/nflMismatch.js";
+import { fetchNflWeeklyMismatches, MARKETS } from "./lib/nflMismatch.js";
+import { capturedOddsFor, CAPTURED_AT, CAPTURED_SOURCE } from "./lib/nflCapturedOdds.js";
+import { formatOdds } from "./odds.js";
 
 // --------------------------------------------------------------------------
 // This week's real NFL mismatches.
@@ -12,14 +14,16 @@ import { fetchNflWeeklyMismatches } from "./lib/nflMismatch.js";
 // seeded -- a team or player this page can't get a real answer for is left
 // off rather than filled in, same rule as everywhere else in the app.
 //
-// Two things the source artifact this was modelled on had that this
-// deliberately does not:
+// Laid out after the artifact this was modelled on -- a hero with stat tiles,
+// a featured spotlight, a scannable quick board above the full cards -- but
+// two things that artifact had are deliberately still missing:
 //   - A moneyline/spread ticket with real book lines. NFL has no real-odds
-//     feed here (see lib/PROJECT_NOTES.md "Free data only no fake edge") and
+//     feed here (see docs/PROJECT_NOTES.md "Free data only no fake edge") and
 //     wiring one up would spend the same tight Odds API budget the MLB odds
 //     panel already runs against.
 //   - Prose explaining why a spot is good. That's a model's voice describing
-//     numbers it didn't measure; this reads the numbers instead.
+//     numbers it didn't measure; every sentence here is a template filled
+//     from the real rank cells, nothing composed freely.
 
 const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
@@ -28,10 +32,301 @@ const TIER_META = {
   SMASH: { label: "SMASH SPOT", color: "var(--pos)" },
   FAV: { label: "FAVORABLE", color: "var(--amber-ink)" },
   LEAN: { label: "LEAN", color: "var(--text-2)" },
+  // Only ever shown to someone who searched for the player.
+  TOUGH: { label: "TOUGH MATCHUP", color: "var(--dim)" },
 };
-const ROW_LABEL = { passYds: "pass D", rushYds: "rush D" };
-const ROW_SENTENCE = { passYds: "against the pass", rushYds: "against the run" };
 const POS_ORDER = ["QB", "RB", "WR", "TE"];
+// "Best per player": one card each, on his position's headline market -- the
+// page's default. Every other button is one market across every position that
+// can bet it.
+const HEADLINE = "HEADLINE";
+
+// The defensive number behind a card, as the stat cell and sentence name it.
+const DEF_LABEL = {
+  passYds: "pass yds allowed", rushYds: "rush yds allowed", yards: "total yds allowed",
+  completions: "catches allowed", passTd: "pass TDs allowed", rushTd: "rush TDs allowed",
+};
+const DEF_UNIT = {
+  passYds: "pass yds", rushYds: "rush yds", yards: "total yds",
+  completions: "completions", passTd: "passing TDs", rushTd: "rushing TDs",
+};
+// The player's own number in each market, read straight off a game-log row.
+const MARKET_VALUE = {
+  passYds: (g) => g.passYds,
+  passRushYds: (g) => (g.passYds || 0) + (g.rushYds || 0),
+  passTd: (g) => g.passTd,
+  rushYds: (g) => g.rushYds,
+  scrim: (g) => (g.rushYds || 0) + (g.recYds || 0),
+  recYds: (g) => g.recYds,
+  rec: (g) => g.rec,
+  anytimeTd: (g) => (g.rushTd || 0) + (g.recTd || 0),
+};
+const MARKET_UNIT = {
+  passYds: "pass yds", passRushYds: "pass + rush yds", passTd: "passing TDs", rushYds: "rush yds",
+  scrim: "rush + rec yds", recYds: "rec yds", rec: "catches", anytimeTd: "TDs",
+};
+const MARKET_BY_ID = Object.fromEntries(MARKETS.map((m) => [m.id, m]));
+const SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv|v)$/i;
+const LOG_CONCURRENCY = 6;
+
+const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+const f1 = (n) => (Number.isFinite(n) ? n.toFixed(1) : "—");
+
+function lastName(name) {
+  const parts = String(name || "").split(" ").filter(Boolean);
+  while (parts.length > 1 && SUFFIX.test(parts[parts.length - 1])) parts.pop();
+  return parts[parts.length - 1] || name;
+}
+
+// Every player's real game log, this season and last, fetched a few at a time
+// through PropLedger's own cached fetcher. `fetchLogs` is held in a ref because
+// PropLedger passes a fresh closure on every render; depending on it would
+// refetch the whole slate each time the shell re-renders.
+// Keyed by player, so switching markets only fetches players not seen yet; a
+// player already asked for (in flight or answered) is never asked again.
+function useCardLogs(cards, fetchLogs) {
+  const [logs, setLogs] = useState({});
+  const fetchRef = React.useRef(fetchLogs);
+  fetchRef.current = fetchLogs;
+  const asked = React.useRef(new Set());
+  const mounted = React.useRef(true);
+  // Set true in the body too: StrictMode's dev mount-unmount-mount would
+  // otherwise leave it false and stop every worker after the first player.
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  // A market switch doesn't cancel fetches already running: a log is the
+  // player's, not the market's, so it's still wanted whichever view asked.
+  useEffect(() => {
+    if (!fetchRef.current || !cards.length) return;
+    const ids = [...new Set(cards.map((c) => c.player.espnId))].filter((id) => !asked.current.has(id));
+    ids.forEach((id) => asked.current.add(id));
+    let next = 0;
+    const worker = async () => {
+      while (next < ids.length && mounted.current) {
+        const id = ids[next++];
+        let value = null;
+        try { value = await fetchRef.current(id); } catch {}
+        if (!mounted.current) return;
+        setLogs((prev) => ({ ...prev, [id]: value || { current: [], prior: [], failed: true } }));
+      }
+    };
+    for (let i = 0; i < Math.min(LOG_CONCURRENCY, ids.length); i++) worker();
+  }, [cards]);
+  return logs;
+}
+
+// The player's own numbers in the card's market, from his real log. Nothing
+// here is estimated: an empty season is reported as empty, not filled in.
+function playerForm(card, log) {
+  if (!log) return null;
+  const cur = log.current || [];
+  const prior = log.prior || [];
+  const all = [...prior, ...cur];
+  const read = MARKET_VALUE[card.marketId];
+  const val = (g) => Number(read(g)) || 0;
+  const last10 = all.slice(-10);
+  const vsOpp = all.filter((g) => g.opp === card.opp);
+  const perGame = (games, field) => {
+    const xs = games.map((g) => Number(g[field]) || 0);
+    return xs.some((x) => x > 0) ? mean(xs) : null;
+  };
+  const rushingQb = card.pos === "QB" && ["rushYds", "anytimeTd", "passRushYds"].includes(card.marketId);
+  return {
+    failed: !!log.failed,
+    curGames: cur.length,
+    curAvg: cur.length ? mean(cur.map(val)) : null,
+    priorAvg: prior.length ? mean(prior.map(val)) : null,
+    priorGames: prior.length,
+    l10: last10.map(val),
+    l10Avg: last10.length ? mean(last10.map(val)) : null,
+    last3: all.slice(-3).reverse().map((g) => ({ v: val(g), opp: g.opp, home: g.home })),
+    h2h: vsOpp.length ? { v: val(vsOpp[vsOpp.length - 1]), n: vsOpp.length, avg: mean(vsOpp.map(val)), vals: vsOpp.map(val) } : null,
+    tgt: card.pos !== "QB" ? perGame(cur, "tgt") : null,
+    rec: card.pos !== "QB" ? perGame(cur, "rec") : null,
+    carries: card.pos === "RB" || rushingQb ? perGame(cur, "rushAtt") : null,
+    all: all.map(val),
+    cur: cur.map(val),
+    prior: prior.map(val),
+    qbRun: card.pos === "QB" ? qbRunning(log) : null,
+  };
+}
+
+// "Scored in N of M" for the touchdown market, where an average of 0.4 TDs a
+// game says less than how often he found the end zone at all.
+const scoredIn = (xs) => xs.filter((v) => v > 0).length;
+
+// Quarterback markets that only mean something if he runs the ball. An anytime
+// TD is a player carrying or catching it into the end zone -- a quarterback's
+// passing touchdowns never count -- so a pocket passer facing a soft run
+// defense is not a touchdown play, and his rush-yards line is a scramble
+// total the run-defense rank says nothing about. Alex, 2026-09-27: "only guys
+// like mahomes, allen, lamar, caleb williams, and jalen hurts do that."
+//
+// Decided from his own log rather than a list of names, which would go stale
+// the first time a starter changed. Two rules, because the markets ask two
+// different questions:
+//   Anytime TD -- does he score on the ground? A rushing TD in at least
+//     QB_TD_RATE of his last QB_RUN_WINDOW games. Carries alone don't qualify:
+//     Justin Herbert averages 5.3 a game on scrambles and has run one in twice
+//     in 19.
+//   Rush Yds -- does he carry it? QB_RUN_CARRIES a game, or the TD rule.
+// Either way at least QB_RUN_MIN_GAMES games of log, or there is nothing to
+// judge (a two-game starter reads as whatever those two games did).
+const QB_GATED = new Set(["anytimeTd", "rushYds"]);
+const QB_RUN_WINDOW = 20;
+const QB_RUN_MIN_GAMES = 6;
+const QB_TD_RATE = 0.15;
+const QB_RUN_CARRIES = 5;
+const needsRunCheck = (c) => c.pos === "QB" && QB_GATED.has(c.marketId);
+
+function qbRunning(log) {
+  const games = [...(log?.prior || []), ...(log?.current || [])].slice(-QB_RUN_WINDOW);
+  const tdGames = games.filter((g) => (Number(g.rushTd) || 0) > 0).length;
+  const tds = games.reduce((a, g) => a + (Number(g.rushTd) || 0), 0);
+  const carries = games.length ? mean(games.map((g) => Number(g.rushAtt) || 0)) : 0;
+  const enough = games.length >= QB_RUN_MIN_GAMES;
+  const scores = enough && tdGames / games.length >= QB_TD_RATE;
+  return {
+    n: games.length, tdGames, tds, carries,
+    qualifies: {
+      anytimeTd: scores,
+      rushYds: scores || (enough && carries >= QB_RUN_CARRIES),
+    },
+  };
+}
+
+// Reasons to play it (`pro`) and reasons to hesitate (`con`), each a sentence
+// built from a real number. The thresholds that decide which bucket a line
+// lands in are stated in the sentence itself, so nothing reads as a verdict
+// without the figure behind it.
+function insightsFor(card, form, captured, season) {
+  const out = [];
+  const unit = MARKET_UNIT[card.marketId];
+  // The defense number is the team row the market is graded on, whatever the
+  // player's own market -- a receiver's card must not call it "rec yds".
+  const defUnit = DEF_UNIT[card.rowId];
+  const name = lastName(card.player.name);
+  const td = card.marketId === "anytimeTd";
+  const d = card.defCurrent;
+
+  // Availability first: an out player's matchup is moot, and it must not be
+  // the fourth line someone reads.
+  if (card.status === "out") out.push({ tone: "con", text: `Listed OUT on the injury report — this matchup won't be his this week.` });
+  if (card.status === "questionable") out.push({ tone: "con", text: `Listed questionable on the injury report — check inactives before locking this in.` });
+
+  if (d && Number.isFinite(d.value)) {
+    const diff = Number.isFinite(card.leagueAvg) ? d.value - card.leagueAvg : null;
+    const games = card.defGames ? ` through ${card.defGames} game${card.defGames === 1 ? "" : "s"}` : "";
+    out.push({
+      tone: diff != null && diff > 0 ? "pro" : "info",
+      text: `${card.opp} is allowing ${f1(d.value)} ${defUnit}/game${games} — ${rankText(d)}` +
+        (diff != null ? `, ${f1(Math.abs(diff))} ${diff >= 0 ? "more" : "fewer"} than the league average of ${f1(card.leagueAvg)}.` : "."),
+    });
+    const p = card.defPrior;
+    if (p && Number.isFinite(p.value) && Math.abs(p.rank - d.rank) >= 8) {
+      const delta = d.value - p.value;
+      out.push({
+        tone: delta > 0 ? "pro" : "con",
+        text: `That's a ${delta > 0 ? "collapse" : "turnaround"} from last season, when they allowed ${f1(p.value)}/game (${rankText(p)}) — ${f1(Math.abs(delta))} ${delta > 0 ? "more" : "fewer"} per game now.`,
+      });
+    }
+  }
+
+  if (!form) return out;
+  if (form.failed || (!form.curGames && !form.priorGames)) {
+    out.push({ tone: "info", text: `No game log could be read for ${card.player.name} — the defense numbers above are the only real data on this card.` });
+    return out;
+  }
+
+  if (form.qbRun && QB_GATED.has(card.marketId)) {
+    const r = form.qbRun;
+    out.push({
+      tone: "pro",
+      text: td
+        ? `A running quarterback: rushing TD in ${r.tdGames} of his last ${r.n} games (${r.tds} total), ${f1(r.carries)} carries a game. Only his rushing TDs count here — passing TDs don't cash an anytime ticket.`
+        : `A running quarterback: ${f1(r.carries)} carries a game over his last ${r.n}, with a rushing TD in ${r.tdGames} of them.`,
+    });
+  }
+
+  if (td) {
+    const n = form.l10.length;
+    const hit = scoredIn(form.l10);
+    const rate = n ? hit / n : 0;
+    const curHit = scoredIn(form.cur);
+    const curTds = form.cur.reduce((a, b) => a + b, 0);
+    if (form.curGames) {
+      out.push({
+        tone: curHit === 0 ? "con" : curHit / form.curGames >= 0.5 ? "pro" : "info",
+        text: `Scored in ${curHit} of his ${form.curGames} game${form.curGames === 1 ? "" : "s"} this season (${curTds} ${card.pos === "QB" ? "rushing" : "rushing/receiving"} TD${curTds === 1 ? "" : "s"}).`,
+      });
+    } else {
+      out.push({ tone: "con", text: `No ${season} games in his log yet — everything below is from ${season - 1}.` });
+    }
+    out.push({
+      tone: rate >= 0.5 ? "pro" : rate <= 0.2 ? "con" : "info",
+      text: `Found the end zone in ${hit} of his last ${n} games` +
+        (form.prior.length ? ` — ${scoredIn(form.prior)} of ${form.prior.length} in ${season - 1}.` : "."),
+    });
+  } else if (form.curGames) {
+    const vsPrior = Number.isFinite(form.priorAvg) && form.priorGames
+      ? ` (${f1(form.priorAvg)} in ${season - 1})` : "";
+    out.push({ tone: "info", text: `${name} is averaging ${f1(form.curAvg)} ${unit} in ${season} over ${form.curGames} game${form.curGames === 1 ? "" : "s"}${vsPrior}.` });
+    if (Number.isFinite(form.priorAvg) && form.priorGames >= 4 && form.priorAvg > 0) {
+      const ratio = form.curAvg / form.priorAvg;
+      if (ratio >= 1.2) out.push({ tone: "pro", text: `Trending up: ${f1(form.priorAvg)} → ${f1(form.curAvg)} per game, a ${Math.round((ratio - 1) * 100)}% jump on last season.` });
+      else if (ratio <= 0.8) out.push({ tone: "con", text: `Trending down: ${f1(form.priorAvg)} → ${f1(form.curAvg)} per game, ${Math.round((1 - ratio) * 100)}% below last season.` });
+    }
+  } else {
+    out.push({ tone: "con", text: `No ${season} games in his log yet — everything below is from ${season - 1}.` });
+  }
+
+  if (card.marketId === "passYds" && form.curGames && d && Number.isFinite(d.value) && Number.isFinite(form.curAvg)) {
+    const gap = d.value - form.curAvg;
+    out.push({
+      tone: gap > 0 ? "pro" : "info",
+      text: `${card.opp} gives up ${f1(d.value)} passing yards a game; ${name} averages ${f1(form.curAvg)} — ${gap > 0 ? `the defense has been allowing ${f1(gap)} more than he usually throws for` : `he's already been out-throwing what they allow by ${f1(-gap)}`}.`,
+    });
+  }
+
+  if (form.tgt != null) {
+    const low = form.tgt < 4;
+    out.push({
+      tone: low ? "con" : form.tgt >= 7 ? "pro" : "info",
+      text: `${f1(form.tgt)} targets and ${f1(form.rec)} catches a game this season${low ? " — under 4 targets, so a soft secondary has less to work with" : form.tgt >= 7 ? " — a featured role in the passing game" : ""}.`,
+    });
+  }
+  if (form.carries != null) {
+    // The lead-back / split-backfield reading is about running backs; a
+    // quarterback's carries are stated without it.
+    const rb = card.pos === "RB";
+    out.push({
+      tone: !rb ? "info" : form.carries >= 15 ? "pro" : form.carries < 10 ? "con" : "info",
+      text: `${f1(form.carries)} carries a game this season${rb && form.carries >= 15 ? " — lead-back volume" : rb && form.carries < 10 ? " — under 10, a split backfield" : ""}.`,
+    });
+  }
+
+  if (captured) {
+    const n = form.l10.length;
+    const hits = form.l10.filter((v) => v > captured.line).length;
+    const curHits = form.cur.filter((v) => v > captured.line).length;
+    const rate = n ? hits / n : 0;
+    out.push({
+      tone: rate >= 0.7 ? "pro" : rate <= 0.4 ? "con" : "info",
+      text: `Went over the captured ${captured.line} line in ${hits} of his last ${n}` + (form.curGames ? ` (${curHits} of ${form.curGames} this season).` : "."),
+    });
+  }
+
+  if (form.h2h) {
+    out.push({
+      tone: "info",
+      text: td
+        ? `Scored in ${scoredIn(form.h2h.vals)} of ${form.h2h.n} meeting${form.h2h.n === 1 ? "" : "s"} with ${card.opp} in his log` +
+          ` (last one: ${form.h2h.v > 0 ? `${form.h2h.v} TD${form.h2h.v === 1 ? "" : "s"}` : "no TD"}).`
+        : `Last time vs ${card.opp}: ${Math.round(form.h2h.v)} ${unit}` + (form.h2h.n > 1 ? ` (${f1(form.h2h.avg)} average across ${form.h2h.n} meetings in his log).` : "."),
+    });
+  }
+
+  return out;
+}
 
 function ordinal(n) {
   if (n == null) return "—";
@@ -45,11 +340,57 @@ function rankText(cell) {
   return `${cell.tied ? "T" : ""}${ordinal(cell.rank)} of ${cell.of}`;
 }
 
+function kickoffText(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function capturedWhen() {
+  try {
+    return new Date(CAPTURED_AT).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+  } catch {
+    return CAPTURED_AT;
+  }
+}
+
 function micro(extra) {
   return { fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", ...extra };
 }
 
-function Filter({ label, on, onClick }) {
+// On a phone the filter rows swipe sideways instead of wrapping: wrapped, the
+// sixteen game pills alone ran to eight rows, and the bar is sticky, so it
+// covered two-thirds of the screen for the whole scroll.
+function swipeRow(narrow) {
+  return narrow
+    ? { flexWrap: "nowrap", overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 2 }
+    : { flexWrap: "wrap" };
+}
+
+function cardAnchor(id) {
+  return `mm-card-${id}`;
+}
+
+// --------------------------------------------------------------------------
+// Small building blocks
+// --------------------------------------------------------------------------
+
+function Tile({ n, label, color }) {
+  return (
+    <div style={{ flex: "1 1 120px", background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px" }}>
+      <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 26, lineHeight: 1, color: color || "var(--text)" }}>{n}</div>
+      <div style={{ ...micro(), marginTop: 5 }}>{label}</div>
+    </div>
+  );
+}
+
+// `sm` is the quieter pill for the long game list, so sixteen matchups don't
+// carry the same weight as the market choice above them.
+function Filter({ label, on, onClick, tone, size }) {
+  const sm = size === "sm";
   return (
     <span
       role="button" tabIndex={0} aria-pressed={on}
@@ -57,11 +398,12 @@ function Filter({ label, on, onClick }) {
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
       className="pp-mono"
       style={{
-        fontSize: 11, letterSpacing: "0.06em", padding: "7px 12px", borderRadius: 8,
-        cursor: "pointer", whiteSpace: "nowrap",
-        border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
-        background: on ? "var(--amber-dim)" : "var(--surface-1)",
-        color: on ? "var(--amber-ink)" : "var(--text-2)",
+        flex: "none",
+        fontSize: sm ? 10 : 11, letterSpacing: "0.06em", padding: sm ? "5px 9px" : "7px 12px", borderRadius: sm ? 6 : 8,
+        cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6,
+        border: `1px solid ${on ? (tone || "var(--amber)") : sm ? "transparent" : "var(--line)"}`,
+        background: on ? "var(--amber-dim)" : sm ? "var(--surface-2)" : "var(--bg)",
+        color: on ? (tone || "var(--amber-ink)") : sm ? "var(--dim)" : "var(--text-2)",
       }}
     >
       {label}
@@ -69,14 +411,139 @@ function Filter({ label, on, onClick }) {
   );
 }
 
-function Card({ card, narrow }) {
-  const tier = TIER_META[card.tier];
-  const label = ROW_LABEL[card.rowId];
+// One labelled row of the filter panel. The label column and the rule between
+// rows are what keep market, position, tier and game reading as four separate
+// questions -- as one run of identical pills they read as a single list.
+function FilterGroup({ label, hint, narrow, first, children }) {
   return (
     <div
       style={{
+        display: narrow ? "block" : "grid", gridTemplateColumns: "92px minmax(0, 1fr)", alignItems: "center",
+        columnGap: 14, padding: narrow ? "10px 14px" : "11px 16px",
+        borderTop: first ? "none" : "1px solid var(--line)",
+      }}
+    >
+      <div style={{ ...micro({ fontSize: 9.5, color: "var(--text-2)" }), marginBottom: narrow ? 7 : 0 }}>
+        {label}
+        {hint ? <div style={{ fontSize: 9, color: "var(--dim)", letterSpacing: "0.08em", marginTop: 2 }}>{hint}</div> : null}
+      </div>
+      <div className={narrow ? "nsb" : undefined} style={{ display: "flex", gap: 6, ...swipeRow(narrow) }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// 0-1 score -> a horizontal meter, same "tough -> soft" reading the artifact
+// used, built off the same this-season number the tier badge is.
+function Meter({ score, color }) {
+  const pct = Math.round(Math.max(0, Math.min(1, score || 0)) * 100);
+  return (
+    <div>
+      <div style={{ height: 6, borderRadius: 99, background: "var(--surface-3, var(--surface-2))", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: "0 auto 0 0", width: `${pct}%`, borderRadius: 99, background: color }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9.5, color: "var(--dim)", fontFamily: MONO, letterSpacing: "0.08em" }}>
+        <span>TOUGH</span>
+        <span style={{ color }}>{pct}</span>
+        <span>SOFT</span>
+      </div>
+    </div>
+  );
+}
+
+function QuickRow({ card, narrow, onJump }) {
+  const tier = TIER_META[card.tier];
+  return (
+    <div
+      role="button" tabIndex={0}
+      onClick={() => onJump(card.id)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onJump(card.id); } }}
+      style={{
+        display: "grid", gridTemplateColumns: narrow ? "20px 1fr 60px" : "20px 1.6fr 1.4fr 90px 60px",
+        alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer",
+        borderBottom: "1px solid var(--line)",
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: tier.color, justifySelf: "center" }} />
+      <span style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: narrow ? 1 : 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span role="img" style={crest(card.team, "nfl", 15)} />
+          {card.player.name}
+        </span>
+        {narrow && (
+          <span style={{ fontSize: 10.5, color: "var(--amber-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {card.pos} · target {card.market}
+          </span>
+        )}
+      </span>
+      {!narrow && (
+        <span style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {card.pos} · <span style={{ color: "var(--amber-ink)" }}>{card.market}</span> · {card.team} vs {card.opp}
+        </span>
+      )}
+      {!narrow && (
+        <span style={{ ...micro(), fontSize: 10, color: tier.color }}>{tier.label}</span>
+      )}
+      <span style={{ fontFamily: MONO, fontSize: 11, textAlign: "right", color: tier.color }}>
+        {Math.round((card.score || 0) * 100)}
+      </span>
+    </div>
+  );
+}
+
+function ActionButton({ label, onClick }) {
+  return (
+    <span
+      role="button" tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
+      className="pp-mono"
+      style={{
+        flex: 1, textAlign: "center", fontSize: 11, letterSpacing: "0.06em", padding: "9px 10px", borderRadius: 8,
+        cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--text-2)",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function StatCell({ label, value, sub, tone }) {
+  return (
+    <div style={{ background: "var(--surface-2)", borderRadius: 9, padding: "9px 11px", minWidth: 0 }}>
+      <div style={{ ...micro(), fontSize: 9.5, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
+      <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 15, marginTop: 3, color: tone || "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {value}
+      </div>
+      {sub ? <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div> : null}
+    </div>
+  );
+}
+
+function Card({ card, narrow, flashed, onOpenProp, onViewGameProps, form, season }) {
+  const tier = TIER_META[card.tier];
+  const label = DEF_LABEL[card.rowId];
+  const captured = capturedOddsFor(card.player.name, card.marketId);
+  const td = card.marketId === "anytimeTd";
+  // Yardage and counts read as a per-game average; touchdowns as how many
+  // games he scored in, which is what an anytime ticket actually needs.
+  const statValue = (xs, avg) => (td ? `${scoredIn(xs)} of ${xs.length}` : `${f1(avg)}/g`);
+  return (
+    <div
+      id={cardAnchor(card.id)}
+      style={{
         display: "flex", flexDirection: "column", gap: 10, padding: narrow ? 14 : 16,
-        border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)",
+        // Longhands only: `border` beside `borderLeft` makes React warn on the
+        // flash re-render, since changing the shorthand would clobber the left.
+        borderTop: `1px solid ${flashed ? tier.color : "var(--line)"}`,
+        borderRight: `1px solid ${flashed ? tier.color : "var(--line)"}`,
+        borderBottom: `1px solid ${flashed ? tier.color : "var(--line)"}`,
+        borderLeft: `4px solid ${tier.color}`,
+        borderRadius: 12, background: flashed ? "var(--surface-2)" : "var(--surface-1)",
+        boxShadow: flashed ? `0 0 0 3px color-mix(in srgb, ${tier.color} 22%, transparent)` : "none",
+        transition: "background 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease",
+        scrollMarginTop: 90,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
@@ -84,7 +551,7 @@ function Card({ card, narrow }) {
           <PlayerAvatar
             name={card.player.name} alt={card.player.name} sport="nfl"
             team={card.team} espnId={card.player.espnId} status={card.status}
-            size={narrow ? 40 : 44} surface="var(--surface-1)"
+            size={narrow ? 40 : 44} surface="var(--surface-1)" dimmed={card.status === "out"}
           />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -107,35 +574,287 @@ function Card({ card, narrow }) {
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--surface-2)", borderRadius: 9, padding: "10px 12px" }}>
-          <div style={{ ...micro(), lineHeight: 1.5 }}>{card.opp} {label} · this season</div>
-          <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 15, color: "var(--pos)", flex: "none" }}>
-            {rankText(card.defCurrent) || "—"}
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--surface-2)", borderRadius: 9, padding: "10px 12px" }}>
-          <div style={{ ...micro(), lineHeight: 1.5 }}>{card.opp} {label} · last season</div>
-          <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 15, flex: "none" }}>
-            {rankText(card.defPrior) || "—"}
-          </div>
-        </div>
+      <div
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+          background: "var(--amber-dim)", border: "1px solid var(--amber-line, var(--line))",
+          borderRadius: 9, padding: "9px 12px",
+        }}
+      >
+        <div style={micro({ color: "var(--amber-ink)" })}>Target</div>
+        <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 15.5, color: "var(--amber-ink)" }}>{card.market}</div>
       </div>
 
-      <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
-        {card.opp} ranks {rankText(card.defCurrent) || "unranked"} in the league {ROW_SENTENCE[card.rowId]} this season
-        {card.defPrior ? ` (${rankText(card.defPrior)} last season)` : ""} — 1st is the league's best defense on that stat, so the higher the number the softer the matchup.
+      {captured && (
+        <div style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 9, padding: "9px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div style={micro()}>Captured line · {CAPTURED_SOURCE}</div>
+            <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14 }}>
+              Over {captured.line} <span style={{ color: "var(--pos)" }}>{formatOdds(captured.odds)}</span>
+            </div>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 4 }}>
+            Read by hand off one sportsbook aggregator at {capturedWhen()} — a snapshot, not a live price. It will have moved.
+          </div>
+        </div>
+      )}
+
+      <Meter score={card.score} color={tier.color} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <StatCell
+          label={`${card.opp} ${label}`}
+          value={card.defCurrent && Number.isFinite(card.defCurrent.value) ? `${f1(card.defCurrent.value)}/g` : "—"}
+          sub={`${rankText(card.defCurrent) || "unranked"}${card.defPrior ? ` · ${ordinal(card.defPrior.rank)} last yr` : ""}`}
+          tone="var(--pos)"
+        />
+        <StatCell
+          label={`${lastName(card.player.name)} · ${season}`}
+          value={form === undefined ? "…" : form && form.curGames ? statValue(form.cur, form.curAvg) : "—"}
+          sub={form === undefined ? "reading log" : form && form.curGames
+            ? (td ? "games with a TD" : `${form.curGames} game${form.curGames === 1 ? "" : "s"} · ${MARKET_UNIT[card.marketId]}`)
+            : "no games yet"}
+        />
+        <StatCell
+          label="Last 10"
+          value={form === undefined ? "…" : form && form.l10.length ? statValue(form.l10, form.l10Avg) : "—"}
+          sub={form && form.l10.length ? (td ? "games with a TD, both seasons" : `${form.l10.length} games, both seasons`) : ""}
+        />
+        <StatCell
+          label="Last 3"
+          value={form === undefined ? "…" : form && form.last3.length ? form.last3.map((g) => Math.round(g.v)).join(" · ") : "—"}
+          sub={form && form.last3.length ? form.last3.map((g) => `${g.home ? "vs " : "@"}${g.opp}`).join(" · ") : ""}
+        />
+      </div>
+
+      <div>
+        <div style={micro({ marginBottom: 6 })}>Why it's on the board</div>
+        {form === undefined ? (
+          <div style={{ fontSize: 12.5, color: "var(--dim)" }}>Reading {card.player.name}'s game log…</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {insightsFor(card, form, captured, season).map((it, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}>
+                <span
+                  aria-hidden
+                  style={{
+                    flex: "none", fontFamily: MONO, fontSize: 10, width: 12, textAlign: "center",
+                    color: it.tone === "pro" ? "var(--pos)" : it.tone === "con" ? "var(--neg)" : "var(--dim)",
+                  }}
+                >
+                  {it.tone === "pro" ? "▲" : it.tone === "con" ? "▼" : "•"}
+                </span>
+                <span style={{ color: it.tone === "info" ? "var(--text-2)" : "var(--text)" }}>{it.text}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {(onOpenProp || onViewGameProps) && (
+        <div style={{ display: "flex", gap: 8 }}>
+          {onOpenProp && (
+            <ActionButton label={`Open player page →`} onClick={() => onOpenProp(card)} />
+          )}
+          {onViewGameProps && (
+            <ActionButton label={`${card.team} vs ${card.opp} in Prop Feed →`} onClick={() => onViewGameProps(card.game)} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The single defense on the slate that is softest against the pass and the run
+// together -- the mean of its two this-season ranks. Judged from the ranks
+// themselves, not from its cards: averaging card scores let a defense with one
+// card (CAR, 32nd against the run and nothing else) outrank one that is bottom
+// three at both.
+function useFeatured(cards, defenses) {
+  return useMemo(() => {
+    if (!cards.length || !defenses) return null;
+    const byOpp = {};
+    cards.forEach((c) => { (byOpp[c.opp] = byOpp[c.opp] || []).push(c); });
+    let best = null;
+    Object.keys(byOpp).forEach((opp) => {
+      const d = defenses[opp];
+      if (!d || !d.softness.length) return;
+      // Divided by two either way, so a defense with only one row ranked can't
+      // win on half the evidence.
+      const avg = d.softness.reduce((a, b) => a + b, 0) / 2;
+      if (!best || avg > best.avg) best = { opp, avg, d };
+    });
+    if (!best) return null;
+    const list = byOpp[best.opp];
+    return {
+      opp: best.opp,
+      list,
+      team: list[0].team,
+      game: list[0].game,
+      passCell: best.d.passYds ? { defCurrent: best.d.passYds, defPrior: best.d.passYdsPrior } : null,
+      rushCell: best.d.rushYds ? { defCurrent: best.d.rushYds, defPrior: best.d.rushYdsPrior } : null,
+    };
+  }, [cards, defenses]);
+}
+
+function Featured({ featured, narrow, onJump }) {
+  if (!featured) return null;
+  // The spotlight is "play these", so an OUT starter is left off the chips --
+  // his full card is still in the list below, marked out.
+  const playing = featured.list.filter((c) => c.status !== "out");
+  const smashes = playing.filter((c) => c.tier === "SMASH");
+  const spotlight = (smashes.length ? smashes : playing).slice(0, narrow ? 3 : 5);
+  return (
+    <div
+      style={{
+        marginTop: 22, padding: narrow ? 16 : 20, borderRadius: 16,
+        border: "1px solid var(--amber-line, var(--line))",
+        background: "linear-gradient(160deg, var(--amber-dim), var(--surface-1) 65%)",
+      }}
+    >
+      <div style={{ ...micro(), color: "var(--amber-ink)" }}>SOFTEST DEFENSE ON THE SLATE</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+        <span style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: narrow ? 22 : 28, display: "flex", alignItems: "center", gap: 8 }}>
+          <span role="img" style={crest(featured.opp, "nfl", narrow ? 22 : 26)} />
+          {featured.opp}
+        </span>
+        <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+          vs {featured.team} · {kickoffText(featured.game?.startsAt)}
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "repeat(2, 1fr)", gap: 10, marginTop: 14 }}>
+        {featured.passCell && (
+          <div style={{ background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ ...micro(), lineHeight: 1.5 }}>{featured.opp} vs pass · this / last</div>
+            <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 16, marginTop: 5 }}>
+              {rankText(featured.passCell.defCurrent) || "—"} <span style={{ color: "var(--dim)", fontWeight: 400, fontSize: 12.5 }}>/ {rankText(featured.passCell.defPrior) || "—"}</span>
+            </div>
+          </div>
+        )}
+        {featured.rushCell && (
+          <div style={{ background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ ...micro(), lineHeight: 1.5 }}>{featured.opp} vs run · this / last</div>
+            <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 16, marginTop: 5 }}>
+              {rankText(featured.rushCell.defCurrent) || "—"} <span style={{ color: "var(--dim)", fontWeight: 400, fontSize: 12.5 }}>/ {rankText(featured.rushCell.defPrior) || "—"}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+        {spotlight.map((c) => (
+          <span
+            key={c.id}
+            role="button" tabIndex={0}
+            onClick={() => onJump(c.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onJump(c.id); } }}
+            className="pp-mono"
+            style={{
+              display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              padding: "7px 11px", borderRadius: 9, background: "var(--surface-1)", border: "1px solid var(--amber-line, var(--line))",
+            }}
+          >
+            <PlayerAvatar name={c.player.name} sport="nfl" team={c.team} espnId={c.player.espnId} status={c.status} size={20} surface="var(--surface-1)" />
+            {c.player.name} · {c.pos} · {c.market} →
+          </span>
+        ))}
       </div>
     </div>
   );
 }
 
-export default function MismatchReportPage() {
+// One row per player the search found: his matchup, then a chip for every
+// market his position can be bet in with the grade it got. A chip jumps to
+// that market's card. TOUGH is shown, not hidden -- "is Kelce a play anywhere
+// this week?" needs the no's as much as the yes's.
+function SearchSummary({ hits, query, onJump, narrow, runCheck }) {
+  if (!hits.length) {
+    return (
+      <div style={{ marginTop: 18, fontSize: 13, color: "var(--dim)", lineHeight: 1.6 }}>
+        No starter on this week's slate matches “{query}”. The report covers each team's depth-chart starters —
+        one QB, one RB, the formation's receivers and tight end — so a backup won't appear here.
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+      {hits.map((list) => {
+        const c0 = list[0];
+        return (
+          <div key={c0.player.espnId} style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", padding: narrow ? 12 : 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <PlayerAvatar
+                name={c0.player.name} alt={c0.player.name} sport="nfl" team={c0.team} espnId={c0.player.espnId}
+                status={c0.status} size={34} surface="var(--surface-1)" dimmed={c0.status === "out"}
+              />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14 }}>{c0.player.name}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>
+                  {c0.team} · {c0.pos} vs {c0.opp} · {kickoffText(c0.game?.startsAt)}
+                  {c0.status === "out" ? " · listed OUT" : c0.status === "questionable" ? " · questionable" : ""}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              {list.map((c) => {
+                const t = TIER_META[c.tier];
+                const run = runCheck ? runCheck(c) : true;
+                // A quarterback who doesn't run isn't graded for anytime TD or
+                // rush yards at all -- say so rather than hand him a tier.
+                if (run !== true) {
+                  return (
+                    <span
+                      key={c.id}
+                      className="pp-mono"
+                      style={{
+                        display: "inline-flex", gap: 6, alignItems: "center", fontSize: 10.5, letterSpacing: "0.04em",
+                        padding: "6px 9px", borderRadius: 8, whiteSpace: "nowrap",
+                        border: "1px dashed var(--line)", color: "var(--dim)",
+                      }}
+                    >
+                      {c.market}
+                      <span>{run === false ? "doesn't run — not graded" : "checking…"}</span>
+                    </span>
+                  );
+                }
+                return (
+                  <span
+                    key={c.id}
+                    role="button" tabIndex={0}
+                    onClick={() => onJump(c.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onJump(c.id); } }}
+                    className="pp-mono"
+                    style={{
+                      display: "inline-flex", gap: 6, alignItems: "center", fontSize: 10.5, letterSpacing: "0.04em",
+                      padding: "6px 9px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap",
+                      border: `1px solid ${c.tier === "TOUGH" ? "var(--line)" : t.color}`, color: "var(--text-2)",
+                    }}
+                  >
+                    {c.market}
+                    <span style={{ color: t.color }}>{c.tier === "TOUGH" ? "TOUGH" : t.label}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchLogs }) {
   const narrow = useIsNarrow(760);
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
+  const [market, setMarket] = useState(HEADLINE);
+  const [query, setQuery] = useState("");
   const [pos, setPos] = useState("ALL");
   const [tier, setTier] = useState(null);
+  const [game, setGame] = useState(null);
+  const [flashId, setFlashId] = useState(null);
+  const [howOpen, setHowOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -145,19 +864,139 @@ export default function MismatchReportPage() {
     return () => { alive = false; };
   }, []);
 
-  const cards = data?.cards || [];
-  const filtered = useMemo(
-    () => cards.filter((c) => (pos === "ALL" || c.pos === pos) && (!tier || c.tier === tier)),
-    [cards, pos, tier]
+  const allCards = data?.cards || [];
+  const games = data?.games || [];
+  const season = data?.season;
+
+  const q = query.trim().toLowerCase();
+  const searching = q.length > 0;
+  const matchesQuery = (c) => c.player.name.toLowerCase().includes(q)
+    || c.team.toLowerCase() === q || c.opp.toLowerCase() === q;
+
+  // The chosen market's cards, every grade included -- a search has to be
+  // able to say "tough matchup" about the player it finds.
+  const marketCards = useMemo(
+    () => allCards.filter((c) => (market === HEADLINE ? c.headline : c.marketId === market)),
+    [allCards, market]
   );
+  // What the page shows unsearched: the soft matchups only.
+  const boardCards = useMemo(() => marketCards.filter((c) => c.tier !== "TOUGH"), [marketCards]);
+
+  const posOptions = market === HEADLINE ? POS_ORDER : MARKET_BY_ID[market].positions;
+  const visibleRaw = useMemo(
+    () => (searching ? marketCards.filter(matchesQuery) : boardCards)
+      .filter((c) => (pos === "ALL" || c.pos === pos) && (!tier || c.tier === tier) && (!game || c.game.id === game)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searching, q, marketCards, boardCards, pos, tier, game]
+  );
+  const searchRunChecks = useMemo(
+    () => (searching ? allCards.filter((c) => matchesQuery(c) && needsRunCheck(c)) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searching, q, allCards]
+  );
+  // Every QB the run check needs is fetched even when he's filtered out of
+  // view, so the tiles and spotlight count the right quarterbacks.
+  const logTargets = useMemo(
+    () => [...visibleRaw, ...boardCards.filter(needsRunCheck), ...searchRunChecks],
+    [visibleRaw, boardCards, searchRunChecks]
+  );
+  const logs = useCardLogs(logTargets, fetchLogs);
+
+  // true = shown; false = a QB who doesn't run, not graded in this market;
+  // undefined = his log hasn't answered yet, so he isn't shown until it does.
+  const runCheck = (c) => {
+    if (!needsRunCheck(c) || !fetchLogs) return true;
+    const log = logs[c.player.espnId];
+    if (log === undefined) return undefined;
+    return qbRunning(log).qualifies[c.marketId];
+  };
+  const visible = useMemo(
+    () => visibleRaw.filter((c) => runCheck(c) === true),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visibleRaw, logs, fetchLogs]
+  );
+  const boardGated = useMemo(
+    () => boardCards.filter((c) => runCheck(c) === true),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [boardCards, logs, fetchLogs]
+  );
+  const featured = useFeatured(boardGated, data?.defenses);
+  // undefined = still loading; null = no fetcher wired; otherwise the form.
+  const forms = useMemo(() => {
+    const out = {};
+    visible.forEach((c) => {
+      const log = logs[c.player.espnId];
+      out[c.id] = !fetchLogs ? null : log === undefined ? undefined : playerForm(c, log);
+    });
+    return out;
+  }, [visible, logs, fetchLogs]);
+
+  // Same defense means the same score for every starter on that team, so ties
+  // are everywhere -- HOU's three receivers all read 97. Within a tie the
+  // player actually producing in the market this season goes first.
+  const filtered = useMemo(() => {
+    const byForm = (c) => {
+      const f = forms[c.id];
+      if (!f) return -1;
+      if (c.marketId === "anytimeTd") return f.l10.length ? scoredIn(f.l10) / f.l10.length : -1;
+      return Number.isFinite(f.curAvg) ? f.curAvg : Number.isFinite(f.l10Avg) ? f.l10Avg : -1;
+    };
+    // An OUT starter stays on the page (nothing is silently dropped) but sinks
+    // below everyone who is actually playing.
+    const isOut = (c) => (c.status === "out" ? 1 : 0);
+    return visible.slice().sort((a, b) => (isOut(a) - isOut(b)) || (b.score - a.score) || (byForm(b) - byForm(a)));
+  }, [visible, forms]);
   const grouped = useMemo(() => {
     const by = {};
     filtered.forEach((c) => { (by[c.pos] = by[c.pos] || []).push(c); });
     return POS_ORDER.map((p) => [p, by[p] || []]).filter(([, list]) => list.length);
   }, [filtered]);
 
-  const gameCount = data?.games?.length || 0;
-  const smashCount = cards.filter((c) => c.tier === "SMASH").length;
+  // Search, across every market: each player found, with his grade in every
+  // market his position can bet -- "is he a smash for anything this week?"
+  const searchHits = useMemo(() => {
+    if (!searching) return [];
+    const byPlayer = new Map();
+    allCards.filter(matchesQuery).forEach((c) => {
+      const k = c.player.espnId;
+      if (!byPlayer.has(k)) byPlayer.set(k, []);
+      byPlayer.get(k).push(c);
+    });
+    const order = Object.fromEntries(MARKETS.map((m, i) => [m.id, i]));
+    return [...byPlayer.values()].slice(0, 8)
+      .map((list) => list.slice().sort((a, b) => order[a.marketId] - order[b.marketId]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searching, q, allCards]);
+
+  const pickMarket = (m) => {
+    setMarket(m);
+    const allowed = m === HEADLINE ? POS_ORDER : MARKET_BY_ID[m].positions;
+    if (pos !== "ALL" && !allowed.includes(pos)) setPos("ALL");
+  };
+
+  const gameCount = games.length;
+  const smashCount = boardGated.filter((c) => c.tier === "SMASH").length;
+  const favCount = boardGated.filter((c) => c.tier === "FAV").length;
+
+  const jumpTo = (id) => {
+    const card = allCards.find((c) => c.id === id);
+    if (card && !filtered.some((c) => c.id === id)) {
+      setPos("ALL"); setTier(null); setGame(null);
+      const inMarket = market === HEADLINE ? card.headline : card.marketId === market;
+      if (!inMarket) setMarket(card.marketId);
+    }
+    // Wait a frame for the filter reset to re-render the card back into the
+    // DOM before scrolling to it -- jumping first would target a node that
+    // doesn't exist yet whenever the click came from outside the current filter.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(cardAnchor(id));
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+    setFlashId(id);
+    setTimeout(() => setFlashId((v) => (v === id ? null : v)), 1600);
+  };
 
   return (
     <div style={{ maxWidth: 1040, margin: "0 auto", padding: narrow ? "16px 16px 40px" : "28px 24px 60px" }}>
@@ -166,33 +1005,56 @@ export default function MismatchReportPage() {
         This week's softest matchups
       </h1>
       <p style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, maxWidth: "60ch", marginTop: 10 }}>
-        Every starter below is read off this week's real depth charts against the opposing defense's real
-        pass/rush yards-allowed rank, blended 60% this season and 40% last season. There is no sportsbook line
-        or win probability here — see the note at the bottom for why.
+        Every starter on this week's real depth charts, graded against what the opposing defense actually allows
+        in each prop market. Pick a market below — Anytime TD, Receptions, Pass Yds — or search a player to see
+        where he lands in all of them.
       </p>
 
       {data?.ready && (
-        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-          <div style={{ ...micro(), color: "var(--text-2)" }}>
-            {gameCount} game{gameCount === 1 ? "" : "s"} · {cards.length} starters · {smashCount} smash spots
+        <>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+            <Tile n={gameCount} label="games this week" />
+            <Tile n={boardGated.length} label={market === HEADLINE ? "soft matchups" : `${MARKET_BY_ID[market].label} spots`} />
+            <Tile n={smashCount} label="smash spots" color="var(--pos)" />
+            <Tile n={favCount} label="favorable" color="var(--amber-ink)" />
           </div>
+
+          <details
+            open={howOpen}
+            onToggle={(e) => setHowOpen(e.target.open)}
+            style={{ marginTop: 14, border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)" }}
+          >
+            <summary
+              className="pp-mono"
+              style={{ cursor: "pointer", listStyle: "none", padding: "11px 14px", fontSize: 12, color: "var(--text-2)", display: "flex", justifyContent: "space-between" }}
+            >
+              How the mismatch score works
+              <span style={{ color: "var(--dim)" }}>{howOpen ? "–" : "+"}</span>
+            </summary>
+            <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6 }}>
+              The tier is this season's defense, nothing else: the opponent's per-game rank (ESPN team stats) on the
+              number that market lives on becomes a 0–100 softness score — 32nd of 32 is 100. Pass Yds and Rec Yds
+              grade on pass yards allowed, Rush Yds on rush yards allowed, Rush + Rec and Pass + Rush on total yards
+              allowed, Receptions on completions allowed, Pass TD on passing TDs allowed, and Anytime TD on passing TDs
+              allowed for receivers and rushing TDs allowed for backs and quarterbacks. Anytime TD means carrying or
+              catching it in — a quarterback's passing TDs never count — so quarterbacks only appear in Anytime TD and
+              Rush Yds if their own log shows they run — for Anytime TD, a rushing TD in {Math.round(QB_TD_RATE * 100)}%+ of
+              their last {QB_RUN_WINDOW} games; for Rush Yds, that or {QB_RUN_CARRIES}+ carries a game; at least
+              {" "}{QB_RUN_MIN_GAMES} games of log either way. There is no position-specific
+              split in the free data this app has, so each card names the team number it used. Last season is shown
+              for context but never moves the tier. The insights under each card come from the player's own game log.
+            </div>
+          </details>
+
           {data.teamsLoaded < data.teamsTotal && (
-            <div style={{ ...micro(), color: "var(--amber-ink)" }}>
+            <div style={{ ...micro(), color: "var(--amber-ink)", marginTop: 10 }}>
               {data.teamsLoaded} of {data.teamsTotal} teams' defense stats loaded — the rest are left off, not guessed
             </div>
           )}
-        </div>
-      )}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 20 }}>
-        {["ALL", "QB", "RB", "WR", "TE"].map((p) => (
-          <Filter key={p} label={p} on={pos === p} onClick={() => setPos(p)} />
-        ))}
-        <span style={{ width: 1, background: "var(--line)", margin: "2px 4px" }} />
-        {["SMASH", "FAV", "LEAN"].map((t) => (
-          <Filter key={t} label={TIER_META[t].label} on={tier === t} onClick={() => setTier((v) => (v === t ? null : t))} />
-        ))}
-      </div>
+          <Featured featured={featured} narrow={narrow} onJump={jumpTo} />
+        </>
+      )}
 
       {!data && !error && (
         <div style={{ marginTop: 30, fontSize: 13, color: "var(--dim)" }}>Reading this week's real slate, defense ranks and depth charts…</div>
@@ -203,26 +1065,152 @@ export default function MismatchReportPage() {
           stats or depth charts) didn't answer. Try again shortly.
         </div>
       )}
-      {data?.ready && !cards.length && (
+
+      {data?.ready && allCards.length > 0 && (
+        <div style={{ marginTop: 26 }}>
+          <div style={{ ...micro(), marginBottom: 8 }}>Quick board · sorted softest first · tap a row to jump</div>
+          <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", overflow: "hidden", maxHeight: 360, overflowY: "auto" }}>
+            {filtered.slice(0, 40).map((c) => (
+              <QuickRow key={c.id} card={c} narrow={narrow} onJump={jumpTo} />
+            ))}
+            {!filtered.length && (
+              <div style={{ padding: 16, fontSize: 12.5, color: "var(--dim)" }}>Nothing matches these filters.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {data?.ready && (
+        <>
+          {/* Search and market stay pinned while the cards scroll -- they're
+              what the page is showing. Position, tier and game refine it and
+              scroll away with the top of the page. The two halves are drawn
+              as one bordered panel until the top one sticks. */}
+          <div
+            style={{
+              position: "sticky", top: 0, zIndex: 5, marginTop: 24,
+              background: "var(--bg)", paddingTop: 8,
+            }}
+          >
+            <div style={{ border: "1px solid var(--line)", borderRadius: "12px 12px 0 0", background: "var(--surface-1)" }}>
+              <div style={{ padding: narrow ? "12px 14px 4px" : "14px 16px 6px" }}>
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={narrow ? "Search a player or team" : "Search a player or team — see where he grades in every market"}
+                  aria-label="Search players"
+                  style={{
+                    width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 9,
+                    border: `1px solid ${searching ? "var(--amber)" : "var(--line)"}`, background: "var(--bg)",
+                    color: "var(--text)", fontSize: 13, outline: "none",
+                  }}
+                />
+              </div>
+              <FilterGroup label="Market" hint="prop type" narrow={narrow} first>
+                <Filter label="Best per player" on={market === HEADLINE} onClick={() => pickMarket(HEADLINE)} />
+                {MARKETS.map((m) => (
+                  <Filter key={m.id} label={m.label} on={market === m.id} onClick={() => pickMarket(m.id)} />
+                ))}
+              </FilterGroup>
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid var(--line)", borderTop: "none", borderRadius: "0 0 12px 12px", background: "var(--surface-1)" }}>
+            <FilterGroup label="Position" narrow={narrow} first>
+              {["ALL", ...posOptions].map((p) => (
+                <Filter key={p} label={p} on={pos === p} onClick={() => setPos(p)} />
+              ))}
+            </FilterGroup>
+            <FilterGroup label="Tier" hint="how soft" narrow={narrow}>
+              <Filter label="All tiers" on={!tier} onClick={() => setTier(null)} />
+              {(searching ? ["SMASH", "FAV", "LEAN", "TOUGH"] : ["SMASH", "FAV", "LEAN"]).map((t) => (
+                <Filter key={t} label={TIER_META[t].label} on={tier === t} onClick={() => setTier((v) => (v === t ? null : t))} tone={TIER_META[t].color} />
+              ))}
+            </FilterGroup>
+            {games.length > 0 && (
+              <FilterGroup label="Game" narrow={narrow}>
+                <Filter size="sm" label="All games" on={!game} onClick={() => setGame(null)} />
+                {games.map((g) => (
+                  <Filter
+                    key={g.id}
+                    size="sm"
+                    label={`${g.away.abbr} @ ${g.home.abbr}`}
+                    on={game === g.id}
+                    onClick={() => setGame((v) => (v === g.id ? null : g.id))}
+                  />
+                ))}
+              </FilterGroup>
+            )}
+            <div
+              style={{
+                display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                padding: narrow ? "9px 14px" : "10px 16px", borderTop: "1px solid var(--line)",
+              }}
+            >
+              <span style={{ ...micro(), color: "var(--text-2)" }}>
+                {searching
+                  ? `${filtered.length} result${filtered.length === 1 ? "" : "s"} for “${query.trim()}” in ${market === HEADLINE ? "best-per-player" : MARKET_BY_ID[market].label}`
+                  : `${filtered.length} of ${boardGated.length} soft matchups`}
+              </span>
+              {(pos !== "ALL" || tier || game || searching) && (
+                <span
+                  role="button" tabIndex={0}
+                  onClick={() => { setPos("ALL"); setTier(null); setGame(null); setQuery(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPos("ALL"); setTier(null); setGame(null); setQuery(""); } }}
+                  style={{ ...micro(), color: "var(--amber-ink)", cursor: "pointer", marginLeft: "auto" }}
+                >
+                  Clear filters ×
+                </span>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {searching && data?.ready && (
+        <SearchSummary hits={searchHits} query={query.trim()} onJump={jumpTo} narrow={narrow} runCheck={runCheck} />
+      )}
+
+      {data?.ready && !filtered.length && !searching && boardGated.length > 0 && (
+        <div style={{ marginTop: 20, fontSize: 13, color: "var(--dim)" }}>Nothing matches these filters.</div>
+      )}
+      {data?.ready && !boardGated.length && !searching && (
         <div style={{ marginTop: 30, fontSize: 13, color: "var(--dim)" }}>
-          Nothing cleared the LEAN threshold on this slate — every matchup graded closer to average than soft.
+          Nothing cleared the LEAN threshold in this market this week — every matchup graded closer to average than soft.
         </div>
       )}
 
       {grouped.map(([p, list]) => (
         <div key={p} style={{ marginTop: 28 }}>
-          <div style={{ ...micro(), fontSize: 11, marginBottom: 10 }}>{p} · {list.length}</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ ...micro(), fontSize: 11 }}>
+              {p} · {list.length} · {market === HEADLINE ? `target ${list[0].market}` : MARKET_BY_ID[market].label}
+            </span>
+            <span style={{ fontSize: 10.5, color: "var(--dim)" }}>
+              graded on the opponent's {DEF_LABEL[list[0].rowId]} per game
+              {p === "QB" && QB_GATED.has(list[0].marketId)
+                ? list[0].marketId === "anytimeTd"
+                  ? ` · QBs who score on the ground only — a rushing TD in ${Math.round(QB_TD_RATE * 100)}%+ of his last ${QB_RUN_WINDOW} games`
+                  : ` · running QBs only — ${QB_RUN_CARRIES}+ carries a game or a rushing TD in ${Math.round(QB_TD_RATE * 100)}%+ of his last ${QB_RUN_WINDOW}`
+                : ""}
+            </span>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 12 }}>
-            {list.map((c) => <Card key={c.id} card={c} narrow={narrow} />)}
+            {list.map((c) => (
+              <Card key={c.id} card={c} narrow={narrow} flashed={flashId === c.id} onOpenProp={onOpenProp} onViewGameProps={onViewGameProps} form={forms[c.id]} season={season} />
+            ))}
           </div>
         </div>
       ))}
 
       <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--dim)", lineHeight: 1.6 }}>
-        No moneyline, spread or win-probability numbers appear here — this app's only real sportsbook odds run
-        against a small monthly budget already committed to the MLB odds panel, and a made-up line would be worse
-        than none. Availability dots come from each team's live ESPN roster; a player with no dot has no status on
-        record, not a clean bill of health.
+No moneyline or spread appears here — this app's only live, licensed sportsbook odds feed runs against a small
+        monthly budget already committed to the MLB odds panel. Where a card shows a "Captured line," that price was
+        read by hand off a sportsbook aggregator at a single point in time ({capturedWhen()}) and is frozen, not
+        live — treat it as a reference from when this page's data was last refreshed, not a current quote. Availability
+        dots come from each team's live ESPN roster; a player with no dot has no status on record, not a clean bill
+        of health.
       </div>
     </div>
   );

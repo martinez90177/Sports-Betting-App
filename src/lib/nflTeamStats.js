@@ -17,7 +17,9 @@ import { TEAM_ESPN_IDS } from "./rosters.js";
 // "2026" while returning 2025's seventeen games, so the label is never read.
 
 const TTL_MS = 6 * 60 * 60 * 1000;
-const cacheKey = (season) => `pp_nfl_teamstats_v2_${season}`;
+// v3: also ranks NFL_MATCHUP_ROWS; a v2 payload has none of them, and every
+// TD and receptions matchup would read as unranked for six hours.
+const cacheKey = (season) => `pp_nfl_teamstats_v3_${season}`;
 const memory = new Map();
 
 // An NFL season is named for the year it kicks off; January belongs to the
@@ -101,6 +103,29 @@ export const NFL_TEAM_RANK_ROWS = [
   },
 ];
 
+// Ranked alongside the table's rows but not drawn by it (TeamRankings maps
+// NFL_TEAM_RANK_ROWS only). The Mismatch report grades each prop market
+// against the defensive number that market actually lives on -- catches
+// allowed for receptions, touchdowns allowed for anytime TD -- and these are
+// those numbers, from the same ESPN response.
+export const NFL_MATCHUP_ROWS = [
+  {
+    id: "completions", label: "Completions",
+    off: { get: (c, g) => per(stat(c, "passing", "completions"), g), high: true },
+    def: { get: (c, g) => per(stat(c, "passing", "completions"), g), high: false },
+  },
+  {
+    id: "passTd", label: "Passing TDs",
+    off: { get: (c, g) => per(stat(c, "passing", "passingTouchdowns"), g), high: true },
+    def: { get: (c, g) => per(stat(c, "passing", "passingTouchdowns"), g), high: false },
+  },
+  {
+    id: "rushTd", label: "Rushing TDs",
+    off: { get: (c, g) => per(stat(c, "rushing", "rushingTouchdowns"), g), high: true },
+    def: { get: (c, g) => per(stat(c, "rushing", "rushingTouchdowns"), g), high: false },
+  },
+];
+
 function readCache(season) {
   const hit = memory.get(season);
   if (hit && Date.now() - hit.fetchedAt < TTL_MS) return hit.data;
@@ -151,7 +176,7 @@ export async function fetchNflTeamRankings(season) {
   const out = { season, teamsLoaded: teams.length, teamsTotal: entries.length, teams: {} };
   teams.forEach((t) => { out.teams[t.abbr] = { games: t.games, off: {}, def: {} }; });
 
-  NFL_TEAM_RANK_ROWS.forEach((row) => {
+  [...NFL_TEAM_RANK_ROWS, ...NFL_MATCHUP_ROWS].forEach((row) => {
     ["off", "def"].forEach((side) => {
       const spec = row[side];
       const vals = teams
