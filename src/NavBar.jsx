@@ -50,6 +50,11 @@ export const NAV_TABS = [
   // can be filtered by league, which is what Alex asked for.
   { id: "injuries", label: "Injuries" },
   { id: "news", label: "News" },
+  // Appended rather than resequenced into the story above -- it is new, not
+  // part of the reasoning that ordered the other six, and Alex should be the
+  // one to decide where (or whether) it belongs in that order. NFL-only for
+  // now; see lib/nflMismatch.js.
+  { id: "mismatches", label: "Mismatches" },
 ];
 
 // Both states share their type. Only colour and the underline differ, which is

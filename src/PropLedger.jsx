@@ -103,6 +103,7 @@ const GamesPage = React.lazy(() => import("./GamesPage.jsx"));
 const NewsPageRedesign = React.lazy(() => import("./NewsPageRedesign.jsx"));
 const FindingsPage = React.lazy(() => import("./FindingsPage.jsx"));
 const InjuriesPage = React.lazy(() => import("./InjuriesPage.jsx"));
+const MismatchReportPage = React.lazy(() => import("./MismatchReportPage.jsx"));
 const ColorWheel = React.lazy(() => import("./ColorWheel.jsx"));
 
 // Every lazy component needs a Suspense boundary above it. These chunks are
@@ -25102,7 +25103,7 @@ const NAV_PAGES = new Set(NAV_TABS.map((t) => t.id));
 const PLAYER_PAGES = new Set(["nfl", "mlb", "nba", "wnba"]);
 // Nav pages whose phone body has been transcribed from the v3 mocks, and so
 // take the v3 chassis instead of NavBar. Grows one batch at a time.
-const V3_PHONE_PAGES = new Set(["feed", "board", "games", "findings", "news", "injuries"]);
+const V3_PHONE_PAGES = new Set(["feed", "board", "games", "findings", "news", "injuries", "mismatches"]);
 // Which pages build the availability wire. The Board joined News and Injuries
 // when its v3 tiers started counting "N OUT" as a reason -- without it that
 // reason can never fire, and a game silently sits one tier lower than the
@@ -25976,7 +25977,8 @@ export default function PropLedger() {
     Promise.all([
       fetchMLBDaySlate().catch(() => []),
       fetchWNBALiveSlate().catch(() => null),
-    ]).then(([mlbGames, wnba]) => {
+      fetchNFLWeekSlate().catch(() => []),
+    ]).then(([mlbGames, wnba, nflGames]) => {
       if (cancelled) return;
       const m = new Map();
       (mlbGames || []).forEach((g) => {
@@ -25986,6 +25988,20 @@ export default function PropLedger() {
       ((wnba && wnba.matchups) || []).forEach((g) => {
         if (g.teamA?.abbr) m.set(`wnba:${g.teamA.abbr}`, g.date);
         if (g.teamB?.abbr) m.set(`wnba:${g.teamB.abbr}`, g.date);
+      });
+      // NFL's week slate carries the whole week, Thursday through Monday, so
+      // a team that already played (Thursday night) is still in this list --
+      // unlike MLB/WNBA's "today" fetches, a week-wide one does not age out
+      // on its own. Same grace window the feed uses: a team whose kickoff is
+      // more than FEED_GRACE_MS behind now has played, and its next game is
+      // next week, outside what this fetch holds -- so it is left out of the
+      // map and reads "No game on this slate" rather than pointing back at
+      // Thursday's final score.
+      const nflCutoff = Date.now() - FEED_GRACE_MS;
+      (nflGames || []).forEach((g) => {
+        if (new Date(g.date).getTime() < nflCutoff) return;
+        if (g.awayAbbr) m.set(`nfl:${g.awayAbbr}`, g.date);
+        if (g.homeAbbr) m.set(`nfl:${g.homeAbbr}`, g.date);
       });
       setInjurySlate(m);
     });
@@ -26330,6 +26346,20 @@ export default function PropLedger() {
             onOpenProp={goToProp}
             loading={newsInjuryWireAll.length === 0}
           />
+        </LazyPane>
+        </MaybeV3Shell>
+      )}
+      {page === "mismatches" && (
+        <MaybeV3Shell
+          on={isPhoneShell}
+          page="mismatches"
+          onNavigate={setPage}
+          onHome={goHome}
+          onOpenSettings={() => setSettingsOpen((v) => !v)}
+          slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
+        >
+        <LazyPane minHeight={400}>
+          <MismatchReportPage />
         </LazyPane>
         </MaybeV3Shell>
       )}
