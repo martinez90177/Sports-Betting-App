@@ -46,6 +46,9 @@ export const STATS = {
   longRec: { label: "longest rec", value: (l) => l.c ? l.c[3] : null, max: true },
   scrim: { label: "rush + rec yds", value: (l) => (l.r || l.c ? sum2(l.r?.[1], l.c?.[1]) : null) },
   anyTd: { label: "TDs", value: (l) => (l.r || l.c ? sum2(l.r?.[2], l.c?.[2]) : null) },
+  // Carries plus targets from the opponent's 20 in, from the play-by-play
+  // (api/_nflAllowed.js redZone). Only lines with red-zone work carry `z`.
+  rzLooks: { label: "red-zone looks", value: (l) => (l.z ? l.z[0] + l.z[1] : null) },
 };
 
 // Who a game's "1" at a position is: most targets for pass-catchers, most
@@ -91,6 +94,9 @@ function index(data) {
         offense: appAbbr(off),
         home: def === g.h,
         lines: g.L.filter((l) => l.t === off),
+        // The offense's red-zone totals that game:
+        // [carries, targets, goal-line carries, goal-line targets, trips, unmatched]
+        rz: g.Z?.[off] || [0, 0, 0, 0, 0, 0],
       });
     });
   });
@@ -176,4 +182,61 @@ export function slotValues(idx, def, grp, slot, stat) {
     const l = ranked[slot - 1];
     return { wk: g.wk, offense: g.offense, name: l?.n || null, value: l ? (s.value(l) ?? 0) : null };
   }).filter((r) => r.value != null);
+}
+
+// ---------------------------------------------------------------- red zone
+
+// One player's share of his team's red-zone work this season: every carry
+// and target from the opponent's 20 in, against the team's total, and the
+// same inside the 5. `unmatched` is the team's red-zone plays whose player
+// couldn't be read off the play text -- counted in the team's total, never
+// credited to anyone, and said on screen when it isn't zero.
+export function redZoneRole(idx, team, playerId) {
+  if (!idx) return null;
+  const games = Object.values(idx.byDef).flat().filter((g) => g.offense === team);
+  if (!games.length) return null;
+  const T = [0, 0, 0, 0, 0, 0];
+  const P = [0, 0, 0, 0];
+  let played = 0;
+  games.forEach((g) => {
+    g.rz.forEach((v, i) => { T[i] += v; });
+    const line = g.lines.find((l) => l.id === String(playerId));
+    if (line) {
+      played += 1;
+      (line.z || [0, 0, 0, 0]).forEach((v, i) => { P[i] += v; });
+    }
+  });
+  const teamLooks = T[0] + T[1];
+  const teamGl = T[2] + T[3];
+  const looks = P[0] + P[1];
+  const gl = P[2] + P[3];
+  return {
+    games: games.length, played,
+    carries: P[0], targets: P[1], looks, gl,
+    teamLooks, teamGl, trips: T[4], unmatched: T[5],
+    share: teamLooks ? looks / teamLooks : null,
+    glShare: teamGl ? gl / teamGl : null,
+  };
+}
+
+// Red-zone trips a defense has allowed a game, ranked among the 32 -- 32nd
+// is the most trips allowed. A trip is a drive with a snap from the 20 in.
+export function redZoneTripsAllowed(idx, def) {
+  if (!idx) return null;
+  const key = "rz:trips";
+  if (!idx.rankCache.has(key)) {
+    const rows = Object.entries(idx.byDef).map(([abbr, games]) => ({
+      abbr, games: games.length, value: games.length ? games.reduce((a, g) => a + g.rz[4], 0) / games.length : null,
+    })).filter((r) => r.value != null);
+    const out = {};
+    if (rows.length >= 24) {
+      rows.forEach((r) => {
+        const below = rows.filter((o) => o.value < r.value - 1e-9).length;
+        const same = rows.filter((o) => Math.abs(o.value - r.value) <= 1e-9).length;
+        out[r.abbr] = { rank: below + same, of: rows.length, value: r.value, games: r.games, tied: same > 1 };
+      });
+    }
+    idx.rankCache.set(key, rows.length >= 24 ? out : null);
+  }
+  return idx.rankCache.get(key)?.[def] || null;
 }

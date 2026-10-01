@@ -12,7 +12,8 @@ import { playedWeeks, finishedGames, boxLines, rosterPositions, athletePosition,
 //
 // Three layers, because a finished game never changes and the whole season is
 // ~270 box scores by January:
-//   - each finished game's lines are stored once, forever (`nfl-box:v1:<id>`);
+//   - each finished game's lines are stored once, forever (`nfl-box:v2:<id>`;
+//     v2 added red-zone counts, so every game was read again once);
 //   - a fully played week's game list is stored once (`nfl-wk:v1:<season>:<wk>`);
 //   - positions are stored for a day (`nfl-pos:v1`), players move less often.
 // The response itself is cached at Vercel's edge for 30 minutes, so most
@@ -63,15 +64,15 @@ export async function buildSeason(season, db = store()) {
   const games = lists.flat();
 
   // Box scores: stored ones read in one round trip, the rest fetched.
-  const keys = games.map((g) => `nfl-box:v1:${g.id}`);
+  const keys = games.map((g) => `nfl-box:v2:${g.id}`);
   const stored = await db.mget(keys);
   const lines = await pool(games, 8, async (g, i) => {
     if (stored[i]) return stored[i];
     if (Date.now() - started > FETCH_BUDGET_MS) return null;
     try {
-      const L = await boxLines(g.id);
-      await db.set(keys[i], L);
-      return L;
+      const box = await boxLines(g.id);
+      await db.set(keys[i], box);
+      return box;
     } catch {
       return null;
     }
@@ -84,7 +85,7 @@ export async function buildSeason(season, db = store()) {
     pos = { at: Date.now(), map: { ...(pos?.map || {}), ...map } };
     await db.set("nfl-pos:v1", pos);
   }
-  const missing = [...new Set(lines.flat().filter(Boolean).map((l) => l.id).filter((id) => !pos.map[id]))];
+  const missing = [...new Set(lines.flatMap((b) => b?.L || []).map((l) => l.id).filter((id) => !pos.map[id]))];
   if (missing.length) {
     const found = await pool(missing.slice(0, MAX_ATHLETE_LOOKUPS), 8, athletePosition);
     let changed = false;
@@ -95,12 +96,12 @@ export async function buildSeason(season, db = store()) {
   let unknownPos = 0;
   const out = games.map((g, i) => {
     if (!lines[i]) return { ...g, L: null };
-    const L = lines[i].map((l) => {
+    const L = lines[i].L.map((l) => {
       const p = pos.map[l.id] || "";
       if (!p) unknownPos += 1;
       return { ...l, pos: p };
     });
-    return { ...g, L };
+    return { ...g, L, Z: lines[i].Z };
   });
 
   return {

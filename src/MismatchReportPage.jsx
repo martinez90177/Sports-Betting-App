@@ -3,7 +3,7 @@ import PlayerAvatar from "./PlayerAvatar.jsx";
 import { crest } from "./v3/FormPlot.jsx";
 import useIsNarrow from "./lib/useIsNarrow.js";
 import { fetchNflWeeklyMismatches, MARKETS } from "./lib/nflMismatch.js";
-import { STATS, allowedTo, slotValues } from "./lib/nflAllowed.js";
+import { STATS, allowedTo, slotValues, redZoneRole, redZoneTripsAllowed, positionRanks } from "./lib/nflAllowed.js";
 import { buildSheet, kickoffWindow, Headline, Glance, GameSheet } from "./MismatchGameView.jsx";
 import { saveSheetImage } from "./lib/sheetImage.js";
 import { capturedOddsFor, CAPTURED_AT, CAPTURED_SOURCE } from "./lib/nflCapturedOdds.js";
@@ -201,7 +201,7 @@ function qbRunning(log) {
 // built from a real number. The thresholds that decide which bucket a line
 // lands in are stated in the sentence itself, so nothing reads as a verdict
 // without the figure behind it.
-function insightsFor(card, form, captured, season) {
+function insightsFor(card, form, captured, season, allowed) {
   const out = [];
   const unit = MARKET_UNIT[card.marketId];
   // The defense number is the team row the market is graded on, whatever the
@@ -247,6 +247,16 @@ function insightsFor(card, form, captured, season) {
       text: td
         ? `A running quarterback: rushing TD in ${r.tdGames} of his last ${r.n} games (${r.tds} total), ${f1(r.carries)} carries a game. Only his rushing TDs count here — passing TDs don't cash an anytime ticket.`
         : `A running quarterback: ${f1(r.carries)} carries a game over his last ${r.n}, with a rushing TD in ${r.tdGames} of them.`,
+    });
+  }
+
+  const rz = td ? redZoneFor(card, allowed) : null;
+  if (rz) {
+    const { role } = rz;
+    out.push({
+      tone: role.share >= 0.3 ? "pro" : role.share < 0.1 ? "con" : "info",
+      text: `Gets ${pct(role.share)} of ${card.team}'s red-zone carries and targets (${role.looks} of ${role.teamLooks})` +
+        (role.teamGl ? ` and ${role.gl} of ${role.teamGl} from the 5 in` : "") + ` this season.`,
     });
   }
 
@@ -750,6 +760,74 @@ function AllowedList({ card, allowed, narrow }) {
   );
 }
 
+// Who gets the ball near the goal line -- what an anytime TD actually rides
+// on. Counted from the play-by-play: every carry and target from the
+// opponent's 20 in, as a share of the team's, and the same inside the 5;
+// then how often this defense lets offenses in there and how many of those
+// looks go to his position. All this season.
+const pct = (x) => `${Math.round(x * 100)}%`;
+function redZoneFor(card, allowed) {
+  if (!allowed || card.marketId !== "anytimeTd") return null;
+  const role = redZoneRole(allowed, card.team, card.player.espnId);
+  if (!role || !role.teamLooks) return null;
+  return {
+    role,
+    trips: redZoneTripsAllowed(allowed, card.opp),
+    looksAllowed: positionRanks(allowed, card.grp, "rzLooks")?.[card.opp] || null,
+  };
+}
+
+function RedZone({ card, allowed }) {
+  const rz = redZoneFor(card, allowed);
+  if (!rz) return null;
+  const { role, trips, looksAllowed } = rz;
+  const name = lastName(card.player.name);
+  const shareTone = role.share >= 0.3 ? "var(--pos)" : role.share < 0.1 ? "var(--neg)" : "var(--text)";
+  const row = (label, value, tone, detail) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", minWidth: 0 }}>{label}</span>
+        <span style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 19, color: tone, whiteSpace: "nowrap" }}>{value}</span>
+      </div>
+      {detail ? <span style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.45 }}>{detail}</span> : null}
+    </div>
+  );
+  return (
+    <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={micro()}>Red zone · {role.games} game{role.games === 1 ? "" : "s"}</span>
+        <span style={{ fontSize: 12, color: "var(--text-2)" }}>inside the 20</span>
+      </div>
+      {row(
+        `${possessive(name)} share of ${card.team}'s plays`,
+        pct(role.share),
+        shareTone,
+        `${role.looks} of ${role.teamLooks} carries and targets · ${role.carries} carr${role.carries === 1 ? "y" : "ies"}, ${role.targets} target${role.targets === 1 ? "" : "s"}`
+      )}
+      {role.teamGl > 0 && row(
+        "Inside the 5",
+        `${role.gl} of ${role.teamGl}`,
+        role.glShare >= 0.3 ? "var(--pos)" : "var(--text)",
+        `${card.team} has run ${role.teamGl} play${role.teamGl === 1 ? "" : "s"} from the 5 in`
+      )}
+      {(trips || looksAllowed) && row(
+        `${card.opp} lets offenses in`,
+        trips ? `${f1(trips.value)} trips/g` : "—",
+        trips && trips.rank >= 22 ? "var(--pos)" : trips && trips.rank <= 11 ? "var(--neg)" : "var(--text)",
+        [
+          trips ? `${rankText(trips)} in red-zone trips allowed` : null,
+          looksAllowed ? `${f1(looksAllowed.value)} red-zone looks a game to ${card.grp}s (${rankText(looksAllowed)})` : null,
+        ].filter(Boolean).join(" · ")
+      )}
+      {role.unmatched > 0 && (
+        <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+          {role.unmatched} of {card.team}'s red-zone plays couldn't be tied to a player from the play-by-play and count only in the team total.
+        </span>
+      )}
+    </div>
+  );
+}
+
 // The injury designation, spelled out beside the name. The avatar's dot says
 // the same thing, but a dot is easy to miss on a row someone is skimming to
 // pick a bet. Colours are the availability tokens only (CLAUDE.md rule 2);
@@ -786,8 +864,9 @@ function CompactRow({ card, form, allowed, narrow, onOpen }) {
   const floor = sum?.floor;
   const d = card.defCurrent;
   const open = () => onOpen(card.id);
+  const rzRole = sum?.td ? redZoneFor(card, allowed)?.role : null;
   const lineText = form === undefined ? "…" : floor
-    ? (sum.td ? "Anytime TD" : `o${floor.line}`)
+    ? (sum.td ? (rzRole ? `${pct(rzRole.share)} of RZ plays` : "Anytime TD") : `o${floor.line}`)
     : "—";
   const counts = floor ? (
     <span style={{ display: "inline-flex", gap: 8, alignItems: "baseline", whiteSpace: "nowrap" }}>
@@ -983,7 +1062,7 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
         <div style={{ fontSize: 13, color: "var(--dim)" }}>Reading {card.player.name}'s game log…</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {insightsFor(card, form, captured, season).map((it, i) => (
+          {insightsFor(card, form, captured, season, allowed).map((it, i) => (
             <div key={i} style={{ display: "flex", gap: 9, alignItems: "baseline", fontSize: 13, lineHeight: 1.55, color: "var(--text-2)" }}>
               <span
                 aria-hidden
@@ -1010,7 +1089,7 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
   );
 
   const meter = <Meter score={card.score} color={tier.color} />;
-  const lineCheck = <LineCheck card={card} form={form} allowed={allowed} />;
+  const lineCheck = <><LineCheck card={card} form={form} allowed={allowed} /><RedZone card={card} allowed={allowed} /></>;
   const allowedList = <AllowedList card={card} allowed={allowed} narrow={narrow} />;
   const col = (children, extra) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0, ...extra }}>{children}</div>

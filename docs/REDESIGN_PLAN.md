@@ -2864,7 +2864,18 @@ Vite middleware (`DEV_API` in `vite.config.js`), currently only `nfl-allowed`.
 The odds and news functions stay unreachable locally on purpose — they spend
 paid credits.
 
-**Not done — red-zone share for Anytime TD** (Doinksports' TD sheet). ESPN's
-play-by-play has no player ids on plays, only text ("J.Love pass short middle
-to C.Watson"), so attributing red-zone targets means matching abbreviated names
-per team. Worth doing as its own pass, with unmatched plays counted and shown.
+**Red-zone share for Anytime TD — built 2026-10-01.** ESPN's play-by-play has
+no player ids on plays, only text ("J.Love pass short middle to C.Watson"), so
+`api/_nflAllowed.js` reads the player out of the text (`readPlay`) and matches
+the abbreviation to that game's own box score, which lists everyone who carried
+or was targeted (`matchAbbrev`: initial prefix + surname; surname alone only
+when it is unique on the team that game, for nickname cases like Hollywood /
+Bam / Drew). Every carry and target from the 20 in (and the 5 in) is credited
+per player as `z`, per team as `Z` with trips (drives with any snap inside
+the 20) and an `unmatched` count shown on screen when non-zero. Throwaways,
+spikes, kneels and sacks credit nobody. Measured 2026-10-01: 857 of 857
+red-zone plays in 2026 and 4,775 of 4,775 in 2025 matched. Box cache moved to
+`nfl-box:v2`. On Anytime TD cards: a Red zone block (share of the team's
+red-zone plays, inside-the-5 share, the opponent's red-zone trips allowed and
+red-zone looks to the position), a reason in the why list, and the share on
+the compact row.
