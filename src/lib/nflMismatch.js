@@ -2,6 +2,7 @@ import { TEAM_ESPN_IDS, fetchTeamRoster } from "./rosters.js";
 import { fetchNflTeamRankings, nflSeasonNow } from "./nflTeamStats.js";
 import { fetchNflStarters } from "./nflDepth.js";
 import { fetchNflCurrentWeekSlate } from "./gamesData.js";
+import { fetchNflAllowed, positionRanks, leagueAverage as posLeagueAverage, GROUP, STATS } from "./nflAllowed.js";
 
 // --------------------------------------------------------------------------
 // The weekly mismatch report -- which real starters face the softest real
@@ -43,15 +44,21 @@ export const MARKET_ID = { QB: "passYds", RB: "rushYds", WR: "recYds", TE: "recY
 //
 // Anytime TD splits by how the position scores: a receiver's touchdown is a
 // passing touchdown allowed, a back's or quarterback's is a rushing one.
+//
+// `stat` is the same market read position by position from the box scores
+// (lib/nflAllowed.js): what this defense has allowed to players at *this*
+// card's position. It decides the grade whenever the box scores answered;
+// `row`, the team-wide number, is the fallback when they didn't, and the card
+// says which one it used. A quarterback's anytime TD is his rushing TDs only.
 export const MARKETS = [
-  { id: "passYds", label: "Pass Yds", positions: ["QB"], row: () => "passYds" },
-  { id: "passRushYds", label: "Pass + Rush Yds", positions: ["QB"], row: () => "yards" },
-  { id: "passTd", label: "Pass TD", positions: ["QB"], row: () => "passTd" },
-  { id: "rushYds", label: "Rush Yds", positions: ["QB", "RB"], row: () => "rushYds" },
-  { id: "scrim", label: "Rush + Rec Yds", positions: ["RB", "WR"], row: () => "yards" },
-  { id: "recYds", label: "Rec Yds", positions: ["RB", "WR", "TE"], row: () => "passYds" },
-  { id: "rec", label: "Receptions", positions: ["RB", "WR", "TE"], row: () => "completions" },
-  { id: "anytimeTd", label: "Anytime TD", positions: ["QB", "RB", "WR", "TE"], row: (pos) => (pos === "WR" || pos === "TE" ? "passTd" : "rushTd") },
+  { id: "passYds", label: "Pass Yds", positions: ["QB"], row: () => "passYds", stat: () => "passYds" },
+  { id: "passRushYds", label: "Pass + Rush Yds", positions: ["QB"], row: () => "yards", stat: () => "passRushYds" },
+  { id: "passTd", label: "Pass TD", positions: ["QB"], row: () => "passTd", stat: () => "passTd" },
+  { id: "rushYds", label: "Rush Yds", positions: ["QB", "RB"], row: () => "rushYds", stat: () => "rushYds" },
+  { id: "scrim", label: "Rush + Rec Yds", positions: ["RB", "WR"], row: () => "yards", stat: () => "scrim" },
+  { id: "recYds", label: "Rec Yds", positions: ["RB", "WR", "TE"], row: () => "passYds", stat: () => "recYds" },
+  { id: "rec", label: "Receptions", positions: ["RB", "WR", "TE"], row: () => "completions", stat: () => "rec" },
+  { id: "anytimeTd", label: "Anytime TD", positions: ["QB", "RB", "WR", "TE"], row: (pos) => (pos === "WR" || pos === "TE" ? "passTd" : "rushTd"), stat: (pos) => (pos === "QB" ? "rushTd" : "anyTd") },
 ];
 
 // slot -> nflDepth.js's RAIL_SLOTS key, and how many of the depth chart's
@@ -118,11 +125,13 @@ const DEF_ROWS = ["passYds", "rushYds", "yards", "completions", "passTd", "rushT
 // silently missing whichever source failed.
 export async function fetchNflWeeklyMismatches() {
   const season = nflSeasonNow();
-  const [slate, currentStats, priorStats, starters] = await Promise.all([
+  const [slate, currentStats, priorStats, starters, allowed, allowedPrior] = await Promise.all([
     fetchNflCurrentWeekSlate(),
     fetchNflTeamRankings(season),
     fetchNflTeamRankings(season - 1),
     fetchNflStarters(season),
+    fetchNflAllowed(season),
+    fetchNflAllowed(season - 1),
   ]);
 
   if (!slate?.games?.length || !currentStats || !starters) {
@@ -160,15 +169,33 @@ export async function fetchNflWeeklyMismatches() {
 
       SLOTS.forEach(({ slot, pos, count }) => {
         const ids = depth[slot] || [];
-        ids.slice(0, count(depth)).forEach((espnId) => {
+        ids.slice(0, count(depth)).forEach((espnId, slotIndex) => {
           const player = playersById.get(espnId);
           if (!player) return; // on the depth chart but not on the roster fetch -- dropped, not filled in
           MARKETS.forEach((m) => {
             if (!m.positions.includes(pos)) return;
             const rowId = m.row(pos);
-            const score = matchupSoftness(currentStats.teams[defAbbr], priorStats?.teams?.[defAbbr], rowId);
+            const grp = GROUP[pos];
+            const stat = m.stat(pos);
+            const posCur = positionRanks(allowed, grp, stat)?.[defAbbr] || null;
+            // Before this season's first game there is no position table yet;
+            // last season's full sample stands in, the same rule as the team rows.
+            const posPrior = positionRanks(allowedPrior, grp, stat)?.[defAbbr] || null;
+            const byPosition = !!(posCur || (!allowed && posPrior));
+            const score = byPosition
+              ? softness(posCur || posPrior)
+              : matchupSoftness(currentStats.teams[defAbbr], priorStats?.teams?.[defAbbr], rowId);
             const tier = tierFor(score);
             if (!tier) return; // defense unranked on this row -- no grade to give
+            const position = byPosition ? {
+              basis: "position",
+              defLabel: `${STATS[stat].label} allowed to ${grp}s`,
+              defCurrent: posCur,
+              defPrior: posPrior,
+              defGames: posCur?.games ?? null,
+              leagueAvg: posLeagueAverage(allowed, grp, stat),
+              leagueAvgPrior: posLeagueAverage(allowedPrior, grp, stat),
+            } : { basis: "team" };
             cards.push({
               id: `${game.id}-${player.espnId}-${m.id}`,
               player,
@@ -188,6 +215,11 @@ export async function fetchNflWeeklyMismatches() {
               leagueAvgPrior: leagueAvgPrior[rowId],
               score,
               tier,
+              grp,
+              stat,
+              // 1 = the depth chart's first at his position (WR1, TE1).
+              slot: slotIndex + 1,
+              ...position,
             });
           });
         });
@@ -219,6 +251,8 @@ export async function fetchNflWeeklyMismatches() {
     games: slate.games,
     cards,
     defenses,
+    allowed,
+    allowedPrior,
     ready: true,
     teamsLoaded: currentStats.teamsLoaded,
     teamsTotal: currentStats.teamsTotal,

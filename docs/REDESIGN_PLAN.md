@@ -2814,3 +2814,57 @@ are hidden by a one-RB depth chart (GB's Kaleb Johnson is RB3 with the top
 rush line). The Board leads with a Sunday game on a Thursday. The MLB
 opposing-starter filter resolves 0 of 139 games for Bobby Witt Jr. on
 production — found while regression-testing, not investigated.
+
+## The Mismatches page becomes the cheat sheet — 2026-09-30
+
+Alex compared the page with PropsMadness's new weekly cheat sheet (and with
+Outlier and Doinksports) and asked for the suggested changes. **Placement,
+decided by Alex:** one page, two views — everything stays on the Mismatches
+tab, with a Game view / Player view toggle. No new nav tab.
+
+**Built:**
+
+- **Defense by position, from box scores.** `api/nfl-allowed.js` (+
+  `api/_nflAllowed.js`) reads every finished game's ESPN box score and tags each
+  passer, rusher and receiver with his position (32 rosters, then ESPN's
+  athlete record for anyone no longer rostered). Finished games, full weeks and
+  positions are cached in Redis; the response is edge-cached for 30 minutes.
+  `src/lib/nflAllowed.js` turns it into ranks among the 32 per position and stat
+  (`positionRanks`), the players behind each rank (`allowedTo`) and what each
+  game's WR1/TE1/RB1 did (`slotValues`, "1" = most targets or touches that game).
+- **Cards grade on the card's own position.** A TE's Rec Yds is TE rec yds
+  allowed, not team pass defense — so Carolina's four receivers no longer all
+  read 100. Team-wide ESPN ranks remain the fallback when the box scores don't
+  answer, and the card names which one it used (`card.basis`).
+- **Line check** on each card: the highest alt rung the player cleared in 8 of
+  his last 10, and how often this defense let the same depth-chart slot clear
+  it. **Who they've allowed**: the players at his position who faced this
+  defense, week by week.
+- **Game view**: per game, each defense's five softest position stats and up to
+  three starters to look at — only from spots ranked 22nd or worse, only players
+  not listed out, chosen by who has produced most in that stat this season.
+  Kickoff-window filter (both views). **At a glance** tiles, a one-sentence
+  headline and a "box scores through Week N" stamp replace the count tiles.
+- **Save image** (canvas-drawn PNG, no library, theme tokens and --status-* dots)
+  and **Copy link** (`#mismatch-<gameId>`, which PropLedger routes to this page
+  on load, even on a first visit).
+- **Player view rests as compact rows** (Alex, 2026-09-30: the page was too long).
+  Each player is one ~55px row -- market, the defense's rank at his position, his
+  floor line and both line-check counts, tier -- and opens in place into the full
+  card (three columns on wide screens, two mid, stacked on a phone). Expand all /
+  Collapse all in the filter panel. The rows replaced the separate quick board.
+  Page height with 114 players: ~8,400px, from ~48,000px.
+- **Back to top** button once the page is scrolled 700px, above the My Picks
+  dock. The phone shell scrolls an inner panel, not the window, so it listens to
+  the nearest scrolling ancestor.
+- Primetime kickoff windows read TNF / SNF / MNF.
+
+**Dev note:** `npm run dev` now serves allowlisted `/api` functions through a
+Vite middleware (`DEV_API` in `vite.config.js`), currently only `nfl-allowed`.
+The odds and news functions stay unreachable locally on purpose — they spend
+paid credits.
+
+**Not done — red-zone share for Anytime TD** (Doinksports' TD sheet). ESPN's
+play-by-play has no player ids on plays, only text ("J.Love pass short middle
+to C.Watson"), so attributing red-zone targets means matching abbreviated names
+per team. Worth doing as its own pass, with unmatched plays counted and shown.

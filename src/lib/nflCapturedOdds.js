@@ -28,7 +28,9 @@
 // ever targets, so that's all that's captured here).
 
 export const CAPTURED_AT = "2026-09-27T08:00-04:00";
-export const CAPTURED_SOURCE = "Outlier (aggregated DraftKings/FanDuel/BetMGM/etc.)";
+// Shown on the Mismatches cards. Names the books the prices came from, not the
+// site they were read off.
+export const CAPTURED_SOURCE = "DraftKings / FanDuel / BetMGM";
 
 export const CAPTURED_ODDS = {
   "Bo Nix|passYds": { line: 124.5, odds: -1200 },
@@ -64,6 +66,14 @@ export const CAPTURED_ODDS = {
   "Jauan Jennings|recYds": { line: 14.5, odds: -113 },
 };
 
-export function capturedOddsFor(playerName, marketId) {
+// A snapshot belongs to the games it was read for: those kicking off within
+// CAPTURED_WINDOW_MS after it. Without this the Week 3 capture kept showing
+// on Week 4's cards -- last week's line, presented beside this week's game.
+// Once the window passes, cards simply show no captured line until a new
+// snapshot (and a new CAPTURED_AT) is written here.
+const CAPTURED_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+export function capturedOddsFor(playerName, marketId, kickoffIso) {
+  const gap = Date.parse(kickoffIso) - Date.parse(CAPTURED_AT);
+  if (!Number.isFinite(gap) || gap < 0 || gap > CAPTURED_WINDOW_MS) return null;
   return CAPTURED_ODDS[`${playerName}|${marketId}`] || null;
 }

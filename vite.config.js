@@ -1,8 +1,39 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+// `npm run dev` is plain Vite, which does not serve the Vercel functions in
+// api/ -- so a page that depends on one could only be tried on production.
+// This runs the listed ones in the dev server. It is an allowlist on purpose:
+// the others spend paid API credits (odds, news) and stay unreachable locally,
+// exactly as before.
+const DEV_API = new Set(["nfl-allowed"]);
+function devApi() {
+  return {
+    name: "dev-api",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = new URL(req.url, "http://localhost");
+        const m = url.pathname.match(/^\/api\/([\w-]+)$/);
+        if (!m || !DEV_API.has(m[1])) return next();
+        try {
+          const mod = await server.ssrLoadModule(`/api/${m[1]}.js`);
+          const shim = {
+            setHeader: (k, v) => res.setHeader(k, v),
+            status(code) { res.statusCode = code; return shim; },
+            json(body) { res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(body)); },
+          };
+          await mod.default({ query: Object.fromEntries(url.searchParams) }, shim);
+        } catch (err) {
+          res.statusCode = 500;
+          res.end(String(err));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), devApi()],
   server: {
     host: true,
     allowedHosts: [".loca.lt"],

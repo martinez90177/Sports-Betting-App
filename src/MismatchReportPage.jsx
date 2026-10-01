@@ -3,6 +3,9 @@ import PlayerAvatar from "./PlayerAvatar.jsx";
 import { crest } from "./v3/FormPlot.jsx";
 import useIsNarrow from "./lib/useIsNarrow.js";
 import { fetchNflWeeklyMismatches, MARKETS } from "./lib/nflMismatch.js";
+import { STATS, allowedTo, slotValues } from "./lib/nflAllowed.js";
+import { buildSheet, kickoffWindow, Headline, Glance, GameSheet } from "./MismatchGameView.jsx";
+import { saveSheetImage } from "./lib/sheetImage.js";
 import { capturedOddsFor, CAPTURED_AT, CAPTURED_SOURCE } from "./lib/nflCapturedOdds.js";
 import { formatOdds } from "./odds.js";
 
@@ -15,7 +18,7 @@ import { formatOdds } from "./odds.js";
 // off rather than filled in, same rule as everywhere else in the app.
 //
 // Laid out after the artifact this was modelled on -- a hero with stat tiles,
-// a featured spotlight, a scannable quick board above the full cards -- but
+// a featured spotlight, compact rows that open into full cards -- but
 // two things that artifact had are deliberately still missing:
 //   - A moneyline/spread ticket with real book lines. NFL has no real-odds
 //     feed here (see docs/PROJECT_NOTES.md "Free data only no fake edge") and
@@ -203,7 +206,7 @@ function insightsFor(card, form, captured, season) {
   const unit = MARKET_UNIT[card.marketId];
   // The defense number is the team row the market is graded on, whatever the
   // player's own market -- a receiver's card must not call it "rec yds".
-  const defUnit = DEF_UNIT[card.rowId];
+  const defUnit = card.basis === "position" ? `${STATS[card.stat].label} to ${card.grp}s` : DEF_UNIT[card.rowId];
   const name = lastName(card.player.name);
   const td = card.marketId === "anytimeTd";
   const d = card.defCurrent;
@@ -218,7 +221,7 @@ function insightsFor(card, form, captured, season) {
     const games = card.defGames ? ` through ${card.defGames} game${card.defGames === 1 ? "" : "s"}` : "";
     out.push({
       tone: diff != null && diff > 0 ? "pro" : "info",
-      text: `${card.opp} is allowing ${f1(d.value)} ${defUnit}/game${games} — ${rankText(d)}` +
+      text: `${card.opp} is allowing ${f1(d.value)} ${defUnit} a game${games} — ${rankText(d)}` +
         (diff != null ? `, ${f1(Math.abs(diff))} ${diff >= 0 ? "more" : "fewer"} than the league average of ${f1(card.leagueAvg)}.` : "."),
     });
     const p = card.defPrior;
@@ -226,7 +229,7 @@ function insightsFor(card, form, captured, season) {
       const delta = d.value - p.value;
       out.push({
         tone: delta > 0 ? "pro" : "con",
-        text: `That's a ${delta > 0 ? "collapse" : "turnaround"} from last season, when they allowed ${f1(p.value)}/game (${rankText(p)}) — ${f1(Math.abs(delta))} ${delta > 0 ? "more" : "fewer"} per game now.`,
+        text: `That's a ${delta > 0 ? "collapse" : "turnaround"} from last season, when they allowed ${f1(p.value)} a game (${rankText(p)}) — ${f1(Math.abs(delta))} ${delta > 0 ? "more" : "fewer"} per game now.`,
       });
     }
   }
@@ -452,43 +455,110 @@ function Meter({ score, color }) {
   );
 }
 
-function QuickRow({ card, narrow, onJump }) {
-  const tier = TIER_META[card.tier];
+// A link that opens this page on one game's sheet (#mismatch-<id>; PropLedger
+// routes that hash to the Mismatches page on load).
+function SheetActions({ entry, glance }) {
+  const [copied, setCopied] = useState(null);
+  const [saving, setSaving] = useState(null);
+  const save = async () => {
+    if (saving === "Saving…") return;
+    setSaving("Saving…");
+    try {
+      await saveSheetImage(entry, { week: glance?.week, throughWeek: glance?.throughWeek });
+      setSaving("Saved");
+    } catch {
+      setSaving("Save failed");
+    }
+    setTimeout(() => setSaving(null), 1600);
+  };
+  const btn = { display: "inline-flex", alignItems: "center", lineHeight: 1.2, fontSize: 10.5, letterSpacing: "0.06em", padding: "6px 10px", borderRadius: 7, cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface-2)", whiteSpace: "nowrap" };
+  const link = `${window.location.origin}${window.location.pathname}#mismatch-${entry.game.id}`;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied("Copied");
+    } catch {
+      setCopied("Copy failed");
+    }
+    setTimeout(() => setCopied(null), 1600);
+  };
   return (
-    <div
-      role="button" tabIndex={0}
-      onClick={() => onJump(card.id)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onJump(card.id); } }}
+    <>
+      <span
+        role="button" tabIndex={0}
+        onClick={save}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); save(); } }}
+        className="pp-mono"
+        style={{ ...btn, color: saving === "Save failed" ? "var(--neg)" : "var(--text-2)" }}
+      >
+        {saving || "Save image"}
+      </span>
+      <span
+        role="button" tabIndex={0}
+        onClick={copy}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copy(); } }}
+        className="pp-mono"
+        title={link}
+        style={{ ...btn, color: copied === "Copy failed" ? "var(--neg)" : "var(--text-2)" }}
+      >
+        {copied || "Copy link"}
+      </span>
+    </>
+  );
+}
+
+// Appears once the top of the page is out of view and takes the reader back
+// to it. Sits above the My Picks dock, which owns the bottom-right corner on
+// desktop and the bottom edge on a phone.
+//
+// On desktop the window scrolls; in the phone shell an inner panel does and
+// the window never moves. So it listens to whichever of the page's ancestors
+// actually scrolls, found from where the button is mounted.
+const BACK_TO_TOP_AFTER = 700;
+function scrollParent(el) {
+  for (let p = el?.parentElement; p && p !== document.body; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if (oy === "auto" || oy === "scroll") return p;
+  }
+  return window;
+}
+function BackToTop({ narrow }) {
+  const [show, setShow] = useState(false);
+  const probe = React.useRef(null);
+  const scroller = React.useRef(window);
+  useEffect(() => {
+    const el = scrollParent(probe.current);
+    scroller.current = el;
+    const y = () => (el === window ? window.scrollY : el.scrollTop);
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; setShow(y() > BACK_TO_TOP_AFTER); });
+    };
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => { el.removeEventListener("scroll", onScroll); if (frame) cancelAnimationFrame(frame); };
+  }, [narrow]);
+  const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  if (!show) return <span ref={probe} hidden />;
+  return (
+    <button
+      ref={probe}
+      type="button"
+      onClick={() => scroller.current.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" })}
+      aria-label="Back to top"
+      className="pp-mono"
       style={{
-        display: "grid", gridTemplateColumns: narrow ? "20px 1fr 60px" : "20px 1.6fr 1.4fr 90px 60px",
-        alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer",
-        borderBottom: "1px solid var(--line)",
+        position: "fixed", zIndex: 1999, right: narrow ? 16 : 27,
+        bottom: narrow ? "calc(env(safe-area-inset-bottom, 0px) + 92px)" : 76,
+        display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 14px", borderRadius: 999,
+        fontSize: 11, letterSpacing: "0.08em", cursor: "pointer",
+        background: "var(--surface-2)", color: "var(--text)", border: "1px solid var(--line)",
+        boxShadow: "0 6px 18px rgba(0, 0, 0, 0.35)",
       }}
     >
-      <span style={{ width: 8, height: 8, borderRadius: "50%", background: tier.color, justifySelf: "center" }} />
-      <span style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: narrow ? 1 : 0 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          <span role="img" style={crest(card.team, "nfl", 15)} />
-          {card.player.name}
-        </span>
-        {narrow && (
-          <span style={{ fontSize: 10.5, color: "var(--amber-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {card.pos} · target {card.market}
-          </span>
-        )}
-      </span>
-      {!narrow && (
-        <span style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {card.pos} · <span style={{ color: "var(--amber-ink)" }}>{card.market}</span> · {card.team} vs {card.opp}
-        </span>
-      )}
-      {!narrow && (
-        <span style={{ ...micro(), fontSize: 10, color: tier.color }}>{tier.label}</span>
-      )}
-      <span style={{ fontFamily: MONO, fontSize: 11, textAlign: "right", color: tier.color }}>
-        {Math.round((card.score || 0) * 100)}
-      </span>
-    </div>
+      ↑ TOP
+    </button>
   );
 }
 
@@ -511,29 +581,448 @@ function ActionButton({ label, onClick }) {
 
 function StatCell({ label, value, sub, tone }) {
   return (
-    <div style={{ background: "var(--surface-2)", borderRadius: 9, padding: "9px 11px", minWidth: 0 }}>
-      <div style={{ ...micro(), fontSize: 9.5, lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-      <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 15, marginTop: 3, color: tone || "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+    <div style={{ background: "var(--surface-2)", borderRadius: 9, padding: "10px 12px", minWidth: 0 }}>
+      <div style={{ ...micro(), fontSize: 10, letterSpacing: "0.1em", lineHeight: 1.4 }}>{label}</div>
+      <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, marginTop: 4, color: tone || "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {value}
       </div>
-      {sub ? <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div> : null}
+      {sub ? <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, lineHeight: 1.35 }}>{sub}</div> : null}
     </div>
   );
 }
 
-function Card({ card, narrow, flashed, onOpenProp, onViewGameProps, form, season }) {
+// Where the books put their alt-line rungs in each market: 9.5, 19.5 … for
+// passing yards, 4.5, 9.5 … for the other yardage markets, every half for
+// counts. The floor line is the highest of these he has cleared in at least
+// FLOOR_HITS of his last 10 -- the line an alt-over ladder is built from.
+const RUNG_STEP = { passYds: 10, passRushYds: 10, rushYds: 5, scrim: 5, recYds: 5, rec: 1, passTd: 1 };
+const FLOOR_HITS = 8;
+function floorLine(vals, marketId) {
+  const step = RUNG_STEP[marketId];
+  if (!step || vals.length < FLOOR_HITS) return null;
+  // Enough games but not even the lowest rung cleared often enough: a floor
+  // of nothing, which is itself the answer.
+  let best = { line: null, hits: null, n: vals.length, lowest: step - 0.5 };
+  for (let line = step - 0.5; line < 1000; line += step) {
+    const hits = vals.filter((v) => v > line).length;
+    if (hits < FLOOR_HITS) break;
+    best = { line, hits, n: vals.length };
+  }
+  return best;
+}
+
+const possessive = (n) => (/s$/i.test(n) ? `${n}'` : `${n}'s`);
+const slotName = (card) => (card.grp === "QB" ? "starting QB" : `${card.grp}${card.slot}`);
+
+// The same line read from both sides: how often he has cleared it, and how
+// often this defense let the player in his spot on the depth chart (its WR1,
+// its TE1) clear it. Both are counts of real games; neither is a projection.
+function lineSummary(card, form, allowed) {
+  if (!form || form.failed) return null;
+  const td = card.marketId === "anytimeTd";
+  const found = td ? { line: 0.5, hits: scoredIn(form.l10), n: form.l10.length } : floorLine(form.l10, card.marketId);
+  const floor = found && found.line != null ? found : null;
+  const slots = allowed && card.basis === "position" ? slotValues(allowed, card.opp, card.grp, card.slot, card.stat) : null;
+  const defHits = floor && slots ? slots.filter((r) => r.value > floor.line).length : null;
+  return { td, found, floor, slots, defHits };
+}
+const hitTone = (hits, n) => (hits / n >= 0.8 ? "var(--pos)" : hits / n < 0.5 ? "var(--neg)" : "var(--text)");
+
+function LineCheck({ card, form, allowed }) {
+  const sum = lineSummary(card, form, allowed);
+  if (!sum) return null;
+  const { td, found, floor, slots } = sum;
+  if (!floor && !slots?.length) return null;
+  const name = lastName(card.player.name);
+  const unit = MARKET_UNIT[card.marketId];
+  const { defHits } = sum;
+  const tone = hitTone;
+
+  // One side of the check: what it is on the left, the count on the right,
+  // and what the count is made of underneath.
+  const row = (label, value, valueTone, detail) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", minWidth: 0 }}>{label}</span>
+        <span style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 19, color: valueTone, whiteSpace: "nowrap" }}>{value}</span>
+      </div>
+      {detail}
+    </div>
+  );
+  const note = (text) => <span style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.45 }}>{text}</span>;
+
+  return (
+    <div style={{ background: "var(--surface-2)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={micro()}>Line check</span>
+        {floor && (
+          <span style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 16, color: "var(--amber-ink)" }}>
+            {td ? "Anytime TD" : `Over ${floor.line} ${unit}`}
+          </span>
+        )}
+      </div>
+
+      {floor
+        ? row(
+          td ? `${name} scored` : `${name} cleared it`,
+          `${floor.hits} of ${floor.n}`,
+          tone(floor.hits, floor.n),
+          note(td
+            ? `His last ${floor.n} games, both seasons`
+            : `His last ${floor.n} games · the highest line he's cleared in ${FLOOR_HITS} or more`)
+        )
+        : row(`${possessive(name)} floor`, "None", "var(--text-2)", note(found
+          ? `Hasn't cleared even ${found.lowest} ${unit} in ${FLOOR_HITS} of his last ${found.n}`
+          : `Fewer than ${FLOOR_HITS} games of log to set one`))}
+
+      {slots?.length
+        ? row(
+          floor ? `${card.opp} let the ${slotName(card)} clear it` : `${card.opp} vs the ${slotName(card)}`,
+          floor ? `${defHits} of ${slots.length}` : "—",
+          floor ? tone(defHits, slots.length) : "var(--text-2)",
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {slots.map((r) => {
+              const over = floor ? r.value > floor.line : null;
+              const c = over == null ? "var(--text-2)" : over ? "var(--pos)" : "var(--neg)";
+              return (
+                <span
+                  key={`${r.wk}-${r.name}`}
+                  title={`Week ${r.wk} vs ${r.offense}`}
+                  style={{
+                    display: "inline-flex", gap: 6, alignItems: "baseline", fontSize: 12, padding: "4px 9px", borderRadius: 7,
+                    border: `1px solid color-mix(in srgb, ${c} 45%, transparent)`,
+                    background: `color-mix(in srgb, ${c} 10%, transparent)`,
+                  }}
+                >
+                  <span style={{ color: "var(--text)" }}>{lastName(r.name)}</span>
+                  <span style={{ fontFamily: DISPLAY, fontWeight: 700, color: c }}>{Math.round(r.value)}</span>
+                </span>
+              );
+            })}
+          </div>
+        )
+        : null}
+    </div>
+  );
+}
+
+// Every player at this card's position who faced the defense this season,
+// and what each put up in the card's market -- the list behind the rank.
+function AllowedList({ card, allowed, narrow }) {
+  const [open, setOpen] = useState(false);
+  if (!allowed || card.basis !== "position") return null;
+  const games = allowedTo(allowed, card.opp, card.grp, card.stat);
+  if (!games?.length) return null;
+  const unit = STATS[card.stat].label;
+  return (
+    <div style={{ border: "1px solid var(--line)", borderRadius: 9 }}>
+      <div
+        role="button" tabIndex={0} aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen((v) => !v); } }}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer" }}
+      >
+        <span style={micro()}>{card.grp}s vs {card.opp} this season · {unit}</span>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{open ? "–" : "+"}</span>
+      </div>
+      {open && (
+        <div style={{ display: "flex", flexDirection: "column", borderTop: "1px solid var(--line)" }}>
+          {games.map((g) => (
+            <div
+              key={g.wk}
+              style={{
+                display: "grid", gridTemplateColumns: narrow ? "56px minmax(0, 1fr) 40px" : "70px minmax(0, 1fr) 48px",
+                gap: 8, alignItems: "baseline", padding: "7px 12px", borderTop: "1px solid var(--line)", fontSize: 12,
+              }}
+            >
+              <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)" }}>WK {g.wk} {g.home ? "vs" : "@"} {g.offense}</span>
+              <span style={{ color: "var(--text-2)", minWidth: 0 }}>
+                {g.players.length
+                  ? g.players.slice(0, 4).map((p) => `${p.name} ${Math.round(p.value)}`).join(" · ")
+                  : `no ${card.grp} involved`}
+              </span>
+              <span style={{ fontFamily: DISPLAY, fontWeight: 700, textAlign: "right" }}>{Math.round(g.total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One player in one slim row -- the list's resting state. Everything a scan
+// needs to decide whether to open him: who, the market, how soft the defense
+// is at his position, and his line check in two counts. A tap opens the full
+// card in its place.
+function CompactRow({ card, form, allowed, narrow, onOpen }) {
   const tier = TIER_META[card.tier];
-  const label = DEF_LABEL[card.rowId];
-  const captured = capturedOddsFor(card.player.name, card.marketId);
+  const sum = lineSummary(card, form, allowed);
+  const floor = sum?.floor;
+  const d = card.defCurrent;
+  const open = () => onOpen(card.id);
+  const lineText = form === undefined ? "…" : floor
+    ? (sum.td ? "Anytime TD" : `o${floor.line}`)
+    : "—";
+  const counts = floor ? (
+    <span style={{ display: "inline-flex", gap: 8, alignItems: "baseline", whiteSpace: "nowrap" }}>
+      <span style={{ color: hitTone(floor.hits, floor.n), fontWeight: 700 }}>{floor.hits}/{floor.n}</span>
+      {sum.slots?.length ? (
+        <span style={{ color: "var(--dim)" }}>
+          {card.opp} <span style={{ color: hitTone(sum.defHits, sum.slots.length), fontWeight: 700 }}>{sum.defHits}/{sum.slots.length}</span>
+        </span>
+      ) : null}
+    </span>
+  ) : null;
+  const defText = d ? `${rankText(d)}` : "unranked";
+  return (
+    <div
+      id={cardAnchor(card.id)}
+      role="button" tabIndex={0} aria-expanded={false}
+      onClick={open}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
+      style={{
+        display: "grid", alignItems: "center", gap: narrow ? 12 : 18, cursor: "pointer",
+        gridTemplateColumns: narrow ? "minmax(0, 1fr) auto" : "minmax(0, 1.7fr) 124px minmax(0, 1.2fr) minmax(0, 1.3fr) 128px 16px",
+        padding: narrow ? "13px 14px" : "14px 18px", borderRadius: 12, background: "var(--surface-1)",
+        borderTop: "1px solid var(--line)", borderRight: "1px solid var(--line)", borderBottom: "1px solid var(--line)",
+        borderLeft: `4px solid ${tier.color}`, scrollMarginTop: 90,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <PlayerAvatar
+          name={card.player.name} alt={card.player.name} sport="nfl" team={card.team} espnId={card.player.espnId}
+          status={card.status} size={narrow ? 40 : 44} surface="var(--surface-1)" dimmed={card.status === "out"}
+        />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: narrow ? 15.5 : 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {card.player.name}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {narrow
+              ? <><span style={{ color: "var(--amber-ink)" }}>{card.market}</span> · vs {card.opp} {d ? rankText(d).replace(" of 32", "") : ""}</>
+              : <>{card.team} · {card.pos} vs {card.opp}{card.status === "out" ? " · OUT" : card.status === "questionable" ? " · questionable" : ""}</>}
+          </div>
+        </div>
+      </div>
+      {narrow ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ textAlign: "right", fontSize: 13.5 }}>
+            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.06em", color: tier.color }}>{tier.label}</div>
+            <div style={{ marginTop: 4 }}>{counts || <span style={{ color: "var(--dim)" }}>{lineText}</span>}</div>
+          </div>
+          <span aria-hidden style={{ color: "var(--text-2)", fontSize: 14 }}>▾</span>
+        </div>
+      ) : (
+        <>
+          <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 16, color: "var(--amber-ink)", whiteSpace: "nowrap" }}>{card.market}</span>
+          <div style={{ minWidth: 0, fontSize: 14 }}>
+            <div style={{ fontWeight: 700, color: "var(--pos)", whiteSpace: "nowrap" }}>{card.opp} {defText}</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {d && Number.isFinite(d.value) ? `${f1(d.value)}/g ${card.basis === "position" ? `to ${card.grp}s` : "allowed"}` : ""}
+            </div>
+          </div>
+          <div style={{ minWidth: 0, fontSize: 14 }}>
+            <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{lineText}{floor && !sum.td ? <span style={{ fontWeight: 400, color: "var(--dim)" }}> {MARKET_UNIT[card.marketId]}</span> : null}</div>
+            <div style={{ fontSize: 13.5, marginTop: 2 }}>{counts || <span style={{ color: "var(--dim)" }}>{form === undefined ? "reading log" : "no floor line"}</span>}</div>
+          </div>
+          <span
+            className="pp-mono"
+            style={{
+              justifySelf: "start", fontSize: 10.5, letterSpacing: "0.06em", padding: "5px 9px", borderRadius: 7,
+              color: tier.color, border: `1px solid ${tier.color}`, whiteSpace: "nowrap",
+            }}
+          >
+            {tier.label}
+          </span>
+          <span aria-hidden style={{ color: "var(--text-2)", fontSize: 14, textAlign: "right" }}>▾</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Three arrangements of the same blocks. "wide" is one long card per player
+// in three columns -- who and what / the numbers / the reasons -- read left
+// to right instead of scrolled; "mid" folds the numbers under the player;
+// "stack" is the phone's single column.
+function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season, allowed, onCollapse }) {
+  const narrow = layout === "stack";
+  const wide = layout === "wide";
+  const tier = TIER_META[card.tier];
+  const label = card.defLabel || DEF_LABEL[card.rowId];
+  const captured = capturedOddsFor(card.player.name, card.marketId, card.game?.startsAt);
   const td = card.marketId === "anytimeTd";
   // Yardage and counts read as a per-game average; touchdowns as how many
   // games he scored in, which is what an anytime ticket actually needs.
   const statValue = (xs, avg) => (td ? `${scoredIn(xs)} of ${xs.length}` : `${f1(avg)}/g`);
+
+  const tierBadge = (
+    <span
+      className="pp-mono"
+      style={{
+        flex: "none", alignSelf: wide ? "flex-start" : undefined, fontSize: 10.5, letterSpacing: "0.06em",
+        padding: "5px 9px", borderRadius: 7, color: tier.color, border: `1px solid ${tier.color}`, whiteSpace: "nowrap",
+      }}
+    >
+      {tier.label}
+    </span>
+  );
+
+  const header = (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+      <div style={{ display: "flex", gap: 11, alignItems: "center", minWidth: 0 }}>
+        <PlayerAvatar
+          name={card.player.name} alt={card.player.name} sport="nfl"
+          team={card.team} espnId={card.player.espnId} status={card.status}
+          size={narrow ? 40 : 48} surface="var(--surface-1)" dimmed={card.status === "out"}
+        />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: narrow ? 14.5 : 16, lineHeight: 1.25 }}>
+            {card.player.name}
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
+            <span role="img" style={crest(card.team, "nfl", 14)} />
+            {card.team} · {card.pos} vs {card.opp}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
+        {!wide && tierBadge}
+        {onCollapse && (
+          <span
+            role="button" tabIndex={0} aria-label={`Close ${card.player.name}'s card`}
+            onClick={() => onCollapse(card.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCollapse(card.id); } }}
+            className="pp-mono"
+            style={{ fontSize: 10.5, letterSpacing: "0.06em", padding: "5px 9px", borderRadius: 7, cursor: "pointer", border: "1px solid var(--line)", color: "var(--text-2)", whiteSpace: "nowrap" }}
+          >
+            Close ▴
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  const target = (
+    <div
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        background: "var(--amber-dim)", border: "1px solid var(--amber-line, var(--line))",
+        borderRadius: 9, padding: "9px 12px",
+      }}
+    >
+      <div style={micro({ color: "var(--amber-ink)" })}>Target</div>
+      <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 15.5, color: "var(--amber-ink)" }}>{card.market}</div>
+    </div>
+  );
+
+  const capturedBox = captured && (
+    <div style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 9, padding: "9px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div style={micro()}>Captured line · {CAPTURED_SOURCE}</div>
+        <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14 }}>
+          Over {captured.line} <span style={{ color: "var(--pos)" }}>{formatOdds(captured.odds)}</span>
+        </div>
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 4 }}>
+        Read by hand at {capturedWhen()} — a snapshot, not a live price. It will have moved.
+      </div>
+    </div>
+  );
+
+  const stats = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <StatCell
+        label={`${card.opp} ${label}`}
+        value={card.defCurrent && Number.isFinite(card.defCurrent.value) ? `${f1(card.defCurrent.value)}/g` : "—"}
+        sub={`${rankText(card.defCurrent) || "unranked"}${card.defPrior ? ` · ${ordinal(card.defPrior.rank)} last yr` : ""}`}
+        tone="var(--pos)"
+      />
+      <StatCell
+        label={`${lastName(card.player.name)} · ${season}`}
+        value={form === undefined ? "…" : form && form.curGames ? statValue(form.cur, form.curAvg) : "—"}
+        sub={form === undefined ? "reading log" : form && form.curGames
+          ? (td ? "games with a TD" : `${form.curGames} game${form.curGames === 1 ? "" : "s"} · ${MARKET_UNIT[card.marketId]}`)
+          : "no games yet"}
+      />
+      <StatCell
+        label="Last 10"
+        value={form === undefined ? "…" : form && form.l10.length ? statValue(form.l10, form.l10Avg) : "—"}
+        sub={form && form.l10.length ? (td ? "games with a TD, both seasons" : `${form.l10.length} games, both seasons`) : ""}
+      />
+      <StatCell
+        label="Last 3"
+        value={form === undefined ? "…" : form && form.last3.length ? form.last3.map((g) => Math.round(g.v)).join(" · ") : "—"}
+        sub={form && form.last3.length ? form.last3.map((g) => `${g.home ? "vs " : "@"}${g.opp}`).join(" · ") : ""}
+      />
+    </div>
+  );
+
+  const why = (
+    <div>
+      <div style={micro({ marginBottom: 8 })}>Why it's on the board</div>
+      {form === undefined ? (
+        <div style={{ fontSize: 13, color: "var(--dim)" }}>Reading {card.player.name}'s game log…</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {insightsFor(card, form, captured, season).map((it, i) => (
+            <div key={i} style={{ display: "flex", gap: 9, alignItems: "baseline", fontSize: 13, lineHeight: 1.55, color: "var(--text-2)" }}>
+              <span
+                aria-hidden
+                style={{
+                  flex: "none", fontFamily: MONO, fontSize: 10, width: 12, textAlign: "center",
+                  color: it.tone === "pro" ? "var(--pos)" : it.tone === "con" ? "var(--neg)" : "var(--dim)",
+                }}
+              >
+                {it.tone === "pro" ? "▲" : it.tone === "con" ? "▼" : "•"}
+              </span>
+              <span style={{ color: it.tone === "info" ? "var(--text-2)" : "var(--text)" }}>{it.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const actions = (onOpenProp || onViewGameProps) && (
+    <div style={{ display: "flex", flexDirection: wide ? "column" : "row", gap: 8 }}>
+      {onOpenProp && <ActionButton label="Open player page →" onClick={() => onOpenProp(card)} />}
+      {onViewGameProps && <ActionButton label={`${card.team} vs ${card.opp} in Prop Feed →`} onClick={() => onViewGameProps(card.game)} />}
+    </div>
+  );
+
+  const meter = <Meter score={card.score} color={tier.color} />;
+  const lineCheck = <LineCheck card={card} form={form} allowed={allowed} />;
+  const allowedList = <AllowedList card={card} allowed={allowed} narrow={narrow} />;
+  const col = (children, extra) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0, ...extra }}>{children}</div>
+  );
+
+  let body;
+  if (wide) {
+    body = (
+      <div style={{ display: "grid", gridTemplateColumns: "236px minmax(0, 1fr) minmax(0, 1.2fr)", gap: 22, alignItems: "start" }}>
+        {col(<>{header}{tierBadge}{target}{meter}{capturedBox}<div style={{ marginTop: "auto" }}>{actions}</div></>, { alignSelf: "stretch" })}
+        {col(<>{stats}{lineCheck}</>)}
+        {col(<>{why}{allowedList}</>)}
+      </div>
+    );
+  } else if (layout === "mid") {
+    body = (
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.1fr)", gap: 20, alignItems: "start" }}>
+        {col(<>{header}{target}{meter}{capturedBox}{stats}{lineCheck}</>)}
+        {col(<>{why}{allowedList}{actions}</>)}
+      </div>
+    );
+  } else {
+    body = col(<>{header}{target}{capturedBox}{meter}{stats}{lineCheck}{allowedList}{why}{actions}</>, { gap: 10 });
+  }
+
   return (
     <div
       id={cardAnchor(card.id)}
       style={{
-        display: "flex", flexDirection: "column", gap: 10, padding: narrow ? 14 : 16,
+        padding: narrow ? 14 : 18,
         // Longhands only: `border` beside `borderLeft` makes React warn on the
         // flash re-render, since changing the shorthand would clobber the left.
         borderTop: `1px solid ${flashed ? tier.color : "var(--line)"}`,
@@ -546,121 +1035,7 @@ function Card({ card, narrow, flashed, onOpenProp, onViewGameProps, form, season
         scrollMarginTop: 90,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
-          <PlayerAvatar
-            name={card.player.name} alt={card.player.name} sport="nfl"
-            team={card.team} espnId={card.player.espnId} status={card.status}
-            size={narrow ? 40 : 44} surface="var(--surface-1)" dimmed={card.status === "out"}
-          />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {card.player.name}
-            </div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 11.5, color: "var(--text-2)", marginTop: 2 }}>
-              <span role="img" style={crest(card.team, "nfl", 14)} />
-              {card.team} · {card.pos} vs {card.opp}
-            </div>
-          </div>
-        </div>
-        <span
-          className="pp-mono"
-          style={{
-            flex: "none", fontSize: 10.5, letterSpacing: "0.06em", padding: "5px 9px", borderRadius: 7,
-            color: tier.color, border: `1px solid ${tier.color}`, whiteSpace: "nowrap",
-          }}
-        >
-          {tier.label}
-        </span>
-      </div>
-
-      <div
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-          background: "var(--amber-dim)", border: "1px solid var(--amber-line, var(--line))",
-          borderRadius: 9, padding: "9px 12px",
-        }}
-      >
-        <div style={micro({ color: "var(--amber-ink)" })}>Target</div>
-        <div style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 15.5, color: "var(--amber-ink)" }}>{card.market}</div>
-      </div>
-
-      {captured && (
-        <div style={{ background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 9, padding: "9px 12px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={micro()}>Captured line · {CAPTURED_SOURCE}</div>
-            <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14 }}>
-              Over {captured.line} <span style={{ color: "var(--pos)" }}>{formatOdds(captured.odds)}</span>
-            </div>
-          </div>
-          <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 4 }}>
-            Read by hand off one sportsbook aggregator at {capturedWhen()} — a snapshot, not a live price. It will have moved.
-          </div>
-        </div>
-      )}
-
-      <Meter score={card.score} color={tier.color} />
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <StatCell
-          label={`${card.opp} ${label}`}
-          value={card.defCurrent && Number.isFinite(card.defCurrent.value) ? `${f1(card.defCurrent.value)}/g` : "—"}
-          sub={`${rankText(card.defCurrent) || "unranked"}${card.defPrior ? ` · ${ordinal(card.defPrior.rank)} last yr` : ""}`}
-          tone="var(--pos)"
-        />
-        <StatCell
-          label={`${lastName(card.player.name)} · ${season}`}
-          value={form === undefined ? "…" : form && form.curGames ? statValue(form.cur, form.curAvg) : "—"}
-          sub={form === undefined ? "reading log" : form && form.curGames
-            ? (td ? "games with a TD" : `${form.curGames} game${form.curGames === 1 ? "" : "s"} · ${MARKET_UNIT[card.marketId]}`)
-            : "no games yet"}
-        />
-        <StatCell
-          label="Last 10"
-          value={form === undefined ? "…" : form && form.l10.length ? statValue(form.l10, form.l10Avg) : "—"}
-          sub={form && form.l10.length ? (td ? "games with a TD, both seasons" : `${form.l10.length} games, both seasons`) : ""}
-        />
-        <StatCell
-          label="Last 3"
-          value={form === undefined ? "…" : form && form.last3.length ? form.last3.map((g) => Math.round(g.v)).join(" · ") : "—"}
-          sub={form && form.last3.length ? form.last3.map((g) => `${g.home ? "vs " : "@"}${g.opp}`).join(" · ") : ""}
-        />
-      </div>
-
-      <div>
-        <div style={micro({ marginBottom: 6 })}>Why it's on the board</div>
-        {form === undefined ? (
-          <div style={{ fontSize: 12.5, color: "var(--dim)" }}>Reading {card.player.name}'s game log…</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {insightsFor(card, form, captured, season).map((it, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)" }}>
-                <span
-                  aria-hidden
-                  style={{
-                    flex: "none", fontFamily: MONO, fontSize: 10, width: 12, textAlign: "center",
-                    color: it.tone === "pro" ? "var(--pos)" : it.tone === "con" ? "var(--neg)" : "var(--dim)",
-                  }}
-                >
-                  {it.tone === "pro" ? "▲" : it.tone === "con" ? "▼" : "•"}
-                </span>
-                <span style={{ color: it.tone === "info" ? "var(--text-2)" : "var(--text)" }}>{it.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {(onOpenProp || onViewGameProps) && (
-        <div style={{ display: "flex", gap: 8 }}>
-          {onOpenProp && (
-            <ActionButton label={`Open player page →`} onClick={() => onOpenProp(card)} />
-          )}
-          {onViewGameProps && (
-            <ActionButton label={`${card.team} vs ${card.opp} in Prop Feed →`} onClick={() => onViewGameProps(card.game)} />
-          )}
-        </div>
-      )}
+      {body}
     </div>
   );
 }
@@ -846,6 +1221,9 @@ function SearchSummary({ hits, query, onJump, narrow, runCheck }) {
 
 export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchLogs }) {
   const narrow = useIsNarrow(760);
+  // Below this the three-column card has no room for its reasons column.
+  const midWidth = useIsNarrow(1120);
+  const cardLayout = narrow ? "stack" : midWidth ? "mid" : "wide";
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const [market, setMarket] = useState(HEADLINE);
@@ -854,7 +1232,32 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
   const [tier, setTier] = useState(null);
   const [game, setGame] = useState(null);
   const [flashId, setFlashId] = useState(null);
+  // Cards rest as compact rows. `openAll` is the Expand all switch; `openIds`
+  // holds the exceptions to it (opened while it's off, closed while it's on).
+  const [openAll, setOpenAll] = useState(false);
+  const [openIds, setOpenIds] = useState(() => new Set());
+  const isOpen = (id) => openAll !== openIds.has(id);
+  const setOpen = (id, want) => setOpenIds((prev) => {
+    const next = new Set(prev);
+    if (want !== openAll) next.add(id); else next.delete(id);
+    return next;
+  });
+  const openCard = (id) => {
+    setOpen(id, true);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(cardAnchor(id))?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }));
+  };
+  const closeCard = (id) => {
+    setOpen(id, false);
+    requestAnimationFrame(() => document.getElementById(cardAnchor(id))?.scrollIntoView({ block: "nearest" }));
+  };
+  const toggleAll = () => { setOpenAll((v) => !v); setOpenIds(new Set()); };
   const [howOpen, setHowOpen] = useState(false);
+  // Game view is the weekly cheat sheet; player view is the cards. A shared
+  // link to one game (#mismatch-<id>) opens on that game's sheet.
+  const [view, setView] = useState(() => (/^#mismatch-/.test(window.location.hash) ? "game" : "player"));
+  const [win, setWin] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -866,6 +1269,16 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
 
   const allCards = data?.cards || [];
   const games = data?.games || [];
+  const sheet = useMemo(() => buildSheet(data), [data]);
+  const windows = useMemo(() => [...new Set(games.map((g) => kickoffWindow(g.startsAt)))], [games]);
+  const inWindow = (g) => !win || kickoffWindow(g.startsAt) === win;
+
+  // A shared game link scrolls to its sheet once the sheets exist.
+  useEffect(() => {
+    const m = /^#mismatch-(.+)$/.exec(window.location.hash);
+    if (!m || !sheet) return;
+    requestAnimationFrame(() => document.getElementById(`mismatch-${m[1]}`)?.scrollIntoView({ block: "start" }));
+  }, [sheet]);
   const season = data?.season;
 
   const q = query.trim().toLowerCase();
@@ -885,9 +1298,9 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
   const posOptions = market === HEADLINE ? POS_ORDER : MARKET_BY_ID[market].positions;
   const visibleRaw = useMemo(
     () => (searching ? marketCards.filter(matchesQuery) : boardCards)
-      .filter((c) => (pos === "ALL" || c.pos === pos) && (!tier || c.tier === tier) && (!game || c.game.id === game)),
+      .filter((c) => (pos === "ALL" || c.pos === pos) && (!tier || c.tier === tier) && (!game || c.game.id === game) && inWindow(c.game)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [searching, q, marketCards, boardCards, pos, tier, game]
+    [searching, q, marketCards, boardCards, pos, tier, game, win]
   );
   const searchRunChecks = useMemo(
     () => (searching ? allCards.filter((c) => matchesQuery(c) && needsRunCheck(c)) : []),
@@ -979,9 +1392,11 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
   const favCount = boardGated.filter((c) => c.tier === "FAV").length;
 
   const jumpTo = (id) => {
+    setView("player");
+    setOpen(id, true);
     const card = allCards.find((c) => c.id === id);
     if (card && !filtered.some((c) => c.id === id)) {
-      setPos("ALL"); setTier(null); setGame(null);
+      setPos("ALL"); setTier(null); setGame(null); setWin(null);
       const inMarket = market === HEADLINE ? card.headline : card.marketId === market;
       if (!inMarket) setMarket(card.marketId);
     }
@@ -999,7 +1414,7 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
   };
 
   return (
-    <div style={{ maxWidth: 1040, margin: "0 auto", padding: narrow ? "16px 16px 40px" : "28px 24px 60px" }}>
+    <div style={{ maxWidth: 1180, margin: "0 auto", padding: narrow ? "16px 16px 40px" : "28px 24px 60px" }}>
       <div style={micro({ marginBottom: 8 })}>NFL · WEEKLY MISMATCH REPORT</div>
       <h1 style={{ fontFamily: DISPLAY, fontSize: narrow ? 26 : 34, fontWeight: 800, margin: 0, lineHeight: 1.1 }}>
         This week's softest matchups
@@ -1012,12 +1427,19 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
 
       {data?.ready && (
         <>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
-            <Tile n={gameCount} label="games this week" />
-            <Tile n={boardGated.length} label={market === HEADLINE ? "soft matchups" : `${MARKET_BY_ID[market].label} spots`} />
-            <Tile n={smashCount} label="smash spots" color="var(--pos)" />
-            <Tile n={favCount} label="favorable" color="var(--amber-ink)" />
-          </div>
+          {sheet ? (
+            <>
+              <Headline glance={sheet.glance} />
+              <Glance glance={sheet.glance} onJump={jumpTo} />
+            </>
+          ) : (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+              <Tile n={gameCount} label="games this week" />
+              <Tile n={boardGated.length} label={market === HEADLINE ? "soft matchups" : `${MARKET_BY_ID[market].label} spots`} />
+              <Tile n={smashCount} label="smash spots" color="var(--pos)" />
+              <Tile n={favCount} label="favorable" color="var(--amber-ink)" />
+            </div>
+          )}
 
           <details
             open={howOpen}
@@ -1032,16 +1454,17 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
               <span style={{ color: "var(--dim)" }}>{howOpen ? "–" : "+"}</span>
             </summary>
             <div style={{ padding: "0 14px 14px", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6 }}>
-              The tier is this season's defense, nothing else: the opponent's per-game rank (ESPN team stats) on the
-              number that market lives on becomes a 0–100 softness score — 32nd of 32 is 100. Pass Yds and Rec Yds
-              grade on pass yards allowed, Rush Yds on rush yards allowed, Rush + Rec and Pass + Rush on total yards
-              allowed, Receptions on completions allowed, Pass TD on passing TDs allowed, and Anytime TD on passing TDs
-              allowed for receivers and rushing TDs allowed for backs and quarterbacks. Anytime TD means carrying or
+              The tier is this season's defense, nothing else, read position by position from every finished game's
+              ESPN box score: what the opponent has allowed per game to players at the card's own position, in the
+              card's own market (rec yds allowed to TEs for a tight end's Rec Yds), ranked among the 32 and turned into
+              a 0–100 softness score — 32nd of 32 is 100. The line check under each card takes the highest alt line
+              the player has cleared in 8 of his last 10 and counts how often this defense let the same spot on the
+              depth chart (its WR1, its TE1 — whoever drew the most targets or touches that game) clear it. If the box
+              scores can't be read, the card falls back to the opponent's team-wide ESPN rank and names it. Anytime TD means carrying or
               catching it in — a quarterback's passing TDs never count — so quarterbacks only appear in Anytime TD and
               Rush Yds if their own log shows they run — for Anytime TD, a rushing TD in {Math.round(QB_TD_RATE * 100)}%+ of
               their last {QB_RUN_WINDOW} games; for Rush Yds, that or {QB_RUN_CARRIES}+ carries a game; at least
-              {" "}{QB_RUN_MIN_GAMES} games of log either way. There is no position-specific
-              split in the free data this app has, so each card names the team number it used. Last season is shown
+              {" "}{QB_RUN_MIN_GAMES} games of log either way. Last season is shown
               for context but never moves the tier. The insights under each card come from the player's own game log.
             </div>
           </details>
@@ -1052,8 +1475,45 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
             </div>
           )}
 
-          <Featured featured={featured} narrow={narrow} onJump={jumpTo} />
+          {sheet && (
+            <div role="tablist" aria-label="View" style={{ display: "inline-flex", gap: 4, marginTop: 20, padding: 4, borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface-1)" }}>
+              {[["game", "Game view"], ["player", "Player view"]].map(([id, label]) => (
+                <span
+                  key={id} role="tab" tabIndex={0} aria-selected={view === id}
+                  onClick={() => setView(id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setView(id); } }}
+                  className="pp-mono"
+                  style={{
+                    fontSize: 11, letterSpacing: "0.06em", padding: "7px 14px", borderRadius: 7, cursor: "pointer",
+                    background: view === id ? "var(--amber-dim)" : "transparent",
+                    color: view === id ? "var(--amber-ink)" : "var(--text-2)",
+                    border: `1px solid ${view === id ? "var(--amber)" : "transparent"}`,
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Without the box scores there are no game sheets, and the old
+              spotlight stands in for the tiles. */}
+          {!sheet && <Featured featured={featured} narrow={narrow} onJump={jumpTo} />}
         </>
+      )}
+
+      {data?.ready && sheet && view === "game" && (
+        <div style={{ marginTop: 18 }}>
+          <div className={narrow ? "nsb" : undefined} style={{ display: "flex", gap: 6, ...swipeRow(narrow), marginBottom: 14 }}>
+            <Filter label="All games" on={!win} onClick={() => setWin(null)} />
+            {windows.map((w) => <Filter key={w} label={w} on={win === w} onClick={() => setWin((v) => (v === w ? null : w))} />)}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {sheet.games.filter((e) => inWindow(e.game)).map((e) => (
+              <GameSheet key={e.game.id} entry={e} narrow={narrow} onJump={jumpTo} actions={<SheetActions entry={e} glance={sheet.glance} />} />
+            ))}
+          </div>
+        </div>
       )}
 
       {!data && !error && (
@@ -1066,21 +1526,7 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
         </div>
       )}
 
-      {data?.ready && allCards.length > 0 && (
-        <div style={{ marginTop: 26 }}>
-          <div style={{ ...micro(), marginBottom: 8 }}>Quick board · sorted softest first · tap a row to jump</div>
-          <div style={{ border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", overflow: "hidden", maxHeight: 360, overflowY: "auto" }}>
-            {filtered.slice(0, 40).map((c) => (
-              <QuickRow key={c.id} card={c} narrow={narrow} onJump={jumpTo} />
-            ))}
-            {!filtered.length && (
-              <div style={{ padding: 16, fontSize: 12.5, color: "var(--dim)" }}>Nothing matches these filters.</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {data?.ready && (
+      {data?.ready && view === "player" && (
         <>
           {/* Search and market stay pinned while the cards scroll -- they're
               what the page is showing. Position, tier and game refine it and
@@ -1128,10 +1574,18 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
                 <Filter key={t} label={TIER_META[t].label} on={tier === t} onClick={() => setTier((v) => (v === t ? null : t))} tone={TIER_META[t].color} />
               ))}
             </FilterGroup>
+            {windows.length > 1 && (
+              <FilterGroup label="Kickoff" narrow={narrow}>
+                <Filter label="All" on={!win} onClick={() => { setWin(null); setGame(null); }} />
+                {windows.map((w) => (
+                  <Filter key={w} label={w} on={win === w} onClick={() => { setWin((v) => (v === w ? null : w)); setGame(null); }} />
+                ))}
+              </FilterGroup>
+            )}
             {games.length > 0 && (
               <FilterGroup label="Game" narrow={narrow}>
                 <Filter size="sm" label="All games" on={!game} onClick={() => setGame(null)} />
-                {games.map((g) => (
+                {games.filter(inWindow).map((g) => (
                   <Filter
                     key={g.id}
                     size="sm"
@@ -1153,11 +1607,19 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
                   ? `${filtered.length} result${filtered.length === 1 ? "" : "s"} for “${query.trim()}” in ${market === HEADLINE ? "best-per-player" : MARKET_BY_ID[market].label}`
                   : `${filtered.length} of ${boardGated.length} soft matchups`}
               </span>
-              {(pos !== "ALL" || tier || game || searching) && (
+              <span
+                role="button" tabIndex={0}
+                onClick={toggleAll}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleAll(); } }}
+                style={{ ...micro(), color: "var(--text-2)", cursor: "pointer" }}
+              >
+                {openAll ? "Collapse all ▴" : "Expand all ▾"}
+              </span>
+              {(pos !== "ALL" || tier || game || win || searching) && (
                 <span
                   role="button" tabIndex={0}
-                  onClick={() => { setPos("ALL"); setTier(null); setGame(null); setQuery(""); }}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPos("ALL"); setTier(null); setGame(null); setQuery(""); } }}
+                  onClick={() => { setPos("ALL"); setTier(null); setGame(null); setWin(null); setQuery(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPos("ALL"); setTier(null); setGame(null); setWin(null); setQuery(""); } }}
                   style={{ ...micro(), color: "var(--amber-ink)", cursor: "pointer", marginLeft: "auto" }}
                 >
                   Clear filters ×
@@ -1168,27 +1630,27 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
         </>
       )}
 
-      {searching && data?.ready && (
+      {searching && data?.ready && view === "player" && (
         <SearchSummary hits={searchHits} query={query.trim()} onJump={jumpTo} narrow={narrow} runCheck={runCheck} />
       )}
 
-      {data?.ready && !filtered.length && !searching && boardGated.length > 0 && (
+      {data?.ready && view === "player" && !filtered.length && !searching && boardGated.length > 0 && (
         <div style={{ marginTop: 20, fontSize: 13, color: "var(--dim)" }}>Nothing matches these filters.</div>
       )}
-      {data?.ready && !boardGated.length && !searching && (
+      {data?.ready && view === "player" && !boardGated.length && !searching && (
         <div style={{ marginTop: 30, fontSize: 13, color: "var(--dim)" }}>
           Nothing cleared the LEAN threshold in this market this week — every matchup graded closer to average than soft.
         </div>
       )}
 
-      {grouped.map(([p, list]) => (
+      {view === "player" && grouped.map(([p, list]) => (
         <div key={p} style={{ marginTop: 28 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
             <span style={{ ...micro(), fontSize: 11 }}>
               {p} · {list.length} · {market === HEADLINE ? `target ${list[0].market}` : MARKET_BY_ID[market].label}
             </span>
             <span style={{ fontSize: 10.5, color: "var(--dim)" }}>
-              graded on the opponent's {DEF_LABEL[list[0].rowId]} per game
+              graded on the opponent's {list[0].defLabel || DEF_LABEL[list[0].rowId]} per game
               {p === "QB" && QB_GATED.has(list[0].marketId)
                 ? list[0].marketId === "anytimeTd"
                   ? ` · QBs who score on the ground only — a rushing TD in ${Math.round(QB_TD_RATE * 100)}%+ of his last ${QB_RUN_WINDOW} games`
@@ -1196,13 +1658,19 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
                 : ""}
             </span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 1fr", gap: 12 }}>
-            {list.map((c) => (
-              <Card key={c.id} card={c} narrow={narrow} flashed={flashId === c.id} onOpenProp={onOpenProp} onViewGameProps={onViewGameProps} form={forms[c.id]} season={season} />
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {list.map((c) => (isOpen(c.id) ? (
+              <div key={c.id} style={{ margin: "6px 0" }}>
+                <Card card={c} layout={cardLayout} flashed={flashId === c.id} onOpenProp={onOpenProp} onViewGameProps={onViewGameProps} form={forms[c.id]} season={season} allowed={data?.allowed} onCollapse={closeCard} />
+              </div>
+            ) : (
+              <CompactRow key={c.id} card={c} form={forms[c.id]} allowed={data?.allowed} narrow={narrow} onOpen={openCard} />
+            )))}
           </div>
         </div>
       ))}
+
+      <BackToTop narrow={narrow} />
 
       <div style={{ marginTop: 40, paddingTop: 18, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--dim)", lineHeight: 1.6 }}>
 No moneyline or spread appears here — this app's only live, licensed sportsbook odds feed runs against a small

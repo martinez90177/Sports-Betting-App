@@ -25137,6 +25137,9 @@ export default function PropLedger() {
   // than on every render, and an unknown stored value falls back rather than
   // routing to a page that does not exist.
   const [page, setPage] = useState(() => {
+    // A shared Mismatches game link (#mismatch-<id>) opens on that page, even
+    // for a first visit -- the link is the thing they were sent to look at.
+    if (/^#mismatch-/.test(window.location.hash)) return "mismatches";
     if (isFirstRun()) return "landing";
     return PAGE_IDS.has(startPage) ? startPage : DEFAULTS.display.startPage;
   });
