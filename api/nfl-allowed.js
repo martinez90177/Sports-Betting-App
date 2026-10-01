@@ -20,6 +20,12 @@ import { playedWeeks, finishedGames, boxLines, rosterPositions, athletePosition,
 // development) the same layers live in this instance's memory.
 
 const POS_TTL_MS = 24 * 60 * 60 * 1000;
+// A cold build of a whole season is ~270 box scores. The function is cut off
+// at 60s (vercel.json), so it stops starting new fetches at this point and
+// answers with what it has, marked partial and uncached. Every box score it
+// did fetch is already stored, so the next request carries on from there.
+// Found on the first production load of 2025, which timed out at 60s.
+const FETCH_BUDGET_MS = 40 * 1000;
 const MAX_ATHLETE_LOOKUPS = 60;
 
 const memory = new Map();
@@ -42,6 +48,7 @@ function store() {
 }
 
 export async function buildSeason(season, db = store()) {
+  const started = Date.now();
   const weeks = await playedWeeks(season);
 
   // Game lists, week by week. A week is kept once every game in it is final.
@@ -60,6 +67,7 @@ export async function buildSeason(season, db = store()) {
   const stored = await db.mget(keys);
   const lines = await pool(games, 8, async (g, i) => {
     if (stored[i]) return stored[i];
+    if (Date.now() - started > FETCH_BUDGET_MS) return null;
     try {
       const L = await boxLines(g.id);
       await db.set(keys[i], L);
@@ -101,6 +109,7 @@ export async function buildSeason(season, db = store()) {
     weeks,
     games: out,
     missingBox: out.filter((g) => !g.L).length,
+    partial: Date.now() - started > FETCH_BUDGET_MS && out.some((g) => !g.L),
     unknownPos,
   };
 }
@@ -113,7 +122,7 @@ export default async function handler(req, res) {
   const season = Number(req.query?.season) || fallback;
   try {
     const data = await buildSeason(season);
-    res.setHeader("Cache-Control", "public, s-maxage=1800, stale-while-revalidate=86400");
+    res.setHeader("Cache-Control", data.partial ? "no-store" : "public, s-maxage=1800, stale-while-revalidate=86400");
     res.status(200).json(data);
   } catch (err) {
     res.status(200).json({ season, builtAt: null, weeks: 0, games: [], error: String(err) });

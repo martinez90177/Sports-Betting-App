@@ -131,7 +131,7 @@ export async function fetchNflWeeklyMismatches() {
     fetchNflTeamRankings(season - 1),
     fetchNflStarters(season),
     fetchNflAllowed(season),
-    fetchNflAllowed(season - 1),
+    fetchNflAllowed(season - 1, { timeoutMs: 6000 }),
   ]);
 
   if (!slate?.games?.length || !currentStats || !starters) {

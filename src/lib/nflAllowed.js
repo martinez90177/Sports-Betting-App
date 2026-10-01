@@ -57,12 +57,19 @@ const SLOT_KEY = {
   TE: (l) => (l.c?.[4] || 0) * 1000 + (l.c?.[1] || 0),
 };
 
-export async function fetchNflAllowed(season) {
+// `timeoutMs` lets a caller stop waiting: last season is context only, and
+// the page must not sit on "Reading…" while a cold server build finishes. A
+// partial build (the server ran out of time mid-season) is treated as no
+// answer -- ranking 32 defenses on half their games would mislead.
+export async function fetchNflAllowed(season, { timeoutMs } = {}) {
   if (cache.has(season)) return cache.get(season);
-  const p = fetch(`/api/nfl-allowed?season=${season}`)
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = timeoutMs && ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  const p = fetch(`/api/nfl-allowed?season=${season}`, ctrl ? { signal: ctrl.signal } : undefined)
     .then((r) => (r.ok ? r.json() : null))
-    .then((d) => (d && Array.isArray(d.games) && d.games.length ? index(d) : null))
-    .catch(() => null);
+    .then((d) => (d && !d.partial && Array.isArray(d.games) && d.games.length ? index(d) : null))
+    .catch(() => null)
+    .finally(() => { if (timer) clearTimeout(timer); });
   cache.set(season, p);
   const out = await p;
   if (!out) cache.delete(season); // a failure is retried next visit, not remembered
