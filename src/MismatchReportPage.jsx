@@ -750,6 +750,32 @@ function AllowedList({ card, allowed, narrow }) {
   );
 }
 
+// The injury designation, spelled out beside the name. The avatar's dot says
+// the same thing, but a dot is easy to miss on a row someone is skimming to
+// pick a bet. Colours are the availability tokens only (CLAUDE.md rule 2);
+// an active player gets no tag.
+const STATUS_TAG = {
+  questionable: { label: "QUESTIONABLE", color: "var(--status-questionable, #e8b13a)" },
+  out: { label: "OUT", color: "var(--status-out, #ef5b5b)" },
+};
+function StatusTag({ status }) {
+  const t = STATUS_TAG[status];
+  if (!t) return null;
+  return (
+    <span
+      className="pp-mono"
+      style={{
+        flex: "none", display: "inline-flex", alignItems: "center", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+        padding: "3px 7px", borderRadius: 6, lineHeight: 1.2, color: t.color,
+        background: `color-mix(in srgb, ${t.color} 14%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${t.color} 55%, transparent)`,
+      }}
+    >
+      {t.label}
+    </span>
+  );
+}
+
 // One player in one slim row -- the list's resting state. Everything a scan
 // needs to decide whether to open him: who, the market, how soft the defense
 // is at his position, and his line check in two counts. A tap opens the full
@@ -794,13 +820,16 @@ function CompactRow({ card, form, allowed, narrow, onOpen }) {
           status={card.status} size={narrow ? 40 : 44} surface="var(--surface-1)" dimmed={card.status === "out"}
         />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: narrow ? 15.5 : 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {card.player.name}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: narrow ? 15.5 : 16.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+              {card.player.name}
+            </span>
+            <StatusTag status={card.status} />
           </div>
           <div style={{ fontSize: 13, color: "var(--text-2)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {narrow
               ? <><span style={{ color: "var(--amber-ink)" }}>{card.market}</span> · vs {card.opp} {d ? rankText(d).replace(" of 32", "") : ""}</>
-              : <>{card.team} · {card.pos} vs {card.opp}{card.status === "out" ? " · OUT" : card.status === "questionable" ? " · questionable" : ""}</>}
+              : <>{card.team} · {card.pos} vs {card.opp}</>}
           </div>
         </div>
       </div>
@@ -860,7 +889,7 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
     <span
       className="pp-mono"
       style={{
-        flex: "none", alignSelf: wide ? "flex-start" : undefined, fontSize: 10.5, letterSpacing: "0.06em",
+        flex: "none", alignSelf: "flex-start", fontSize: 10.5, letterSpacing: "0.06em",
         padding: "5px 9px", borderRadius: 7, color: tier.color, border: `1px solid ${tier.color}`, whiteSpace: "nowrap",
       }}
     >
@@ -868,8 +897,9 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
     </span>
   );
 
+  // On a phone the header spans the card, so it keeps clear of the close control.
   const header = (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, paddingRight: narrow && onCollapse ? 92 : 0 }}>
       <div style={{ display: "flex", gap: 11, alignItems: "center", minWidth: 0 }}>
         <PlayerAvatar
           name={card.player.name} alt={card.player.name} sport="nfl"
@@ -877,28 +907,15 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
           size={narrow ? 40 : 48} surface="var(--surface-1)" dimmed={card.status === "out"}
         />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: narrow ? 14.5 : 16, lineHeight: 1.25 }}>
-            {card.player.name}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: narrow ? 14.5 : 16, lineHeight: 1.25 }}>{card.player.name}</span>
+            <StatusTag status={card.status} />
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "var(--text-2)", marginTop: 3 }}>
             <span role="img" style={crest(card.team, "nfl", 14)} />
             {card.team} · {card.pos} vs {card.opp}
           </div>
         </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "none" }}>
-        {!wide && tierBadge}
-        {onCollapse && (
-          <span
-            role="button" tabIndex={0} aria-label={`Close ${card.player.name}'s card`}
-            onClick={() => onCollapse(card.id)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCollapse(card.id); } }}
-            className="pp-mono"
-            style={{ fontSize: 10.5, letterSpacing: "0.06em", padding: "5px 9px", borderRadius: 7, cursor: "pointer", border: "1px solid var(--line)", color: "var(--text-2)", whiteSpace: "nowrap" }}
-          >
-            Close ▴
-          </span>
-        )}
       </div>
     </div>
   );
@@ -960,7 +977,8 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
 
   const why = (
     <div>
-      <div style={micro({ marginBottom: 8 })}>Why it's on the board</div>
+      {/* Tall enough that the reasons start below the Close button in the card's corner. */}
+      <div style={{ ...micro({ marginBottom: 8 }), minHeight: onCollapse && !narrow ? 30 : undefined, display: "flex", alignItems: "center" }}>Why it's on the board</div>
       {form === undefined ? (
         <div style={{ fontSize: 13, color: "var(--dim)" }}>Reading {card.player.name}'s game log…</div>
       ) : (
@@ -1010,12 +1028,12 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
   } else if (layout === "mid") {
     body = (
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.1fr)", gap: 20, alignItems: "start" }}>
-        {col(<>{header}{target}{meter}{capturedBox}{stats}{lineCheck}</>)}
+        {col(<>{header}{tierBadge}{target}{meter}{capturedBox}{stats}{lineCheck}</>)}
         {col(<>{why}{allowedList}{actions}</>)}
       </div>
     );
   } else {
-    body = col(<>{header}{target}{capturedBox}{meter}{stats}{lineCheck}{allowedList}{why}{actions}</>, { gap: 10 });
+    body = col(<>{header}{tierBadge}{target}{capturedBox}{meter}{stats}{lineCheck}{allowedList}{why}{actions}</>, { gap: 10 });
   }
 
   return (
@@ -1032,9 +1050,25 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
         borderRadius: 12, background: flashed ? "var(--surface-2)" : "var(--surface-1)",
         boxShadow: flashed ? `0 0 0 3px color-mix(in srgb, ${tier.color} 22%, transparent)` : "none",
         transition: "background 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease",
-        scrollMarginTop: 90,
+        scrollMarginTop: 90, position: "relative",
       }}
     >
+      {onCollapse && (
+        <button
+          type="button"
+          onClick={() => onCollapse(card.id)}
+          aria-label={`Close ${card.player.name}'s card`}
+          className="pp-mono"
+          style={{
+            position: "absolute", top: narrow ? 12 : 14, right: narrow ? 12 : 14, zIndex: 1,
+            display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: "0.06em",
+            padding: "6px 11px", borderRadius: 8, cursor: "pointer",
+            border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--text-2)",
+          }}
+        >
+          Close <span aria-hidden>✕</span>
+        </button>
+      )}
       {body}
     </div>
   );
@@ -1164,10 +1198,12 @@ function SearchSummary({ hits, query, onJump, narrow, runCheck }) {
                 status={c0.status} size={34} surface="var(--surface-1)" dimmed={c0.status === "out"}
               />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14 }}>{c0.player.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 14 }}>{c0.player.name}</span>
+                  <StatusTag status={c0.status} />
+                </div>
                 <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>
                   {c0.team} · {c0.pos} vs {c0.opp} · {kickoffText(c0.game?.startsAt)}
-                  {c0.status === "out" ? " · listed OUT" : c0.status === "questionable" ? " · questionable" : ""}
                 </div>
               </div>
             </div>

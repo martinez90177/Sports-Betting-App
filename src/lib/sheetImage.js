@@ -15,7 +15,7 @@ const W = 1080;
 const PAD = 56;
 const COL_GAP = 40;
 const COL_W = (W - PAD * 2 - COL_GAP) / 2;
-const ROW_H = 50;
+const ROW_H = 60;
 const TARGET_H = 76;
 const SCALE = 2;
 
@@ -164,13 +164,26 @@ export async function saveSheetImage(entry, { week, throughWeek } = {}) {
       ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx + COL_W, y); ctx.stroke();
       const bw = badge(ctx, r.cell, cx + COL_W, y + ROW_H / 2, c);
       ctx.fillStyle = c.text;
-      ctx.font = `600 18px ${DISPLAY}`;
+      ctx.font = `600 16px ${DISPLAY}`;
       const label = `${STATS[r.stat].label} allowed to ${r.grp}s`.toUpperCase();
-      ctx.fillText(fitText(ctx, label, COL_W - bw - 110), cx, y + ROW_H / 2 + 6);
-      ctx.fillStyle = c.dim;
-      ctx.font = `500 16px ${MONO}`;
+      ctx.fillText(fitText(ctx, label, COL_W - bw - 112), cx, y + ROW_H / 2 + 6);
+      // The per-game figure is the evidence, so it is drawn large, with its
+      // distance from the league average under it.
+      const vx = cx + COL_W - bw - 14;
       ctx.textAlign = "right";
-      ctx.fillText(`${r.cell.value.toFixed(1)}/g`, cx + COL_W - bw - 12, y + ROW_H / 2 + 6);
+      ctx.fillStyle = c.dim;
+      ctx.font = `500 15px ${MONO}`;
+      ctx.fillText("/g", vx, y + ROW_H / 2 + 2);
+      const gw = ctx.measureText("/g").width + 3;
+      ctx.fillStyle = c.text;
+      ctx.font = `800 25px ${DISPLAY}`;
+      ctx.fillText(r.cell.value.toFixed(1), vx - gw, y + ROW_H / 2 + 2);
+      if (Number.isFinite(r.avg)) {
+        const diff = r.cell.value - r.avg;
+        ctx.fillStyle = diff > 0 ? c.pos : c.text2;
+        ctx.font = `600 14px ${DISPLAY}`;
+        ctx.fillText(`${diff > 0 ? "+" : diff < 0 ? "−" : "±"}${Math.abs(diff).toFixed(1)} vs avg`, vx, y + ROW_H / 2 + 21);
+      }
       ctx.textAlign = "left";
       y += ROW_H;
     });

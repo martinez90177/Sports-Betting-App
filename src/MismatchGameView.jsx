@@ -2,7 +2,7 @@ import React from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { crest } from "./v3/FormPlot.jsx";
 import { teamInfo } from "./lib/gamesData.js";
-import { STATS, positionRanks } from "./lib/nflAllowed.js";
+import { STATS, positionRanks, leagueAverage } from "./lib/nflAllowed.js";
 
 // --------------------------------------------------------------------------
 // The Mismatches page's game view: one sheet per game, each defense's softest
@@ -64,7 +64,7 @@ function offenseTotals(idx, team, stat) {
 export function buildSheet(data) {
   const idx = data?.allowed;
   if (!idx || !data.games?.length) return null;
-  const tables = SHEET_ROWS.map((r) => ({ ...r, table: positionRanks(idx, r.grp, r.stat) }));
+  const tables = SHEET_ROWS.map((r) => ({ ...r, table: positionRanks(idx, r.grp, r.stat), avg: leagueAverage(idx, r.grp, r.stat) }));
   if (tables.every((t) => !t.table)) return null;
 
   const cardsBy = new Map();
@@ -268,20 +268,42 @@ function TargetRow({ target, onJump, compact }) {
   );
 }
 
+// One soft spot: what it is, then the number itself -- what this defense
+// gives up a game, large -- with how far that sits from the league average,
+// and its rank. The per-game figure is the evidence; the rank only orders it.
+function SoftSpot({ r }) {
+  const diff = Number.isFinite(r.avg) ? r.cell.value - r.avg : null;
+  return (
+    <div
+      style={{
+        display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", alignItems: "center", gap: 14,
+        padding: "10px 12px", borderTop: "1px solid var(--line)", marginTop: -1,
+      }}
+    >
+      <span style={{ fontSize: 12, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.03em", lineHeight: 1.35, minWidth: 0 }}>
+        {rowLabel(r)}
+      </span>
+      <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: DISPLAY, fontWeight: 800, fontSize: 18, color: "var(--text)" }}>{r.cell.value.toFixed(1)}</span>
+        <span style={{ fontSize: 11.5, color: "var(--text-2)", marginLeft: 2 }}>/g</span>
+        {diff != null && (
+          <span style={{ display: "block", fontSize: 11, fontWeight: 600, marginTop: 1, color: diff > 0 ? "var(--pos)" : "var(--text-2)" }}>
+            {diff > 0 ? "+" : diff < 0 ? "−" : "±"}{Math.abs(diff).toFixed(1)} vs avg
+          </span>
+        )}
+      </span>
+      <RankBadge cell={r.cell} />
+    </div>
+  );
+}
+
 // One defense's column: its softest spots, then who on the other side to look at.
 function SideColumn({ side, onJump }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
       <div style={micro({ color: "var(--text-2)" })}>{nick(side.def)} defense · softest spots</div>
       <div style={{ display: "flex", flexDirection: "column", border: "1px solid var(--line)", borderRadius: 9, overflow: "hidden" }}>
-        {side.rows.length ? side.rows.map((r) => (
-          <div key={`${r.grp}${r.stat}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "7px 10px", borderTop: "1px solid var(--line)", marginTop: -1 }}>
-            <span style={{ fontSize: 11.5, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.03em", minWidth: 0 }}>
-              {rowLabel(r)} <span style={{ color: "var(--dim)", textTransform: "none" }}>· {r.cell.value.toFixed(1)}/g</span>
-            </span>
-            <RankBadge cell={r.cell} />
-          </div>
-        )) : (
+        {side.rows.length ? side.rows.map((r) => <SoftSpot key={`${r.grp}${r.stat}`} r={r} />) : (
           <div style={{ padding: 10, fontSize: 12, color: "var(--dim)" }}>No ranked stats for this defense yet.</div>
         )}
       </div>
