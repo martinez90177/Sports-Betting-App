@@ -820,7 +820,13 @@ export async function fetchNflWeekSlate(id, season, { force = false } = {}) {
       `https://site.api.espn.com/apis/site/v2/sports/${ESPN_PATH.nfl}/scoreboard?seasontype=${seasonType}&week=${week}&dates=${season}`
     );
     const data = await res.json();
-    return store(ck, espnSlate("nfl", data?.events));
+    // ESPN names the week's byes outright (week.teamsOnBye). Kept so a team
+    // with no game can be told apart from a team whose game failed to read:
+    // only the first is a reason to take its players off the board.
+    const byes = (data?.week?.teamsOnBye || [])
+      .map((t) => espnAbbr("nfl", t?.abbreviation))
+      .filter(Boolean);
+    return store(ck, { ...espnSlate("nfl", data?.events), byes });
   } catch {
     return null;
   }

@@ -3183,20 +3183,22 @@ function nflDefTables() {
   return nflDefByMarket || {};
 }
 
-// How many games a defence has to have played this season before its rank
-// this season decides the matchup read. Below it, last season's full sample
-// decides, and this season's rank is shown beside it as what it is -- two or
-// three games. Four is a month of football: enough that one blowout or one
-// backup quarterback no longer sets the number on its own.
+// Under this many games this season's rank is flagged `early` -- still the
+// one that leads, but the tooltip says how few games it stands on.
 const NFL_DEF_CURRENT_MIN_GAMES = 4;
 
 // Both seasons' ranks for one defence in one market, and which one leads.
 //
 //   current  this season, however few games -- null before its first game
 //   last     the season before, the full sample
-//   lead     whichever decides the matchup read: this season once the
-//            defence has NFL_DEF_CURRENT_MIN_GAMES games, last season until then
+//   lead     this season from its first game on; last season only before it
 //   other    the one that does not lead, shown beside it
+//
+// This season leads from game one. Last season's rank used to lead until a
+// defence had four games, so in Week 4 the feed's badge said '25 -- Alex,
+// 2026-10-10: *"2026 data should always be in the box ... never should 2025's
+// be in the box, only 2026."* Last season rides beside it, tinted, as the
+// comparison.
 //
 // Null when neither season could be ranked, and the caller falls back to
 // points allowed.
@@ -3207,7 +3209,7 @@ function nflDefSplit(market, opp) {
   const current = tables[season]?.[market]?.[opp] || null;
   const last = tables[season - 1]?.[market]?.[opp] || null;
   if (!current && !last) return null;
-  const currentLeads = current && (current.games >= NFL_DEF_CURRENT_MIN_GAMES || !last);
+  const currentLeads = !!current;
   return {
     current, last,
     lead: currentLeads ? current : last,
@@ -4357,6 +4359,12 @@ let NFL_LIVE_SLATE_BY_TEAM = null;
 // has no props -- "their game has been played" and "they have no game this
 // week" are different sentences, and a bye is not a failure to load anything.
 let NFL_PLAYED_THIS_WEEK = null;
+
+// The teams ESPN lists as on bye this week (week.teamsOnBye on the
+// scoreboard). A positive statement, like NFL_PLAYED_THIS_WEEK, and the only
+// other one that takes a team's props off: a team merely missing from the
+// slate keeps its rows, for the reason given in buildNFLFeedRows.
+let NFL_BYE_THIS_WEEK = null;
 
 function nflNextGameForTeam(abbr) {
   if (!abbr) return null;
@@ -18440,7 +18448,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             title={[
               `This opponent is #${r.rank} of ${feedTeamCount(sport)} against ${r.rankLabel}${r.rankSeason ? ` in ${r.rankSeason}` : ""}.`,
               r.rankOther ? `${r.rankOther}.` : null,
-              r.rankEarly ? `The ${r.rankSeason} rank decides EASY / TOUGH until this season has ${NFL_DEF_CURRENT_MIN_GAMES} games behind it.` : null,
+              r.rankEarly ? `The ${r.rankSeason} rank stands on fewer than ${NFL_DEF_CURRENT_MIN_GAMES} games so far.` : null,
             ].filter(Boolean).join(" ")}
             style={{
               display: "inline-block", padding: "1px 6px", borderRadius: 4,
@@ -18476,17 +18484,30 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               </span>
             );
           })()}
-          {/* The other season, beside the one that leads: this season's rank
-              and how few games it stands on while last season decides, last
-              season's once this one has taken over. Only the NFL splits its
-              ranks by season; the other sports carry neither field. */}
-          {r.rankOtherShort && (
-            <span title={r.rankOther || undefined} style={{ whiteSpace: "nowrap", color: "var(--dim)" }}>
-              {r.rankOtherShort}
-            </span>
-          )}
         </>
       )}
+      {/* Last season, beside the badge and never in it: the comparison for
+          this season's rank. Tinted on the same easy / mid / tough scale, but
+          softer than the badge and unboxed, so it reads as context -- a green
+          '25 next to a red box says the defence has tightened up. Outside the
+          rank gate above, because before this season has a rank there is no
+          badge, and last season's still belongs on the line. Only the NFL
+          splits its ranks by season; the other sports carry neither field. */}
+      {r.rankOtherShort && (() => {
+        const prevRead = r.rankOtherRank != null ? feedMatchupRead(r.rankOtherRank, sport, direction) : null;
+        const prevTone = prevRead ? tierColor(prevRead) : null;
+        return (
+          <span
+            title={r.rankOther || undefined}
+            style={{
+              whiteSpace: "nowrap",
+              color: prevTone ? `color-mix(in srgb, ${prevTone} 70%, var(--dim))` : "var(--dim)",
+            }}
+          >
+            {r.rankOtherShort}
+          </span>
+        );
+      })()}
       {/* The streak rides beside the matchup on the phone card only, which
            has no tag gutter. Desktop states it in the chart's gutter, beside
            the bars it counts -- Alex, 2026-09-25, of it sitting here: *"I dont
@@ -19804,6 +19825,12 @@ function buildNFLFeedRows() {
       noteFeedSkip("nfl", player, "their game has been played");
       return;
     }
+    // On a bye: no game this week, so no prop to bet. Same rule as above --
+    // it leaves on ESPN naming the bye, never on a fixture we failed to find.
+    if (NFL_BYE_THIS_WEEK && NFL_BYE_THIS_WEEK.has(player.team)) {
+      noteFeedSkip("nfl", player, "on a bye this week");
+      return;
+    }
     const nextOpp = nextGame ? nextGame.opp : null;
     const gameDate = nextGame ? nextGame.date : null;
     const applicableMarkets = NFL_MARKETS.filter((m) => m.pos.includes(player.pos) && nflLogMeasures(games, m.id));
@@ -19822,7 +19849,13 @@ function buildNFLFeedRows() {
       const line = isBinary ? 0.5 : fairFeedLine(values);
       const hit = isBinary ? (v) => v === 1 : (v) => v > line;
       const def = nextOpp ? getNFLDefRank(m.id, player.pos, nextOpp) : null;
-      const tier = def ? nflDefTier(def.rank) : null;
+      // The badge holds this season's rank and nothing else. Before this
+      // season has a rank (preseason, or the points-allowed fallback, which
+      // is last year's standings), there is no badge -- last season's rank
+      // still prints beside where it would be, as the comparison it always is.
+      const defNow = def && def.season === currentNFLSeason() ? def : null;
+      const defPrev = defNow ? (def.split && def.split.other) || null : def;
+      const tier = defNow ? nflDefTier(defNow.rank) : null;
       const variance = values.reduce((a, v) => a + (v - avg) ** 2, 0) / values.length;
       rows.push({
         key: `nfl_${player.id}_${m.id}`,
@@ -19838,16 +19871,24 @@ function buildNFLFeedRows() {
         subtitle: isBinary ? m.label : `Over ${line} ${m.label}`,
         opp: nextOpp,
         homeGame: nextGame ? nextGame.home : null,
-        rank: def ? def.rank : null, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
-        // Which season the rank above is, and the other season's beside it.
-        // The badge, the phone card and the player page all print both, so a
-        // Week 3 rank is never read as either last year's or as settled.
-        rankSeason: def ? def.season ?? null : null,
-        rankOther: def && def.split ? nflDefOtherText(def.split) : null,
-        rankOtherShort: def && def.split && def.split.other
-          ? `${nflSeasonShort(def.split.other.season)} #${def.split.other.rank} · ${def.split.other.games}G`
+        rank: defNow ? defNow.rank : null, tier, rankLabel: nflDefCategoryLabel(m.id, player.pos),
+        // Which season the rank above is, and last season's beside it. The
+        // badge, the phone card and the player page all print both, so a
+        // Week 3 rank is never read as last year's or as settled.
+        rankSeason: defNow ? defNow.season ?? null : null,
+        rankOther: defNow
+          ? (def.split ? nflDefOtherText(def.split) : null)
+          : defPrev
+            ? `${defPrev.season}: #${defPrev.rank} of ${NFL_TEAMS.length}${defPrev.games ? ` over ${defPrev.games} games` : ""}`
+            : null,
+        rankOtherShort: defPrev
+          ? `${nflSeasonShort(defPrev.season)} #${defPrev.rank}${defPrev.games ? ` · ${defPrev.games}G` : ""}`
           : null,
-        rankEarly: !!(def && def.split && def.split.early),
+        // Last season's bare rank, so the text beside the badge can be tinted
+        // on the same easy / mid / tough scale -- the two seasons compared at
+        // a glance.
+        rankOtherRank: defPrev ? defPrev.rank : null,
+        rankEarly: !!(defNow && def.split && def.split.early),
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
@@ -25452,6 +25493,9 @@ export default function PropLedger() {
         readable.filter((g) => nflGameOver(g)).flatMap((g) => [g.away.abbr, g.home.abbr])
           .filter((abbr) => !byTeam[abbr])
       );
+      // A team with a game still to play is never on bye, whatever the list
+      // says -- the fixture wins.
+      NFL_BYE_THIS_WEEK = new Set((slate.byes || []).filter((abbr) => !byTeam[abbr]));
       // The same games again, paired into the shape the player page's matchup
       // selector reads (see nflMatchups). A game whose two sides are not both
       // in NFL_TEAM_ROSTERS is left out rather than half-built -- there is no

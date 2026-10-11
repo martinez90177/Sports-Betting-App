@@ -14,9 +14,10 @@ import { fetchNflTeamRankings, nflSeasonNow } from "./lib/nflTeamStats.js";
 const recordGames = (rec) => String(rec || "")
   .split("-").map(Number).filter(Number.isFinite).reduce((a, b) => a + b, 0);
 
-// Under this many games a season's ranks lead nothing -- the same four the
-// per-market defence ranks use (NFL_DEF_CURRENT_MIN_GAMES in PropLedger).
-const RANKS_CURRENT_MIN_GAMES = 4;
+// This season's ranks open the page from its first game on, matching the
+// per-market defence ranks in PropLedger (see nflDefSplit): Alex, 2026-10-10,
+// 2026 always leads and 2025 is only the comparison.
+const RANKS_CURRENT_MIN_GAMES = 1;
 
 // Matchup Overview -- the page a GameCard opens.
 //
@@ -286,8 +287,8 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
     return () => { cancelled = true; };
   }, [game.sport, game.away.abbr, game.home.abbr]);
 
-  // NFL team rankings, one season at a time: last season until both teams
-  // have four games in this one, then this one. The other is a tap away and
+  // NFL team rankings, one season at a time: this one once both teams have
+  // played in it, last season only before that. The other is a tap away and
   // is only fetched when tapped -- a season is 32 requests.
   const rankNow = nflSeasonNow();
   const minPlayed = Math.min(recordGames(game.away.record), recordGames(game.home.record));
