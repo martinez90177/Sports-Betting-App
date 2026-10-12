@@ -26077,10 +26077,27 @@ export default function PropLedger() {
   React.useEffect(() => {
     if (page !== "injuries") return undefined;
     let cancelled = false;
-    fetchNbaOpenerDay().then((opener) => {
+    // Dormant only while the designations are stale. The rule above was
+    // written for September, when ESPN still carried May's. From the first
+    // preseason game teams file real reports -- on 2026-10-12, 118 of 131
+    // designations were dated this month -- and hiding those until opening
+    // night would hide who is actually out. So the date is no longer the test:
+    // it is whether the league's own injury feed has been touched in the last
+    // 21 days. A feed we cannot read stays hidden, the earlier behaviour.
+    const recentDesignations = () =>
+      fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/injuries")
+        .then((r) => r.json())
+        .then((j) => {
+          const cutoff = Date.now() - 21 * 86400000;
+          return (j?.injuries || [])
+            .flatMap((t) => t?.injuries || [])
+            .filter((i) => Date.parse(i?.date) >= cutoff).length;
+        })
+        .catch(() => 0);
+    Promise.all([fetchNbaOpenerDay(), recentDesignations()]).then(([opener, recent]) => {
       if (cancelled || !opener) return;
       const today = new Date().toISOString().slice(0, 10);
-      setDormantSports(today < opener ? [{ id: "nba", label: "NBA" }] : []);
+      setDormantSports(today < opener && recent < 10 ? [{ id: "nba", label: "NBA" }] : []);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [page]);
