@@ -667,6 +667,40 @@ async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
   }
 }
 
+// The log the feed and the player page open on: the current season, or last
+// season while the current one has no regular-season game yet. ESPN's log for a
+// new season holds only preseason games from October, which the parser refuses
+// to count, so without this fallback every NBA player came back empty on
+// October 1 and the whole feed read "0 of 0 props" -- the NBA's version of the
+// NFL's Week 1 cliff.
+async function fetchNBAPlayerGameLogForDisplay(espnId) {
+  const season = currentNBASeason();
+  const current = await fetchNBAPlayerGameLog(espnId, season);
+  if (current && current.length) return current;
+  return fetchNBAPlayerGameLog(espnId, season - 1);
+}
+
+// The one data disclaimer for the NBA, which has to say the truth on both sides
+// of opening night. Was a literal "2025-26", correct until the 2026-27 season
+// tipped off.
+function nbaFeedSeasonNote() {
+  const cur = currentNBASeason();
+  const live = Object.values(NBA_REAL_GAME_LOGS).some((g) => newestSeason(g) === cur);
+  return live
+    ? `Real ${seasonLabel(cur, "nba")} season so far, with ${seasonLabel(cur - 1, "nba")} behind it in the L5 / L10 / L20 windows (ESPN Stats API). The ${seasonLabel(cur, "nba")} column counts that season only. Not a live odds feed.`
+    : `Real ${seasonLabel(cur - 1, "nba")} game logs (ESPN Stats API). The ${seasonLabel(cur, "nba")} season has not started, so nothing from it is counted yet. Not a live odds feed.`;
+}
+
+// Last season, behind an in-progress one, for the feed's rolling windows only.
+// Keyed by espnId. getNBAGames stays one season so the player page, which folds
+// the prior season in itself, never sees a game twice -- same split as NFL.
+const NBA_PRIOR_GAME_LOGS = {};
+function nbaFeedGames(player) {
+  const current = getNBAGames(player);
+  const prior = player?.espnId && NBA_PRIOR_GAME_LOGS[String(player.espnId)];
+  return prior && prior.length ? mergeSeasonLogs(current, prior) : current;
+}
+
 // Real log first, generated second, nothing third.
 //
 // The third case is the one that matters: a player who exists only because the
@@ -932,7 +966,7 @@ async function fetchNBALiveSlate() {
   // leftover v1 payload is a three-day slate, which reads as "these 27 teams
   // have no next game" -- the same stale-shape trap the WNBA cache key
   // documents, so it has to be missed rather than served.
-  const cacheKey = "nba_live_slate_v2";
+  const cacheKey = "nba_live_slate_v3";
   const now = Date.now();
   if (nbaScheduleCache && now - nbaScheduleCache.fetchedAt < NBA_SCHEDULE_TTL_MS) return nbaScheduleCache;
   try {
@@ -952,8 +986,18 @@ async function fetchNBALiveSlate() {
   let scope = "slate";
 
   const window = async (fromKey) => {
-    const res = await fetch(`${NBA_SCOREBOARD}?dates=${fromKey}-${dayKeyPlus(fromKey, NBA_SLATE_DAYS - 1)}&limit=200`);
-    return parseNBASlate(await res.json(), unreadable);
+    // One request per day, not one `dates=a-b` range: ESPN's NBA scoreboard
+    // answers a range with an empty event list (checked 2026-10-12 -- a week
+    // holding four preseason games and the opener came back with none) while
+    // each single day answers correctly. A range failing quietly left the whole
+    // site with no slate, and every team on the Board as its own "TEAM @" card.
+    const days = Array.from({ length: NBA_SLATE_DAYS }, (_, i) => dayKeyPlus(fromKey, i));
+    const parts = await Promise.all(days.map(async (k) => {
+      const res = await fetch(`${NBA_SCOREBOARD}?dates=${k}&limit=200`);
+      if (!res.ok) throw new Error("scoreboard " + res.status);
+      return res.json();
+    }));
+    return parseNBASlate({ events: parts.flatMap((d) => d?.events || []) }, unreadable);
   };
 
   try {
@@ -16630,7 +16674,7 @@ function nbaDefCategoryLabel(market) {
 // TTL, unlike the WNBA's 30 minutes against a live season.
 const NBA_TEAM_DEF_TTL_MS = 12 * 60 * 60 * 1000;
 async function fetchNBATeamDefense() {
-  const cacheKey = "nba_team_def_v1";
+  const cacheKey = "nba_team_def_v2";
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -16640,17 +16684,25 @@ async function fetchNBATeamDefense() {
   } catch {}
 
   try {
-    const res = await fetch("https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=2026");
-    if (!res.ok) return null;
-    const data = await res.json();
-    const rows = [];
-    (data?.children || []).forEach((conf) => {
-      (conf?.standings?.entries || []).forEach((entry) => {
-        const abbr = nbaTeamAbbr(entry.team?.abbreviation);
-        const avgPA = entry.stats?.find((st) => st.name === "avgPointsAgainst")?.value;
-        if (abbr && avgPA != null) rows.push({ abbr, avgPA });
+    // This season's table once it has games in it; last season's until then.
+    // Was a literal 2026, right until the 2026-27 season tipped off.
+    let rows = [];
+    for (const season of [currentNBASeason(), currentNBASeason() - 1]) {
+      const res = await fetch(`https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=${season}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      let played = 0;
+      const got = [];
+      (data?.children || []).forEach((conf) => {
+        (conf?.standings?.entries || []).forEach((entry) => {
+          const abbr = nbaTeamAbbr(entry.team?.abbreviation);
+          const avgPA = entry.stats?.find((st) => st.name === "avgPointsAgainst")?.value;
+          played += Number(entry.stats?.find((st) => st.name === "gamesPlayed")?.value) || 0;
+          if (abbr && avgPA != null) got.push({ abbr, avgPA, season });
+        });
       });
-    });
+      if (got.length && played > 0) { rows = got; break; }
+    }
     if (!rows.length) return null;
 
     // Rank 1 is the toughest defence, i.e. fewest points allowed -- the same
@@ -16658,7 +16710,7 @@ async function fetchNBATeamDefense() {
     rows.sort((a, b) => a.avgPA - b.avgPA);
     rows.forEach((r, i) => { r.rank = i + 1; });
     const byTeam = {};
-    rows.forEach((r) => { byTeam[r.abbr] = { rank: r.rank, rating: Math.round(r.avgPA * 10) / 10 }; });
+    rows.forEach((r) => { byTeam[r.abbr] = { rank: r.rank, rating: Math.round(r.avgPA * 10) / 10, season: r.season }; });
 
     try { sessionStorage.setItem(cacheKey, JSON.stringify({ byTeam, fetchedAt: Date.now() })); } catch {}
     return byTeam;
@@ -19692,7 +19744,11 @@ function buildNBAFeedRows() {
   resetFeedSkips("nba");
   const rows = [];
   nbaPlayerPool().forEach((player, pi) => {
-    const games = getNBAGames(player);
+    const games = nbaFeedGames(player);
+    // The season column counts the newest season alone; the windows may reach
+    // back across the rollover.
+    const feedSeason = newestSeason(games);
+    const seasonOnly = (arr) => (feedSeason == null ? arr : arr.filter((_, i) => games[i].season === feedSeason));
     // A live-roster player whose real log hasn't loaded has no games at all.
     // Skipped, exactly as the NFL builder skips one -- never generated for.
     // Recorded on the way past, so the board can name him (mock 3g).
@@ -19711,6 +19767,7 @@ function buildNBAFeedRows() {
       const rank = def ? def.rank : null;
       const tier = rank == null ? null : defTier(rank, TEAMS.length);
       const values = games.map((g) => statValue(g, m.id));
+      const seasonValues = seasonOnly(values);
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const line = isBinary ? 0.5 : fairFeedLine(values);
       const hit = isBinary ? (v) => v === 1 : (v) => v > line;
@@ -19737,16 +19794,16 @@ function buildNBAFeedRows() {
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
-        all: hitRateWindow(values, "all", hit),
+        all: hitRateWindow(seasonValues, "all", hit),
         // Counts alongside the rates: values.slice(-20) on a nine game log
         // returns nine, so a cell labelled L20 can be a nine game sample.
         n5: hitRateCount(values, 5),
         n10: hitRateCount(values, 10),
         n20: hitRateCount(values, 20),
-        nAll: hitRateCount(values, "all"),
+        nAll: hitRateCount(seasonValues, "all"),
         // Tonight's opponent, every meeting of them this log holds.
         ...h2hSplit(games, values, nextOpp, hit),
-        logId: player.espnId || null, logSeason: newestSeason(games),
+        logId: player.espnId || null, logSeason: feedSeason,
         // The availability dot's key -- same omission the NFL builder had.
         // NBA_ROSTER_STATUS is fetched on mount and was unreachable from a feed
         // row without this.
@@ -20176,7 +20233,7 @@ function buildMLBPitcherFeedRows(teamsData) {
 const BOARD_DISCLAIMER = {
   nfl: "Real 2025 game logs (ESPN Stats API), regular season and playoffs. Not a live odds feed.",
   wnba: "Live 2026 game logs (ESPN Stats API), regular season and playoffs. Not a live odds feed.",
-  nba: "Real 2025-26 game logs (ESPN Stats API), regular season and playoffs. Not a live odds feed.",
+  get nba() { return nbaFeedSeasonNote(); },
 };
 
 // MLB, NFL, NBA, WNBA -- the order every v3 mock offers them in, matching
@@ -21827,7 +21884,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     : sport === "wnba"
     ? "Live 2026 regular-season game logs (ESPN Stats API), refreshed each session. Not a live odds feed."
     : sport === "nba"
-    ? `Real 2025-26 regular-season game logs (ESPN Stats API). Not a live odds feed.${nbaRosterNote}`
+    ? `${nbaFeedSeasonNote()}${nbaRosterNote}`
     : "Sample data only — built to test filtering and layout before a real feed was wired in.";
   const gamesStripLogoFn = sport === "nfl" ? nflTeamLogo
     : sport === "wnba" ? wnbaTeamLogo
@@ -25643,10 +25700,20 @@ export default function PropLedger() {
 
     const loadLog = (player) => {
       if (!player.espnId || NBA_REAL_GAME_LOGS[String(player.espnId)]) return;
-      return fetchNBAPlayerGameLog(player.espnId).then((games) => {
+      return fetchNBAPlayerGameLogForDisplay(player.espnId).then((games) => {
         if (cancelled || !games) return;
         NBA_REAL_GAME_LOGS[String(player.espnId)] = games;
         bumpNbaRefresh();
+        // Only once the season in hand is the one being played: before the
+        // first game the fallback has already loaded a whole last season, so
+        // no extra request is made for anyone.
+        const newest = newestSeason(games);
+        if (newest == null || newest !== currentNBASeason()) return;
+        fetchNBAPlayerGameLog(player.espnId, newest - 1).then((prior) => {
+          if (cancelled || !prior || !prior.length) return;
+          NBA_PRIOR_GAME_LOGS[String(player.espnId)] = prior;
+          bumpNbaRefresh();
+        }).catch(() => {});
       });
     };
 
