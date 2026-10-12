@@ -556,6 +556,29 @@ function espnGameDay(iso) {
 // so the real total goes to dreb and oreb stays 0 rather than inventing a
 // split. The Total view -- the default, and the one anyone actually prices --
 // stays fully real; only the Off/Def toggle loses precision.
+function nbaScoreFields(meta) {
+  const home = parseInt(meta?.homeTeamScore, 10);
+  const away = parseInt(meta?.awayTeamScore, 10);
+  if (!Number.isFinite(home) || !Number.isFinite(away) || !["W", "L"].includes(meta?.gameResult)) return {};
+  const isHome = String(meta.team?.id) === String(meta.homeTeamId);
+  return { result: meta.gameResult, teamScore: isHome ? home : away, oppScore: isHome ? away : home };
+}
+
+// Game result, the NBA's version of the NFL's: Won / Lost / Close. "Close" is a
+// final margin of five or fewer -- two possessions -- the margin inside which a
+// starter is still playing in the fourth quarter.
+const NBA_CLOSE_MARGIN = 5;
+function nbaScriptKnown(g) {
+  return !!g && !!g.result && Number.isFinite(g.teamScore) && Number.isFinite(g.oppScore);
+}
+function nbaScriptMatch(g, script) {
+  if (!nbaScriptKnown(g)) return false;
+  if (script === "won") return g.result === "W";
+  if (script === "lost") return g.result === "L";
+  if (script === "close") return Math.abs(g.teamScore - g.oppScore) <= NBA_CLOSE_MARGIN;
+  return true;
+}
+
 function parseNBAGameLogResponse(data, season) {
   const names = data?.names || [];
   const events = data?.events || {};
@@ -601,6 +624,10 @@ function parseNBAGameLogResponse(data, season) {
         // teammate filter unbuildable outside MLB.
         eventId,
         home: meta.atVs !== "@",
+        // The final, sided by team id -- ESPN's atVs calls a neutral site
+        // "vs" for the visitor. A game with no score on record carries none of
+        // the three and counts only under "All" in the game-result filter.
+        ...nbaScoreFields(meta),
         minutes: num(stats.minutes),
         pts: num(stats.points),
         oreb: 0,
@@ -640,7 +667,8 @@ async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
   // control would find nothing to offer and quietly not appear -- a filter
   // missing entirely is harder to notice than one showing wrong numbers.
   // v4: dates are the Eastern game day (espnGameDay), not the UTC one.
-  const cacheKey = `nba_gamelog_v4_${key}`;
+  // v5: games carry result / teamScore / oppScore for the game-result filter.
+  const cacheKey = `nba_gamelog_v5_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -1924,6 +1952,8 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v3Custom = useCustomWindow("nba");
   const { range, setRange, applyRange } = useGameRange(playerId);
   const [opponent, setOpponent] = useState("all");
+  // Game result: "all" | "won" | "lost" | "close". See nbaScriptMatch.
+  const [script, setScript] = useState("all");
   const [oppView, setOppView] = useState("season");
   const [minMinutes, setMinMinutes] = useState(0);
   const [maxMinutes, setMaxMinutes] = useState(42);
@@ -2212,6 +2242,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       if (side === "home" && !game.home) return false;
       if (side === "away" && game.home) return false;
       if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
+      if (script !== "all" && !nbaScriptMatch(game, script)) return false;
       return true;
     });
     // Before the window, so "L10 without Brunson" means the last ten games he
@@ -2220,7 +2251,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp, applyRange, teammateSplits.apply]);
+  }, [allGames, side, opponent, script, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp, applyRange, teammateSplits.apply]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -2784,7 +2815,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const v3Windows = buildWindows({
     sport: "nba", lastN, setLastN, saved: v3Custom.saved, onSave: v3Custom.onSave, onRemove: v3Custom.onRemove,
     custom: v3Custom.custom, setCustom: v3Custom.setCustom,
-    onReset: () => { setLastN(DEFAULT_WINDOW.nba); setSide("all"); setOpponent("all"); },
+    onReset: () => { setLastN(DEFAULT_WINDOW.nba); setSide("all"); setOpponent("all"); setScript("all"); },
   });
   const v3Splits = buildSplits({
     side, setSide,
@@ -2792,6 +2823,28 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setH2h: (on) => setOpponent(on && gameOppAbbr ? gameOppAbbr : "all"),
     starterLabel: gameOppAbbr ? `vs ${gameOppAbbr}` : null,
   });
+  // GAME RESULT, counted over the scoped log before the window -- the same
+  // control the NFL page carries, composing with Home/Away.
+  const v3Script = useMemo(() => {
+    const c = { all: allGames.length, won: 0, lost: 0, close: 0, unknown: 0 };
+    allGames.forEach((g) => {
+      if (!nbaScriptKnown(g)) { c.unknown += 1; return; }
+      if (nbaScriptMatch(g, "won")) c.won += 1;
+      if (nbaScriptMatch(g, "lost")) c.lost += 1;
+      if (nbaScriptMatch(g, "close")) c.close += 1;
+    });
+    if (c.unknown === c.all) return null;
+    const n = (k) => `${k} ${k === 1 ? "game" : "games"}`;
+    const opt = (id, label, count) => ({ id, label, count: n(count), active: script === id, onPick: () => setScript(id) });
+    return {
+      title: "GAME RESULT",
+      options: [opt("all", "All", c.all), opt("won", "Won", c.won), opt("lost", "Lost", c.lost), opt("close", "Close", c.close)],
+      note: [
+        `Close: decided by ${NBA_CLOSE_MARGIN} points or fewer.`,
+        c.unknown > 0 ? `${c.unknown} of ${c.all} games have no final score on record and count only under All.` : null,
+      ].filter(Boolean).join(" "),
+    };
+  }, [allGames, script]);
   const v3RenderAvatar = (p, size) => (
     <PlayerAvatar
       key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nba" team={p.team}
@@ -2883,6 +2936,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       minSample={sampleFloor(minSample)}
       windows={v3Windows}
       splits={v3Splits}
+      script={v3Script}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
