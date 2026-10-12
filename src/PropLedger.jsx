@@ -104,6 +104,7 @@ const NewsPageRedesign = React.lazy(() => import("./NewsPageRedesign.jsx"));
 const FindingsPage = React.lazy(() => import("./FindingsPage.jsx"));
 const InjuriesPage = React.lazy(() => import("./InjuriesPage.jsx"));
 const MismatchReportPage = React.lazy(() => import("./MismatchReportPage.jsx"));
+const NBAMismatchPage = React.lazy(() => import("./NBAMismatchPage.jsx"));
 const ColorWheel = React.lazy(() => import("./ColorWheel.jsx"));
 
 // Every lazy component needs a Suspense boundary above it. These chunks are
@@ -25695,6 +25696,7 @@ export default function PropLedger() {
   // is what the plan says to load first. It is finished, so its logs cannot
   // change and the cache TTL is long.
   const [nbaDataVersion, bumpNbaRefresh] = React.useReducer((c) => c + 1, 0);
+  const [mismatchSport, setMismatchSport] = React.useState("nfl");
   React.useEffect(() => {
     let cancelled = false;
 
@@ -26489,6 +26491,33 @@ export default function PropLedger() {
           onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
+        <div style={{ display: "flex", gap: 8, maxWidth: 1180, margin: "0 auto", padding: "16px 16px 0" }}>
+          {[["nfl", "NFL"], ["nba", "NBA"]].map(([id, text]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setMismatchSport(id)}
+              style={{
+                padding: "6px 14px", borderRadius: 999, cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+                border: "1px solid var(--line)", background: mismatchSport === id ? "var(--surface-2)" : "transparent",
+                color: mismatchSport === id ? "var(--text)" : "var(--text-2)", fontWeight: mismatchSport === id ? 700 : 500,
+              }}
+            >{text}</button>
+          ))}
+        </div>
+        {mismatchSport === "nba" ? (
+        <LazyPane minHeight={400}>
+          <NBAMismatchPage
+            dataVersion={nbaDataVersion}
+            players={nbaPlayerPool().map((p) => ({ id: p.id, name: p.name, team: p.team, pos: p.pos, espnId: p.espnId, games: nbaFeedGames(p) }))}
+            games={(nbaScheduleCache && nbaScheduleCache.matchups) || []}
+            season={currentNBASeason()}
+            statusFor={(espnId) => NBA_ROSTER_STATUS[String(espnId)]}
+            logoFor={nbaTeamLogo}
+            onOpenProp={(p, market) => goToProp("nba", p.id, market, { name: p.name })}
+          />
+        </LazyPane>
+        ) : (
         <LazyPane minHeight={400}>
           <MismatchReportPage
             onOpenProp={(card) => {
@@ -26506,6 +26535,7 @@ export default function PropLedger() {
             }}
           />
         </LazyPane>
+        )}
         </MaybeV3Shell>
       )}
       {page === "games" && (

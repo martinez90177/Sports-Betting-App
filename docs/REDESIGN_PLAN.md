@@ -2919,8 +2919,20 @@ sends (Day-To-Day, Out) are both mapped. Rookies and two-way players with no NBA
 log are dropped by the "measured or not shown" rule and surface as skipped rows
 rather than vanishing; they enter the feed after their first game.
 
-**Open — Phase 3, NFL features with no NBA twin.** Mismatches cheat sheet
-(defence by position from box scores), team rankings on the matchup page, the
+**Built, same day — NBA Mismatches** (`src/NBAMismatchPage.jsx`,
+`src/lib/nbaMismatch.js`; NFL | NBA toggle on the Mismatches route). Defence by
+position (guards / forwards / centres) from the box-score lines the app already
+holds, no new API: each rotation player's game is compared with his *own* season
+average, and a defence's number is how far above or below that norm the position
+finished against it — so a player missing from the pool does not tilt one team
+and not another. Until nearly every team (28 of 30) has ten games of the new
+season, ranks are **2025-26 and say so** in the banner, every card line and the
+league table; the label flips by itself (`pickDefenseSeason`). Soft spot = bottom
+eight of 30 *and* a minimum gap above the norm per stat (`gap` in
+`NBA_MISMATCH_STATS` — a rank of 25th on +0.1 threes is a tie), and a player is
+named only above a per-stat average floor. Players listed out are excluded.
+
+**Open — Phase 3, what is still missing.** Team rankings on the matchup page, the
 game-result filter (the NBA parser keeps no score), richer usage pills. Once real
 games start, re-check the merged windows and the in-season defence ranks after
 about three games.
