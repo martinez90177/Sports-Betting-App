@@ -74,11 +74,23 @@ const HOOPS_THREES = new Set(["3pm", "fg3a", "3pa"]);
 
 function hoopsPills({ games, market, usageRate }) {
   const minutes = pill("Minutes", one(avg(games, (g) => g.minutes)));
+  // Is the role moving? The last five against the whole sample -- only said
+  // with eight games behind it, and only when the log is the NBA's or WNBA's
+  // own minutes. A drop is the thing a hit rate cannot show.
+  const recent = (games || []).slice(-5);
+  const trend = (games || []).length >= 8 && recent.length === 5
+    ? pill("Min, last 5", one(avg(recent, (g) => g.minutes)))
+    : null;
+  // Shot volume, measured: attempts a game. Only when the log carries them --
+  // a pill of 0.0 for a log that never recorded field-goal attempts would be a
+  // wrong number, so a game without `fga` is left out of the average entirely.
+  const withFga = (games || []).filter((g) => Number.isFinite(g.fga));
+  const shots = withFga.length >= 3 ? pill("FGA/g", one(avg(withFga, (g) => g.fga))) : null;
   const threes = pill("3PA/g", one(avg(games, (g) => g.fg3a)));
   const fts = pill("FTA/g", one(avg(games, (g) => g.fta)));
   const usage = pill("Usage", pct(usageRate));
   const lead = HOOPS_THREES.has(market) ? [threes, minutes] : [minutes, threes];
-  return [...lead, fts, usage].filter(Boolean);
+  return [...lead, trend, shots, fts, usage].filter(Boolean);
 }
 
 // ---------------------------------------------------------------------------

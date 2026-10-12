@@ -524,7 +524,7 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
                   nflDefSplit. NFL rows only; other sports carry neither. */}
               {r.rank != null && r.rankSeason && (
                 <span style={{ fontFamily: MONO, fontSize: 10.5, lineHeight: 1.45, color: "var(--dim)" }}>
-                  {`${r.rankSeason} season.${r.rankOther ? ` ${r.rankOther}.` : ""}`}
+                  {`${r.rankSeasonText || r.rankSeason} season.${r.rankOther ? ` ${r.rankOther}.` : ""}`}
                 </span>
               )}
             </div>

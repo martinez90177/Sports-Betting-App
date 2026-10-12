@@ -609,6 +609,7 @@ function parseNBAGameLogResponse(data, season) {
       const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
       const [fg3m, fg3a] = parseMadeAttempts(stats["threePointFieldGoalsMade-threePointFieldGoalsAttempted"]);
       const [ftm, fta] = parseMadeAttempts(stats["freeThrowsMade-freeThrowsAttempted"]);
+      const [fgm, fga] = parseMadeAttempts(stats["fieldGoalsMade-fieldGoalsAttempted"]);
       return {
         date: espnGameDay(meta.gameDate),
         opp: nbaTeamAbbr(meta.opponent.abbreviation),
@@ -635,7 +636,7 @@ function parseNBAGameLogResponse(data, season) {
         ast: num(stats.assists),
         stl: num(stats.steals),
         blk: num(stats.blocks),
-        fg3m, fg3a, ftm, fta,
+        fgm, fga, fg3m, fg3a, ftm, fta,
         tov: num(stats.turnovers),
       };
     })
@@ -668,7 +669,8 @@ async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
   // missing entirely is harder to notice than one showing wrong numbers.
   // v4: dates are the Eastern game day (espnGameDay), not the UTC one.
   // v5: games carry result / teamScore / oppScore for the game-result filter.
-  const cacheKey = `nba_gamelog_v5_${key}`;
+  // v6: and fgm / fga, for the usage pills.
+  const cacheKey = `nba_gamelog_v6_${key}`;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -3001,6 +3003,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         allows: gameOppDef && gameOppDef.rating != null ? String(gameOppDef.rating) : null,
         rank: gameOppDef ? `#${gameOppDef.rank} of ${TEAMS.length}` : null,
         rankWord: gameOppTier || null,
+        rankSeason: gameOppDef && gameOppDef.season ? seasonLabel(gameOppDef.season, "nba") : null,
         rankColor: gameOppTier === "soft" ? "var(--pos)" : gameOppTier === "tough" ? "var(--neg)" : "var(--dim)",
         lastMeeting: v2Last ? `${statValue(v2Last, market, rebSplit)} \u00b7 ${axisDateShort(v2Last.date)}` : null,
         // The NBA file's fourth cell is REST. Days between games is derivable
@@ -16729,7 +16732,7 @@ function nbaDefCategoryLabel(market) {
 // TTL, unlike the WNBA's 30 minutes against a live season.
 const NBA_TEAM_DEF_TTL_MS = 12 * 60 * 60 * 1000;
 async function fetchNBATeamDefense() {
-  const cacheKey = "nba_team_def_v2";
+  const cacheKey = "nba_team_def_v4";
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -16739,24 +16742,32 @@ async function fetchNBATeamDefense() {
   } catch {}
 
   try {
-    // This season's table once it has games in it; last season's until then.
+    // This season's table once nearly every team has ten games in it; last
+    // season's until then.
     // Was a literal 2026, right until the 2026-27 season tipped off.
     let rows = [];
     for (const season of [currentNBASeason(), currentNBASeason() - 1]) {
       const res = await fetch(`https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=${season}`);
       if (!res.ok) continue;
       const data = await res.json();
-      let played = 0;
+      let ready = 0;
       const got = [];
       (data?.children || []).forEach((conf) => {
         (conf?.standings?.entries || []).forEach((entry) => {
           const abbr = nbaTeamAbbr(entry.team?.abbreviation);
           const avgPA = entry.stats?.find((st) => st.name === "avgPointsAgainst")?.value;
-          played += Number(entry.stats?.find((st) => st.name === "gamesPlayed")?.value) || 0;
+          // Wins plus losses: the standings carry no gamesPlayed field (a first
+          // version asked for one, read 0 for every team, and loaded no ranks).
+          const gp = (Number(entry.stats?.find((st) => st.name === "wins")?.value) || 0)
+            + (Number(entry.stats?.find((st) => st.name === "losses")?.value) || 0);
+          if (gp >= 10) ready += 1;
           if (abbr && avgPA != null) got.push({ abbr, avgPA, season });
         });
       });
-      if (got.length && played > 0) { rows = got; break; }
+      // A season is ranked once nearly every team has ten games in it. The new
+      // season's standings already count preseason games (W1 L2 before the
+      // opener), so "has any games" would rank it on exhibitions.
+      if (got.length && ready >= 28) { rows = got; break; }
     }
     if (!rows.length) return null;
 
@@ -18553,7 +18564,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           <span
             className="mono"
             title={[
-              `This opponent is #${r.rank} of ${feedTeamCount(sport)} against ${r.rankLabel}${r.rankSeason ? ` in ${r.rankSeason}` : ""}.`,
+              `This opponent is #${r.rank} of ${feedTeamCount(sport)} against ${r.rankLabel}${r.rankSeason ? ` in ${r.rankSeasonText || r.rankSeason}` : ""}.`,
               r.rankOther ? `${r.rankOther}.` : null,
               r.rankEarly ? `The ${r.rankSeason} rank stands on fewer than ${NFL_DEF_CURRENT_MIN_GAMES} games so far.` : null,
             ].filter(Boolean).join(" ")}
@@ -18568,7 +18579,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               whiteSpace: "nowrap",
             }}
           >
-            D #{r.rank}/{feedTeamCount(sport)}{r.rankSeason ? ` ${nflSeasonShort(r.rankSeason)}` : ""}
+            D #{r.rank}/{feedTeamCount(sport)}{r.rankSeason ? ` ${r.rankSeasonText ? `'${r.rankSeasonText.slice(2)}` : nflSeasonShort(r.rankSeason)}` : ""}
           </span>
           {(() => {
             const read = matchupRead;
@@ -19846,6 +19857,11 @@ function buildNBAFeedRows() {
         // dot follows.
         homeGame: nextGame ? nextGame.home : null,
         rank, tier, rankLabel: nbaDefCategoryLabel(m.id),
+        // Which season the rank is from: last season's until nearly every team
+        // has ten games of the new one, and the badge says so rather than
+        // letting a 2025-26 rank read as current.
+        rankSeason: def && def.season ? def.season : null,
+        rankSeasonText: def && def.season ? seasonLabel(def.season, "nba") : null,
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
