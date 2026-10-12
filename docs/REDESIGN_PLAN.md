@@ -2879,3 +2879,48 @@ red-zone plays in 2026 and 4,775 of 4,775 in 2025 matched. Box cache moved to
 red-zone plays, inside-the-5 share, the opponent's red-zone trips allowed and
 red-zone looks to the position), a reason in the why list, and the share on
 the compact row.
+## NBA 2026-27 readiness — 2026-10-12
+
+The NBA tab was the last sport not carried across a season rollover, and it was
+empty on production from 1 October: **0 of 0 props**, no Board slate. The NFL had
+been through the same cliff on 2026-09-08 and the fix was never ported.
+
+**Fixed (`7a82645`, `95b2940`).**
+
+- **`currentNBASeason()` flips to the new season on 1 Oct, and ESPN's log for it
+  holds only preseason games**, which `parseNBAGameLogResponse` rightly refuses to
+  count. Every player came back empty and the honesty gate dropped all ~480 of
+  them. `fetchNBAPlayerGameLogForDisplay` falls back to last season until the new
+  one has a regular-season game; `NBA_PRIOR_GAME_LOGS` + `nbaFeedGames` merge
+  last season behind the feed's rolling windows once the new one is in progress
+  (same shape and same gate as NFL: no extra request until a log's newest season
+  is the current one). The season column counts the newest season only.
+  `getNBAGames` still returns one season so the player page's own
+  `usePriorSeasonLog` never sees a game twice.
+- **ESPN's NBA scoreboard answers a `dates=a-b` range with no events** (checked
+  2026-10-12: a week with four preseason games and the opener returned none) while
+  each single day is right. `fetchNBALiveSlate` now asks one day at a time; the
+  slate cache key moved to `nba_live_slate_v3`. This is why every Board card read
+  "TEAM @" with no opponent.
+- **Defence ranks** read the current season's standings once teams have played
+  (`gamesPlayed` > 0), last season's until then; the entry carries its `season`.
+  Was a literal `season=2026`. Cache key `nba_team_def_v2`.
+- **The feed footer** (`nbaFeedSeasonNote`) names the season it reads.
+- **Injuries.** The page hid the NBA until opening night because ESPN carries
+  May's designations through the summer (Alex, 2026-09-10). Teams file real
+  reports from the first preseason game — 118 of 131 designations were dated
+  October — so the test is now whether the league injury feed was touched in the
+  last 21 days. 130 NBA players listed; an unreadable feed stays hidden.
+
+**Checked, not changed.** Rosters, trades and signings need no code: all 30
+rosters come live from ESPN, and every hand-written player (20) is overridden by
+the live row, including moved ones (Watford PHI → NO). The two statuses ESPN
+sends (Day-To-Day, Out) are both mapped. Rookies and two-way players with no NBA
+log are dropped by the "measured or not shown" rule and surface as skipped rows
+rather than vanishing; they enter the feed after their first game.
+
+**Open — Phase 3, NFL features with no NBA twin.** Mismatches cheat sheet
+(defence by position from box scores), team rankings on the matchup page, the
+game-result filter (the NBA parser keeps no score), richer usage pills. Once real
+games start, re-check the merged windows and the in-season defence ranks after
+about three games.
