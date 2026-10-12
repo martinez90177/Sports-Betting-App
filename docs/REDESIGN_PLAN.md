@@ -2902,9 +2902,14 @@ been through the same cliff on 2026-09-08 and the fix was never ported.
   each single day is right. `fetchNBALiveSlate` now asks one day at a time; the
   slate cache key moved to `nba_live_slate_v3`. This is why every Board card read
   "TEAM @" with no opponent.
-- **Defence ranks** read the current season's standings once teams have played
-  (`gamesPlayed` > 0), last season's until then; the entry carries its `season`.
-  Was a literal `season=2026`. Cache key `nba_team_def_v2`.
+- **Defence ranks** read the current season's standings once 28 of 30 teams have
+  ten games (wins + losses) in it, last season's until then; the entry carries
+  its `season`, and the feed badge, tooltip, phone card and player page print it
+  ('25-26). Was a literal `season=2026`. Two traps found the hard way: ESPN's
+  standings have **no `gamesPlayed` field** (the first version read 0 for every
+  team and loaded no ranks at all, live from `7a82645` until `fe57a1a`), and the
+  new season's standings already hold **preseason records** (W1 L2 before the
+  opener), so "has games" is not the test. Cache key `nba_team_def_v4`.
 - **The feed footer** (`nbaFeedSeasonNote`) names the season it reads.
 - **Injuries.** The page hid the NBA until opening night because ESPN carries
   May's designations through the summer (Alex, 2026-09-10). Teams file real
@@ -2932,7 +2937,15 @@ eight of 30 *and* a minimum gap above the norm per stat (`gap` in
 `NBA_MISMATCH_STATS` — a rank of 25th on +0.1 threes is a tie), and a player is
 named only above a per-stat average floor. Players listed out are excluded.
 
-**Open — Phase 3, what is still missing.** Team rankings on the matchup page, the
+**Also built:** the Game Result filter on the NBA player page (All / Won / Lost /
+Close, close = 5 points or fewer; `nbaScriptMatch`, scores from ESPN's gamelog
+event meta, sided by team id), and two measured usage pills (FGA/g, minutes in
+the last five). **Not built, and why:** NFL-style team rankings on the matchup
+page. ESPN's NBA team statistics carry no opponent shooting, rebounding or
+assist numbers (only points allowed, in the standings), so an offence-vs-defence
+table would have to be filled with numbers we do not have.
+
+**Open — Phase 3, what was still missing.** Team rankings on the matchup page, the
 game-result filter (the NBA parser keeps no score), richer usage pills. Once real
 games start, re-check the merged windows and the in-season defence ranks after
 about three games.
