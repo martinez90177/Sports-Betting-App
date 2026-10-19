@@ -1,8 +1,16 @@
 {
   "crons": [
-    { "path": "/api/refresh-mlb-matchups", "schedule": "0 7 * * *" }
+    {
+      "path": "/api/refresh-mlb-matchups",
+      "schedule": "0 7 * * *"
+    }
   ],
   "functions": {
-    "api/nfl-allowed.js": { "maxDuration": 60 }
+    "api/nfl-allowed.js": {
+      "maxDuration": 60
+    },
+    "api/case.js": {
+      "maxDuration": 30
+    }
   }
 }

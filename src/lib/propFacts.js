@@ -111,5 +111,28 @@ export function buildPropFacts({ series, line, unit, def, oppAbbr, outs = [], ho
     check.push({ title: "Teammates listed out", text: `${list} ${plural(names.length, "is", "are")} on the injury report. Nothing here counts what that does to this line, so check his games without them.` });
   }
 
-  return { over, under, check, n, thin: null };
+  // The measured numbers behind the sentences above, for a writer that wants
+  // more than the sentences (api/_caseCore.js). Nothing here is derived from
+  // anything but the series, the line and the arguments -- no estimate.
+  const vsOpp = oppAbbr ? series.filter((g) => g.opp === oppAbbr) : [];
+  const data = {
+    games: n,
+    line,
+    unit,
+    last10: last.map((v) => Math.round(v * 10) / 10),
+    last10Over: k,
+    last10Avg: Math.round(avg(last) * 10) / 10,
+    last5Avg: n >= 5 ? Math.round(avg(vals.slice(-5)) * 10) / 10 : null,
+    logAvg: Math.round(avg(vals) * 10) / 10,
+    gamesOverLine: vals.filter(hit).length,
+    opponent: oppAbbr || null,
+    homeTonight,
+    vsOpponent: vsOpp.length ? { games: vsOpp.length, over: vsOpp.filter((g) => hit(g.v)).length } : null,
+    volume: volume && Number.isFinite(volume.recent)
+      ? { label: volume.label, last5: Math.round(volume.recent * 10) / 10, log: Math.round(volume.season * 10) / 10 }
+      : null,
+    defence: def && def.rank ? { rank: def.rank, of: def.of, season: def.season || null, measuredIn: def.scope } : null,
+    teammatesOut: outs.slice(0, 3).map((o) => o.name),
+  };
+  return { over, under, check, n, thin: null, data };
 }
