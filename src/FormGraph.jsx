@@ -441,16 +441,27 @@ export default function FeedFormStrip({
               dont like it being with the other stats on the left."* */}
           {runInGutter && showRun && showTag && (() => {
             const LABEL_H = 22;
+            const MIN_GAP = 8;
             const tagLo = lineY - 14;
             const tagHi = lineY + 14;
-            const atBottom = tagLo >= LABEL_H + 2 || tagHi > H - LABEL_H - 2;
+            // Which end of the column the label takes: the one with more clear
+            // space between it and the tag. With the tag near mid-height neither
+            // end has any -- 72px less a 28px tag is 22px a side, and the label
+            // is 22px -- so the two sat flush ("barely any room between the drag
+            // box and the statement"). When the better end is still tighter than
+            // MIN_GAP the label is pushed out past the chart's edge by the
+            // shortfall, into the row's own padding, rather than into the tag.
+            const gapTop = (H - LABEL_H) - tagHi;
+            const gapBottom = tagLo - LABEL_H;
+            const atBottom = gapBottom > gapTop;
+            const push = Math.max(0, MIN_GAP - Math.max(gapTop, gapBottom));
             return (
               <span
                 className="pp-mono"
                 title={`${shownRun} ${shownRunHit ? "straight games over" : "straight games under"} the line`}
                 style={{
                   position: "absolute", right: -GUT, width: 42, height: LABEL_H,
-                  ...(atBottom ? { bottom: 0 } : { top: 0 }),
+                  ...(atBottom ? { bottom: -push } : { top: -push }),
                   display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                   color: runInk, lineHeight: 1, pointerEvents: "none",
                 }}

@@ -42,6 +42,8 @@ import { mlbPitchHandCache, mlbPitcherNameCache, mlbStarterName, fetchMLBPitcher
 import MyPicksMobile from "./v3/MyPicksMobile.jsx";
 import MyPicksDesktop from "./v3/MyPicksDesktop.jsx";
 import ReadPanel from "./v3/ReadPanel.jsx";
+import PropAnalysis from "./v3/PropAnalysis.jsx";
+import { buildPropFacts } from "./lib/propFacts.js";
 import useMyPicks from "./v3/useMyPicks.js";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
@@ -2847,6 +2849,33 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       ].filter(Boolean).join(" "),
     };
   }, [allGames, script]);
+  // THE CASE: why this line could go over and why it could go under, written
+  // from counted numbers only (lib/propFacts.js). Off the scoped log rather than
+  // the reader's window, so it does not change its mind when a chip moves.
+  const v3Facts = (() => {
+    if (!player) return null;
+    const mean = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
+    const series = logGames.map((g) => ({ v: statValue(g, market, rebSplit), home: g.home, opp: g.opp, minutes: g.minutes }));
+    const volume = logGames.length >= 10
+      ? { label: "minutes", recent: mean(logGames.slice(-5).map((g) => g.minutes)), season: mean(logGames.map((g) => g.minutes)), rise: 0.08 }
+      : null;
+    const homeTonight = matchup && player.team
+      ? (matchup.teamB && matchup.teamB.abbr === player.team ? true : matchup.teamA && matchup.teamA.abbr === player.team ? false : null)
+      : null;
+    // Rotation teammates listed out: counted as present, direction not counted.
+    const outs = nbaPlayerPool()
+      .filter((t) => t.team === player.team && t.id !== player.id && NBA_ROSTER_STATUS[String(t.espnId)] === "out")
+      .map((t) => ({ t, g: getNBAGames(t) }))
+      .filter((x) => x.g.length >= 10 && mean(x.g.map((g) => g.minutes)) >= 20)
+      .sort((a, c) => mean(c.g.map((g) => g.minutes)) - mean(a.g.map((g) => g.minutes)))
+      .map((x) => ({ name: x.t.name }));
+    // The only defence number measured is points allowed, so it is offered on
+    // the markets it describes and left out of the rest rather than stretched.
+    const def = gameOppDef && ["pts", "pra", "pr", "pa"].includes(market)
+      ? { rank: gameOppDef.rank, of: TEAMS.length, season: gameOppDef.season ? seasonLabel(gameOppDef.season, "nba") : null, scope: "points allowed" }
+      : null;
+    return buildPropFacts({ series, line: v2LiveLine, unit: String(marketLabel || "").toLowerCase(), def, oppAbbr: gameOppAbbr, outs, homeTonight, volume });
+  })();
   const v3RenderAvatar = (p, size) => (
     <PlayerAvatar
       key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nba" team={p.team}
@@ -2939,6 +2968,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       windows={v3Windows}
       splits={v3Splits}
       script={v3Script}
+      extraBlocks={<PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} />}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -9156,6 +9186,41 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       ].filter(Boolean).join(" "),
     };
   }, [allGames, script]);
+  // THE CASE for this line, from counted numbers only (lib/propFacts.js), off
+  // the scoped log rather than the reader's window.
+  const v3Facts = (() => {
+    if (!player) return null;
+    const mean = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
+    // The volume that carries each position's market: attempts, touches, targets.
+    const touch = player.pos === "QB" ? (g) => g.att
+      : player.pos === "RB" ? (g) => (g.rushAtt || 0) + (g.tgt || 0)
+      : (g) => g.tgt;
+    const volWord = player.pos === "QB" ? "pass attempts" : player.pos === "RB" ? "touches" : "targets";
+    const measured = logGames.filter((g) => Number.isFinite(touch(g)));
+    const volume = measured.length >= 10
+      ? { label: volWord, recent: mean(measured.slice(-5).map(touch)), season: mean(measured.map(touch)), rise: 0.15 }
+      : null;
+    const series = logGames.map((g) => ({ v: statValueNFL(g, market), home: g.home, opp: g.opp }));
+    const floorFor = player.pos === "QB" ? 15 : player.pos === "RB" ? 8 : 4;
+    // Listed out, and a real part of the offence: the report names plenty of
+    // practice-squad players, and none of them is worth a sentence here.
+    const outs = nflPlayerPool()
+      .filter((t) => t.team === player.team && t.id !== player.id && nflStatusOf(t) === "out" && ["QB", "RB", "WR", "TE"].includes(t.pos))
+      .map((t) => ({ t, g: getNFLGames(t).filter((g) => Number.isFinite(t.pos === "QB" ? g.att : t.pos === "RB" ? (g.rushAtt || 0) + (g.tgt || 0) : g.tgt)) }))
+      .map((x) => ({ ...x, u: x.g.length ? mean(x.g.map((g) => (x.t.pos === "QB" ? g.att : x.t.pos === "RB" ? (g.rushAtt || 0) + (g.tgt || 0) : g.tgt))) : 0 }))
+      .filter((x) => x.g.length >= 4 && x.u >= (x.t.pos === "QB" ? 15 : x.t.pos === "RB" ? 8 : 4))
+      .sort((a, c) => c.u - a.u)
+      .map((x) => ({ name: x.t.name }));
+    // This season's rank only: last season's is shown beside the badge as the
+    // comparison it is, never as the reason.
+    const def = gameOppDef && gameOppDef.season === currentNFLSeason()
+      ? { rank: gameOppDef.rank, of: NFL_TEAMS.length, season: String(gameOppDef.season), scope: defCategoryLabel }
+      : null;
+    return buildPropFacts({
+      series, line: v2LiveLine, unit: String(marketLabel || "").toLowerCase(), def,
+      oppAbbr: nflNext ? nflNext.opp : gameOppAbbr, outs, homeTonight: nflNext ? nflNext.home : null, volume,
+    });
+  })();
   const v3RenderAvatar = (p, size) => (
     <PlayerAvatar
       key={`${p.id || p.name}-${size}`} name={p.name} alt={p.name} sport="nfl" team={p.team}
@@ -9419,6 +9484,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       // not already have.
       extraBlocks={
         <>
+          <PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} />
           <SupportingStats
             games={filtered}
             position={player.pos}

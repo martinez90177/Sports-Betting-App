@@ -2949,3 +2949,33 @@ table would have to be filled with numbers we do not have.
 game-result filter (the NBA parser keeps no score), richer usage pills. Once real
 games start, re-check the merged windows and the in-season defence ranks after
 about three games.
+
+## The Case — why a line could go over or under — 2026-10-19
+
+Alex showed Outlier's AI Analysis (two lists, "why it could go over / under",
+written by a model from a data packet) and asked for something similar. Outlier's
+bullets lean on charting data (route mix, zone share, air yards) that no free feed
+carries, and a model writing prose from numbers can invent one. Built instead,
+with no model in it:
+
+- `src/lib/propFacts.js` (pure) composes the sentences from counted numbers only:
+  last-ten rate against the line, last five against the rest of the log, volume
+  (NBA minutes; NFL attempts / touches / targets), this season's defence rank for
+  the market, his record against tonight's opponent, his record at tonight's
+  venue. A reason whose input is missing or under eight games is not written.
+- A reason whose direction nothing counted — a teammate on the injury report —
+  goes in **Worth checking**, not over or under (same rule as the intent read).
+- `src/v3/PropAnalysis.jsx` is the card, resting as one line ("3 reasons over ·
+  1 under") and opening in place. Mounted through `extraBlocks` on the NBA and
+  NFL player pages (desktop). It reads the merged multi-season log, like the
+  feed's rolling windows, so Week 7 is not "too few games".
+- Defence reason: NBA offers it only on markets points allowed describes
+  (pts / pra / pr / pa); NFL only when the rank is from this season.
+
+**Not built.** Phone layout (PlayerDetailMobile has no `extraBlocks` slot); WNBA
+and MLB; a model-written version. If one is ever added it should wrap the same
+packet and reject any sentence carrying a number the packet does not hold.
+
+Also: the streak label in the form chart's gutter ("3 STRAIGHT") sat flush
+against the line box when the box was near mid-height (22px a side, a 22px label).
+It now keeps an 8px gap and rides past the chart's edge when it has to.
