@@ -17685,7 +17685,7 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, s
   // is the mid tone. Written the other way round, the five columns nobody is
   // scoring on were the brightest thing in the header and the one column
   // driving every rate in the table was dimmer than them.
-  const col = (label, key, { window: isWindow = false, sortable = true } = {}) => {
+  const col = (label, key, { window: isWindow = false, sortable = true, custom = false } = {}) => {
     const sorted = columnSort?.key === key;
     return (
       <span
@@ -17708,6 +17708,9 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, s
           cursor: sortable ? "pointer" : "default", userSelect: "none",
           background: sorted ? "var(--amber-dim)" : "transparent",
           color: sorted ? "var(--amber-ink)" : isWindow ? "var(--dim-strong)" : "var(--text-2)",
+          // A custom window is underlined with the same dashed line its cells
+          // are outlined in.
+          ...(custom ? { borderBottom: "1px dashed var(--amber)", borderRadius: 0 } : null),
         }}
       >
         {label}
@@ -17755,7 +17758,7 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, s
            view, so sorting on it would reorder the table under the reader as
            each request lands. */}
       <span style={feedRateGroup}>
-        {customWin ? col(`L${customWin}`, "custom", { window: true }) : null}
+        {customWin ? col(`L${customWin}`, "custom", { window: true, custom: true }) : null}
         {col("L5", "l5", { window: sampleWindow === "l5" })}
         {col("L10", "l10", { window: sampleWindow === "l10" })}
         {col("L20", "l20", { window: sampleWindow === "l20" })}
@@ -17962,7 +17965,7 @@ function PriorSeasonCell({ prior, minSample = 10 }) {
   );
 }
 
-function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", emptyTitle = "No games in this window", opp = null }) {
+function FeedPctCell({ v, n, label, active, custom = false, minSample = 10, unit = "games", emptyTitle = "No games in this window", opp = null }) {
   const one = unit === "meetings" ? "meeting" : "game";
   // Hoisted above `shell` because the wash depends on it: a cell whose rate the
   // app will not state must not be shaded as though it had one. Re-stated in
@@ -17995,7 +17998,10 @@ function FeedPctCell({ v, n, label, active, minSample = 10, unit = "games", empt
     // findable down thirty rows without spending the fill to do it. The header
     // bolds that column's label too, so it is marked twice.
     background: washTooFew ? "transparent" : feedRateWash(v),
-    border: `1px solid ${active ? "var(--amber)" : "transparent"}`,
+    // Two kinds of highlight, so a reader can tell the default windows from the
+    // one they built: solid for L5 / L10 / L20 / season, dashed for a custom
+    // window. Either way it marks the window the table is ranked on.
+    border: `1px ${custom ? "dashed" : "solid"} ${active || custom ? "var(--amber)" : "transparent"}`,
   };
   if (v == null) {
     return (
@@ -18769,7 +18775,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // columns don't fit a 390px card. Left off this screen rather than
   // approximated; it stays fully reachable on desktop.
   if (isNarrow) {
-    const nKey = sampleWindow === "l5" ? "n5" : sampleWindow === "l20" ? "n20" : sampleWindow === "all" ? "nAll" : "n10";
+    const nKey = sampleWindow === "all" ? "nAll" : `n${sampleWindow.slice(1)}`;
     const rate = r[sampleWindow];
     const gamesCounted = r[nKey];
     const gamesOver = rate != null && gamesCounted != null ? Math.round(rate * gamesCounted) : null;
@@ -18934,9 +18940,9 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             actually had rather than the one that was asked for. */}
         {customWin ? (() => {
           const w = Array.isArray(r.values) ? windowValues(r.values, customWin) : [];
-          if (!w.length) return <FeedPctCell v={null} n={0} label={customWin} minSample={feedWindowFloor(FEED_RATE_FLOOR, customWin)} active={false} />;
+          if (!w.length) return <FeedPctCell v={null} n={0} label={customWin} minSample={feedWindowFloor(FEED_RATE_FLOOR, customWin)} custom />;
           const hit = w.filter((v) => feedIsHit(v, lineVal, r.isBinary, direction)).length;
-          return <FeedPctCell v={hit / w.length} n={w.length} label={customWin} minSample={feedWindowFloor(FEED_RATE_FLOOR, customWin)} active />;
+          return <FeedPctCell v={hit / w.length} n={w.length} label={customWin} minSample={feedWindowFloor(FEED_RATE_FLOOR, customWin)} custom />;
         })() : null}
         <FeedPctCell v={live5 ? live5.rate : r.l5} n={live5 ? live5.n : r.n5} label={5} minSample={feedWindowFloor(FEED_RATE_FLOOR, "l5")} active={sampleWindow === "l5"} />
         <FeedPctCell v={live10 ? live10.rate : r.l10} n={live10 ? live10.n : r.n10} label={10} minSample={feedWindowFloor(FEED_RATE_FLOOR, "l10")} active={sampleWindow === "l10"} />
@@ -20793,7 +20799,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     const first = PROP_QUICK_PICKS[sport]?.[0] || PROP_GROUPS[sport]?.[0]?.markets[0]?.id || null;
     return first ? [first] : [];
   });
-  const [sampleWindow, setSampleWindow] = useState(() => bettingDefaults.sampleWindow);
+  const [sampleWindowPick, setSampleWindow] = useState(() => bettingDefaults.sampleWindow);
+  // The applied custom rate column. null is the six-column table; a number adds
+  // a seventh, left of L5.
+  const [feedCustomCol, setFeedCustomCol] = useState(null);
+  // The window the whole feed ranks and scores on. An applied custom window IS
+  // that window: it used to sit beside an L10 that was still doing the ranking,
+  // so two columns read as selected and the header said "best hit rate (L10)"
+  // over a table the reader had just set to L30. Alex, 2026-10-19: *"kinda
+  // doesnt make sense to have 2 highlighted like that."* Clearing the custom
+  // window hands the job back to the pick.
+  const sampleWindow = feedCustomCol ? `l${feedCustomCol}` : sampleWindowPick;
   // Which side of the line the whole feed is priced from. Rows are built
   // Over-only; "under" runs them through flipFeedRowToUnder so the hit rates,
   // odds, sorting and filtering all describe the side actually on screen.
@@ -20894,9 +20910,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // the Sort By dropdown's mode until cleared. null means "use the Sort By/
   // primary-hit-rate behavior below" (see sortedRows).
   const [columnSort, setColumnSort] = useState(null);
-  // The applied custom rate column, and the builder behind it. null is the
-  // six-column table; a number adds a seventh, left of L5.
-  const [feedCustomCol, setFeedCustomCol] = useState(null);
+  // The builder behind the applied custom rate column (state is up with
+  // sampleWindow, which it drives).
   // Same hook the four player pages use, so a window saved on a player page
   // is on the feed rail too -- it is the reader own window, not the screen.
   const feedCustom = useCustomWindow(sport);
@@ -21322,7 +21337,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       // (no comma), so an old saved screen or share link still applies
       // cleanly as a one-element selection.
       market: [...selectedMarkets].sort().join(","),
-      sampleWindow,
+      sampleWindow: sampleWindowPick,
       direction,
       sortMode,
       sortDir,
@@ -21338,7 +21353,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         ),
       ],
     }),
-    [sport, selectedMarkets, sampleWindow, direction, sortMode, sortDir, oddsMinX, oddsMaxX,
+    [sport, selectedMarkets, sampleWindowPick, direction, sortMode, sortDir, oddsMinX, oddsMaxX,
      rankLo, rankHi, teamFilter, postedLineupsOnly, activeMatchupOptions, selectedGameIds]
   );
 
@@ -21496,11 +21511,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // And never a market the reader's book does not post: with nothing selected
   // the feed is "every market", and that means every market *there is a bet
   // on* at their book.
-  const marketRows = useMemo(
-    () => (selectedMarkets.length ? rows.filter((r) => selectedMarkets.includes(r.marketId)) : rows)
-      .filter((r) => marketOffered(r.marketId) !== false),
-    [rows, selectedMarkets, marketOffered]
-  );
+  const marketRows = useMemo(() => {
+    const base = (selectedMarkets.length ? rows.filter((r) => selectedMarkets.includes(r.marketId)) : rows)
+      .filter((r) => marketOffered(r.marketId) !== false);
+    // The custom window's rate and sample, counted off the same values and the
+    // same predicate as every other cell, under the keys a standard window
+    // uses (l30 / n30) -- plus "custom", which the header sorts on.
+    const N = feedCustomCol;
+    if (!N || [5, 10, 20].includes(N)) return base;
+    return base.map((r) => {
+      const w = Array.isArray(r.values) ? windowValues(r.values, N) : [];
+      const rate = w.length ? w.filter((v) => feedIsHit(v, r.line, r.isBinary, direction)).length / w.length : null;
+      return { ...r, [`l${N}`]: rate, [`n${N}`]: w.length, custom: rate };
+    });
+  }, [rows, selectedMarkets, marketOffered, feedCustomCol, direction]);
 
   // Odds range: the left handle (oddsMinX) maps to the highest probability
   // in range (most negative/favorite odds bound) and the right handle
@@ -21622,7 +21646,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     activeFilterChips.push({
       key: "window",
       label: sampleWindow === "all" ? "ALL GAMES" : `LAST ${sampleWindow.replace("l", "")}`,
-      onRemove: () => setSampleWindow(bettingDefaults.sampleWindow),
+      onRemove: () => { if (feedCustomCol) setFeedCustomCol(null); else setSampleWindow(bettingDefaults.sampleWindow); },
     });
   }
   if (showMatchupDropdown && selectedGameIds.size > 0) {
@@ -22078,7 +22102,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       (slateScope !== "near" || feedRowIsNear(r, slateWindow))
       && !feedRowPlaysEnough(r, teamGames, sport)).length;
     const key = sampleWindow;
-    const nKey = key === "l5" ? "n5" : key === "l20" ? "n20" : key === "all" ? "nAll" : "n10";
+    const nKey = key === "all" ? "nAll" : `n${key.slice(1)}`;
     const floor = feedWindowFloor(minGames, key);
     filteredRows.forEach((r) => {
       if (r.gameId) games.add(r.gameId);
@@ -22127,7 +22151,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // desktop header shows as separate controls, so it can never say something
   // the actual filtering isn't doing.
   const refineMarketLabel = activeMarketLabel || "All props";
-  const refineWindowLabel = sampleWindow === "l5" ? "Last 5 games" : sampleWindow === "l20" ? "Last 20 games" : sampleWindow === "all" ? "Season" : "Last 10 games";
+  const refineWindowLabel = sampleWindow === "all" ? "Season" : `Last ${sampleWindow.slice(1)} games`;
 
   // ---- The v2 shell (PropPalace Prop Feed v2.dc.html) ----------------------
   //
@@ -22402,7 +22426,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         </div>
         <div>
           <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Games counted</div>
-          <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} />
+          <WindowSwitcher value={feedCustomCol ? null : sampleWindow} onChange={(w) => { setFeedCustomCol(null); setSampleWindow(w); }} />
         </div>
         <div>
           <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Lines</div>
@@ -22800,7 +22824,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 <DirectionSwitcher value={direction} onChange={setDirection} fill />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <WindowSwitcher value={sampleWindow} onChange={setSampleWindow} fill />
+                <WindowSwitcher value={feedCustomCol ? null : sampleWindow} onChange={(w) => { setFeedCustomCol(null); setSampleWindow(w); }} fill />
               </div>
             </div>
             {/* No lines control here any more. It is one switch in the feed
