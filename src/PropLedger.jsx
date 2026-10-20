@@ -659,11 +659,16 @@ function currentNBASeason(now = new Date()) {
 // The NBA season is not in progress in August, so the log for a given season
 // is finished and cannot change -- a long TTL, unlike the WNBA's 15 minutes.
 const NBA_GAMELOG_TTL_MS = 12 * 60 * 60 * 1000;
+// The season in progress changes every night; only a finished one can sit for
+// half a day. (The 12 hours above was written in the offseason, when every log
+// on the site was finished.)
+const NBA_GAMELOG_LIVE_TTL_MS = 20 * 60 * 1000;
+const nbaLogTtl = (season) => (season === currentNBASeason() ? NBA_GAMELOG_LIVE_TTL_MS : NBA_GAMELOG_TTL_MS);
 const nbaGameLogCache = new Map();
 async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
   const key = `${espnId}:${season}`;
   const cached = nbaGameLogCache.get(key);
-  if (cached && Date.now() - cached.fetchedAt < NBA_GAMELOG_TTL_MS) return cached.games;
+  if (cached && Date.now() - cached.fetchedAt < nbaLogTtl(season)) return cached.games;
 
   // v2: every game now carries `team` (the player's own team that game)
   // and `season`. A leftover v1 payload has neither, so the log-scoping
@@ -677,7 +682,7 @@ async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (Date.now() - parsed.fetchedAt < NBA_GAMELOG_TTL_MS) {
+      if (Date.now() - parsed.fetchedAt < nbaLogTtl(season)) {
         nbaGameLogCache.set(key, parsed);
         return parsed.games;
       }
@@ -985,7 +990,9 @@ function dayKeyPlus(key, n) {
 // is 52 games and all 30 teams.
 const NBA_SLATE_DAYS = 7;
 
-const NBA_SCHEDULE_TTL_MS = 60 * 60 * 1000;
+// Fifteen minutes: a game ending is what moves every row of its two teams to
+// their next game, and an hour is a long time to show a finished one.
+const NBA_SCHEDULE_TTL_MS = 15 * 60 * 1000;
 let nbaScheduleCache = null;
 
 // Resolves to { matchups, unreadable, fetchFailed, scope, fetchedAt }.
@@ -1084,7 +1091,13 @@ function nbaMatchupsWithRosters(matchups) {
 // is the honest state, rather than the last one relabelled as the next.
 function nbaNextGameForTeam(abbr) {
   const slate = (nbaScheduleCache && nbaScheduleCache.matchups) || [];
-  const game = slate.find((m) => m.teamA?.abbr === abbr || m.teamB?.abbr === abbr);
+  // The next game he has NOT played. The slate runs from today and its games
+  // stay on it after they end, so the first game for a team is, from tip-off
+  // night on, last night's -- and every row for the team would carry a finished
+  // opponent, date and venue (the NFL's "Thursday game stayed up all Friday").
+  // A game is over when ESPN says so ("post"); live games stay, since a prop
+  // on a game in progress is still on that game.
+  const game = slate.find((m) => (m.teamA?.abbr === abbr || m.teamB?.abbr === abbr) && m.state !== "post");
   if (!game) return null;
   const isAway = game.teamA?.abbr === abbr;
   return {
@@ -25893,6 +25906,15 @@ export default function PropLedger() {
       if (cancelled || !slate) return;
       bumpNbaRefresh();
     });
+    // And again while the tab stays open, and when it comes back to the front:
+    // a game ending is what moves its two teams to their next game, and a tab
+    // left open through opening night would otherwise show the finished one
+    // until it was reloaded. The fetch answers from its own cache inside the
+    // schedule TTL, so this costs a request a quarter-hour at most.
+    const refreshSlate = () => fetchNBALiveSlate().then((slate) => { if (!cancelled && slate) bumpNbaRefresh(); }).catch(() => {});
+    const slateTimer = setInterval(refreshSlate, NBA_SCHEDULE_TTL_MS + 30000);
+    const onTabBack = () => { if (document.visibilityState === "visible") refreshSlate(); };
+    document.addEventListener("visibilitychange", onTabBack);
 
     // The four hand-written teams first: they are on screen immediately, and
     // every one of them carries an espnId, so their generated logs can be
@@ -25917,7 +25939,11 @@ export default function PropLedger() {
       runPooled(NBA_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog);
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearInterval(slateTimer);
+      document.removeEventListener("visibilitychange", onTabBack);
+    };
   }, []);
 
   // Same pattern again for WNBA -- live season, so both the game logs and
