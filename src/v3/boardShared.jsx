@@ -1,5 +1,6 @@
 import React from "react";
 import { feedFormScale } from "../FormGraph.jsx";
+import TeamLogo from "../TeamLogo.jsx";
 
 // Tokens and the one graph both Board frames draw.
 //
@@ -141,39 +142,46 @@ function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", o
   const reasons = (card.reasons || []).filter((r) => r.title);
 
   const why = (
-    <div style={{ borderRight: wide ? "1px solid var(--line)" : "none", borderBottom: wide ? "none" : "1px solid var(--line)", padding: wide ? "18px 20px" : "14px 14px", display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+    <div style={{ borderRight: wide ? "1px solid var(--line)" : "none", borderBottom: wide ? "none" : "1px solid var(--line)", padding: wide ? "22px 26px" : "14px 14px", display: "flex", flexDirection: "column", gap: wide ? 18 : 12, minWidth: 0 }}>
       <span style={microLabel}>{whyLabel}</span>
       {reasons.length === 0 && (
-        <span style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--dim)" }}>{card.quietWhy}</span>
+        <span style={{ fontSize: wide ? 15 : 12.5, lineHeight: 1.5, color: "var(--dim)" }}>{card.quietWhy}</span>
       )}
       {reasons.map((w) => (
-        <div key={w.title} style={{ display: "flex", alignItems: "flex-start", gap: 11, minWidth: 0 }}>
-          <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: (TONE[w.kind] || TONE.none).fg, display: "block", flex: "0 0 auto" }} />
-          <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600 }}>{w.title}</span>
-            <span style={{ fontSize: 12, lineHeight: 1.5, color: "var(--dim)", textWrap: "pretty" }}>{w.cite}</span>
+        <div key={w.title} style={{ display: "flex", alignItems: "stretch", gap: wide ? 16 : 11, minWidth: 0, flex: wide ? "1 1 auto" : "0 0 auto" }}>
+          <span style={{ width: wide ? 4 : 3, alignSelf: "stretch", borderRadius: 2, background: (TONE[w.kind] || TONE.none).fg, display: "block", flex: "0 0 auto" }} />
+          <span style={{ display: "flex", flexDirection: "column", gap: wide ? 5 : 3, minWidth: 0, justifyContent: wide ? "center" : "flex-start" }}>
+            <span style={{ fontSize: wide ? 17 : 13.5, fontWeight: 600, lineHeight: 1.3 }}>{w.title}</span>
+            <span style={{ fontSize: wide ? 14.5 : 12, lineHeight: 1.55, color: "var(--dim)", textWrap: "pretty" }}>{w.cite}</span>
             {/* Who the availability report lists out, with their dot. */}
             {w.players && w.players.length > 0 && (
-              <span style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+              <span style={{ display: "flex", flexDirection: "column", gap: wide ? 14 : 10, marginTop: wide ? 12 : 8 }}>
                 {w.players.map((p) => (
-                  <span key={p.key} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span key={p.key} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: wide ? "6px 14px" : "4px 11px", minWidth: 0 }}>
                     <span style={{ flex: "0 0 auto", display: "flex" }}>{p.avatarNode}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0 }}>{p.name}</span>
-                    <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>{[p.team, p.position].filter(Boolean).join(" · ")}</span>
+                    <span style={{ fontSize: wide ? 18 : 15, fontWeight: 600, minWidth: 0 }}>{p.name}</span>
+                    {/* Team crest and position, at the size the name is read at --
+                        they were 11px grey mono beside a 15px name. */}
+                    <span style={{ display: "flex", alignItems: "center", gap: wide ? 9 : 7, whiteSpace: "nowrap" }}>
+                      <TeamLogo sport={sport} abbr={p.team} size={wide ? 26 : 22} />
+                      <span style={{ fontFamily: MONO, fontSize: wide ? 15 : 13, fontWeight: 600, color: "var(--text-2)" }}>
+                        {[p.team, p.position].filter(Boolean).join(" · ")}
+                      </span>
+                    </span>
                   </span>
                 ))}
               </span>
             )}
             {/* The props that face the soft defence, each one a way in. */}
             {w.props && w.props.length > 0 && (
-              <span style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+              <span style={{ display: "flex", flexDirection: "column", gap: wide ? 8 : 4, marginTop: wide ? 10 : 6 }}>
                 {w.props.map((p) => (
                   <span
                     key={p.key}
                     role="button" tabIndex={0}
                     onClick={() => open(p)} onKeyDown={key(() => open(p))}
                     title={`Open ${p.name} — ${String(p.prop).toLowerCase()}, on Player Detail`}
-                    style={{ fontFamily: MONO, fontSize: 11, color: "var(--text-2)", cursor: "pointer" }}
+                    style={{ fontFamily: MONO, fontSize: wide ? 13 : 11, color: "var(--text-2)", cursor: "pointer" }}
                   >
                     {p.name} <span style={{ color: "var(--dim)" }}>· {p.prop}</span> <span style={{ color: "var(--amber-ink)" }}>→</span>
                   </span>
@@ -242,12 +250,29 @@ function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", o
           </div>
         );
       })}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px 10px", padding: wide ? "12px 20px" : "12px 14px", minHeight: 44 }}>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)", minWidth: 0 }}>{card.rest}</span>
+      {/* This was a 10px caption in the corner and read as part of the footnote.
+          It is the card's way out to the whole game, so it is drawn as the one
+          filled control on the card. Alex, 2026-10-20: *"almost hiding."* */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px 14px", padding: wide ? "16px 20px" : "14px 14px", minHeight: 44 }}>
+        {/* The count is what the button opens, so it is read as one thing with it:
+            full ink, larger, the number itself in bold. */}
+        {(() => {
+          const m = /^(\d[\d,]*)\s*(.*)$/.exec(String(card.rest || ""));
+          return (
+            <span style={{ fontFamily: MONO, fontSize: wide ? 15 : 13, color: "var(--text)", minWidth: 0, lineHeight: 1.3 }}>
+              {m ? <><b style={{ fontSize: wide ? 20 : 17, fontWeight: 800 }}>{m[1]}</b> {m[2]}</> : card.rest}
+            </span>
+          );
+        })()}
         <span
           role="button" tabIndex={0}
           onClick={() => onOpenGameProps && onOpenGameProps(card)} onKeyDown={key(() => onOpenGameProps && onOpenGameProps(card))}
-          style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto" }}
+          style={{
+            fontFamily: MONO, fontSize: wide ? 13 : 12, fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
+            flex: wide ? "0 0 auto" : "1 1 100%", textAlign: "center",
+            padding: wide ? "13px 22px" : "14px 16px", borderRadius: 9,
+            background: "var(--amber)", color: "var(--accent-on)", border: "1px solid var(--amber)",
+          }}
         >
           THIS GAME’S PROPS →
         </span>
@@ -256,7 +281,7 @@ function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", o
   );
 
   return wide ? (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 380px) minmax(0, 1fr)", borderTop: "1px solid var(--line)" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 460px) minmax(0, 1fr)", borderTop: "1px solid var(--line)" }}>
       {why}
       {props}
     </div>

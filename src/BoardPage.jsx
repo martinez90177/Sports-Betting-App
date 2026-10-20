@@ -542,7 +542,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
             <PlayerAvatar
               name={p.name} alt={p.name} sport={sport} team={p.team} espnId={p.espnId}
               headshotSrc={p.headshotSrc} fallbackSrc={p.fallbackSrc} status="out"
-              size={26} inset={2} surface="var(--surface-1)"
+              size={40} inset={2} surface="var(--surface-1)"
             />
           ),
         })),
