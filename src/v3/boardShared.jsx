@@ -37,25 +37,30 @@ const atStyle = {
 // The strip under a prop on a hero card. Same margin-from-the-line axis as
 // every other graph in the app -- `feedFormScale`, not a second derivation --
 // drawn as a grid because at this size there is no gutter and no handle.
-function MiniStrip({ games, line, isBinary, direction, height = 54, barWidth = null }) {
+function MiniStrip({ games, line, isBinary, direction, height = 54, barWidth = null, lineGutter = 0 }) {
   // `barWidth` is the desktop form: bars of a set width instead of ten equal
   // shares of however wide the row is. On a 1,200px row the shares were 115px
   // wide and 60px tall -- flat slabs, not bars -- and no height made them read
   // as a chart. A fixed width keeps the proportions at any screen size, and the
   // line's value is printed where the dashed rule ends.
   const FIXED = barWidth != null;
-  const GAP = FIXED ? 6 : 4;
-  const FLOOR = FIXED ? 30 : 20;
+  // The phone form: the bars still share the row, but a gutter is held back on
+  // the right for the line's label, and the bars are drawn at the desktop's
+  // height and weight so the two read as the same chart.
+  const GUT = FIXED ? 0 : lineGutter;
+  const TALL = FIXED || GUT > 0;
+  const GAP = FIXED ? 6 : TALL ? 5 : 4;
+  const FLOOR = TALL ? 30 : 20;
   const vals = games.map((g) => ({ v: g.v }));
   const scale = feedFormScale(vals, line, isBinary, { height, pedestal: FLOOR });
   const hit = (v) => (direction === "under" ? v < line : v > line);
   return (
-    <span style={{ position: "relative", flex: FIXED ? "0 0 auto" : "1 1 auto", minWidth: 0 }}>
+    <span style={{ position: "relative", flex: FIXED ? "0 0 auto" : "1 1 auto", minWidth: 0, paddingRight: GUT }}>
       <span
         style={{
           display: "grid",
           gridTemplateColumns: FIXED ? `repeat(${games.length}, ${barWidth}px)` : `repeat(${games.length}, minmax(0, 1fr))`,
-          gap: GAP, alignItems: "end", height, width: FIXED ? "auto" : "100%",
+          gap: GAP, alignItems: "end", height, width: "100%",
         }}
       >
         {games.map((g, i) => {
@@ -70,7 +75,7 @@ function MiniStrip({ games, line, isBinary, direction, height = 54, barWidth = n
                 <span
                   style={{
                     display: "flex", alignItems: "flex-end", justifyContent: "center",
-                    width: "100%", height: scale.y(g.v), borderRadius: FIXED ? 4 : 2, boxSizing: "border-box",
+                    width: "100%", height: scale.y(g.v), borderRadius: TALL ? 4 : 2, boxSizing: "border-box",
                     alignSelf: "end", overflow: "hidden",
                     background: isHit ? "var(--pos)" : "transparent",
                     border: isHit ? "none" : "1.5px solid var(--neg)",
@@ -79,8 +84,8 @@ function MiniStrip({ games, line, isBinary, direction, height = 54, barWidth = n
                   {/* The value inside the bar, as the file draws it. */}
                   <span
                     style={{
-                      fontFamily: MONO, fontSize: FIXED ? 11 : 10, fontWeight: 700, lineHeight: "10px",
-                      textAlign: "center", paddingBottom: FIXED ? 5 : 3,
+                      fontFamily: MONO, fontSize: TALL ? 11 : 10, fontWeight: 700, lineHeight: "10px",
+                      textAlign: "center", paddingBottom: TALL ? 5 : 3,
                       color: isHit ? "#07120c" : "var(--neg)",
                     }}
                   >
@@ -94,15 +99,16 @@ function MiniStrip({ games, line, isBinary, direction, height = 54, barWidth = n
       </span>
       <span
         style={{
-          position: "absolute", left: 0, right: 0, bottom: scale.y(line),
+          position: "absolute", left: 0, right: GUT, bottom: scale.y(line),
           borderTop: "1px dashed var(--text)", opacity: 0.75, pointerEvents: "none",
         }}
       />
-      {FIXED && !isBinary && (
+      {TALL && !isBinary && (
         <span
           style={{
-            position: "absolute", left: "100%", bottom: scale.y(line), transform: "translateY(50%)",
-            marginLeft: 8, fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", whiteSpace: "nowrap", pointerEvents: "none",
+            position: "absolute", bottom: scale.y(line), transform: "translateY(50%)",
+            ...(FIXED ? { left: "100%", marginLeft: 8 } : { right: 0, width: GUT - 6, textAlign: "right" }),
+            fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", whiteSpace: "nowrap", pointerEvents: "none",
           }}
         >
           line {Number(line)}
@@ -231,7 +237,7 @@ function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", o
               {rate}
             </div>
             <span style={{ display: "flex" }}>
-              <MiniStrip games={p.bars} line={p.line} isBinary={p.isBinary} direction={p.direction} height={48} />
+              <MiniStrip games={p.bars} line={p.line} isBinary={p.isBinary} direction={p.direction} height={92} lineGutter={58} />
             </span>
           </div>
         );

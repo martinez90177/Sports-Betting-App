@@ -59,7 +59,7 @@ function PropRow({ p, sport, onOpen }) {
           <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{`${p.hits}/L${p.n}`}</span>
         </span>
       </div>
-      <MiniStrip games={p.bars} line={p.line} isBinary={p.isBinary} direction={p.direction} />
+      <MiniStrip games={p.bars} line={p.line} isBinary={p.isBinary} direction={p.direction} height={92} lineGutter={58} />
     </div>
   );
 }
