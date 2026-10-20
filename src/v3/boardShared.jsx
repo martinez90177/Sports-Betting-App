@@ -37,17 +37,25 @@ const atStyle = {
 // The strip under a prop on a hero card. Same margin-from-the-line axis as
 // every other graph in the app -- `feedFormScale`, not a second derivation --
 // drawn as a grid because at this size there is no gutter and no handle.
-function MiniStrip({ games, line, isBinary, direction, height = 54 }) {
-  const FLOOR = 20;
+function MiniStrip({ games, line, isBinary, direction, height = 54, barWidth = null }) {
+  // `barWidth` is the desktop form: bars of a set width instead of ten equal
+  // shares of however wide the row is. On a 1,200px row the shares were 115px
+  // wide and 60px tall -- flat slabs, not bars -- and no height made them read
+  // as a chart. A fixed width keeps the proportions at any screen size, and the
+  // line's value is printed where the dashed rule ends.
+  const FIXED = barWidth != null;
+  const GAP = FIXED ? 6 : 4;
+  const FLOOR = FIXED ? 30 : 20;
   const vals = games.map((g) => ({ v: g.v }));
   const scale = feedFormScale(vals, line, isBinary, { height, pedestal: FLOOR });
   const hit = (v) => (direction === "under" ? v < line : v > line);
   return (
-    <span style={{ position: "relative", flex: "1 1 auto", minWidth: 0 }}>
+    <span style={{ position: "relative", flex: FIXED ? "0 0 auto" : "1 1 auto", minWidth: 0 }}>
       <span
         style={{
-          display: "grid", gridTemplateColumns: `repeat(${games.length}, minmax(0, 1fr))`,
-          gap: 4, alignItems: "end", height, width: "100%",
+          display: "grid",
+          gridTemplateColumns: FIXED ? `repeat(${games.length}, ${barWidth}px)` : `repeat(${games.length}, minmax(0, 1fr))`,
+          gap: GAP, alignItems: "end", height, width: FIXED ? "auto" : "100%",
         }}
       >
         {games.map((g, i) => {
@@ -62,7 +70,7 @@ function MiniStrip({ games, line, isBinary, direction, height = 54 }) {
                 <span
                   style={{
                     display: "flex", alignItems: "flex-end", justifyContent: "center",
-                    width: "100%", height: scale.y(g.v), borderRadius: 2, boxSizing: "border-box",
+                    width: "100%", height: scale.y(g.v), borderRadius: FIXED ? 4 : 2, boxSizing: "border-box",
                     alignSelf: "end", overflow: "hidden",
                     background: isHit ? "var(--pos)" : "transparent",
                     border: isHit ? "none" : "1.5px solid var(--neg)",
@@ -71,8 +79,8 @@ function MiniStrip({ games, line, isBinary, direction, height = 54 }) {
                   {/* The value inside the bar, as the file draws it. */}
                   <span
                     style={{
-                      fontFamily: MONO, fontSize: 10, fontWeight: 700, lineHeight: "10px",
-                      textAlign: "center", paddingBottom: 3,
+                      fontFamily: MONO, fontSize: FIXED ? 11 : 10, fontWeight: 700, lineHeight: "10px",
+                      textAlign: "center", paddingBottom: FIXED ? 5 : 3,
                       color: isHit ? "#07120c" : "var(--neg)",
                     }}
                   >
@@ -90,6 +98,16 @@ function MiniStrip({ games, line, isBinary, direction, height = 54 }) {
           borderTop: "1px dashed var(--text)", opacity: 0.75, pointerEvents: "none",
         }}
       />
+      {FIXED && !isBinary && (
+        <span
+          style={{
+            position: "absolute", left: "100%", bottom: scale.y(line), transform: "translateY(50%)",
+            marginLeft: 8, fontFamily: MONO, fontSize: 10.5, color: "var(--text-2)", whiteSpace: "nowrap", pointerEvents: "none",
+          }}
+        >
+          line {Number(line)}
+        </span>
+      )}
     </span>
   );
 }
@@ -199,7 +217,10 @@ function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", o
           <div key={p.key} style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 20px", borderBottom: "1px solid var(--line)", minHeight: 44 }}>
             <span style={{ position: "relative", flex: "0 0 auto" }}>{p.avatarNode}</span>
             {who}
-            <MiniStrip games={p.bars} line={p.line} isBinary={p.isBinary} direction={p.direction} height={60} />
+            <MiniStrip games={p.bars} line={p.line} isBinary={p.isBinary} direction={p.direction} height={92} barWidth={30} />
+            {/* Whatever the strip leaves free goes here, so the rate stays at the
+                row's right edge instead of the bars stretching to reach it. */}
+            <span style={{ flex: "1 1 0", minWidth: 0 }} />
             {rate}
           </div>
         ) : (
