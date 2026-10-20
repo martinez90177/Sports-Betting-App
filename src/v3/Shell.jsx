@@ -37,6 +37,12 @@ const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 const SHORT = { board: "Board", feed: "Feed" };
 
 export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDock = null, children }) {
+  // The tab row scrolls sideways, and opens with the current tab in view.
+  const rowRef = React.useRef(null);
+  React.useEffect(() => {
+    const el = rowRef.current && rowRef.current.querySelector('[data-active="true"]');
+    if (el && el.scrollIntoView) el.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [page]);
   return (
     <div
       style={{
@@ -83,7 +89,22 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
             </span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 4, padding: "0 12px" }}>
+        {/* Seven tabs do not fit side by side on a phone: squeezed into equal
+            shares the labels ran into each other (BOARD FEED FINDINGS GAMES
+            INJURIES NEWS MISMATCHES in one unbroken line). Each tab keeps its
+            own width and its own room, and the row scrolls. The fade at the
+            right edge says there is more, and the trailing padding lets the
+            last tab clear it. Alex, 2026-10-20. */}
+        <div
+          ref={rowRef}
+          className="nsb"
+          style={{
+            display: "flex", gap: 2, padding: "0 4px", overflowX: "auto", overflowY: "hidden",
+            WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain",
+            WebkitMaskImage: "linear-gradient(to right, #000 calc(100% - 32px), transparent)",
+            maskImage: "linear-gradient(to right, #000 calc(100% - 32px), transparent)",
+          }}
+        >
           {NAV_TABS.map((t) => {
             const on = t.id === page;
             return (
@@ -91,12 +112,14 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
                 key={t.id}
                 role="button"
                 tabIndex={0}
+                data-active={on ? "true" : "false"}
                 onClick={() => onNavigate && onNavigate(t.id)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNavigate && onNavigate(t.id); } }}
                 style={{
-                  flex: "1 1 auto", display: "flex", justifyContent: "center",
-                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase",
-                  padding: on ? "10px 0" : "10px 0 12px", whiteSpace: "nowrap", cursor: "pointer",
+                  flex: "0 0 auto", display: "flex", justifyContent: "center",
+                  fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.08em", textTransform: "uppercase",
+                  // 44px tall, and wide enough to hit with a thumb.
+                  padding: on ? "13px 14px 11px" : "13px 14px 13px", whiteSpace: "nowrap", cursor: "pointer",
                   color: on ? "var(--amber-ink)" : "var(--dim)",
                   borderBottom: on ? "2px solid var(--amber)" : "none",
                 }}
@@ -105,6 +128,8 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
               </span>
             );
           })}
+          {/* Room after the last tab so it can scroll out from under the fade. */}
+          <span aria-hidden style={{ flex: "0 0 24px" }} />
         </div>
       </div>
 
