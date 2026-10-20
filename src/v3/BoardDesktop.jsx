@@ -131,22 +131,22 @@ export default function BoardDesktop({
         {hero && (
           <div style={{ flex: "0 0 auto", border: "1px solid var(--amber)", borderRadius: 14, background: "var(--surface-1)", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: "var(--amber-dim)", borderBottom: "1px solid var(--line)" }}>
-              <span style={{ width: 9, height: 9, borderRadius: 999, background: "var(--pos)", display: "block", flex: "0 0 auto" }} />
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--amber-ink)" }}>
+              <span style={{ width: 12, height: 12, borderRadius: 999, background: "var(--pos)", display: "block", flex: "0 0 auto" }} />
+              <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 600, letterSpacing: "0.14em", color: "var(--amber-ink)" }}>
                 {String(TIERS[0].title).toUpperCase()}
               </span>
-              <span role="img" style={crest(hero.away, sport, 28)} />
-              <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 24, letterSpacing: "-0.01em" }}>{String(hero.away).toUpperCase()}</span>
+              <span role="img" style={crest(hero.away, sport, 34)} />
+              <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 28, letterSpacing: "-0.01em" }}>{String(hero.away).toUpperCase()}</span>
               <span style={atStyle}>@</span>
-              <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 24, letterSpacing: "-0.01em" }}>{String(hero.home).toUpperCase()}</span>
-              <span role="img" style={crest(hero.home, sport, 28)} />
-              <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{hero.meta}</span>
+              <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 28, letterSpacing: "-0.01em" }}>{String(hero.home).toUpperCase()}</span>
+              <span role="img" style={crest(hero.home, sport, 34)} />
+              <span style={{ fontFamily: MONO, fontSize: 13, color: "var(--dim)" }}>{hero.meta}</span>
               <span
                 role="button"
                 tabIndex={0}
                 onClick={() => onOpenGameProps && onOpenGameProps(hero)}
                 onKeyDown={(e) => { if (e.key === "Enter") onOpenGameProps && onOpenGameProps(hero); }}
-                style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
+                style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 13, fontWeight: 600, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 {/* Read "OPEN MATCHUP →" and went to the Prop Feed, which is
                     the same mislabel the Matchup page's own button carried in
@@ -170,9 +170,9 @@ export default function BoardDesktop({
           <div key={t.key} style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 11 }}>
               <span style={tierMark(t.tone)} />
-              <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 17 }}>{t.title}</span>
-              <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)" }}>{t.count}</span>
-              <span style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.5 }}>{t.sub}</span>
+              <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 22 }}>{t.title}</span>
+              <span style={{ fontFamily: MONO, fontSize: 13, color: "var(--dim)" }}>{t.count}</span>
+              <span style={{ fontSize: 14.5, color: "var(--dim)", lineHeight: 1.5 }}>{t.sub}</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
               {t.games.map((g) => (

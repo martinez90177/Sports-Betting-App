@@ -1,6 +1,7 @@
 import React from "react";
 import { feedFormScale } from "../FormGraph.jsx";
 import { seasonLabel } from "../LogScope.jsx";
+import { teamLogo } from "../lib/gamesData.js";
 
 // The v3 form graph, at whichever size a screen asks for.
 //
@@ -173,7 +174,11 @@ function dateParts(iso) {
   return { mon: d.toLocaleDateString(undefined, { month: "short" }), day: String(d.getDate()) };
 }
 
-// Same URL pattern as lib/gamesData.js teamLogo(), drawn as a background so no
+// The URL comes from lib/gamesData.js teamLogo() itself, not a copy of its
+// pattern: this used to lowercase whatever it was given into the ESPN path, and
+// the app's NBA abbreviations are ESPN's long ones, so Utah (UTA) and New
+// Orleans (NOP) asked for files that do not exist (uta.png / nop.png -- the
+// CDN's are utah.png and no.png) and drew no crest at all. Drawn as a background so no
 // hole ever lands in an src attribute. A logo is never identified by slug
 // alone: cle, bos and min exist in several leagues, so a missing sport draws
 // nothing rather than defaulting to one.
@@ -182,7 +187,7 @@ export function crest(slug, sport, size) {
   const px = `${size || 28}px`;
   return {
     display: "block", flex: "0 0 auto", width: px, height: px,
-    backgroundImage: `url(https://a.espncdn.com/i/teamlogos/${sport}/500/${String(slug).toLowerCase()}.png)`,
+    backgroundImage: `url(${teamLogo(sport, String(slug))})`,
     backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center",
   };
 }
