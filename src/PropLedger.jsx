@@ -26028,6 +26028,17 @@ export default function PropLedger() {
     // loading state below reads mlb.mlbLoading rather than rows.length.
     else rows = mlb.mlbRows;
 
+    // The near slate, as the feed's default shows it. A daily league's rows each
+    // carry that team's NEXT game, so the whole week arrived here and the board
+    // opened on opening night leading with Thursday's game (and counting "17
+    // games" on a three-game night). If nothing is near -- the offseason, when
+    // the slate falls back to the opener -- the rows are kept as they are.
+    if (boardSport === "nba" || boardSport === "wnba") {
+      const win = feedSlateWindow(boardSport, rows, Date.now());
+      const near = rows.filter((r) => feedRowIsNear(r, win));
+      if (near.length) rows = near;
+    }
+
     // Rule 1: a named player carries their availability wherever they appear,
     // and the board renders row.status directly. The builders don't set it --
     // the feed resolves it at render time instead -- so the board has to do
