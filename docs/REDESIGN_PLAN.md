@@ -2979,3 +2979,30 @@ packet and reject any sentence carrying a number the packet does not hold.
 Also: the streak label in the form chart's gutter ("3 STRAIGHT") sat flush
 against the line box when the box was near mid-height (22px a side, a 22px label).
 It now keeps an 8px gap and rides past the chart's edge when it has to.
+
+## NBA opening night, 2026-10-20 — what was checked and fixed
+
+Checked the day before tip-off (first game BOS @ DET, 3:00 PM ET; PHI @ NY 7:00;
+OKC @ SA 9:30), desktop and phone, on production.
+
+- **A finished game stayed a team's "next game".** `nbaNextGameForTeam` took the
+  first game for the team on a slate that runs from today and keeps its games
+  after they end, so from tip-off on every row for those two teams would have
+  carried a finished opponent, date and venue (the NFL's "Thursday game stayed up
+  all Friday"). It now skips games ESPN marks `post`. Verified by marking one
+  game final in the cached slate: BOS rows moved to VS NYK, DET to @ MIA, PHI/NY
+  (not final) unchanged.
+- **Staleness while a tab stays open.** The slate re-fetches every ~15 minutes
+  and when the tab returns to the front (`NBA_SCHEDULE_TTL_MS`, was an hour with
+  no timer). The in-progress season's game logs are cached 20 minutes
+  (`nbaLogTtl`), not 12 hours; finished seasons keep the long TTL.
+- **Board window.** A daily league's rows each carry that team's next game, so the
+  NBA/WNBA Board took the whole week (17 games, leading with a Thursday game).
+  It now keeps the feed's default window, and falls back to everything when none
+  is near (the offseason).
+- **Phone nav.** Seven tabs were divided equally and ran together; the row now
+  scrolls sideways (fade at the right edge, current tab scrolled into view).
+- **Not changed, worth knowing.** The log refresh is per page load — a tab left
+  open overnight shows the new next-game opponent but not last night's box score
+  until reloaded. The site still opens on NFL; opening night is one tap away.
+  Nothing changes with the AI endpoint: it answers 503 until a key is set.
