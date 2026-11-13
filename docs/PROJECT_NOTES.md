@@ -1774,3 +1774,14 @@ current season reaches a real sample in days, not a month.
 The feed's NFL footnote used to be a sentence typed before kickoff ("the 2026
 season hasn't started yet") and was still up in Week 2. It is now built from the
 logs actually loaded (`nflFeedSeasonNote`).
+
+
+## The repo now lives at D:\Apps, outside OneDrive — 2026-11-13
+
+The project moved from `C:\Users\GamerX\OneDrive\Desktop\Sports Betting App` to
+`D:\Apps\Sports Betting App`. Alex wanted nothing on C: and nothing syncing to
+his personal OneDrive. The OneDrive sections above (sync noise, `.ppcache`
+junctions, pinned git objects) are history: `node_modules` and `dist` are
+now ordinary folders, and nothing here syncs. Claude's memory folder moved with
+it, to `C:\Users\GamerX\.claude\projects\D--Apps-Sports-Betting-App\memory\`
+(Claude keeps that under the user profile whatever the project's drive).

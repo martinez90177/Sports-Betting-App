@@ -5,7 +5,7 @@ Paste everything below the line into a new session.
 ---
 
 You are building tonight's NBA ladder for Alex. Read the memory folder first
-(C:\Users\GamerX\.claude\projects\C--Users-GamerX-OneDrive-Desktop-Sports-Betting-App\memory\MEMORY.md,
+(C:\Users\GamerX\.claude\projects\D--Apps-Sports-Betting-App\memory\MEMORY.md,
 and these files: nba-luka-without-lebron-with-reaves.md, nba-use-full-two-season-sample.md,
 no-knicks-on-ladders.md). Check today's date and the ESPN scoreboard
 (https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard) first. Exclude games already started.
