@@ -19,8 +19,8 @@ export default function AgeMark({ radius = 999 }) {
         className="pp-mono"
         tabIndex={0}
         style={{
-          fontFamily: "'Space Mono', monospace",
-          fontSize: 11, letterSpacing: "0.12em", color: "var(--amber-ink)",
+          fontFamily: "'Inter', system-ui, sans-serif",
+          fontSize: 11, letterSpacing: "0.05em", color: "var(--amber-ink)",
           border: "1px solid var(--amber)", borderRadius: radius, padding: "5px 12px",
           whiteSpace: "nowrap", cursor: "help",
         }}
@@ -36,7 +36,7 @@ export default function AgeMark({ radius = 999 }) {
           textAlign: "left", zIndex: 60,
         }}
       >
-        <span className="pp-mono" style={{ display: "block", fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 8 }}>
+        <span className="pp-mono" style={{ display: "block", fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 8 }}>
           21+ · PLEASE PLAY RESPONSIBLY
         </span>
         <span style={{ display: "block", fontSize: 12.5, lineHeight: 1.5, color: "var(--text-2)", marginBottom: 10 }}>

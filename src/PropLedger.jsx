@@ -1008,12 +1008,17 @@ async function fetchNBALiveSlate() {
   // documents, so it has to be missed rather than served.
   const cacheKey = "nba_live_slate_v3";
   const now = Date.now();
-  if (nbaScheduleCache && now - nbaScheduleCache.fetchedAt < NBA_SCHEDULE_TTL_MS) return nbaScheduleCache;
+  // A failed, empty slate is never served from cache: it is what left every
+  // NBA row with no opponent and no defence rank for a quarter-hour at a time
+  // (2026-11-17), after the scoreboard lost out to the page's startup flood of
+  // game-log requests.
+  const usable = (rec) => rec && !(rec.fetchFailed && !(rec.matchups || []).length);
+  if (usable(nbaScheduleCache) && now - nbaScheduleCache.fetchedAt < NBA_SCHEDULE_TTL_MS) return nbaScheduleCache;
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (now - parsed.fetchedAt < NBA_SCHEDULE_TTL_MS) {
+      if (usable(parsed) && now - parsed.fetchedAt < NBA_SCHEDULE_TTL_MS) {
         nbaScheduleCache = parsed;
         return parsed;
       }
@@ -1032,10 +1037,19 @@ async function fetchNBALiveSlate() {
     // each single day answers correctly. A range failing quietly left the whole
     // site with no slate, and every team on the Board as its own "TEAM @" card.
     const days = Array.from({ length: NBA_SLATE_DAYS }, (_, i) => dayKeyPlus(fromKey, i));
+    // Each day retried twice with a short wait: on a cold load the request
+    // competes with hundreds of game-log fetches and can be rejected outright.
     const parts = await Promise.all(days.map(async (k) => {
-      const res = await fetch(`${NBA_SCOREBOARD}?dates=${k}&limit=200`);
-      if (!res.ok) throw new Error("scoreboard " + res.status);
-      return res.json();
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const res = await fetch(`${NBA_SCOREBOARD}?dates=${k}&limit=200`);
+          if (!res.ok) throw new Error("scoreboard " + res.status);
+          return await res.json();
+        } catch (err) {
+          if (attempt >= 2) throw err;
+          await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        }
+      }
     }));
     return parseNBASlate({ events: parts.flatMap((d) => d?.events || []) }, unreadable);
   };
@@ -1067,7 +1081,9 @@ async function fetchNBALiveSlate() {
 
   const record = { matchups, unreadable, fetchFailed, scope, fetchedAt: now };
   nbaScheduleCache = record;
-  try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  if (!(fetchFailed && !matchups.length)) {
+    try { sessionStorage.setItem(cacheKey, JSON.stringify(record)); } catch {}
+  }
   return record;
 }
 
@@ -1190,7 +1206,7 @@ function ContextStatToggle({ stat, value, onChange, compact }) {
         cursor: "pointer", userSelect: "none",
         display: "inline-flex", alignItems: "center", gap: 5,
         padding: compact ? "3px 7px" : "4px 9px", borderRadius: "var(--r-pill)",
-        fontSize: compact ? 9.5 : 10.5, fontWeight: 700, letterSpacing: "0.03em",
+        fontSize: compact ? 9.5 : 10.5, fontWeight: 700, letterSpacing: "0.01em",
         border: `1px solid ${value ? CONTEXT_STAT_COLOR : "var(--line)"}`,
         background: value ? `color-mix(in srgb, ${CONTEXT_STAT_COLOR} 18%, transparent)` : "var(--surface-1)",
         color: value ? CONTEXT_STAT_COLOR : "var(--dim)",
@@ -1279,7 +1295,7 @@ function PlayerIdentityRow({ avatar, team, pos, name, stats, statsLabel = "SEASO
 
       <div style={{ minWidth: 0 }}>
         <div className="pp-mono" style={{
-          fontSize: 11, letterSpacing: "0.16em", color: "var(--dim)",
+          fontSize: 11, letterSpacing: "0.06em", color: "var(--dim)",
           textTransform: "uppercase", whiteSpace: "nowrap",
           overflow: "hidden", textOverflow: "ellipsis",
         }}>
@@ -1296,7 +1312,7 @@ function PlayerIdentityRow({ avatar, team, pos, name, stats, statsLabel = "SEASO
       {stats && stats.length > 0 && (
         <div style={{ marginLeft: "auto", textAlign: "right" }}>
           <div className="pp-mono" style={{
-            fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 6,
+            fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 6,
           }}>
             {statsLabel}
           </div>
@@ -1306,7 +1322,7 @@ function PlayerIdentityRow({ avatar, team, pos, name, stats, statsLabel = "SEASO
                 <div className="pp-mono" style={{ fontSize: compact ? 14 : 18, color: "var(--accent-text)", fontWeight: 700 }}>{s.value}</div>
                 <div style={{
                   fontSize: compact ? 9 : 10, color: "var(--dim)", textTransform: "uppercase",
-                  letterSpacing: "0.05em", whiteSpace: "nowrap",
+                  letterSpacing: "0.02em", whiteSpace: "nowrap",
                 }}>{s.label}</div>
               </div>
             ))}
@@ -3331,6 +3347,9 @@ function nflDefTables() {
 // Under this many games this season's rank is flagged `early` -- still the
 // one that leads, but the tooltip says how few games it stands on.
 const NFL_DEF_CURRENT_MIN_GAMES = 4;
+// Last season's rank is printed beside this season's through this many games
+// of the new season, and dropped after.
+const NFL_DEF_PREV_SHOWN_THROUGH = 4;
 
 // Both seasons' ranks for one defence in one market, and which one leads.
 //
@@ -3355,10 +3374,15 @@ function nflDefSplit(market, opp) {
   const last = tables[season - 1]?.[market]?.[opp] || null;
   if (!current && !last) return null;
   const currentLeads = !!current;
+  // Last season rides beside this one only through a defence's first four
+  // games. Past that it is noise -- Alex, 2026-11-17: "2025 data is not at all
+  // necessary this deep into 2026 ... the previous year's defensive ranking
+  // only shows through first 4 games." Applies to every future season too.
+  const lastStillShown = !currentLeads || current.games <= NFL_DEF_PREV_SHOWN_THROUGH;
   return {
     current, last,
     lead: currentLeads ? current : last,
-    other: currentLeads ? last : current,
+    other: currentLeads ? (lastStillShown ? last : null) : current,
     early: !!current && current.games < NFL_DEF_CURRENT_MIN_GAMES,
   };
 }
@@ -6200,7 +6224,7 @@ function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact,
                     style={{
                       position: "absolute", bottom: -5, right: -8,
                       padding: "1px 5px", borderRadius: 4,
-                      fontSize: 8.5, fontWeight: 800, letterSpacing: "0.04em",
+                      fontSize: 8.5, fontWeight: 800, letterSpacing: "0.02em",
                       lineHeight: 1.45, whiteSpace: "nowrap",
                       background: tone.bg, color: tone.fg,
                       boxShadow: "0 0 0 1.5px var(--surface-2)",
@@ -6223,7 +6247,7 @@ function TeammateChipRow({ candidates, diffs, chips, onChange, loading, compact,
                 className="mono"
                 style={{
                   marginTop: 3, fontSize: selected ? 10.5 : 14, fontWeight: 800, lineHeight: 1.2,
-                  letterSpacing: selected ? "0.06em" : 0,
+                  letterSpacing: selected ? "0.02em" : 0,
                   color: selected
                     ? "inherit"
                     : diff === undefined ? "var(--dim)" : diff > 0 ? "var(--green)" : diff < 0 ? "var(--red)" : "var(--dim)",
@@ -6273,7 +6297,7 @@ function FilterPanel({ activeCount = 0, onReset, children }) {
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span
             className="oswald"
-            style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: "var(--text)" }}
+            style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text)" }}
           >
             Filters
           </span>
@@ -6285,7 +6309,7 @@ function FilterPanel({ activeCount = 0, onReset, children }) {
             onClick={onReset}
             className="oswald"
             style={{
-              fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
               color: "var(--dim)", cursor: "pointer",
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--amber)"; }}
@@ -6315,7 +6339,7 @@ function FilterPanel({ activeCount = 0, onReset, children }) {
           onClick={onReset}
           className="oswald"
           style={{
-            fontSize: 11, fontWeight: 800, letterSpacing: "0.10em", textTransform: "uppercase",
+            fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
             color: activeCount > 0 ? "var(--text-2)" : "var(--dim)",
             opacity: activeCount > 0 ? 1 : 0.5,
             cursor: activeCount > 0 ? "pointer" : "default",
@@ -6423,7 +6447,7 @@ function FilterPanelLauncher({ open, onOpenChange, activeCount = 0, compact, anc
           style={{
             display: "flex", alignItems: "center", gap: 6,
             cursor: "pointer", padding: "6px 10px 6px 12px", borderRadius: 999,
-            fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+            fontSize: 11, fontWeight: 700, letterSpacing: "0.02em",
             // Border goes accent whenever filters are on, open or not -- the
             // panel being closed is exactly when you need to be told.
             border: `1px solid ${open || activeCount ? "var(--amber)" : "var(--line)"}`,
@@ -6511,7 +6535,7 @@ function SampleSizeGrid({ cells }) {
           <div
             className="oswald"
             style={{
-              fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+              fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase",
               color: s.active ? "var(--accent-on)" : "var(--dim)",
             }}
           >
@@ -6525,7 +6549,7 @@ function SampleSizeGrid({ cells }) {
             }}
           >
             {s.rate === null ? "—" : splitIsThin(s)
-                ? <span style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase" }}>too few</span>
+                ? <span style={{ fontSize: 9.5, letterSpacing: "0.02em", textTransform: "uppercase" }}>too few</span>
                 : `${Math.round(s.rate * 100)}%`}
           </div>
           {s.rate !== null && s.count != null && (
@@ -6694,9 +6718,9 @@ function LineupTiles({ teammates = [], opponents = [], chips, onChange, diffs = 
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                <span className="mono" style={{ fontSize: 9, letterSpacing: "0.1em", color: "var(--dim)" }}>{p.side}</span>
+                <span className="mono" style={{ fontSize: 9, letterSpacing: "0.04em", color: "var(--dim)" }}>{p.side}</span>
                 {on && (
-                  <span className="mono" style={{ fontSize: 9, letterSpacing: "0.1em", color: ink }}>
+                  <span className="mono" style={{ fontSize: 9, letterSpacing: "0.04em", color: ink }}>
                     {mode === "with" ? "WITH" : "W/O"}
                   </span>
                 )}
@@ -6729,7 +6753,7 @@ function LineupTiles({ teammates = [], opponents = [], chips, onChange, diffs = 
           >
             ‹ Prev
           </span>
-          <span className="mono" style={{ fontSize: 10, color: "var(--dim)", letterSpacing: "0.08em" }}>
+          <span className="mono" style={{ fontSize: 10, color: "var(--dim)", letterSpacing: "0.03em" }}>
             {safePage + 1} / {pages} · {people.length} players
           </span>
           <span
@@ -6773,7 +6797,7 @@ function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel, st
   ].filter((g) => g.players.length);
 
   const tabStyle = (key) => ({
-    fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+    fontSize: 11, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
     color: tab === key ? "var(--text)" : "var(--dim)",
     paddingBottom: 7, cursor: "pointer", userSelect: "none",
     boxShadow: tab === key ? "inset 0 -2px 0 var(--amber)" : "none",
@@ -6823,7 +6847,7 @@ function PlayerScopeSelect({ teammates, opponents, chips, onChange, oppLabel, st
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0 4px" }}>
               <span
                 className="oswald"
-                style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--dim)" }}
+                style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--dim)" }}
               >
                 {g.label}
               </span>
@@ -6927,7 +6951,7 @@ function CollapsibleSection({ title, storageKey, defaultOpen = false, children }
         aria-expanded={open}
         style={{
           display: "flex", alignItems: "center", gap: "var(--s-2)", cursor: "pointer", userSelect: "none",
-          fontSize: 13, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)",
+          fontSize: 13, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--dim)",
           padding: "4px 0",
         }}
       >
@@ -7406,7 +7430,7 @@ function HitRateSplits({ sport, allGames, statValue, effectiveLine, lastN, onSet
             </div>
             <div className="mono stat-value" style={{ fontSize: isNarrow ? 13 : 14.5, color: rateColor(s.rate) }}>
               {s.rate === null ? "—" : splitIsThin(s)
-                ? <span style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase" }}>too few</span>
+                ? <span style={{ fontSize: 9.5, letterSpacing: "0.02em", textTransform: "uppercase" }}>too few</span>
                 : `${Math.round(s.rate * 100)}%`}
             </div>
             {s.rate !== null && s.count != null && (
@@ -7423,7 +7447,7 @@ function HitRateSplits({ sport, allGames, statValue, effectiveLine, lastN, onSet
       </div>
         {gamesInGraph !== null && (
           <span className="pp-mono" style={{
-            fontSize: isNarrow ? 10 : 10.5, letterSpacing: "0.1em", color: "var(--dim)",
+            fontSize: isNarrow ? 10 : 10.5, letterSpacing: "0.04em", color: "var(--dim)",
             whiteSpace: "nowrap", flexShrink: 0,
           }}>
             GAMES IN GRAPH · {gamesInGraph} OF {cappedMax}
@@ -7684,7 +7708,7 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
       }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {logoFn && <img src={logoFn(d.opp)} alt={d.opp} width={18} height={18} style={{ objectFit: "contain" }} />}
-          <span className="oswald" style={{ fontSize: 13, letterSpacing: "0.03em", color: "var(--text)" }}>
+          <span className="oswald" style={{ fontSize: 13, letterSpacing: "0.01em", color: "var(--text)" }}>
             {d.home == null ? "" : d.home ? "vs" : "@"} {d.opp}
           </span>
           {d.playoff && <PlayoffTag />}
@@ -7697,7 +7721,7 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
       {/* Body: big value + result badge */}
       <div style={{ padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div>
-          <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em" }}>
             {marketLabel}
           </div>
           <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: resultColor, lineHeight: 1.2 }}>
@@ -7708,7 +7732,7 @@ function ChartTooltip({ active, payload, effectiveLine, isBinary, marketLabel, f
           </div>
         </div>
         <span className="mono" style={{
-          fontSize: 11, fontWeight: 700, letterSpacing: "0.04em",
+          fontSize: 11, fontWeight: 700, letterSpacing: "0.02em",
           padding: "4px 9px", borderRadius: 4,
           color: resultColor, border: `1px solid ${resultColor}`, background: `${resultColor}1a`,
         }}>
@@ -7823,7 +7847,7 @@ function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleB
     <>
       {visible.map((section, si) => (
         <div key={section.label} style={{ marginTop: si === 0 ? 0 : 10 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4, textAlign: "center" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em", marginBottom: 4, textAlign: "center" }}>
             {section.label}
           </div>
           {section.pills ? (
@@ -7833,7 +7857,7 @@ function MarketSectionGrid({ sections, activeMarket, onSelect, isNarrow, singleB
                   <div
                     className="oswald"
                     style={{
-                      fontSize: isNarrow ? 15.5 : 18, fontWeight: 600, letterSpacing: "0.03em", padding: "6px 4px",
+                      fontSize: isNarrow ? 15.5 : 18, fontWeight: 600, letterSpacing: "0.01em", padding: "6px 4px",
                       color: activeMarket === m.id ? "var(--amber)" : "var(--dim)", cursor: "pointer", whiteSpace: "nowrap",
                     }}
                     onClick={() => onSelect(m.id)}
@@ -8058,7 +8082,7 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
             cleared {line != null ? Number(line).toFixed(decimals) : "—"} in {hits} of {total} games
           </div>
           {sampleLabel && (
-            <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, letterSpacing: "0.06em" }}>
+            <div className="pp-mono" style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, letterSpacing: "0.02em" }}>
               {sampleLabel}
             </div>
           )}
@@ -8069,11 +8093,11 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
         gap: compact ? 18 : 28,
       }}>
         <div style={{ textAlign: "left" }}>
-          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>AVERAGE</div>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.04em" }}>AVERAGE</div>
           <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--text)" }}>{graphAvg.toFixed(decimals)}</div>
         </div>
         <div style={{ textAlign: "left" }}>
-          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>LINE</div>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.04em" }}>LINE</div>
           <div className="mono stat-value" style={{
             fontSize: compact ? 16 : 19,
             color: adjusted ? "var(--amber-ink)" : "var(--text)",
@@ -8098,7 +8122,7 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
           )}
         </div>
         <div style={{ textAlign: "left" }}>
-          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>CLEARS IT BY</div>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.04em" }}>CLEARS IT BY</div>
           <div className="mono stat-value" style={{
             fontSize: compact ? 16 : 19,
             color: edge >= 0 ? "var(--green)" : "var(--red)",
@@ -8121,7 +8145,7 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
             sport really is covered (MLB hits and home runs, via api/odds.js),
             and that cell fetches on demand instead of showing the dash. */}
         <div style={{ textAlign: "left" }}>
-          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.1em" }}>
+          <div className="pp-mono micro-label" style={{ fontSize: compact ? 9.5 : 10.5, letterSpacing: "0.04em" }}>
             ODDS
           </div>
           <div className="mono stat-value" style={{ fontSize: compact ? 16 : 19, color: "var(--dim)" }}>
@@ -8130,12 +8154,12 @@ function MetricRail({ seasonAvg, graphAvg, hitRate, hits, total, edge, compact, 
                   { price: number, book: string, point: number, fetchedAt: number }
                 per player+market, joined the way api/odds.js already returns
                 bookmakers -> markets -> outcomes. Until then: no value. */}
-            {odds || <span style={{ fontSize: compact ? 11 : 12, letterSpacing: "0.06em" }}>Coming soon</span>}
+            {odds || <span style={{ fontSize: compact ? 11 : 12, letterSpacing: "0.02em" }}>Coming soon</span>}
           </div>
         </div>
         {total > 0 && (
           <div className="pp-mono" style={{
-            marginLeft: "auto", fontSize: 11, letterSpacing: "0.08em",
+            marginLeft: "auto", fontSize: 11, letterSpacing: "0.03em",
             color: "var(--dim)", border: "1px solid var(--line)",
             padding: "4px 10px", borderRadius: 999,
           }}>
@@ -8186,7 +8210,7 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
           <span className="pp-mono" style={{ fontSize: 60, lineHeight: 0.9, letterSpacing: "-0.02em", color: "var(--amber-ink, var(--amber))" }}>
             {Math.round(hitRate * 100)}%
           </span>
-          <span className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: "var(--text-2, var(--dim))", paddingBottom: 8, lineHeight: 1.5 }}>
+          <span className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.02em", color: "var(--text-2, var(--dim))", paddingBottom: 8, lineHeight: 1.5 }}>
             {gamesOver} of {total} games<br />in this sample
           </span>
         </div>
@@ -8195,7 +8219,7 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
             equal-height squares: they said whether each game cleared and
             never by how much, which the new handoff rejects by name. */}
         <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 14, marginTop: 18 }}>
-          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
             Last {recent.length}{marketLabel ? ` · ${marketLabel}` : ""} vs. line
           </div>
           <div style={{ marginTop: 14 }}>
@@ -8210,10 +8234,10 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
             </span>
           </div>
           <div style={{ display: "flex", gap: 14, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
-            <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+            <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
               <span style={{ width: 7, height: 14, background: "var(--pos)", borderRadius: 2 }} />cleared the line
             </span>
-            <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+            <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
               <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box" }} />fell short
             </span>
           </div>
@@ -8224,7 +8248,7 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
           and the lean in one line and stays in --text: a lean is not a hit or
           a miss, so it earns neither green nor red. */}
       <div style={{ padding: "18px 16px", background: "var(--surface-sunken)", borderTop: "1px solid var(--line)" }}>
-        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>The read</div>
+        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>The read</div>
         <div className="pp-display" style={{ fontSize: 26, marginTop: 8, fontWeight: 600, color: "var(--text)" }}>
           {tierWord} sample · leans {leans}
         </div>
@@ -8233,7 +8257,7 @@ function PlayerFormVerdict({ values, effectiveLine, total, hitRate, sampleLabel,
             <span key={i} style={{ flex: 1, height: 5, borderRadius: 2, background: i <= confidenceTier ? "var(--amber)" : "var(--surface-2)" }} />
           ))}
         </div>
-        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 9 }}>
+        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)", marginTop: 9 }}>
           Confidence · {confidenceWord}
         </div>
         <div style={{ fontSize: 14, color: "var(--text-2, var(--dim))", lineHeight: 1.6, marginTop: 12 }}>
@@ -13721,7 +13745,7 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher, values }
             style={{
               padding: "8px 20px", borderRadius: 999, border: "1px solid var(--line)",
               background: "var(--panel)", color: "var(--text)", fontSize: 12.5, fontWeight: 700,
-              letterSpacing: "0.04em", textTransform: "uppercase", cursor: "pointer",
+              letterSpacing: "0.02em", textTransform: "uppercase", cursor: "pointer",
             }}
           >
             Get Odds
@@ -13776,7 +13800,7 @@ function SportsbookOddsPanel({ teamAbbr, playerName, market, isPitcher, values }
         <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden" }}>
           <div style={{
             padding: "8px 16px", borderBottom: "1px solid var(--line)", fontSize: 11, color: "var(--dim)",
-            textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", justifyContent: "space-between",
+            textTransform: "uppercase", letterSpacing: "0.02em", display: "flex", justifyContent: "space-between",
           }}>
             <span>Sportsbook Odds</span>
             {(() => {
@@ -14027,7 +14051,7 @@ function MLBDetailModal({ open, onClose, title, isNarrow, children }) {
           </div>
         )}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 12px", borderBottom: "1px solid var(--line)" }}>
-          <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase" }}>{title}</span>
+          <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.01em", textTransform: "uppercase" }}>{title}</span>
           <div onClick={requestClose} role="button" aria-label={`Close ${title} panel`} style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
         </div>
         {/* minHeight:0 so this flex child is allowed to shrink below its content
@@ -14161,7 +14185,7 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
     <div className="roster-panel" style={{ maxWidth: 560, margin: "0 auto" }}>
-      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em", marginBottom: 4 }}>
         {section === "lineup" ? "Lineup vs" : "Matchup Analyzer"}
       </div>
       <div style={{ fontSize: 10.5, color: "var(--dim)", marginBottom: 14 }}>
@@ -14222,7 +14246,7 @@ function MLBMatchupAnalyzer({ teamRoster, oppRoster, nextGame, pick, section }) 
             {statCols.map(([label, val]) => (
               <div key={label} style={{ minWidth: 34 }}>
                 <div className="mono" style={{ fontSize: 18, fontWeight: 700, color: "var(--amber)" }}>{val}</div>
-                <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+                <div style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em" }}>{label}</div>
               </div>
             ))}
           </div>
@@ -14282,7 +14306,7 @@ function ExpectedLineupPanel({ battingRoster, lineupRows, selectedBatterId, onSe
   return (
     <div className="roster-panel" style={{ overflowX: "auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em" }}>
           Expected Opposing Lineup
         </div>
         <div style={{ fontSize: 10.5, color: "var(--dim)" }}>
@@ -14331,7 +14355,7 @@ function ExpectedLineupPanel({ battingRoster, lineupRows, selectedBatterId, onSe
                       className="mono"
                       title="Out — not available for this game"
                       style={{
-                        marginLeft: 6, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.06em",
+                        marginLeft: 6, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.02em",
                         padding: "1px 4px", borderRadius: 3, verticalAlign: "middle",
                         color: "var(--status-out, #ef5b5b)", border: "1px solid var(--status-out, #ef5b5b)",
                       }}
@@ -15527,7 +15551,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
                   background: bg, border: `1px solid ${color}`, color,
                 }}
               >
-                <span className="oswald" style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                <span className="oswald" style={{ fontWeight: 800, fontSize: 10, letterSpacing: "0.03em", textTransform: "uppercase" }}>
                   {label}
                 </span>
                 <span style={{ color: "var(--text)" }}>{names.join(", ")}</span>
@@ -15650,7 +15674,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
             beside a "20 GAMES" chip and a "6 of 20 games" verdict invites
             reading one as another. The footer names which of the three it is
             and what the other one is. */}
-        <span className="pp-mono" style={{ flex: 1, minWidth: 220, fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)", lineHeight: 1.6 }}>
+        <span className="pp-mono" style={{ flex: 1, minWidth: 220, fontSize: 11.5, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.6 }}>
           {`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
         </span>
         <button
@@ -15660,7 +15684,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
             flex: "none",
             padding: "14px 20px",
             fontSize: 12,
-            letterSpacing: "0.1em",
+            letterSpacing: "0.04em",
             textTransform: "uppercase",
           }}
           onClick={() => onTogglePick && onTogglePick(buildPagePick())}
@@ -15934,7 +15958,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
           className="oswald"
           style={{
             cursor: "pointer", padding: "6px 16px", borderRadius: 999, fontSize: 12, fontWeight: 700,
-            letterSpacing: "0.03em", flexShrink: 0, whiteSpace: "nowrap",
+            letterSpacing: "0.01em", flexShrink: 0, whiteSpace: "nowrap",
             border: `1px solid ${view === v.id ? "var(--amber)" : "var(--line)"}`,
             background: view === v.id ? "var(--amber-dim)" : "var(--panel)",
             color: view === v.id ? "var(--amber)" : "var(--dim)",
@@ -16807,11 +16831,15 @@ function nbaDefCategoryLabel(market) {
   return NBA_MARKET_DEF_LABEL[market] || "overall defense";
 }
 
-// The NBA season for 2025-26 is complete, so this table is final -- a long
-// TTL, unlike the WNBA's 30 minutes against a live season.
-const NBA_TEAM_DEF_TTL_MS = 12 * 60 * 60 * 1000;
+// An hour: the season is live, and the day the league crosses the ten-game
+// mark below is the day the badge has to switch seasons.
+const NBA_TEAM_DEF_TTL_MS = 60 * 60 * 1000;
+// Last season's defence ranks are used only through the first ten games of a
+// new season; from the tenth game on it is this season's. Standing rule for
+// every season (Alex, 2026-11-17).
+const NBA_DEF_PREV_SEASON_THROUGH = 10;
 async function fetchNBATeamDefense() {
-  const cacheKey = "nba_team_def_v4";
+  const cacheKey = "nba_team_def_v5";
   try {
     const stored = sessionStorage.getItem(cacheKey);
     if (stored) {
@@ -16820,42 +16848,65 @@ async function fetchNBATeamDefense() {
     }
   } catch {}
 
-  try {
-    // This season's table once nearly every team has ten games in it; last
-    // season's until then.
-    // Was a literal 2026, right until the 2026-27 season tipped off.
-    let rows = [];
-    for (const season of [currentNBASeason(), currentNBASeason() - 1]) {
-      const res = await fetch(`https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=${season}`);
-      if (!res.ok) continue;
-      const data = await res.json();
-      let ready = 0;
-      const got = [];
-      (data?.children || []).forEach((conf) => {
-        (conf?.standings?.entries || []).forEach((entry) => {
-          const abbr = nbaTeamAbbr(entry.team?.abbreviation);
-          const avgPA = entry.stats?.find((st) => st.name === "avgPointsAgainst")?.value;
-          // Wins plus losses: the standings carry no gamesPlayed field (a first
-          // version asked for one, read 0 for every team, and loaded no ranks).
-          const gp = (Number(entry.stats?.find((st) => st.name === "wins")?.value) || 0)
-            + (Number(entry.stats?.find((st) => st.name === "losses")?.value) || 0);
-          if (gp >= 10) ready += 1;
-          if (abbr && avgPA != null) got.push({ abbr, avgPA, season });
-        });
+  // One season's table, ranked: { abbr: { rank, rating, games, season, of } }.
+  // Rank 1 is the toughest defence (fewest points allowed), the direction every
+  // other rank in this app uses.
+  const seasonTable = async (season) => {
+    const res = await fetch(`https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=${season}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const got = [];
+    (data?.children || []).forEach((conf) => {
+      (conf?.standings?.entries || []).forEach((entry) => {
+        const abbr = nbaTeamAbbr(entry.team?.abbreviation);
+        const stat = (name) => entry.stats?.find((st) => st.name === name)?.value;
+        const avgPA = stat("avgPointsAgainst");
+        // Wins plus losses: the standings carry no gamesPlayed field.
+        const games = (Number(stat("wins")) || 0) + (Number(stat("losses")) || 0);
+        if (abbr && avgPA != null) got.push({ abbr, avgPA, games });
       });
-      // A season is ranked once nearly every team has ten games in it. The new
-      // season's standings already count preseason games (W1 L2 before the
-      // opener), so "has any games" would rank it on exhibitions.
-      if (got.length && ready >= 28) { rows = got; break; }
-    }
-    if (!rows.length) return null;
+    });
+    if (!got.length) return null;
+    got.sort((x, y) => x.avgPA - y.avgPA);
+    const table = {};
+    got.forEach((r, i) => {
+      table[r.abbr] = { rank: i + 1, rating: Math.round(r.avgPA * 10) / 10, games: r.games, season, of: got.length };
+    });
+    return table;
+  };
 
-    // Rank 1 is the toughest defence, i.e. fewest points allowed -- the same
-    // direction every other rank in this app uses.
-    rows.sort((a, b) => a.avgPA - b.avgPA);
-    rows.forEach((r, i) => { r.rank = i + 1; });
+  try {
+    const season = currentNBASeason();
+    const [current, last] = await Promise.all([seasonTable(season), seasonTable(season - 1)]);
+    // The NFL rule, applied to the NBA (Alex, 2026-11-17): this season's rank,
+    // over every game it has, leads from the opener on -- last season's never
+    // does again once the new one is under way. Last season's rides beside it
+    // as a reference only while that team has played ten games or fewer.
+    //
+    // ESPN's standings for a new season count preseason games until the
+    // opener (W1 L2 before a regular-season game is played), so the new
+    // season only leads from October 19 of its first year -- after the
+    // preseason, before any opener this league has scheduled.
+    const now = new Date();
+    const openerPassed = now.getFullYear() > season - 1 || now.getMonth() > 9 || (now.getMonth() === 9 && now.getDate() >= 19);
+    const currentLeads = !!current && openerPassed
+      && Object.values(current).filter((t) => t.games >= 1).length >= 28;
+    if (!currentLeads && !last) return null;
+
     const byTeam = {};
-    rows.forEach((r) => { byTeam[r.abbr] = { rank: r.rank, rating: Math.round(r.avgPA * 10) / 10, season: r.season }; });
+    if (currentLeads) {
+      Object.entries(current).forEach(([abbr, t]) => {
+        const prev = last && last[abbr];
+        byTeam[abbr] = {
+          ...t,
+          prev: prev && t.games <= NBA_DEF_PREV_SEASON_THROUGH ? prev : null,
+        };
+      });
+    } else {
+      // Before the opener: last season is all there is, and the badge says
+      // which season it is from.
+      Object.entries(last).forEach(([abbr, t]) => { byTeam[abbr] = { ...t, prev: null }; });
+    }
 
     try { sessionStorage.setItem(cacheKey, JSON.stringify({ byTeam, fetchedAt: Date.now() })); } catch {}
     return byTeam;
@@ -17209,7 +17260,7 @@ function PropTypePicker({ groups, values, onChange, fill = false, unavailable = 
           )}
           {visibleGroups.map((g) => (
             <div key={g.label}>
-              <div style={{ padding: "8px 12px 3px", fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div style={{ padding: "8px 12px 3px", fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em" }}>
                 {g.label}
               </div>
               {g.markets.map((m) => {
@@ -17270,7 +17321,7 @@ const DROPDOWN_PANEL_STYLE = {
 // date a game belongs to stays on screen while its group is scrolled through.
 const DROPDOWN_GROUP_STYLE = {
   position: "sticky", top: 0, zIndex: 1,
-  padding: "8px 12px", fontSize: 11, fontWeight: 700, letterSpacing: "0.06em",
+  padding: "8px 12px", fontSize: 11, fontWeight: 700, letterSpacing: "0.02em",
   textTransform: "uppercase", color: "var(--dim)", background: "var(--panel2)",
   borderBottom: "1px solid var(--line)",
 };
@@ -17562,7 +17613,7 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, panelAllLabel
         onClick={() => setOpen((v) => !v)}
         style={rail ? {
           cursor: "pointer", minHeight: 34, padding: "0 11px", borderRadius: 7,
-          fontFamily: "'PP At', 'Space Mono', ui-monospace, monospace", fontSize: 12, textAlign: "left",
+          fontFamily: "'Inter', system-ui, sans-serif", fontSize: 12, textAlign: "left",
           border: `1px solid ${open || selected.size ? "var(--amber)" : "var(--line)"}`,
           background: open || selected.size ? "var(--amber-dim)" : "var(--surface-1)",
           color: open || selected.size ? "var(--amber-ink)" : "var(--text-2)",
@@ -17659,7 +17710,7 @@ function GamesMultiSelect({ options, selected, onChange, allLabel, panelAllLabel
 // Mono 11px, 0.14em, uppercase, --dim. Every header cell uses it, so the
 // header reads as one row of labels rather than six separately-tuned ones.
 const FEED_LABEL = {
-  fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
+  fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)",
 };
 
 // The rate group -- L5 / L10 / L20 / H2H / this season / last -- as one flex
@@ -17716,7 +17767,7 @@ function FeedTableHeader({ columnSort, onSort, seasonLabels, customWin = null, s
         style={{
           ...feedRateCell,
           display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
-          fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
+          fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase",
           padding: "3px 0", borderRadius: 6, whiteSpace: "nowrap",
           cursor: sortable ? "pointer" : "default", userSelect: "none",
           background: sorted ? "var(--amber-dim)" : "transparent",
@@ -17823,7 +17874,7 @@ function FeedFormPopover({ r, direction, anchor, line }) {
         boxShadow: "var(--shadow-2)", pointerEvents: "none",
       }}
     >
-      <div className="mono" style={{ fontSize: 9.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      <div className="mono" style={{ fontSize: 9.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         Last {recent.length} · {r.subtitle}
       </div>
       {recent.slice().reverse().map((g, i) => {
@@ -18314,7 +18365,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // why that took twice the photo's growth, and why 46 rather than 54: the
   // graph pays for it). The photo is a 436px ESPN crop, so it is sharp at any
   // size here. The narrow card layout keeps its 34.
-  const avatarSize = isNarrow ? 34 : 46;
+  const avatarSize = isNarrow ? 38 : 48;
   const dotSize = Math.round(avatarSize * 0.3);
 
   // ---- draggable line (redesign handoff) ----
@@ -18398,7 +18449,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
       // costing width to say something twice. The title carries the long form.
       // Wraps at the track's floor rather than losing "VS LINE" to an
       // ellipsis: a cut-off figure reads as the figure.
-      style={{ fontSize: 10.5, color: "var(--dim)", letterSpacing: "0.04em", display: "block" }}
+      style={{ fontSize: 10.5, color: "var(--dim)", letterSpacing: "0.02em", display: "block" }}
     >
       {windowWord} AVG <span style={{ color: "var(--text-2)" }}>{cushionAvg.toFixed(1)}</span>
       {" · "}
@@ -18579,19 +18630,23 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           word on the row that must never be cut. A second line is the honest
           way to fit it; the badge stays with the last word. */}
       <div className="feed-prop-link-name" style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 7, minWidth: 0 }}>
-        <span className="pp-display" style={{ fontSize: isNarrow ? 15 : 17, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)", minWidth: 0, overflowWrap: "anywhere" }}>
+        <span className="pp-display" style={{ fontSize: isNarrow ? 16 : 19, fontWeight: 600, letterSpacing: "-0.01em", color: "var(--text)", minWidth: 0, overflowWrap: "anywhere" }}>
           {r.name}
         </span>
         {/* The crest beside the abbreviation, both here and on the fixture
              line below. Three letters is a lookup the reader has to do; the
              crest is the thing they actually recognise, and every other
              surface in the app already pairs the two. */}
-        <TeamLogo sport={sport} abbr={r.team} size={14} style={{ flexShrink: 0, alignSelf: "center" }} />
-        <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2, var(--dim))", flexShrink: 0 }}>
-          {r.team}
-        </span>
+        <TeamLogo sport={sport} abbr={r.team} size={isNarrow ? 17 : 20} style={{ flexShrink: 0, alignSelf: "center" }} />
+        {/* Desktop lets the 20px crest stand for the team: with the
+            abbreviation too, the name line wrapped in the 1440 column. */}
+        {isNarrow && (
+          <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.04em", color: "var(--text-2, var(--dim))", flexShrink: 0 }}>
+            {r.team}
+          </span>
+        )}
       </div>
-      <div className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
+      <div className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: isNarrow ? 13 : 14, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text)", marginTop: 5 }}>
         <span>{r.subtitle}</span>
         {/* Read-only, so a pill -- the handoff reserves full pills for badges
             and rounded rectangles for anything pressable. Frame 1c badges its
@@ -18603,7 +18658,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             className="pp-mono"
             title={`Alt line. The posted line is ${r.mainLine}.`}
             style={{
-              flexShrink: 0, fontSize: 9.5, letterSpacing: "0.1em", lineHeight: 1,
+              flexShrink: 0, fontSize: 9.5, letterSpacing: "0.04em", lineHeight: 1,
               padding: "3px 7px", borderRadius: 999,
               border: "1px solid var(--line-strong)", color: "var(--dim-strong)",
             }}
@@ -18631,7 +18686,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // #6 against rush yards. What went is the words "OPP RANK", which cost a
   // third of the line to say what the badge's own tooltip says better.
   const oppRankLine = (
-    <div className="pp-mono" style={{ fontSize: 10.5, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.1em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "3px 5px" }}>
+    <div className="pp-mono" style={{ fontSize: isNarrow ? 11 : 12, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.03em", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 4px" }}>
       {/* "@ NYJ" when the player is on the road, "vs NYJ" at home, and a bare
            opponent when the fixture never said. Away-first with an @ is how
            the slate, the board and the player page's breadcrumb all write a
@@ -18639,7 +18694,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
            name line above. */}
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
         <span>{venueWord(r.homeGame)}</span>
-        {r.opp && <TeamLogo sport={sport} abbr={r.opp} size={14} style={{ flexShrink: 0 }} />}
+        {r.opp && <TeamLogo sport={sport} abbr={r.opp} size={isNarrow ? 17 : 20} style={{ flexShrink: 0 }} />}
         <span>{r.opp}{r.gameLabel ? ` · ${r.gameLabel}` : ""}</span>
       </span>
       {/* No rank, no chip. Printing a placeholder here is what made a missing
@@ -18654,8 +18709,8 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               r.rankEarly ? `The ${r.rankSeason} rank stands on fewer than ${NFL_DEF_CURRENT_MIN_GAMES} games so far.` : null,
             ].filter(Boolean).join(" ")}
             style={{
-              display: "inline-block", padding: "1px 6px", borderRadius: 4,
-              fontSize: 10, fontWeight: 800, letterSpacing: 0,
+              display: "inline-block", padding: isNarrow ? "1px 5px" : "2px 5px", borderRadius: 4,
+              fontSize: isNarrow ? 10.5 : 11.5, fontWeight: 800, letterSpacing: 0,
               // Mixed live against the token rather than frozen, so the chip
               // follows the outcome palette the same way the rate cells do.
               background: matchupTone ? `color-mix(in srgb, ${matchupTone} 14%, transparent)` : "transparent",
@@ -18664,7 +18719,10 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
               whiteSpace: "nowrap",
             }}
           >
-            D #{r.rank}/{feedTeamCount(sport)}{r.rankSeason ? ` ${r.rankSeasonText ? `'${r.rankSeasonText.slice(2)}` : nflSeasonShort(r.rankSeason)}` : ""}
+            D #{r.rank}
+            {/* The season tag a size down, so the NBA's "'26-27" leaves room for
+                the verdict word on the same line. */}
+            {r.rankSeason ? <span style={{ fontSize: "0.84em", marginLeft: 3, opacity: 0.9 }}>{r.rankSeasonText ? `'${r.rankSeasonText.slice(2)}` : nflSeasonShort(r.rankSeason)}</span> : null}
           </span>
           {(() => {
             const read = matchupRead;
@@ -18765,7 +18823,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
         <div style={{ marginTop: 6, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
           {lineNote || <span />}
           {r.isBinary && run.show && (
-            <span className="pp-mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap", color: run.hit ? "var(--pos)" : "var(--neg)" }}>
+            <span className="pp-mono" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", color: run.hit ? "var(--pos)" : "var(--neg)" }}>
               {run.len} {run.hit ? "STRAIGHT" : "COLD"}
             </span>
           )}
@@ -18815,12 +18873,12 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
               <span className="pp-display" style={{ fontWeight: 600, letterSpacing: "-0.01em", fontSize: 18, color: "var(--text)" }}>{r.name}</span>
-              <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2, var(--dim))" }}>{r.team}</span>
+              <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", color: "var(--text-2, var(--dim))" }}>{r.team}</span>
             </div>
             {/* Uppercase mono in --text with the price trailing in --dim, not
                 accent-coloured body text: the proposition is the card's
                 subject, and colouring it accent made every card look active. */}
-            <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
+            <div className="pp-mono" style={{ fontSize: 12.5, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text)", marginTop: 4 }}>
               {r.subtitle}
             </div>
           </div>
@@ -18833,7 +18891,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             <div className="pp-mono" style={{
               lineHeight: thinSample ? 1.2 : 1,
               fontSize: thinSample ? 15 : 28,
-              letterSpacing: thinSample ? "0.08em" : 0,
+              letterSpacing: thinSample ? "0.03em" : 0,
               textTransform: thinSample ? "uppercase" : "none",
               color: thinSample || rate == null ? "var(--text-2, var(--dim))" : feedRateColor(rate),
             }}>
@@ -18852,7 +18910,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             off forty, which is the thing the "too few" verdict beside it
             exists to prevent. */}
         {thinSample ? (
-          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)", marginTop: 12, lineHeight: 1.5 }}>
+          <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 12, lineHeight: 1.5 }}>
             {gamesCounted === 0
               ? "No finished games logged yet, so there is no rate to show."
               : `Only ${gamesCounted} finished ${gamesCounted === 1 ? "game" : "games"} on the log — too few to carry a rate, so no number is shown.`}
@@ -18890,7 +18948,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
             style={{
               cursor: "pointer", flexShrink: 0,
               minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "flex-end",
-              fontSize: 12, letterSpacing: "0.06em", fontWeight: 600,
+              fontSize: 12, letterSpacing: "0.02em", fontWeight: 600,
               color: isAdded ? "var(--pos)" : "var(--accent-text, var(--amber))",
             }}
           >
@@ -18923,7 +18981,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
           {/* Outside the clickable block on purpose -- the opponent rank is
               reference information, not part of the proposition, and including
               it would make the click target sprawl over most of the row. */}
-          <div style={{ marginTop: 3 }}>{oppRankLine}</div>
+          <div style={{ marginTop: 6 }}>{oppRankLine}</div>
           {/* The average-vs-line note that sat here is under the chart now
               (see formCell): who, what, and against whom is what this column
               is for, and a fifth line was what made it crowded. */}
@@ -19311,6 +19369,16 @@ function teamGamesPlayed(rows) {
 // row's removal.
 const FEED_PARTICIPATION = 0.5;
 
+// Listed out on the league's availability report, in any sport. A player who
+// is out has no prop to take, so the feed never shows one -- not even with
+// "regulars only" switched off. NBA used to skip this check: on 2026-11-17
+// Moses Moody (out for months) and four other listed-out Warriors were still
+// in the NBA feed, because only the NFL branch read the report.
+function feedRowListedOut(r, sport) {
+  const id = r.espnId || r.logId;
+  return pickStatus({ sport, espnId: id, gradeId: r.gradeId || r.logId }) === "out";
+}
+
 function feedRowPlaysEnough(r, teamGames, sport) {
   // NFL answers this from the published depth chart rather than by inference.
   //
@@ -19326,10 +19394,7 @@ function feedRowPlaysEnough(r, teamGames, sport) {
   // run days behind an injury report. On 2026-09-24 GB's still had Jayden Reed
   // at WR2 after he was ruled out, and he ranked third for receptions on a game
   // where every book had pulled his props.
-  if (sport === "nfl") {
-    const id = r.espnId || r.logId;
-    if (id && NFL_ROSTER_STATUS[String(id)] === "out") return false;
-  }
+  if (feedRowListedOut(r, sport)) return false;
   // Null while the charts are still out, and a team that did not answer is
   // not filtered at all -- showing a backup is a smaller error than hiding a
   // starter, and "we could not read the chart" is not a claim about a player.
@@ -19947,6 +20012,11 @@ function buildNBAFeedRows() {
         // letting a 2025-26 rank read as current.
         rankSeason: def && def.season ? def.season : null,
         rankSeasonText: def && def.season ? seasonLabel(def.season, "nba") : null,
+        // Last season's rank, beside the badge, through this season's first
+        // ten games only (see fetchNBATeamDefense).
+        rankOther: def && def.prev ? `${seasonLabel(def.prev.season, "nba")}: #${def.prev.rank} of ${def.prev.of}, ${def.prev.rating} points allowed per game` : null,
+        rankOtherShort: def && def.prev ? `'${seasonLabel(def.prev.season, "nba").slice(2)} #${def.prev.rank}` : null,
+        rankOtherRank: def && def.prev ? def.prev.rank : null,
         l5: hitRateWindow(values, 5, hit),
         l10: hitRateWindow(values, 10, hit),
         l20: hitRateWindow(values, 20, hit),
@@ -20500,22 +20570,22 @@ const FEED_WINDOWS = [["L5", "l5"], ["L10", "l10"], ["L20", "l20"], ["ALL", "all
 // The Filters panel's own furniture: one pill and one section label, so the
 // six rows of controls in there cannot drift apart from each other.
 const FEED_PILL = (on) => ({
-  fontFamily: "'PP At', 'Space Mono', monospace",
-  fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px",
+  fontFamily: "'Inter', system-ui, sans-serif",
+  fontSize: 11.5, letterSpacing: "0.02em", borderRadius: 4, padding: "7px 11px",
   cursor: "pointer", whiteSpace: "nowrap",
   background: on ? "var(--amber)" : "transparent",
   color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
   border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
 });
-const FEED_SECTION_LABEL = { fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+const FEED_SECTION_LABEL = { fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
 
-const FEED_RAIL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
-const FEED_CELL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
-const FEED_CELL_VALUE = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+const FEED_RAIL_LABEL = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
+const FEED_CELL_LABEL = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const FEED_CELL_VALUE = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
 // The line under each figure. Every cell in the result strip now carries one,
 // which is what turns four numbers into four statements.
-const FEED_CELL_SUB = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 9.5, marginTop: 5, color: "var(--dim)", lineHeight: 1.45 };
-const FEED_KEY_ROW = { display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" };
+const FEED_CELL_SUB = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 9.5, marginTop: 5, color: "var(--dim)", lineHeight: 1.45 };
+const FEED_KEY_ROW = { display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text-2)" };
 
 // One global segmented control for the L5/L10/L20 sample-size window --
 // previously this was three separate buttons repeated on every row, which
@@ -21574,6 +21644,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     // schedule. How long a slate lasts depends on the league -- see
     // feedSlateWindow.
     if (slateScope === "near" && !feedRowIsNear(r, slateWindow)) return false;
+    if (feedRowListedOut(r, sport)) return false;
     if (regularsOnly && !feedRowPlaysEnough(r, teamGames, sport)) return false;
     const p = r[sampleWindow];
     if (p == null) return false;   // no sample -> cannot satisfy a rate filter
@@ -22212,14 +22283,14 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 <TeamLogo sport={sport} abbr={o.teams[1]} size={22} />
               </div>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 6 }}>
-                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{o.time}</span>
-                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{n} props</span>
+                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.03em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{o.time}</span>
+                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.03em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>{n} props</span>
               </div>
             </div>
           );
         })}
         {!activeMatchupOptions.length && (
-          <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", lineHeight: 1.6 }}>
+          <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.6 }}>
             {gamesStripEmptyLabel}
           </div>
         )}
@@ -22231,12 +22302,12 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           onClick={() => setSelectedGameIds(new Set())}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedGameIds(new Set()); } }}
           className="pp-mono"
-          style={{ fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))", marginTop: 12, cursor: "pointer" }}
+          style={{ fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))", marginTop: 12, cursor: "pointer" }}
         >
           {sport === "nfl" ? "All of this week's games" : "All of today's games"}
         </div>
       )}
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 16, lineHeight: 1.6 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 16, lineHeight: 1.6 }}>
         {feedDataDisclaimer}
       </div>
     </div>
@@ -22371,7 +22442,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           onClick={() => setSelectedMarkets([])}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedMarkets([]); } }}
           className="pp-mono"
-          style={{ fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
+          style={{ fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
         >
           All markets
         </span>
@@ -22398,7 +22469,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       <div style={{ display: "flex", gap: 18, marginTop: 9, alignItems: "flex-start", overflowX: "auto", paddingBottom: 2 }}>
         {propGroups.map((g) => (
           <div key={g.label} style={{ flex: "none", display: "flex", flexDirection: "column", gap: 6 }}>
-            <span className="pp-mono" style={{ fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+            <span className="pp-mono" style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
               {g.label}
             </span>
             <div style={{ display: "flex", gap: 7 }}>
@@ -22414,7 +22485,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedMarkets(on ? selectedMarkets.filter((x) => x !== m.id) : [...selectedMarkets, m.id]); } }}
                     className="pp-mono"
                     style={{
-                      fontSize: 11.5, letterSpacing: "0.06em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
+                      fontSize: 11.5, letterSpacing: "0.02em", borderRadius: 4, padding: "7px 11px", cursor: "pointer",
                       whiteSpace: "nowrap",
                       background: on ? "var(--amber)" : "transparent",
                       color: on ? "var(--accent-on)" : "var(--dim-strong, var(--text))",
@@ -22434,15 +22505,15 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--line)",
       }}>
         <div>
-          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Side</div>
+          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.05em", marginBottom: 8 }}>Side</div>
           <DirectionSwitcher value={direction} onChange={setDirection} />
         </div>
         <div>
-          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Games counted</div>
+          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.05em", marginBottom: 8 }}>Games counted</div>
           <WindowSwitcher value={feedCustomCol ? null : sampleWindow} onChange={(w) => { setFeedCustomCol(null); setSampleWindow(w); }} />
         </div>
         <div>
-          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.14em", marginBottom: 8 }}>Lines</div>
+          <div className="pp-mono" style={{ ...FEED_CELL_LABEL, fontSize: 10.5, letterSpacing: "0.05em", marginBottom: 8 }}>Lines</div>
           <LinesModeSwitcher value={linesMode} onChange={setLinesMode} />
         </div>
       </div>
@@ -22457,9 +22528,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           <span className="pp-mono" style={{ fontSize: 26, lineHeight: 1, color: "var(--amber-ink, var(--amber))", fontVariantNumeric: "tabular-nums" }}>
             {pickIds ? pickIds.size : 0}
           </span>
-          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)" }}>tracked</span>
+          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>tracked</span>
         </div>
-        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
           {pickIds && pickIds.size
             ? "Saved on this device. Nothing is wagered."
             : "Nothing tracked yet. The + on any row adds it."}
@@ -22478,7 +22549,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           <span style={{ width: 16, borderTop: "1.5px dashed var(--text)", flex: "none" }} />the line
         </span>
       </div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
         Bar height is the number he put up. Drag a line tag to test a different number &mdash; every rate on that row recomputes.
       </div>
     </div>
@@ -22517,7 +22588,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                     className="pp-mono"
                     style={{
                       display: "inline-block", marginLeft: 10, cursor: "pointer",
-                      fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
+                      fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase",
                       color: "var(--amber-ink, var(--amber))", border: "1px solid var(--amber)",
                       borderRadius: 4, padding: "7px 12px",
                     }}
@@ -22592,7 +22663,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           border: `1px solid ${teamFilter !== "all" ? "var(--amber)" : "var(--line)"}`,
           background: teamFilter !== "all" ? "var(--amber-dim)" : "var(--surface-1)",
           color: teamFilter !== "all" ? "var(--amber-ink)" : "var(--text)",
-          fontFamily: "'PP At', 'Space Mono', ui-monospace, monospace", fontSize: 12,
+          fontFamily: "'Inter', system-ui, sans-serif", fontSize: 12,
         }}
       >
         <option value="all">All teams</option>
@@ -22775,8 +22846,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
              under it keep the same rhythm as every divider further down. */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
           <span className="pp-display" style={{ fontWeight: 600, fontSize: 16 }}>Filters</span>
-          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)" }}>rates always read the full log</span>
-          <span role="button" tabIndex={0} onClick={resetFeedFilters} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); resetFeedFilters(); } }} className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))", cursor: "pointer" }}>Reset</span>
+          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>rates always read the full log</span>
+          <span role="button" tabIndex={0} onClick={resetFeedFilters} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); resetFeedFilters(); } }} className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))", cursor: "pointer" }}>Reset</span>
           <span role="button" tabIndex={0} onClick={() => setFeedFiltersOpen(false)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(false); } }} className="pp-mono" style={{ fontSize: 14, color: "var(--text-2)", cursor: "pointer" }}>×</span>
         </div>
       </div>
@@ -22948,7 +23019,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           {/* #1 is the toughest defence for this stat, which runs backwards to
               the word -- said once, here, rather than as a parenthetical
               beside every number. */}
-          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
             Ranked on this market alone, not the opponent&rsquo;s record. #1 is the toughest,
             and the tiers flip with the side you are reading.
           </div>
@@ -22994,7 +23065,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               -- that this is size of role, not prominence. The old version
               spent three lines denying it was betting volume, which raised the
               idea in order to reject it. Not naming it is the stronger move. */}
-          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
             A starter on a bad team logs the same {roleUnit(sport)} as a star.
           </div>
         </div>
@@ -23020,7 +23091,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 </span>
               ))}
             </div>
-            <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+            <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
               Posted only drops anyone still on a projected order.
             </div>
           </div>
@@ -23030,7 +23101,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <span className="pp-mono" style={FEED_SECTION_LABEL}>Sort by</span>
-          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
+          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)" }}>
             hit rate leads; these break its ties
           </span>
         </div>
@@ -23064,7 +23135,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         {/* The active mode's own explanation, always on. It used to be three
             paragraphs behind an "i" button, which meant the one sentence that
             applied right now was the one you could not see. */}
-        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
           {(FEED_SORT_MODES.find((mo) => mo.id === sortMode) || {}).description}
           {" "}
           {sortDir === "desc" ? "High to low." : "Low to high."} Click the selected pill to flip it.
@@ -23081,7 +23152,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               onClick={() => { setOddsMinX(4); setOddsMaxX(96); }}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOddsMinX(4); setOddsMaxX(96); } }}
               className="pp-mono"
-              style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
+              style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
             >
               Reset
             </span>
@@ -23109,7 +23180,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             soon" because no book is wired up yet, so a filter that silently
             removed rows on a price nothing on screen shows would be the one
             control in here a reader could not check. */}
-        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
           This app&rsquo;s own implied price, from the hit rate &mdash; the odds column is not
           wired to a book yet. It will read the real number when one is.
         </div>
@@ -23148,7 +23219,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             onClick={() => setVisibleCount((n) => n + FEED_PAGE_SIZE)}
             onKeyDown={(e) => { if (e.key === "Enter") setVisibleCount((n) => n + FEED_PAGE_SIZE); }}
             className="pp-mono"
-            style={{ minHeight: 38, display: "flex", alignItems: "center", padding: "0 20px", borderRadius: 8, border: "1px solid var(--amber)", color: "var(--amber-ink)", fontSize: 11.5, letterSpacing: "0.08em", cursor: "pointer" }}
+            style={{ minHeight: 38, display: "flex", alignItems: "center", padding: "0 20px", borderRadius: 8, border: "1px solid var(--amber)", color: "var(--amber-ink)", fontSize: 11.5, letterSpacing: "0.03em", cursor: "pointer" }}
           >
             {`LOAD ${Math.min(FEED_PAGE_SIZE, sortedRows.length - visibleRows.length)} MORE · ${visibleRows.length} OF ${sortedRows.length}`}
           </div>
@@ -23159,7 +23230,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
            is the point: it is wide and lopsided on purpose (see
            FEED_RATE_COLD / FEED_RATE_HOT), and without this the grey reads as
            a missing colour rather than as a deliberate one. */}
-      <div className="pp-mono pp-xstick" style={{ padding: "0 20px 12px", fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)" }}>
+      <div className="pp-mono pp-xstick" style={{ padding: "0 20px 12px", fontSize: 10, letterSpacing: "0.03em", color: "var(--dim)" }}>
         Rates above 65% are green, below 45% red. The middle is a coin flip after vig and stays grey.
       </div>
       <div className="pp-xstick" style={{ padding: "0 20px 24px", fontSize: 12, color: "var(--dim)" }}>{feedDataDisclaimer}</div>
@@ -23295,7 +23366,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         countLabel={`${filteredRows.length} of ${rows.length} props`}
         narrowedTo={narrowedToGame}
         benchedLabel={regularsOnly && feedSummary.benched > 0
-          ? `${feedSummary.benched} hidden · ${sport === "nfl" ? "listed out, or not on the depth chart's starting side" : "under half their team's games"}`
+          ? `${feedSummary.benched} hidden · ${sport === "nfl" ? "listed out, or not on the depth chart's starting side" : "listed out, or under half their team's games"}`
           : null}
         // The real ordering, in the order it is applied. "Biggest role" is the
         // one mode that outranks hit rate (see FEED_SORT_MODES.primary), so it
@@ -23493,7 +23564,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
     <div className="roster-panel" style={{ minHeight: 360 }}>
       <div
         className="oswald"
-        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em", textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
       >
         {teamLabel}
         {confirmed && (
@@ -23509,7 +23580,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
         {pitchers.length > 0 && (
           <>
             <div style={{
-              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em",
+              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em",
               textAlign: "center", marginBottom: 6,
             }}>
               Starting Pitcher
@@ -23518,7 +23589,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
               {pitchers.map(renderRow)}
             </div>
             <div style={{
-              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em",
+              fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em",
               textAlign: "center", marginBottom: 6,
             }}>
               Starting Lineup
@@ -23539,7 +23610,7 @@ function TeamRosterPanel({ teamLabel, players, activeId, onSelect, headshotSrc, 
             }}>
               <span style={{
                 fontSize: 10.5, fontWeight: 700, color: "var(--dim)",
-                textTransform: "uppercase", letterSpacing: "0.06em",
+                textTransform: "uppercase", letterSpacing: "0.02em",
               }}>
                 {sec.label}
               </span>
@@ -23729,7 +23800,7 @@ function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headsho
     <div className={`lineup-drawer-backdrop ${open ? "open" : ""}`} onClick={onClose} role="presentation" aria-hidden={!open}>
       <div className="lineup-drawer-panel" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <div className="oswald" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          <div className="oswald" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.02em" }}>
             Lineup
           </div>
           <div
@@ -23743,7 +23814,7 @@ function LineupDrawer({ open, onClose, teamA, teamB, activeId, onSelect, headsho
         </div>
         {[teamA, teamB].map((team) => (
           <div key={team.label} style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em", marginBottom: 8 }}>
               {team.label}
             </div>
             {(team.players || []).map(renderPlayerRow)}
@@ -23763,7 +23834,7 @@ function MatchupPanel({ title, opponentAbbr, opponentLogo, lines, loading }) {
     <div className="roster-panel">
       <div
         className="oswald"
-        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center", marginBottom: 8 }}
+        style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em", textAlign: "center", marginBottom: 8 }}
       >
         {title}
       </div>
@@ -23875,7 +23946,7 @@ function SearchBar({ index, onSelect, onOpen }) {
                 }}
               >
                 <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.label}</span>
-                <span className="mono" style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.04em", flexShrink: 0 }}>
+                <span className="mono" style={{ fontSize: 10, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em", flexShrink: 0 }}>
                   {r.sportLabel}
                 </span>
               </div>
@@ -23908,7 +23979,7 @@ function PickResultBadge({ result }) {
     <span
       className="oswald"
       style={{
-        fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+        fontSize: 10, fontWeight: 700, letterSpacing: "0.02em",
         padding: "2px 7px", borderRadius: 3, whiteSpace: "nowrap",
         color: s.color, background: s.bg,
         border: s.bg === "transparent" ? "1px solid var(--line-strong)" : "none",
@@ -23951,7 +24022,7 @@ function LedgerHeader({ summary, settledPicks, dollarsPerUnit }) {
           {summary.hitRate == null ? "—" : `${Math.round(summary.hitRate * 100)}%`}
         </span>
         {since && (
-          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.08em", color: "var(--dim)", marginLeft: "auto" }}>
+          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.03em", color: "var(--dim)", marginLeft: "auto" }}>
             SINCE {since.toUpperCase()}
           </span>
         )}
@@ -23988,10 +24059,10 @@ function CalibrationBlock({ picks }) {
   return (
     <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--line)" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-        <span className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--dim)" }}>
+        <span className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.02em", color: "var(--dim)" }}>
           DID THE RATES HOLD UP
         </span>
-        <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.06em", color: "var(--text)", flexShrink: 0 }}>
+        <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.02em", color: "var(--text)", flexShrink: 0 }}>
           │ CLAIMED
         </span>
       </div>
@@ -24059,7 +24130,7 @@ function CalibrationBlock({ picks }) {
                   {b.thin ? (
                     <div
                       title={`Fewer than ${CALIBRATION_THIN} settled picks in this band`}
-                      style={{ fontSize: 8.5, letterSpacing: "0.06em", color: "var(--dim)", border: "1px solid var(--line-strong)", padding: "1px 3px", marginTop: 3, display: "inline-block" }}
+                      style={{ fontSize: 8.5, letterSpacing: "0.02em", color: "var(--dim)", border: "1px solid var(--line-strong)", padding: "1px 3px", marginTop: 3, display: "inline-block" }}
                     >
                       THIN · {b.count} {b.count === 1 ? "pick" : "picks"}
                     </div>
@@ -24095,7 +24166,7 @@ function CalibrationBlock({ picks }) {
 function ReportSection({ title, children }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--dim)", marginBottom: 8 }}>
+      <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.02em", color: "var(--dim)", marginBottom: 8 }}>
         {title}
       </div>
       {children}
@@ -24328,7 +24399,7 @@ function CombinedLandedBlock({ picks }) {
   if (c.legsMissingLog) {
     return (
       <div style={{ border: "1px solid var(--line-strong)", padding: "10px 11px" }}>
-        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
         <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
           At least one leg was saved without its game log, so there is no set of
           games all of these legs share. No combined rate is shown rather than
@@ -24344,7 +24415,7 @@ function CombinedLandedBlock({ picks }) {
   if (c.tooShort) {
     return (
       <div style={{ border: "1px solid var(--line-strong)", padding: "10px 11px" }}>
-        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 4 }}>{label}</div>
         <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
           These legs only share {c.counted} finished {c.counted === 1 ? "game" : "games"} — too
           short to state a rate. The overlap is capped by whichever leg has the
@@ -24357,7 +24428,7 @@ function CombinedLandedBlock({ picks }) {
   return (
     <div style={{ border: "1px solid var(--line-strong)", padding: "10px 11px" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
-        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>{label}</span>
+        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>{label}</span>
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {/* Same badge the ladder header carries, for the same reason: the
               count is the thing being qualified, so the label belongs on it
@@ -24366,7 +24437,7 @@ function CombinedLandedBlock({ picks }) {
             <span
               className="pp-mono"
               title={`These legs share only ${c.counted} games — fewer than 10`}
-              style={{ fontSize: 9, letterSpacing: "0.1em", color: "var(--dim)", border: "1px solid var(--line-strong)", padding: "2px 5px" }}
+              style={{ fontSize: 9, letterSpacing: "0.04em", color: "var(--dim)", border: "1px solid var(--line-strong)", padding: "2px 5px" }}
             >
               THIN
             </span>
@@ -24443,7 +24514,7 @@ function SaferRungsBlock({ picks, onChangeLine, onRemove }) {
 
   return (
     <div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
         SAFER RUNGS FOR THIS SLIP
       </div>
       {suggestions.map((s, i) => (
@@ -24463,7 +24534,7 @@ function SaferRungsBlock({ picks, onChangeLine, onRemove }) {
               type="button"
               onClick={s.onClick}
               className="pp-mono"
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, letterSpacing: "0.08em", color: "var(--accent-text, var(--amber))", padding: 0 }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, letterSpacing: "0.03em", color: "var(--accent-text, var(--amber))", padding: 0 }}
             >
               {s.action}
             </button>
@@ -24502,7 +24573,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
       className="oswald"
       style={{
         flex: 1, textAlign: "center", cursor: "pointer",
-        padding: "9px 0", fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+        padding: "9px 0", fontSize: 12, fontWeight: 700, letterSpacing: "0.02em",
         color: tab === id ? "var(--amber)" : "var(--dim)",
         borderBottom: `2px solid ${tab === id ? "var(--amber)" : "transparent"}`,
       }}
@@ -24531,7 +24602,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
       }}
     >
       <div>
-        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>MY PICKS · {openPicks.length}</div>
+        <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>MY PICKS · {openPicks.length}</div>
         <div className="pp-mono" style={{ fontVariantNumeric: "tabular-nums", fontSize: 17, marginTop: 3, color: "var(--text)" }}>
           {combined != null ? formatOdds(combined, oddsFormat) : "—"}
         </div>
@@ -24540,7 +24611,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
         className="pp-mono"
         style={{
           flexShrink: 0, minHeight: 44, display: "flex", alignItems: "center",
-          padding: "0 20px", fontSize: 12, letterSpacing: "0.08em", fontWeight: 600,
+          padding: "0 20px", fontSize: 12, letterSpacing: "0.03em", fontWeight: 600,
           color: "var(--accent-on)", background: "var(--amber)",
         }}
       >
@@ -24617,7 +24688,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
           }}
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 12px", borderBottom: "1px solid var(--line)" }}>
-            <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>MY PICKS</span>
+            <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.01em" }}>MY PICKS</span>
             <div onClick={requestClose} role="button" aria-label="Close My Picks panel" style={{ cursor: "pointer", color: "var(--dim)", fontSize: 20, lineHeight: 1 }}>×</div>
           </div>
 
@@ -24673,7 +24744,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                 <div style={{ borderTop: "1px solid var(--line)", padding: "18px", display: "flex", flexDirection: "column", gap: 16 }}>
                   {openPicks.length > 1 && <CombinedLandedBlock picks={openPicks} />}
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-                    <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+                    <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
                       {openPicks.length > 1 ? "COMBINED PRICE" : "PRICE"}
                     </span>
                     <span className="pp-mono" style={{ fontVariantNumeric: "tabular-nums", fontSize: 20, fontWeight: 600 }}>
@@ -24690,7 +24761,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                       runs. See parlayCorrelationGroups. */}
                   {correlations.length > 0 && (
                     <div style={{ border: "1px solid var(--line-strong)", padding: "9px 10px" }}>
-                      <div className="pp-mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", color: "var(--amber)", marginBottom: 4 }}>
+                      <div className="pp-mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.02em", color: "var(--amber)", marginBottom: 4 }}>
                         ⚠ CORRELATED LEGS
                       </div>
                       <div style={{ fontSize: 10.5, color: "var(--dim)", lineHeight: 1.45 }}>
@@ -24741,7 +24812,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                     className="oswald danger-btn"
                     style={{
                       cursor: "pointer", textAlign: "center", padding: "8px 0", borderRadius: 4,
-                      fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
+                      fontSize: 12, fontWeight: 700, letterSpacing: "0.01em", textTransform: "uppercase",
                     }}
                   >
                     Clear slip
@@ -24766,7 +24837,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                   </div>
                 ) : (
                   <>
-                  <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--dim)", padding: "14px 0 2px" }}>
+                  <div className="oswald" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.02em", color: "var(--dim)", padding: "14px 0 2px" }}>
                     SETTLED
                   </div>
                   {settledPicks.map((p) => (
@@ -24845,7 +24916,7 @@ function MyPicksPanel({ picks, open, onToggleOpen, onRemove, onClear, onClearSet
                     className="oswald danger-btn"
                     style={{
                       cursor: "pointer", textAlign: "center", padding: "8px 0", borderRadius: 4,
-                      fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
+                      fontSize: 12, fontWeight: 700, letterSpacing: "0.01em", textTransform: "uppercase",
                     }}
                   >
                     Clear history
@@ -25902,10 +25973,17 @@ export default function PropLedger() {
     // reads nbaScheduleCache through nbaNextGameForTeam, so this bump is what
     // turns "no opponent yet" into the real one -- on 2026-08-21 that is
     // opening night, 2026-10-20.
-    fetchNBALiveSlate().then((slate) => {
+    // A failed first load tries again shortly rather than waiting out the
+    // quarter-hour timer below with no opponents on any row.
+    let slateRetry = null;
+    const loadSlate = (tries = 0) => fetchNBALiveSlate().then((slate) => {
       if (cancelled || !slate) return;
       bumpNbaRefresh();
-    });
+      if (slate.fetchFailed && !slate.matchups.length && tries < 5) {
+        slateRetry = setTimeout(() => loadSlate(tries + 1), 20000);
+      }
+    }).catch(() => {});
+    loadSlate();
     // And again while the tab stays open, and when it comes back to the front:
     // a game ending is what moves its two teams to their next game, and a tab
     // left open through opening night would otherwise show the finished one
@@ -25941,6 +26019,7 @@ export default function PropLedger() {
 
     return () => {
       cancelled = true;
+      clearTimeout(slateRetry);
       clearInterval(slateTimer);
       document.removeEventListener("visibilitychange", onTabBack);
     };
@@ -26053,7 +26132,8 @@ export default function PropLedger() {
       // it. On 2026-09-24 the ATL @ GB card counted Luke Musgrave out and then
       // put his receptions forward as a prop worth reading. The card still says
       // who is out; that reason reads the injury report, not these rows.
-      .filter((r) => !(boardSport === "nfl" && r.status === "out"));
+      // Every league now, not just the NFL (Moody, 2026-11-17).
+      .filter((r) => r.status !== "out");
     // mlbStatusVersion: pickStatus reads a module-level Map, so the 40-man
     // rosters landing is invisible to React without it.
     // eslint-disable-next-line react-hooks/exhaustive-deps

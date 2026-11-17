@@ -276,11 +276,11 @@ export default function ColorWheel({ value, onChange, isDefault }) {
           "Lapis", the same as any other preset. */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 22, flexWrap: "wrap", justifyContent: "center" }}>
         <div style={{ width: 30, height: 30, background: hex, border: "1px solid var(--line)", flexShrink: 0 }} />
-        <div className="pp-mono" style={{ fontSize: 15, color: "var(--text)", letterSpacing: "0.04em" }}>
+        <div className="pp-mono" style={{ fontSize: 15, color: "var(--text)", letterSpacing: "0.02em" }}>
           {hex.toUpperCase()}
         </div>
         {PRESET_BY_HEX.has(hex.toLowerCase()) && (
-          <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>
+          <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
             · {PRESET_BY_HEX.get(hex.toLowerCase()).toUpperCase()}{isDefault ? ", THE DEFAULT" : ""}
           </div>
         )}

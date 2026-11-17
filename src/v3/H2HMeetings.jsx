@@ -16,7 +16,7 @@ import React from "react";
 // providers the Gamecast reads, through the caller's `loadBox`. A meeting whose
 // box score the provider cannot serve says so rather than drawing empty rows.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const dateOf = (iso) => {
@@ -91,10 +91,10 @@ function Leaders({ box }) {
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${sides.length}, minmax(0, 1fr))`, gap: 12 }}>
       {sides.map((t) => (
         <div key={t.teamAbbr} style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-          <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.12em", color: "var(--dim)" }}>{t.teamAbbr}</span>
+          <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.05em", color: "var(--dim)" }}>{t.teamAbbr}</span>
           {t.items.slice(0, LEADER_CAP).map((it) => (
             <div key={`${it.category}-${it.name}`} style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-              <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: "var(--dim)" }}>
+              <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.03em", color: "var(--dim)" }}>
                 {String(it.category).toUpperCase()}
               </span>
               <span style={{ fontSize: 11.5, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -183,7 +183,7 @@ export default function H2HMeetings({
                   worth keeping. */}
               {m.note && (
                 <span style={{
-                  fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em", padding: "2px 6px", borderRadius: 4,
+                  fontFamily: MONO, fontSize: 9, letterSpacing: "0.04em", padding: "2px 6px", borderRadius: 4,
                   border: "1px solid var(--line)", color: "var(--text-2)", whiteSpace: "nowrap",
                 }}>
                   {String(m.note).toUpperCase()}
@@ -241,7 +241,7 @@ export default function H2HMeetings({
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowAll((v) => !v); } }}
           style={{
             padding: compact ? "11px 13px" : "10px 0 2px", cursor: "pointer",
-            fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em",
+            fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em",
             color: "var(--amber-ink)", borderTop: "1px solid #20242b",
           }}
         >

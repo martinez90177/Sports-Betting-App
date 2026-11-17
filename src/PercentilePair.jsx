@@ -1,7 +1,7 @@
 import React from "react";
 import { statcastFor, statcastPercentile, statcastMean, ordinal } from "./lib/statcast.js";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // Two sides of one matchup, measure by measure. Competitive brief item 3,
 // mock 3c.
@@ -63,8 +63,8 @@ export default function PercentilePair({
   return (
     <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase" }}>{leftLabel}</div>
-        <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase" }}>{rightLabel}</div>
+        <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase" }}>{leftLabel}</div>
+        <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase" }}>{rightLabel}</div>
       </div>
 
       <div style={{ marginTop: 14 }}>
@@ -72,7 +72,7 @@ export default function PercentilePair({
           <div key={m.label} style={{ display: "grid", gridTemplateColumns: "1fr 92px 1fr", gap: 14, alignItems: "center", padding: "11px 0", borderTop: "1px solid var(--line)" }}>
             <div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, justifyContent: "flex-end" }}>
-                <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.03em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
                   {lp == null ? "" : ordinal(lp)}
                 </span>
                 <span style={{ fontFamily: MONO, fontSize: 13, fontVariantNumeric: "tabular-nums", color: lv == null ? "var(--dim)" : "var(--text)" }}>
@@ -86,7 +86,7 @@ export default function PercentilePair({
               </div>
             </div>
 
-            <div style={{ textAlign: "center", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2)" }}>
+            <div style={{ textAlign: "center", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2)" }}>
               {m.label}
             </div>
 
@@ -95,7 +95,7 @@ export default function PercentilePair({
                 <span style={{ fontFamily: MONO, fontSize: 13, fontVariantNumeric: "tabular-nums", color: rv == null ? "var(--dim)" : "var(--text)" }}>
                   {fmt(rv, m)}
                 </span>
-                <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
+                <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.03em", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
                   {rp == null ? "" : ordinal(rp)}
                 </span>
               </div>

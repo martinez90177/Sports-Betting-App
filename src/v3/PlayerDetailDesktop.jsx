@@ -45,10 +45,10 @@ import SeasonNote from "./SeasonNote.jsx";
 // full pills (999px) only for read-only labels. A control drawn as a pill
 // reads as a badge.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
-const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 // Roster-status chips on a teammate row: IL / GTD / AAA / DFA / "Left team".
 //
@@ -60,7 +60,7 @@ const BADGE_TONE = {
   warn: { fg: "#e8b13a", bg: "rgba(232,177,58,0.16)" },
   muted: { fg: "var(--dim)", bg: "var(--surface-2)" },
 };
-const cellLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" };
+const cellLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" };
 const railNote = { fontSize: 11.5, color: "var(--dim)", lineHeight: 1.4 };
 
 // Rows and their header share one template string. Defined once, or the
@@ -124,7 +124,7 @@ const roleModeStyle = {
 };
 const roleResetStyle = (clean) => ({
   minHeight: 28, display: "flex", alignItems: "center", padding: "0 10px",
-  borderRadius: 7, fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em",
+  borderRadius: 7, fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em",
   cursor: "pointer", whiteSpace: "nowrap",
   border: `1px solid ${clean ? "var(--amber)" : "var(--line)"}`,
   color: clean ? "var(--amber-ink)" : "var(--text-2)",
@@ -139,7 +139,7 @@ const rosterTabStyle = (on) => ({
 
 // Read-only label: a full pill, and only ever read-only.
 const pill = (fg, bg) => ({
-  fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "3px 8px",
+  fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "3px 8px",
   borderRadius: 999, flex: "0 0 auto", background: bg, color: fg, whiteSpace: "nowrap",
 });
 
@@ -398,7 +398,7 @@ export default function PlayerDetailDesktop({
         onKeyDown={onHome ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onHome(); } } : undefined}
         style={{ display: "flex", alignItems: "center", gap: 10, cursor: onHome ? "pointer" : "default" }}
       >
-        <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
+        <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Prop Palace</span>
       </span>
       <span style={{ display: "flex", alignItems: "center", gap: 26 }}>
         {navTabs.map((t) => (
@@ -409,7 +409,7 @@ export default function PlayerDetailDesktop({
             onClick={() => onNavigate && onNavigate(t.id)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNavigate && onNavigate(t.id); } }}
             style={{
-              fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase",
+              fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase",
               color: "var(--dim)", cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
@@ -431,7 +431,7 @@ export default function PlayerDetailDesktop({
             no account server (see docs/ACCOUNTS_SUBSCRIPTION_TUTORIAL.md), so
             it is a label, not a control, and carries no affordance saying
             otherwise. */}
-        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
+        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)" }}>SIGN IN</span>
         <AgeMark radius={7} />
       </span>
     </div>
@@ -446,12 +446,12 @@ export default function PlayerDetailDesktop({
           tabIndex={0}
           onClick={onBack}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack && onBack(); } }}
-          style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--amber-ink)", whiteSpace: "nowrap", cursor: "pointer" }}
+          style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--amber-ink)", whiteSpace: "nowrap", cursor: "pointer" }}
         >
           ← PROP FEED
         </span>
         <span style={{ width: 1, height: 18, background: "var(--line)", display: "block", flex: "0 0 auto" }} />
-        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)", whiteSpace: "nowrap" }}>WATCHING</span>
+        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)", whiteSpace: "nowrap" }}>WATCHING</span>
         <span className="nsb" style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto", minWidth: 0 }}>
           {watched.map((w) => (
             <div
@@ -490,7 +490,7 @@ export default function PlayerDetailDesktop({
           onClick={onWatch}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onWatch && onWatch(); } }}
           style={{
-            fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", padding: "7px 13px", borderRadius: 7,
+            fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", padding: "7px 13px", borderRadius: 7,
             cursor: "pointer", whiteSpace: "nowrap",
             border: `1px solid ${watching ? "var(--amber)" : "var(--line)"}`,
             background: watching ? "var(--amber-dim)" : "var(--surface-1)",
@@ -791,13 +791,13 @@ export default function PlayerDetailDesktop({
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span role="img" style={crest(player && player.team, sport, 15)} />
-            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--dim)" }}>{player && player.identity}</span>
+            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)" }}>{player && player.identity}</span>
             {st && <span style={pill(st.dot, "color-mix(in srgb, currentColor 14%, transparent)")}>{st.label}</span>}
           </div>
           {player && player.pills && player.pills.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {player.pills.map((c) => (
-                <span key={c.label} style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", padding: "4px 9px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                <span key={c.label} style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", padding: "4px 9px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--text-2)", whiteSpace: "nowrap" }}>
                   {`${c.label} ${c.value}`.toUpperCase()}
                 </span>
               ))}
@@ -821,7 +821,7 @@ export default function PlayerDetailDesktop({
               {player.seasonStats.map((g) => (
                 <div key={g.label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   <span style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, lineHeight: 1 }}>{g.value}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>{g.label}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>{g.label}</span>
                 </div>
               ))}
             </div>
@@ -901,7 +901,7 @@ export default function PlayerDetailDesktop({
             </div>
             {windows.custom && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>YOUR OWN</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" }}>YOUR OWN</span>
                 <div role="button" tabIndex={0} onClick={windows.custom.onDown}
                   onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onDown(); }}
                   style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--line)", borderRadius: 6, color: "var(--text-2)", cursor: "pointer" }}>−</div>
@@ -922,12 +922,12 @@ export default function PlayerDetailDesktop({
                     two controls because they are two different intentions. */}
                 <div role="button" tabIndex={0} onClick={windows.custom.onApply || windows.custom.onSave}
                   onKeyDown={(e) => { if (e.key === "Enter") (windows.custom.onApply || windows.custom.onSave)(); }}
-                  style={{ height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber)", color: "var(--accent-on)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", cursor: "pointer" }}>
+                  style={{ height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber)", color: "var(--accent-on)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", cursor: "pointer" }}>
                   APPLY
                 </div>
                 <div role="button" tabIndex={0} onClick={windows.custom.onSave}
                   onKeyDown={(e) => { if (e.key === "Enter") windows.custom.onSave(); }}
-                  style={{ height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber-dim)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", cursor: "pointer" }}>
+                  style={{ height: 28, padding: "0 10px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--amber)", borderRadius: 6, background: "var(--amber-dim)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", cursor: "pointer" }}>
                   SAVE
                 </div>
               </div>
@@ -954,7 +954,7 @@ export default function PlayerDetailDesktop({
             onZoom={(from, to) => setZoom(zoom ? [zoom[0] + from, zoom[0] + to] : [from, to])}
             header={
               <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 14, whiteSpace: "nowrap" }}>
-                <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.16em", color: "var(--dim)" }}>
+                <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: "var(--dim)" }}>
                   {`${String(marketLabel || "").toUpperCase()}`}
                 </span>
                 {/* Zoomed, the count says what it is a slice of and where. */}
@@ -969,7 +969,7 @@ export default function PlayerDetailDesktop({
                     tabIndex={0}
                     onClick={() => setZoom(null)}
                     onKeyDown={(e) => { if (e.key === "Enter") setZoom(null); }}
-                    style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", padding: "4px 9px", borderRadius: 6, border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)", cursor: "pointer" }}
+                    style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", padding: "4px 9px", borderRadius: 6, border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)", cursor: "pointer" }}
                   >
                     RESET ZOOM
                   </span>
@@ -1035,7 +1035,7 @@ export default function PlayerDetailDesktop({
               title={c.own ? "Your own window -- follows the number in YOUR OWN above the chart" : undefined}
               style={{ padding: "12px 14px", minWidth: 0, display: "flex", flexDirection: "column", gap: 3, borderRight: i < log.splitCells.length - 1 ? "1px solid var(--line)" : "none" }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: c.own ? "var(--amber-ink)" : "var(--dim)", whiteSpace: "nowrap" }}>{c.label}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: c.own ? "var(--amber-ink)" : "var(--dim)", whiteSpace: "nowrap" }}>{c.label}</span>
               <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: c.tone || "var(--text)" }}>{c.value}</span>
               <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{c.sub}</span>
             </div>
@@ -1072,7 +1072,7 @@ export default function PlayerDetailDesktop({
           </div>
           {ladderOpen && (
           <>
-          <div style={{ display: "grid", gridTemplateColumns: ladderWide ? LADDER_COLS : LADDER_COLS_TIGHT, alignItems: "center", padding: ladderWide ? "10px 18px" : "10px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: ladderWide ? LADDER_COLS : LADDER_COLS_TIGHT, alignItems: "center", padding: ladderWide ? "10px 18px" : "10px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
             <span>LINE</span>
             <span style={{ textAlign: "right" }}>HIT RATE</span>
             <span style={{ textAlign: "right" }}>GAMES OVER</span>
@@ -1118,7 +1118,7 @@ export default function PlayerDetailDesktop({
                 {r.price == null ? "—" : formatOdds(r.price)}
               </span>
               {ladderWide && onAddLeg && (
-                <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", color: "var(--amber-ink)" }}>+ ADD LEG</span>
+                <span style={{ textAlign: "right", fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", color: "var(--amber-ink)" }}>+ ADD LEG</span>
               )}
             </div>
           ))}
@@ -1226,11 +1226,11 @@ export default function PlayerDetailDesktop({
                   from the roster entirely. Without it a traded player sat here
                   reading exactly like an available one. */}
               {c.badge && (
-                <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", padding: "2px 5px", borderRadius: 4, flex: "0 0 auto", whiteSpace: "nowrap", background: on ? "rgba(0,0,0,0.24)" : BADGE_TONE[c.badge.tone].bg, color: on ? "#f4f7fb" : BADGE_TONE[c.badge.tone].fg }}>
+                <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.02em", padding: "2px 5px", borderRadius: 4, flex: "0 0 auto", whiteSpace: "nowrap", background: on ? "rgba(0,0,0,0.24)" : BADGE_TONE[c.badge.tone].bg, color: on ? "#f4f7fb" : BADGE_TONE[c.badge.tone].fg }}>
                   {c.badge.label}
                 </span>
               )}
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", flex: "0 0 auto", color: on ? "#ffffff" : "var(--dim)" }}>{c.state}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: "0.02em", flex: "0 0 auto", color: on ? "#ffffff" : "var(--dim)" }}>{c.state}</span>
               <span style={{ fontFamily: MONO, fontSize: 9.5, flex: "0 0 auto", color: on ? "rgba(255,255,255,0.78)" : "var(--dim)" }}>{c.games}</span>
             </div>
           );
@@ -1260,7 +1260,7 @@ export default function PlayerDetailDesktop({
           two lines when one line will not hold them. */}
       {activeRail && (
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)", whiteSpace: "nowrap" }}>SWITCH PLAYER</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)", whiteSpace: "nowrap" }}>SWITCH PLAYER</span>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {rails.map((r) => (
               <div key={r.key} role="button" tabIndex={0} onClick={() => setRosterTeam(r.key)}
@@ -1363,7 +1363,7 @@ export default function PlayerDetailDesktop({
                     style={{
                       display: "flex", alignItems: "center", gap: 8, padding: "10px 0",
                       borderBottom: "1px solid #20242b",
-                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em",
+                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em",
                       color: "var(--dim)",
                       cursor: subjectOnBench ? "default" : "pointer",
                     }}
@@ -1437,7 +1437,7 @@ export default function PlayerDetailDesktop({
                 const up = b.value >= 0;
                 return (
                   <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 0", borderBottom: "1px solid #191c21" }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--text-2)", flex: "0 0 82px" }}>{String(b.label).toUpperCase()}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.02em", color: "var(--text-2)", flex: "0 0 82px" }}>{String(b.label).toUpperCase()}</span>
                     <span style={{ position: "relative", flex: "1 1 auto", height: 7, background: "#191c21", borderRadius: 2, minWidth: 0 }}>
                       <span style={{ position: "absolute", left: "50%", top: -3, bottom: -3, width: 1, background: "var(--line)" }} />
                       <span style={{ position: "absolute", top: 0, bottom: 0, borderRadius: 2, left: up ? "50%" : `${50 - w}%`, width: `${w}%`, background: up ? "var(--pos)" : "var(--neg)" }} />
@@ -1460,7 +1460,7 @@ export default function PlayerDetailDesktop({
             <div key={t.abbr} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span role="img" style={crest(t.slug || t.abbr, t.sport || sport, 16)} />
-                <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2)" }}>{t.abbr}</span>
+                <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--text-2)" }}>{t.abbr}</span>
                 <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>
                   {`${t.players.length} LISTED`}
                 </span>
@@ -1548,7 +1548,7 @@ export default function PlayerDetailDesktop({
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
                     {cardBox.map((b) => (
                       <div key={b.label} style={{ border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface-2)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
-                        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", color: "var(--dim)" }}>{b.label}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.04em", color: "var(--dim)" }}>{b.label}</span>
                         <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700 }}>{b.value}</span>
                       </div>
                     ))}
@@ -1565,7 +1565,7 @@ export default function PlayerDetailDesktop({
                   <span style={cellLabel}>THAT NIGHT</span>
                   {cardNotes.map((n) => (
                     <div key={n.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 0", borderBottom: "1px solid #20242b" }}>
-                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)", flex: "0 0 150px" }}>{n.label}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", flex: "0 0 150px" }}>{n.label}</span>
                       <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 12.5, color: "var(--text-2)" }}>{n.value}</span>
                     </div>
                   ))}
@@ -1596,7 +1596,7 @@ export default function PlayerDetailDesktop({
             onKeyDown={(e) => { if (e.key === "Enter") onAddPick(); }}
             style={{
               display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 8,
-              cursor: "pointer", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em",
+              cursor: "pointer", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em",
               border: `1px solid ${pickAdded ? "var(--line)" : "var(--amber)"}`,
               background: pickAdded ? "var(--surface-2)" : "var(--amber)",
               color: pickAdded ? "var(--text-2)" : "var(--accent-on)",

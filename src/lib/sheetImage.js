@@ -46,8 +46,8 @@ function tokens() {
   };
 }
 
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const DISPLAY = "'Inter', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();

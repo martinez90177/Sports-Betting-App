@@ -16,8 +16,8 @@ import { crest } from "./FormPlot.jsx";
 // `lib/support.js` still decides which props lead a card. It is the ordering
 // inside a card, which is a different question from which card to open.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // TONE, TIERS, atStyle and MiniStrip moved to boardShared.jsx when the
 // desktop frame started drawing the same ones. Same values, one definition.
@@ -178,7 +178,7 @@ export default function BoardMobile({
                           <span
                             key={`${r.label}${i}`}
                             style={{
-                              fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "4px 9px",
+                              fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "4px 9px",
                               borderRadius: 5, whiteSpace: "nowrap", background: tone.bg, color: tone.fg,
                             }}
                           >
@@ -198,7 +198,7 @@ export default function BoardMobile({
                   </div>
                 )}
                 {!g.hero && (
-                  <div style={{ padding: "0 14px 12px", fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--amber-ink)" }}>
+                  <div style={{ padding: "0 14px 12px", fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--amber-ink)" }}>
                     {openKey === g.key ? "▴ CLOSE" : g.quiet ? "▾ CLOSEST PROPS" : "▾ WHAT’S BEHIND IT"}
                   </div>
                 )}
@@ -227,7 +227,7 @@ export default function BoardMobile({
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGameProps(g); } }}
-                        style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto" }}
+                        style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto" }}
                       >
                         OPEN IN FEED →
                       </span>

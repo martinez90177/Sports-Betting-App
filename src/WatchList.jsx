@@ -23,9 +23,9 @@ import { watchGameLabel } from "./lib/watchGames.js";
 // Both render WatchPanel, so there is one description of what a watched prop
 // looks like rather than two that drift apart.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
-const LABEL = { fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.12em", textTransform: "uppercase" };
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
+const LABEL = { fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase" };
 
 // Open/close, click-outside and Escape. Identical for both surfaces, so it is
 // written once rather than twice slightly differently.
@@ -98,14 +98,14 @@ function WatchPanel({ watched = [], onOpenWatched, onRemoveWatch, onClose, empty
                 <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {w.name}
                 </div>
-                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2)", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {w.subtitle}
                 </div>
                 {/* Which game the prop is on. A line is a line on one matchup,
                     and the same words against a different opponent are a
                     different prop -- see lib/watchGames.js. A watch whose game
                     could not be found says so rather than reading as timeless. */}
-                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--dim)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--dim)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {watchGameLabel(w) || [w.team, "game not recorded"].filter(Boolean).join(" · ")}
                 </div>
               </div>

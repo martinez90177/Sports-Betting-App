@@ -9,13 +9,13 @@ import { crest } from "./FormPlot.jsx";
 // Same items, same attribution and same counts as the phone frame — this is a
 // layout, and `NewsPageRedesign` still decides what an article is about.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // Header / row share one template, defined once (`desktop-handoff.md` §1).
 const ROW_COLS = "40px minmax(0, 1fr) 210px 86px";
 
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 // The three availability colours and the fourth state that has none. Literal
 // hexes rather than `--amber`, which is the accent: CLAUDE.md rule 2, and the
@@ -103,7 +103,7 @@ export default function NewsDesktop({
             })}
             {/* The screen says what it is for. Nothing in the wire is counted
                 into a rate, and the sentence stops the reader looking for one. */}
-            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>
+            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>
               NEWS IS CONTEXT — NO ITEM MOVES A HIT RATE
             </span>
           </div>
@@ -142,7 +142,7 @@ export default function NewsDesktop({
                   <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                     <span style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
                       {p && p.team && <span role="img" style={crest(p.team, p.sport, 14)} />}
-                      <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                      <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.02em", color: "var(--text-2)", whiteSpace: "nowrap" }}>
                         {p ? `${String(p.name).toUpperCase()}${p.team ? ` · ${p.team}` : ""}` : "UNATTRIBUTED"}
                       </span>
                       {it.source && (

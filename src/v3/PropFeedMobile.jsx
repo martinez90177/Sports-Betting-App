@@ -16,10 +16,10 @@ import { probToAmericanOdds, formatOdds } from "../odds.js";
 // feed's Markets / Side / Games counted / Lines are above the table"): the
 // things you move around with stay out, the set-and-forget half goes in.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
-const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 function chip(sel, extra) {
   return Object.assign({
@@ -36,7 +36,7 @@ function pill(sel) {
   return {
     minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center",
     padding: "0 12px", borderRadius: 8, fontFamily: MONO, fontSize: 13,
-    letterSpacing: "0.04em", cursor: "pointer", whiteSpace: "nowrap",
+    letterSpacing: "0.02em", cursor: "pointer", whiteSpace: "nowrap",
     border: `1px solid ${sel ? "var(--amber)" : "var(--line)"}`,
     background: sel ? "var(--amber-dim)" : "var(--surface-1)",
     color: sel ? "var(--amber-ink)" : "var(--text-2)",
@@ -152,7 +152,7 @@ export default function PropFeedMobile({
           role="button"
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onCycleSort && onCycleSort(); } }}
-          style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.06em", color: "var(--amber-ink)", cursor: "pointer" }}
+          style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.02em", color: "var(--amber-ink)", cursor: "pointer" }}
         >
           Sort: {sortLabel} ↓
         </span>
@@ -296,7 +296,7 @@ export default function PropFeedMobile({
             borderTop: "1px solid var(--line)", paddingTop: 12, cursor: "pointer",
           }}
         >
-          <span style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.1em", color: "var(--text-2)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.04em", color: "var(--text-2)" }}>
             {`ADVANCED · ${advanced.length} MORE`}
           </span>
           <span
@@ -323,7 +323,7 @@ export default function PropFeedMobile({
                   border: `1px solid ${a.active ? "var(--amber)" : "var(--line)"}`,
                   background: "var(--surface-2)",
                   color: a.active ? "var(--amber-ink)" : "var(--text-2)",
-                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em",
+                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.02em",
                   cursor: a.onOpen ? "pointer" : "default",
                 }}
               >
@@ -339,7 +339,7 @@ export default function PropFeedMobile({
             style={{
               flex: "0 0 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
               padding: "0 20px", borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface-2)",
-              color: "var(--text-2)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+              color: "var(--text-2)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
             }}
           >
             RESET
@@ -349,7 +349,7 @@ export default function PropFeedMobile({
             style={{
               flex: "1 1 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
               borderRadius: 12, border: "1px solid var(--amber)", background: "var(--amber)", color: "#ffffff",
-              fontFamily: MONO, fontSize: 13, letterSpacing: "0.08em", cursor: "pointer",
+              fontFamily: MONO, fontSize: 13, letterSpacing: "0.03em", cursor: "pointer",
             }}
           >
             {/* The count it will actually show, not a flat "SHOW PROPS". */}
@@ -391,7 +391,7 @@ export default function PropFeedMobile({
             style={{
               margin: "14px 16px", minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center",
               border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)",
-              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
             }}
           >
             {`LOAD MORE · ${loadedCount.toLocaleString()} OF ${totalRows.toLocaleString()}`}
@@ -450,7 +450,7 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
           </span>
           <span
             style={{
-              fontFamily: MONO, fontSize: 11, color: "var(--text-2)", letterSpacing: "0.03em",
+              fontFamily: MONO, fontSize: 11, color: "var(--text-2)", letterSpacing: "0.01em",
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}
           >
@@ -516,7 +516,7 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div style={{ border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface-1)", padding: "11px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>MATCHUP</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" }}>MATCHUP</span>
               <span style={{ fontSize: 14, fontWeight: 600 }}>
                 {r.rank != null ? `#${r.rank}${r.rankLabel ? ` · ${r.rankLabel}` : ""}` : "Not ranked"}
               </span>
@@ -529,7 +529,7 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
               )}
             </div>
             <div style={{ border: "1px solid var(--line)", borderRadius: 8, background: "var(--surface-1)", padding: "11px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>IMPLIED</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" }}>IMPLIED</span>
               <span style={{ fontSize: 14, fontWeight: 600, fontFamily: MONO }}>
                 {shownRate == null ? "—" : formatOdds(probToAmericanOdds(shownRate))}
               </span>
@@ -549,7 +549,7 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
               style={{
                 flex: "1 1 0", minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center",
                 borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface-1)",
-                color: "var(--text)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+                color: "var(--text)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
               }}
             >
               PLAYER PAGE →
@@ -562,7 +562,7 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
               style={{
                 flex: "1 1 0", minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center",
                 borderRadius: 10, border: "1px solid var(--amber)", background: "var(--amber-dim)",
-                color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+                color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
               }}
             >
               {added ? "✓ ON THE SLIP" : "+ MY PICKS"}

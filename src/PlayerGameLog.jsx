@@ -33,7 +33,7 @@ function OpponentCell({ sport, opp, home, ink, strike }) {
 }
 import { mutedTeamColor } from "./lib/teamColors.js";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The games, listed. Competitive brief item 1, mock 3a.
 //
@@ -50,7 +50,7 @@ const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
 // only" made nine games cease to exist with no acknowledgement that they had.
 // Struck through, the reader can see what the split cost them.
 const HEAD = {
-  fontFamily: MONO, fontSize: 9, letterSpacing: "0.14em",
+  fontFamily: MONO, fontSize: 9, letterSpacing: "0.05em",
   textTransform: "uppercase", color: "var(--dim)",
 };
 
@@ -99,7 +99,7 @@ export function SeasonSplit({ seasons = [] }) {
             borderLeft: i === 0 ? "none" : "1px solid var(--line)",
           }}
         >
-          <div style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: s.current ? "var(--text-2)" : "var(--dim)" }}>
+          <div style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.05em", textTransform: "uppercase", color: s.current ? "var(--text-2)" : "var(--dim)" }}>
             {s.label}{s.current ? " · this season" : " · last season"}
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 9, marginTop: 6 }}>
@@ -156,10 +156,10 @@ export default function PlayerGameLog({
         }}
       >
         <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--amber-ink)", width: 12 }}>{glyph}</span>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text)" }}>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text)" }}>
           Game by game
         </span>
-        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
+        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)" }}>
           {counted.length} {unit}
           {counted.length !== rows.length ? ` · ${rows.length - counted.length} excluded` : ""}
           {upcoming ? " · 1 upcoming" : ""}
@@ -208,7 +208,7 @@ export default function PlayerGameLog({
                   {isBinary ? "—" : Number(line).toFixed(1)}
                 </span>
                 <span style={{
-                  fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase",
+                  fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.04em", textTransform: "uppercase",
                   textAlign: "right", color: cleared ? "var(--pos)" : "var(--neg)",
                 }}>
                   {isBinary ? (r.v === 1 ? "Hit" : "Miss") : (cleared ? "Over" : "Under")}
@@ -232,7 +232,7 @@ export default function PlayerGameLog({
                 {isBinary ? "—" : Number(line).toFixed(1)}
               </span>
               <span style={{
-                fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase",
+                fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.04em", textTransform: "uppercase",
                 textAlign: "right", color: "var(--amber-ink)",
               }}>
                 Upcoming

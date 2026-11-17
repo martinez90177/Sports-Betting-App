@@ -6,8 +6,8 @@ import useIsNarrow, { useIsPhone } from "./lib/useIsNarrow.js";
 import FindingsMobile from "./v3/FindingsMobile.jsx";
 import FindingsDesktop from "./v3/FindingsDesktop.jsx";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // Findings. Competitive brief item 6, mock 3e.
 //
@@ -22,7 +22,7 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 // the page.
 
 const LABEL = {
-  fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em",
+  fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em",
   textTransform: "uppercase", color: "var(--dim)",
 };
 
@@ -43,7 +43,7 @@ function Pill({ label, count, on, onPick, style }) {
       className="pp-mono"
       style={{
         display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8,
-        fontSize: 10.5, letterSpacing: "0.06em", borderRadius: 4, padding: "8px 10px",
+        fontSize: 10.5, letterSpacing: "0.02em", borderRadius: 4, padding: "8px 10px",
         cursor: "pointer", whiteSpace: "nowrap", ...chip(on), ...style,
       }}
     >

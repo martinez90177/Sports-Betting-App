@@ -61,7 +61,7 @@ export const NAV_TABS = [
 // what keeps the row from reflowing by a pixel as the active tab changes.
 const TAB_TYPE = {
   fontSize: 12,
-  letterSpacing: "0.12em",
+  letterSpacing: "0.05em",
   textTransform: "uppercase",
   background: "none",
   border: "none",
@@ -90,7 +90,7 @@ export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge
         style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", minHeight: "var(--tap, 32px)" }}
       >
         <PalaceMark />
-        <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+        <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>
           Prop Palace
         </span>
       </span>
@@ -147,7 +147,7 @@ export default function NavBar({ page, onNavigate, onOpenSettings, onHome, badge
             the wordmark, the cog, this and the 21+ mark at 390px, and of the
             four this is the only one that is neither identity nor compliance
             -- and it does nothing yet. */}
-        <span className="pp-mono pp-nav-signin" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>
+        <span className="pp-mono pp-nav-signin" style={{ fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)" }}>
           SIGN IN
         </span>
         <AgeMark />

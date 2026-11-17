@@ -202,7 +202,7 @@ export function StatusPill({ status, note }) {
     <span
       className="pp-mono"
       style={{
-        fontSize: 10.5, letterSpacing: "0.1em", color: st.dot,
+        fontSize: 10.5, letterSpacing: "0.04em", color: st.dot,
         border: `1px solid ${st.border}`, padding: "5px 9px", whiteSpace: "nowrap",
       }}
     >

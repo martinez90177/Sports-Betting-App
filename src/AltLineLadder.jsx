@@ -46,18 +46,18 @@ function LadderRow({ rung, onAddLeg, inSlip, countLabel }) {
         <span style={{ display: "flex", height: 6, width: 190, background: "var(--panel2)" }}>
           <span style={{ width: hitRate == null ? 0 : pct(hitRate), background: strong(hitRate) ? "var(--pos, #3ecf8e)" : "#6c7688" }} />
         </span>
-        {isMain && <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--accent-text, #8fa6ff)" }}>MAIN LINE</span>}
+        {isMain && <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--accent-text, #8fa6ff)" }}>MAIN LINE</span>}
       </span>
       <span className="pp-mono" style={{ textAlign: "right", fontSize: 14, fontVariantNumeric: "tabular-nums" }}>{fmtPrice(price)}</span>
       <span style={{ textAlign: "right" }}>
         {inSlip ? (
-          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.08em", background: "var(--accent, #3b5bdb)", color: "#fff", padding: "8px 11px" }}>IN SLIP</span>
+          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.03em", background: "var(--accent, #3b5bdb)", color: "#fff", padding: "8px 11px" }}>IN SLIP</span>
         ) : (
           <button
             type="button"
             onClick={() => onAddLeg && onAddLeg(rung)}
             className="pp-mono"
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, letterSpacing: "0.08em", color: "var(--accent-text, #8fa6ff)", padding: 0 }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, letterSpacing: "0.03em", color: "var(--accent-text, #8fa6ff)", padding: 0 }}
           >
             + ADD LEG
           </button>
@@ -104,7 +104,7 @@ export default function AltLineLadder({
                 /* Neutral on purpose. The accent means selected/interactive in
                    this app and this badge is neither, and the three
                    availability colours are reserved for health. */
-                style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)", border: "1px solid var(--line-strong, var(--line))", padding: "3px 7px" }}
+                style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", border: "1px solid var(--line-strong, var(--line))", padding: "3px 7px" }}
               >
                 THIN
               </span>
@@ -123,7 +123,7 @@ export default function AltLineLadder({
                 background: m === market ? "var(--accent, #3b5bdb)" : "transparent",
                 color: m === market ? "#fff" : "var(--dim-strong, #aab2c0)",
                 border: m === market ? "1px solid var(--accent, #3b5bdb)" : "1px solid var(--line)",
-                textTransform: "uppercase", letterSpacing: "0.06em",
+                textTransform: "uppercase", letterSpacing: "0.02em",
               }}
             >
               {m}
@@ -137,7 +137,7 @@ export default function AltLineLadder({
         style={{
           display: "grid", gridTemplateColumns: GRID, alignItems: "center", padding: "10px 28px",
           borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)",
-          background: "var(--panel2)", fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)",
+          background: "var(--panel2)", fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)",
         }}
       >
         <span>LINE</span><span style={{ textAlign: "right" }}>HIT RATE</span>
@@ -229,7 +229,7 @@ export function SlipLeg({ leg, rungs = [], onChangeLine, onRemove, sport, colorM
                 the player and the line it was describing. */}
             {isAlt && (
               <span className="pp-mono" style={{
-                fontSize: 9.5, fontWeight: 700, letterSpacing: "0.1em",
+                fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em",
                 color: "var(--accent-text, #8fa6ff)",
                 border: "1px solid var(--accent, #3b5bdb)", padding: "2px 5px",
               }}>ALT</span>

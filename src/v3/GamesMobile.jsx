@@ -11,7 +11,7 @@ import { crest } from "./FormPlot.jsx";
 // Live state comes from the provider, never from the clock: `status` decides
 // which of the three card states is drawn, and a scheduled card shows no score.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The league's own tone on the slate heading. Muted, and deliberately nowhere
 // near --pos/--neg: naming a league is not a claim about an outcome.
@@ -96,7 +96,7 @@ export default function GamesMobile({
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSetQuery(query ? "" : sampleQuery || ""); } }}
-              style={{ marginLeft: "auto", flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ marginLeft: "auto", flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
             >
               {query ? "CLEAR" : `TRY \u201C${(sampleQuery || "").toUpperCase()}\u201D`}
             </span>
@@ -109,7 +109,7 @@ export default function GamesMobile({
             a scroller nobody wants above a date scroller. */}
         {weeks.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "0 16px 10px" }}>
-            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)", flex: "0 0 auto" }}>WEEK</span>
+            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)", flex: "0 0 auto" }}>WEEK</span>
             <select
               value={activeWeek || ""}
               onChange={(e) => onSetWeek && onSetWeek(e.target.value)}
@@ -143,7 +143,7 @@ export default function GamesMobile({
                   background: on ? "var(--amber-dim)" : "var(--surface-1)",
                 }}
               >
-                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: on ? "var(--amber-ink)" : "var(--dim)" }}>{d.dow}</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: on ? "var(--amber-ink)" : "var(--dim)" }}>{d.dow}</span>
                 <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: on ? "var(--text)" : "var(--text-2)" }}>{d.day}</span>
                 {/* The count is only drawn for a date whose slate has actually
                     been loaded -- a "0 GP" on an unfetched day would be a
@@ -199,7 +199,7 @@ export default function GamesMobile({
                 background: LEAGUE_TONE[league] || "var(--dim)",
               }}
             />
-            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" }}>{slateHeading}</span>
+            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" }}>{slateHeading}</span>
             <span style={{ flex: "1 1 auto", borderTop: "1px solid #20242b" }} />
           </div>
         )}
@@ -211,7 +211,7 @@ export default function GamesMobile({
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)" }}>
                 <span
                   style={{
-                    fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 8px", borderRadius: 5,
+                    fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "4px 8px", borderRadius: 5,
                     flex: "0 0 auto", whiteSpace: "nowrap",
                     background: g.live ? "rgba(239,91,91,0.16)" : g.done ? "rgba(139,152,171,0.14)" : "var(--amber-dim)",
                     color: g.live ? "var(--neg)" : g.done ? "var(--dim)" : "var(--amber-ink)",
@@ -277,7 +277,7 @@ export default function GamesMobile({
                 <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {g.note}
                 </span>
-                <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--amber-ink)", whiteSpace: "nowrap" }}>
+                <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", color: "var(--amber-ink)", whiteSpace: "nowrap" }}>
                   {g.cta}
                 </span>
               </div>
@@ -291,14 +291,14 @@ export default function GamesMobile({
             style={{
               minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center",
               border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)",
-              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
             }}
           >
             {showAll ? "SHOW FEWER GAMES" : `SHOW ${moreCount} MORE ${moreCount === 1 ? "GAME" : "GAMES"}`}
           </div>
         )}
 
-        <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", lineHeight: 1.6, color: "var(--dim)" }}>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", lineHeight: 1.6, color: "var(--dim)" }}>
           Live state comes from the provider, never from the clock. Hit rates count finished games only.
         </span>
       </div>

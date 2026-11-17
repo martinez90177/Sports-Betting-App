@@ -32,7 +32,7 @@ import { NAV_TABS } from "../NavBar.jsx";
 // order -- see the note on NAV_TABS -- but it is the same six tabs, and the
 // mock's trick of shortening two of them to fit six across 430px still holds.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 const SHORT = { board: "Board", feed: "Feed" };
 
@@ -60,7 +60,7 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
             style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}
           >
             <PalaceMark variant="nav" />
-            <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>
               Prop Palace
             </span>
           </div>
@@ -81,7 +81,7 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
             </span>
             <span
               style={{
-                fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--amber-ink)",
+                fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", color: "var(--amber-ink)",
                 border: "1px solid var(--amber)", borderRadius: 999, padding: "6px 11px",
               }}
             >
@@ -117,7 +117,7 @@ export default function Shell({ page, onNavigate, onOpenSettings, onHome, slipDo
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNavigate && onNavigate(t.id); } }}
                 style={{
                   flex: "0 0 auto", display: "flex", justifyContent: "center",
-                  fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.08em", textTransform: "uppercase",
+                  fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.03em", textTransform: "uppercase",
                   // 44px tall, and wide enough to hit with a thumb.
                   padding: on ? "13px 14px 11px" : "13px 14px 13px", whiteSpace: "nowrap", cursor: "pointer",
                   color: on ? "var(--amber-ink)" : "var(--dim)",
@@ -168,7 +168,7 @@ export function SlipDock({ label, onClick }) {
         minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
         width: "100%", borderRadius: 12, border: "1px solid var(--amber)",
         background: "var(--amber-dim)", color: "var(--amber-ink)",
-        fontFamily: MONO, fontSize: 13, letterSpacing: "0.1em", cursor: "pointer",
+        fontFamily: MONO, fontSize: 13, letterSpacing: "0.04em", cursor: "pointer",
       }}
     >
       {label}

@@ -28,7 +28,7 @@ export default function PlayerNewsModule({ playerName, headshotSrc, sport, team,
   return (
     <div style={{ background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, overflow: "hidden", marginTop: 16 }}>
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
-        <div className="oswald" style={{ fontSize: 13, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        <div className="oswald" style={{ fontSize: 13, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em" }}>
           Latest News
         </div>
       </div>

@@ -11,7 +11,7 @@ import { feedFormScale } from "./FormGraph.jsx";
 // feed, not four layouts.
 
 const MONO = "pp-mono";
-const LABEL = { fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+const LABEL = { fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
 
 
 function TeamText({ t, side, align }) {
@@ -99,7 +99,7 @@ export function PlayerHeaderCard({
               key={u.label}
               className={MONO}
               style={{
-                fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase",
+                fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase",
                 color: "var(--text-2)", border: "1px solid var(--line)", borderRadius: 4,
                 padding: "5px 9px", whiteSpace: "nowrap",
               }}
@@ -209,7 +209,7 @@ export function GameByGameChart({
         <span className="oswald" style={{ fontSize: 16, fontWeight: 600 }}>Game by game</span>
         <span className={MONO} style={{ ...LABEL, fontSize: 9.5 }}>oldest to newest · bar height is the number</span>
         {straightRun > 0 && (
-          <span className={MONO} style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2)" }}>
+          <span className={MONO} style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2)" }}>
             {straightRun} straight {direction === "under" ? "under" : "over"}
           </span>
         )}
@@ -306,7 +306,7 @@ export function GameByGameChart({
                   }}>
                     <TeamLogo sport={sport} abbr={g.opp} size={16} />
                   </span>
-                  <span className={MONO} style={{ fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>
+                  <span className={MONO} style={{ fontSize: 11, letterSpacing: "0.02em", color: ink, whiteSpace: "nowrap" }}>
                     {g.opp || ""}
                   </span>
                   <span className={MONO} style={{ fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>

@@ -30,13 +30,13 @@ import { straightRunOf } from "./MatchupCardModal.jsx";
 // with another real row -- the rule is never faked either.
 
 const LABEL = {
-  fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)",
+  fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)",
 };
 
 // The rules strip's own pair, a size up from LABEL and a step brighter: this
 // is the page's argument, not a caption under it.
 const RULE_LABEL = {
-  fontSize: 12.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))",
+  fontSize: 12.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2, var(--dim))",
 };
 const RULE_BODY = { fontSize: 15, lineHeight: 1.5, marginTop: 10, color: "var(--text)" };
 
@@ -109,7 +109,7 @@ export default function LandingPage({
       onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
       className="pp-mono"
       style={{
-        fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase",
+        fontSize: 12, letterSpacing: "0.05em", textTransform: "uppercase",
         color: "var(--text-2, var(--dim))", cursor: onClick ? "pointer" : "default",
       }}
     >
@@ -195,12 +195,12 @@ function HeroCard({ row, onOpen }) {
             }}>
               <TeamLogo sport={row.sport} abbr={row.team} size={19} />
             </span>
-            <span className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+            <span className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
               {row.team}{row.opp ? ` · vs ${row.opp}` : ""}
             </span>
           </div>
           <div className="pp-display" style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.01em", marginTop: 6 }}>{row.name}</div>
-          <div className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2, var(--dim))", marginTop: 6 }}>
+          <div className="pp-mono" style={{ fontSize: 14, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2, var(--dim))", marginTop: 6 }}>
             {row.subtitle}
           </div>
         </div>
@@ -268,21 +268,21 @@ function HeroCard({ row, onOpen }) {
         {/* The count and the margin, both off the same game log the bars draw,
             so neither can disagree with the graph above them. */}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
-          <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.06em", color: "var(--pos-solid, var(--pos))" }}>
+          <span className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.02em", color: "var(--pos-solid, var(--pos))" }}>
             {over} of {n}{straight > 0 ? ` · ${straight} straight` : ""}
           </span>
-          <span className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: "var(--text-2, var(--dim))" }}>
+          <span className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.02em", color: "var(--text-2, var(--dim))" }}>
             avg {avg.toFixed(1)} · {margin >= 0 ? "+" : "−"}{Math.abs(margin).toFixed(1)} vs. line
           </span>
         </div>
         <div style={{ display: "flex", gap: 14, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
-          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
             <span style={{ width: 7, height: 14, background: "var(--pos)", borderRadius: 2 }} />cleared the line
           </span>
-          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
             <span style={{ width: 7, height: 14, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box" }} />fell short
           </span>
-          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+          <span className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
             <span style={{ width: 14, borderTop: "1.5px dashed var(--text)" }} />the line {row.line}
           </span>
         </div>
@@ -314,7 +314,7 @@ function HeroCard({ row, onOpen }) {
       </div>
 
       <div style={{ border: "1px solid var(--line)", borderRadius: 6, background: "var(--surface-sunken)", padding: 16, marginTop: 18 }}>
-        <div className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>
+        <div className="pp-mono" style={{ fontSize: 13, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>
           {tier} sample · leans {rate >= 0.5 ? "over" : "under"}
         </div>
         <div style={{ fontSize: 14, color: "var(--text-2, var(--dim))", marginTop: 8, lineHeight: 1.55 }}>
@@ -344,18 +344,18 @@ function TeaserCard({ row, onOpen }) {
         padding: 16, cursor: open ? "pointer" : "default",
       }}
     >
-      <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+      <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
         {row.team}{row.opp ? ` @ ${row.opp}` : ""}
       </div>
       <div style={{ background: "var(--surface-2)", borderRadius: 4, padding: 12, marginTop: 12 }}>
         <div style={{ fontSize: 15, color: "var(--text)" }}>{row.name}</div>
-        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", marginTop: 4 }}>
+        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--dim)", marginTop: 4 }}>
           {row.subtitle}
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 10 }}>
           {thin ? (
             <>
-              <span className="pp-mono" style={{ fontSize: 15, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>Too few</span>
+              <span className="pp-mono" style={{ fontSize: 15, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>Too few</span>
               <span className="pp-mono" style={{ fontSize: 11, color: "var(--dim)" }}>{row.n10 || 0} games</span>
             </>
           ) : (

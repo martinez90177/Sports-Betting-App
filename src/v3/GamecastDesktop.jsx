@@ -15,9 +15,9 @@ import { crest } from "./FormPlot.jsx";
 //     estimated from something adjacent — that is `untracked` below, and the
 //     names travel with the count.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 const card = {
   border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)",
   display: "flex", flexDirection: "column",
@@ -72,13 +72,13 @@ export default function GamecastDesktop({
           tabIndex={0}
           onClick={onBack}
           onKeyDown={(e) => { if (e.key === "Enter") onBack && onBack(); }}
-          style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 34, padding: "0 13px 0 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer" }}
+          style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 34, padding: "0 13px 0 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer" }}
         >
           ← GAMES
         </span>
         <span style={{ width: 1, height: 22, background: "var(--line)", display: "block" }} />
         <span style={{
-          fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 9px", borderRadius: 5,
+          fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "4px 9px", borderRadius: 5,
           background: live ? "var(--neg-dim)" : "rgba(139,152,171,0.14)",
           color: live ? "var(--neg)" : "var(--dim)",
         }}>
@@ -86,7 +86,7 @@ export default function GamecastDesktop({
         </span>
         {clock && <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--dim)" }}>{clock}</span>}
         {/* Where the state comes from, said rather than implied by a spinner. */}
-        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>
+        <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>
           {loading ? "REFRESHING…" : "FROM THE PROVIDER, NOT THE CLOCK"}
         </span>
       </div>
@@ -150,7 +150,7 @@ export default function GamecastDesktop({
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                 {leaders.map((l) => (
                   <div key={`${l.cat}|${l.team || ""}|${l.name}`} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>{l.cat}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>{l.cat}</span>
                     <span style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</span>
                       {l.team && <span role="img" style={crest(l.team, sport, 14)} />}
@@ -190,7 +190,7 @@ export default function GamecastDesktop({
                     projection of where it lands. */}
                 <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 700 }}>{p.soFar}</span>
                 <span style={{
-                  fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em",
+                  fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.02em",
                   color: p.state === "CLEARED" ? "var(--pos)" : p.state === "MISSED" ? "var(--neg)" : "var(--dim)",
                 }}>
                   {p.state}

@@ -17,8 +17,8 @@
 
 import React from "react";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // Under this the card states the count and refuses the rate. Ten games against
 // one defence is where a share of them starts meaning anything; below it a
@@ -53,7 +53,7 @@ export default function SimilarPlayers({ rows, dropped = 0, line, marketLabel, o
   const diff = avg == null ? null : avg - line;
   const thin = rows.length < SUPPORT;
 
-  const label = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)" };
+  const label = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" };
   const cell = { fontFamily: MONO, fontSize: 12, color: "var(--text-2)" };
 
   const tab = (id, text) => (
@@ -64,7 +64,7 @@ export default function SimilarPlayers({ rows, dropped = 0, line, marketLabel, o
       onClick={() => onMode(id)}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onMode(id); } }}
       style={{
-        cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em",
+        cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em",
         padding: "4px 9px", borderRadius: 6,
         border: `1px solid ${mode === id ? "var(--amber)" : "var(--line)"}`,
         background: mode === id ? "var(--amber-dim)" : "transparent",

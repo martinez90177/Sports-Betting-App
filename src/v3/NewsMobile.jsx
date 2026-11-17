@@ -11,7 +11,7 @@ import { crest } from "./FormPlot.jsx";
 // The mock's filter row is All / Watching only -- "Injuries lives on its own
 // tab, so it is not a filter here", and this app has exactly that tab.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The four availability states, in the fixed hexes CLAUDE.md rule 2 names --
 // not tokens, because these must not re-tint with the accent. Unknown draws no
@@ -33,7 +33,7 @@ function statusPill(status) {
     : status === "questionable" ? "#e8b13a"
     : status === "active" ? "#3ecf8e" : "var(--dim)";
   return {
-    fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "3px 7px",
+    fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "3px 7px",
     borderRadius: 999, flex: "0 0 auto", whiteSpace: "nowrap", background: bg, color: fg,
   };
 }
@@ -118,7 +118,7 @@ export default function NewsMobile({
                   {p && p.team && <span role="img" style={crest(p.team, p.sport, 14)} />}
                   <span
                     style={{
-                      fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", color: "var(--dim)",
+                      fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)",
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                     }}
                   >
@@ -152,7 +152,7 @@ export default function NewsMobile({
           News is context for the numbers. Nothing here is a pick, and no item changes a hit rate — only finished games do that.
         </div>
         <div style={{ padding: "0 16px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" }}>AVAILABILITY</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" }}>AVAILABILITY</span>
           {LEGEND.map(([label, hex]) => (
             <span key={label} style={{ display: "flex", alignItems: "center", gap: 9 }}>
               <span
@@ -160,7 +160,7 @@ export default function NewsMobile({
                   ? { width: 9, height: 9, borderRadius: 999, background: hex, display: "block", flex: "0 0 auto" }
                   : { width: 9, height: 9, display: "block", flex: "0 0 auto" }}
               />
-              <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" }}>
+              <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text-2)" }}>
                 {label}
               </span>
             </span>

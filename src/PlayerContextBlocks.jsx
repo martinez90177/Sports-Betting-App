@@ -101,7 +101,7 @@ export function MatchupContextRow({
         >
           <div
             className="pp-mono"
-            style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+            style={{ fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
           >
             {c.label}
           </div>
@@ -111,7 +111,7 @@ export function MatchupContextRow({
           {c.sub && (
             <div
               className="pp-mono"
-              style={{ fontSize: 11, marginTop: 3, color: "var(--text-2, var(--dim))", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+              style={{ fontSize: 11, marginTop: 3, color: "var(--text-2, var(--dim))", textTransform: "uppercase", letterSpacing: "0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
             >
               {c.sub}
             </div>
@@ -132,7 +132,7 @@ export function InjuryAndNews({ status, statusNote, items = [], summary }) {
   return (
     <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--line)" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
-        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>INJURY AND NEWS</span>
+        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>INJURY AND NEWS</span>
         <StatusPill status={status} note={statusNote} />
       </div>
 
@@ -145,7 +145,7 @@ export function InjuryAndNews({ status, statusNote, items = [], summary }) {
             borderBottom: i === items.length - 1 ? "1px solid var(--line)" : "none",
           }}
         >
-          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.08em", color: it.tone === "current" ? "var(--accent-text, #8fa6ff)" : "var(--amber, #3b5bdb)" }}>
+          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.03em", color: it.tone === "current" ? "var(--accent-text, #8fa6ff)" : "var(--amber, #3b5bdb)" }}>
             {it.when}
           </span>
           <span style={{ fontSize: 13.5, lineHeight: 1.5, color: it.tone === "current" ? "var(--text)" : "var(--dim-strong, #aab2c0)" }}>
@@ -184,7 +184,7 @@ export function InjuryAndNews({ status, statusNote, items = [], summary }) {
 export function MissingAround({ people = [], footnote, sport, colorMap }) {
   return (
     <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--line)" }}>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 14 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 14 }}>
         MISSING AROUND HIM
       </div>
 

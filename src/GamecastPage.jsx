@@ -204,7 +204,7 @@ function LeaderRow({ item, isLast, sport, team }) {
       />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{
-          fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+          fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase",
           color: "var(--dim)",
         }}>
           {item.category}
@@ -577,7 +577,7 @@ export default function GamecastPage({ game, isMobile, embedded, onBack, onViewP
               {detail.decisions.map((d) => (
                 <div key={d.role} style={{ minWidth: 0 }}>
                   <div style={{
-                    fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                    fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase",
                     color: "var(--dim)",
                   }}>
                     {d.role === "winner" ? "Win" : d.role === "loser" ? "Loss" : "Save"}
@@ -600,7 +600,7 @@ export default function GamecastPage({ game, isMobile, embedded, onBack, onViewP
           return (
             <div style={SECTION}>
               <SectionTitle right={
-                <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.08em", color: "var(--dim)" }}>
+                <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.03em", color: "var(--dim)" }}>
                   {isFinal ? "FINAL" : "SO FAR TONIGHT"}
                 </span>
               }>

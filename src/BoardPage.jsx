@@ -59,12 +59,12 @@ const TIER_TITLES = [
 // when the honest answer is "yes, but not enough games to say anything".
 
 const GRID = "232px 176px 148px 1fr 132px";
-const LABEL = { fontSize: 11.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)" };
+const LABEL = { fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
 
 // The summary strip's two type styles, off `PropPalace Board v2.dc.html` --
 // the same pair the Prop Feed and Player Detail strips use.
-const BOARD_CELL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
-const BOARD_CELL_VALUE = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+const BOARD_CELL_LABEL = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const BOARD_CELL_VALUE = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 
 // The splits the rail offers. Each is a predicate over a row's own game log,
 // so a split recomputes the rate AND its sample together -- the README calls
@@ -114,7 +114,7 @@ function WithoutProps({ sport, teams, lookup }) {
         className="pp-mono"
         style={{
           display: "flex", alignItems: "center", gap: 10, padding: "10px 20px",
-          fontSize: 11, letterSpacing: "0.06em", color: "var(--amber-ink, var(--amber))",
+          fontSize: 11, letterSpacing: "0.02em", color: "var(--amber-ink, var(--amber))",
           cursor: "pointer", minHeight: "var(--tap, 44px)", boxSizing: "border-box",
         }}
       >
@@ -133,7 +133,7 @@ function WithoutProps({ sport, teams, lookup }) {
                 key={m.team + "-" + m.name}
                 className="pp-mono"
                 style={{
-                  fontSize: 10, letterSpacing: "0.04em", color: "var(--text-2, var(--dim))",
+                  fontSize: 10, letterSpacing: "0.02em", color: "var(--text-2, var(--dim))",
                   border: "1px solid var(--line)", borderRadius: 4, padding: "6px 9px", whiteSpace: "nowrap",
                 }}
               >
@@ -677,27 +677,27 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
 
   const v2RightRail = (
     <div>
-      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Reading a card</div>
+      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.05em" }}>Reading a card</div>
       <div style={{ margin: "12px 0 20px", display: "grid", gap: 9 }}>
         {[
           { mark: <span style={{ width: 8, height: 17, background: "var(--pos-solid, var(--pos))", borderRadius: 2, flex: "0 0 auto" }} />, text: "cleared the line" },
           { mark: <span style={{ width: 8, height: 17, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box", flex: "0 0 auto" }} />, text: "fell short" },
           { mark: <span style={{ width: 16, borderTop: "1.5px dashed var(--text)", flex: "0 0 auto" }} />, text: "the line" },
         ].map((it, i) => (
-          <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+          <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
             {it.mark}{it.text}
           </span>
         ))}
       </div>
 
-      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Lineups</div>
+      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.05em" }}>Lineups</div>
       <div style={{ margin: "12px 0 20px", display: "grid", gap: 9 }}>
         {[
           { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text-2, var(--dim))", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "posted" },
           { mark: <span style={{ width: 8, height: 8, borderRadius: "50%", background: "transparent", border: "1.5px solid var(--text-2, var(--dim))", boxSizing: "border-box", flex: "0 0 auto" }} />, text: "projected" },
           { mark: <span style={{ width: 8, flex: "0 0 auto" }} />, text: "no dot \u00b7 unknown" },
         ].map((it, i) => (
-          <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
+          <span key={i} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10.5, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text-2, var(--dim))" }}>
             {it.mark}{it.text}
           </span>
         ))}
@@ -706,7 +706,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         </span>
       </div>
 
-      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.14em" }}>Verdicts</div>
+      <div className="pp-mono" style={{ ...LABEL, fontSize: 10.5, letterSpacing: "0.05em" }}>Verdicts</div>
       <div style={{ margin: "12px 0 0", display: "grid", gap: 7, fontSize: 11.5, color: "var(--text-2, var(--dim))", lineHeight: 1.5 }}>
         {/* Stated as what the sample supports, because that is what the words
             measure now. A percentage on its own cannot separate 9 of 10 from
@@ -849,7 +849,7 @@ function BoardBandHalf({ sport, side, abbr, record, tone, align }) {
   const info = teamInfo(sport, abbr);
   const text = (
     <div style={{ minWidth: 0, textAlign: align === "right" ? "right" : "left" }}>
-      <div className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+      <div className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
         {record ? `${side} \u00b7 ${record}` : side}
       </div>
       <div className="pp-display" style={{ fontWeight: 600, fontSize: 17, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -944,7 +944,7 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen, sport }) {
         </div>
       </div>
 
-      <div className="pp-mono" style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--text)" }}>
+      <div className="pp-mono" style={{ fontSize: 12.5, textTransform: "uppercase", letterSpacing: "0.02em", color: "var(--text)" }}>
         {row.subtitle}
       </div>
 
@@ -996,7 +996,7 @@ function BoardRow({ row, minGames, activeSplits, isLast, onOpen, sport }) {
             : undefined}
           style={{
             display: "inline-block", borderRadius: 999, padding: "5px 10px",
-            fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.06em",
+            fontSize: 11.5, textTransform: "uppercase", letterSpacing: "0.02em",
             background: verdictStyle.background,
             color: verdictStyle.color,
             border: `1px solid ${verdictStyle.border}`,

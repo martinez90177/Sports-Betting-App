@@ -18,10 +18,10 @@ import useMyPicks from "./useMyPicks.js";
 // against *that* objective. The engine is `src/v3/intentRead.js`; this file
 // only draws it.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
-const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 // One template, so the header and the rows cannot drift out of column.
 const SLIP_COLS = "minmax(0, 1fr) 62px 1px 62px 30px";
@@ -88,7 +88,7 @@ export default function MyPicksMobile({
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab(label); } }}
               style={{
                 flex: "1 1 0", minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", whiteSpace: "nowrap",
+                cursor: "pointer", fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", whiteSpace: "nowrap",
                 color: on ? "var(--amber-ink)" : "var(--dim)",
                 borderBottom: `2px solid ${on ? "var(--amber)" : "transparent"}`,
               }}
@@ -157,7 +157,7 @@ export default function MyPicksMobile({
                 {l.alt && (
                   <span
                     style={{
-                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "2px 6px",
+                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "2px 6px",
                       borderRadius: 4, background: "var(--amber-dim)", color: "var(--amber-ink)", flex: "0 0 auto",
                     }}
                   >
@@ -255,7 +255,7 @@ export default function MyPicksMobile({
                 style={{
                   minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
                   borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface-2)",
-                  color: "var(--text)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", textDecoration: "none",
+                  color: "var(--text)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", textDecoration: "none",
                 }}
               >
                 {`OPEN IN ${bookLabel.toUpperCase()} →`}
@@ -272,7 +272,7 @@ export default function MyPicksMobile({
               style={{
                 flex: "0 0 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
                 padding: "0 20px", borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface-2)",
-                color: "var(--text-2)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+                color: "var(--text-2)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
               }}
             >
               CLEAR
@@ -288,7 +288,7 @@ export default function MyPicksMobile({
               style={{
                 flex: "1 1 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
                 borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface-2)",
-                color: "var(--text)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+                color: "var(--text)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
               }}
             >
               TRACK IN LEDGER
@@ -355,7 +355,7 @@ export default function MyPicksMobile({
           <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flex: "0 0 auto" }}>
             <span
               style={{
-                fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "4px 8px", borderRadius: 999,
+                fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "4px 8px", borderRadius: 999,
                 whiteSpace: "nowrap",
                 background: p.result === "won" ? "var(--pos-dim)" : p.result === "lost" ? "var(--neg-dim)" : "rgba(139,152,171,0.14)",
                 color: p.result === "won" ? "var(--pos)" : p.result === "lost" ? "var(--neg)" : "var(--dim)",
@@ -493,7 +493,7 @@ export default function MyPicksMobile({
                       <span style={{ fontSize: 13.5, fontWeight: 600 }}>{m.title}</span>
                       <span style={{ fontSize: 12, lineHeight: 1.45, color: "var(--dim)" }}>{m.why}</span>
                     </span>
-                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", whiteSpace: "nowrap", flex: "0 0 auto" }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--amber-ink)", whiteSpace: "nowrap", flex: "0 0 auto" }}>
                       {m.action}
                     </span>
                   </div>
@@ -523,7 +523,7 @@ export default function MyPicksMobile({
         {FLAGS.map((f) => (
           <span key={f} style={{ display: "flex", alignItems: "center", gap: 7 }}>
             <span style={{ width: 9, height: 9, borderRadius: 2, background: toneOf(f), display: "block", flex: "0 0 auto" }} />
-            <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", color: "var(--text-2)" }}>
+            <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", color: "var(--text-2)" }}>
               {`${f} · ${FLAG_MEANS[f]}`}
             </span>
           </span>

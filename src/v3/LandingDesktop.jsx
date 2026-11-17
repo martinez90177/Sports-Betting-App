@@ -21,10 +21,10 @@ import PalaceMark from "../PalaceMark.jsx";
 // The strip is `MiniStrip` from boardShared — the Board's own graph, so the
 // example on the front page is drawn by the code the product uses.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 // Season lengths, and they say so.
 //
@@ -84,7 +84,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
         {/* Same lockup as LandingMobile: the mark beside the wordmark. */}
         <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <PalaceMark variant="nav" />
-          <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
+          <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Prop Palace</span>
         </span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           <span
@@ -96,7 +96,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
           >
             ⚙
           </span>
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)" }}>SIGN IN</span>
           <AgeMark radius={7} />
         </span>
       </div>
@@ -124,7 +124,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
                 tabIndex={0}
                 onClick={onOpenBoard}
                 onKeyDown={(e) => { if (e.key === "Enter") onOpenBoard(); }}
-                style={{ alignSelf: "flex-start", minHeight: 46, display: "flex", alignItems: "center", padding: "0 22px", borderRadius: 10, background: "var(--amber)", color: "var(--accent-on)", fontFamily: MONO, fontSize: 12.5, letterSpacing: "0.08em", cursor: "pointer", marginTop: 4 }}
+                style={{ alignSelf: "flex-start", minHeight: 46, display: "flex", alignItems: "center", padding: "0 22px", borderRadius: 10, background: "var(--amber)", color: "var(--accent-on)", fontFamily: MONO, fontSize: 12.5, letterSpacing: "0.03em", cursor: "pointer", marginTop: 4 }}
               >
                 OPEN TONIGHT’S BOARD →
               </span>
@@ -167,7 +167,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
                 {/* The tab is draggable on the phone frame; here the arrows
                     step it, which is what a keyboard has. */}
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>LINE</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>LINE</span>
                   <span
                     role="button"
                     tabIndex={0}
@@ -193,7 +193,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
                       tabIndex={0}
                       onClick={() => setLine(null)}
                       onKeyDown={(e) => { if (e.key === "Enter") setLine(null); }}
-                      style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer" }}
+                      style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--amber-ink)", cursor: "pointer" }}
                     >
                       {`RESET TO ${hero.line}`}
                     </span>
@@ -227,7 +227,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--line)", paddingTop: 20 }}>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.12em", color: "var(--dim)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
             21+ · NO WAGERS TAKEN · 1-800-GAMBLER
           </span>
           {/* Which leagues publish a feed, said on the front page rather than

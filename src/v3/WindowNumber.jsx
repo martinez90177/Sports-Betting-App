@@ -1,6 +1,6 @@
 import React from "react";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The custom window's number, typed rather than stepped to.
 //

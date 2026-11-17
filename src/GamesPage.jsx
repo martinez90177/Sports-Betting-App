@@ -137,7 +137,7 @@ function DateTabs({ tabs, activeKey, onChange, isMobile, caption, counts }) {
           // Bottom padding keeps the caption clear of the active tab's
           // indicator bar, which is pinned to the top of the row below it.
           padding: isMobile ? "9px 16px 7px" : "9px 12px 7px", fontSize: 10.5, fontWeight: 700,
-          letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--dim)",
+          letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--dim)",
         }}>
           {caption}
         </div>
@@ -172,7 +172,7 @@ function DateTabs({ tabs, activeKey, onChange, isMobile, caption, counts }) {
               }} />
               <div className="oswald" style={{ fontSize: isMobile ? 15.5 : 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>{t.label}</div>
               <div style={{
-                fontSize: isMobile ? 11.5 : 10, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.08em",
+                fontSize: isMobile ? 11.5 : 10, marginTop: 3, textTransform: "uppercase", letterSpacing: "0.03em",
                 color: active ? "var(--amber)" : "var(--dim)", opacity: active ? 0.75 : 1,
                 whiteSpace: "nowrap",
               }}>
@@ -221,10 +221,10 @@ function GamesSearchBar({ value, onChange, isMobile }) {
 
 // Strip and rail type, off `PropPalace Games v2.dc.html` -- the same pair the
 // Board and Prop Feed strips use.
-const GM_CELL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
-const GM_CELL_VALUE = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
-const GM_RAIL_LABEL = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
-const LEGEND_ROW = { display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" };
+const GM_CELL_LABEL = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const GM_CELL_VALUE = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+const GM_RAIL_LABEL = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
+const LEGEND_ROW = { display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text-2)" };
 
 // How many cards the slate opens with, the rest behind one button.
 const VISIBLE_GAMES = 5;
@@ -730,7 +730,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setStateFilter(id); setShowAll(false); } }}
             className="pp-mono"
             style={{
-              display: "flex", alignItems: "center", gap: 9, fontSize: 11, letterSpacing: "0.08em",
+              display: "flex", alignItems: "center", gap: 9, fontSize: 11, letterSpacing: "0.03em",
               textTransform: "uppercase", padding: "8px 11px", borderRadius: 6, cursor: "pointer",
               background: on ? "var(--amber-dim)" : "transparent",
               color: on ? "var(--amber-ink)" : "var(--text-2)",
@@ -774,7 +774,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
                 border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
               }}
             >
-              <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.1em", color: on ? "var(--amber-ink)" : "var(--text-2)" }}>{o.label}</span>
+              <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.04em", color: on ? "var(--amber-ink)" : "var(--text-2)" }}>{o.label}</span>
               <span className="pp-mono tnum" style={{ fontSize: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>
                 {known ? (n === 0 ? "none" : `${n} ${n === 1 ? "game" : "games"}`) : ""}
               </span>
@@ -786,7 +786,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Show</div>
       {stateChips}
 
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)", lineHeight: 1.6 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)", lineHeight: 1.6 }}>
         Live state comes from the provider, never from the clock. Hit rates count
         finished games only.
       </div>
@@ -798,13 +798,13 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
       <div style={GM_RAIL_LABEL}>Game state</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
         {STATE_LEGEND.map(([label, st]) => (
-          <span key={label} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" }}>
+          <span key={label} className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 10.5, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text-2)" }}>
             <StateSwatch status={st} />
             {label}
           </span>
         ))}
       </div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
         A game is only live when the provider says so &mdash; never inferred from the clock.
       </div>
 
@@ -823,13 +823,13 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
           tonight&rsquo;s line
         </span>
       </div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
         A live bar is what has happened so far tonight, not a rate. It counts toward a
         hit rate only once the game is final.
       </div>
 
       <div style={{ ...GM_RAIL_LABEL, marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>Linescores</div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 12, lineHeight: 1.7 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 12, lineHeight: 1.7 }}>
         <div>MLB &mdash; innings, then R H E.</div>
         <div style={{ marginTop: 7 }}>NFL &middot; NBA &middot; WNBA &mdash; quarters, then T. Overtime adds OT1.</div>
         <div style={{ marginTop: 7 }}>A period not yet played stays blank, never a zero.</div>
@@ -984,7 +984,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
           Games
         </h1>
         <div className="pp-mono" style={{
-          fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 7,
+          fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)", marginTop: 7,
         }}>
           <span className="tnum">{filtered.length}</span>
           {` shown · ${subtitle}`}
@@ -1032,7 +1032,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
             style={{
               display: "inline-block", padding: "9px 18px", cursor: "pointer",
               border: "1px solid var(--line-strong)", color: "var(--text)",
-              fontSize: 11.5, letterSpacing: "0.1em",
+              fontSize: 11.5, letterSpacing: "0.04em",
             }}
           >
             RETRY
@@ -1108,15 +1108,15 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
                   {LEAGUE_MARK[grp.id] && (
                     <img src={LEAGUE_MARK[grp.id]} alt="" width={15} height={15} style={{ objectFit: "contain", opacity: 0.75 }} />
                   )}
-                  <span className="pp-mono" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                  <span className="pp-mono" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
                     {grp.label}
                   </span>
                 </span>
-                <span className="pp-mono tnum" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                <span className="pp-mono tnum" style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2)", whiteSpace: "nowrap" }}>
                   {grp.games.length} {grp.games.length === 1 ? "game" : "games"}
                 </span>
                 <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
-                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+                <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
                   {live ? `${live} in progress` : "none in progress"}
                 </span>
               </div>
@@ -1156,7 +1156,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowAll((v) => !v); } }}
               className="pp-mono"
               style={{
-                flex: "none", cursor: "pointer", fontSize: 11.5, letterSpacing: "0.12em",
+                flex: "none", cursor: "pointer", fontSize: 11.5, letterSpacing: "0.05em",
                 textTransform: "uppercase", color: "var(--accent-text)",
                 border: "1px solid var(--amber)", borderRadius: 4, padding: "11px 16px",
               }}
@@ -1168,7 +1168,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
           )}
           {/* The unreadable count lives with the disclaimer rather than in a
               banner over the cards: what it qualifies is the list above it. */}
-          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)", lineHeight: 1.6, maxWidth: 560 }}>
+          <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.6, maxWidth: 560 }}>
             {unreadable > 0 && (
               <span style={{ color: "var(--text)" }}>
                 {unreadable} {unreadable === 1 ? "game" : "games"} couldn&rsquo;t be read and {unreadable === 1 ? "is" : "are"} not listed.{" "}
@@ -1184,7 +1184,7 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
             className="pp-mono"
             style={{
               display: "inline-flex", alignItems: "center", minHeight: 44,
-              marginLeft: "auto", fontSize: 11, letterSpacing: "0.1em",
+              marginLeft: "auto", fontSize: 11, letterSpacing: "0.04em",
               color: "var(--accent-text)", textDecoration: "none", whiteSpace: "nowrap",
             }}
           >

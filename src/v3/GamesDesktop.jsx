@@ -19,10 +19,10 @@ import { crest } from "./FormPlot.jsx";
 // slate — so it stays, at the top of the rail. Dropping a working control to
 // match a mock that never had to carry one loses the reader something.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
-const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 function railPill(on) {
   return {
@@ -235,7 +235,7 @@ export default function GamesDesktop({
             {/* Said on the screen, not only in a comment: a game is live
                 because the provider says so, never because the clock passed
                 its start time. */}
-            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>
+            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>
               LIVE STATE COMES FROM THE PROVIDER, NEVER THE CLOCK
             </span>
           </div>
@@ -265,7 +265,7 @@ export default function GamesDesktop({
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "12px 14px" }}>
-                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 8px", borderRadius: 5, flex: "0 0 auto", whiteSpace: "nowrap", background: tone.bg, color: tone.fg }}>
+                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "4px 8px", borderRadius: 5, flex: "0 0 auto", whiteSpace: "nowrap", background: tone.bg, color: tone.fg }}>
                         {g.statusLabel}
                       </span>
                       <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -299,7 +299,7 @@ export default function GamesDesktop({
 
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderTop: "1px solid #20242b" }}>
                       <span style={{ fontSize: 11.5, color: "var(--dim)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.note}</span>
-                      <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", whiteSpace: "nowrap" }}>{g.cta}</span>
+                      <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--amber-ink)", whiteSpace: "nowrap" }}>{g.cta}</span>
                     </div>
                   </div>
                 );

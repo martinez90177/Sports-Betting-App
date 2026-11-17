@@ -83,7 +83,7 @@ export function SectionTitle({ children }) {
       className="oswald"
       style={{
         fontSize: 12.5, fontWeight: 600, color: "var(--dim)",
-        letterSpacing: "0.03em", marginBottom: 8, textTransform: "uppercase",
+        letterSpacing: "0.01em", marginBottom: 8, textTransform: "uppercase",
       }}
     >
       {children}
@@ -222,19 +222,19 @@ export function AccentTouchesExample() {
   return (
     <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
       <span className="pp-mono" style={{
-        fontSize: 11, letterSpacing: "0.06em", color: "#08131c",
+        fontSize: 11, letterSpacing: "0.02em", color: "#08131c",
         background: "var(--pos)", padding: "4px 9px",
       }}>
         CLEARED
       </span>
       <span className="pp-mono" style={{
-        fontSize: 11, letterSpacing: "0.06em", color: "var(--neg)",
+        fontSize: 11, letterSpacing: "0.02em", color: "var(--neg)",
         border: "1.5px solid var(--neg)", padding: "3px 9px",
       }}>
         SHORT
       </span>
       <span className="pp-mono" style={{
-        fontSize: 11, letterSpacing: "0.06em", color: "var(--accent-on)",
+        fontSize: 11, letterSpacing: "0.02em", color: "var(--accent-on)",
         background: "var(--amber)", padding: "4px 9px",
       }}>
         ACCENT
@@ -421,7 +421,7 @@ export function OutcomeColours({ settings, isNarrow }) {
           specific hue starts from a pair that already works rather than from
           two blank wheels. */}
       <details style={{ marginTop: 16 }}>
-        <summary className="pp-mono" style={{ cursor: "pointer", fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>
+        <summary className="pp-mono" style={{ cursor: "pointer", fontSize: 11.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))" }}>
           Pick exact colours
         </summary>
         <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 1fr", gap: 24, marginTop: 16 }}>

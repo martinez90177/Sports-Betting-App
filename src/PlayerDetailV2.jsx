@@ -30,16 +30,16 @@ import { WatchControl } from "./WatchList.jsx";
 // 196/1fr/196 grid, same seven centre blocks, same two rails -- so this is one
 // component the four pages feed, which is also why a fix here reaches all four.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // Repeated exactly as the file writes them.
-const railLabel = { fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
-const cellLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
+const railLabel = { fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
+const cellLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
 const cellValue = { fontFamily: MONO, fontSize: 15, marginTop: 6, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
-const metricLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+const metricLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
 const metricValue = { fontFamily: MONO, fontSize: 20, marginTop: 6, fontVariantNumeric: "tabular-nums" };
-const crumb = { fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.12em", textTransform: "uppercase" };
+const crumb = { fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase" };
 
 function RosterRow({ p, sport, onSelect }) {
   return (
@@ -78,7 +78,7 @@ function RosterRow({ p, sport, onSelect }) {
         <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {p.name}
         </div>
-        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 3 }}>
+        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)", marginTop: 3 }}>
           {p.meta}
         </div>
       </div>
@@ -97,7 +97,7 @@ function RosterRow({ p, sport, onSelect }) {
             ? "Ruled out — this app hides their props while they are"
             : "Questionable — still a decision at the time this was published"}
           style={{
-            flex: "none", fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase",
+            flex: "none", fontSize: 9, letterSpacing: "0.03em", textTransform: "uppercase",
             borderRadius: 3, padding: "2px 5px", whiteSpace: "nowrap",
             color: p.statusWord === "out" ? "#ef5b5b" : "#e8b13a",
             border: `1px solid ${p.statusWord === "out" ? "#ef5b5b" : "#e8b13a"}`,
@@ -147,7 +147,7 @@ function RosterRow({ p, sport, onSelect }) {
 function BandHalf({ sport, team, side, align, tone }) {
   const text = (
     <div style={{ textAlign: align === "right" ? "right" : "left" }}>
-      <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)" }}>
+      <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)" }}>
         {team.record ? `${side} · ${team.record}` : side}
       </div>
       <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 22, marginTop: 5 }}>{team.name || team.abbr}</div>
@@ -353,7 +353,7 @@ export default function PlayerDetailV2({
               The mock's closing clause survives in all of them: never
               assumed. */}
           {ownRail.legend && (
-            <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+            <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
               {ownRail.legend}
             </div>
           )}
@@ -368,9 +368,9 @@ export default function PlayerDetailV2({
                 gap: 6, padding: "16px 24px", background: "var(--surface-sunken)",
                 borderLeft: "1px solid var(--line)", borderRight: "1px solid var(--line)",
               }}>
-                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)" }}>{band.dateLabel}</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)" }}>{band.dateLabel}</span>
                 <span style={{ fontFamily: MONO, fontSize: 17, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>{band.timeLabel || "—"}</span>
-                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>{band.venue}</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)" }}>{band.venue}</span>
               </div>
               <BandHalf sport={sport} team={band.home} side="Home" align="right" tone={tones.home} />
             </div>
@@ -386,7 +386,7 @@ export default function PlayerDetailV2({
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 6, whiteSpace: "nowrap" }}>
                 <span style={{ fontFamily: MONO, fontSize: 15, fontVariantNumeric: "tabular-nums" }}>{context.rank ?? "—"}</span>
                 {context.rankWord && (
-                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: context.rankColor }}>{context.rankWord}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: context.rankColor }}>{context.rankWord}</span>
                 )}
               </div>
             </div>
@@ -447,7 +447,7 @@ export default function PlayerDetailV2({
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
                   <TeamLogo sport={sport} abbr={player.team} size={22} title={player.teamLabel} />
-                  <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)" }}>
+                  <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2)" }}>
                     {player.identity}
                   </span>
                 </div>
@@ -455,7 +455,7 @@ export default function PlayerDetailV2({
                   {player.statusPill}
                   {(player.pills || []).map((u) => (
                     <span key={u.label} style={{
-                      fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
+                      fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase",
                       color: "var(--text-2)", border: "1px solid var(--line)", borderRadius: 999,
                       padding: "4px 10px", whiteSpace: "nowrap",
                     }}>
@@ -475,7 +475,7 @@ export default function PlayerDetailV2({
                 {player.seasonStats.map((st) => (
                   <div key={st.label} style={{ textAlign: "center", padding: "20px 14px", minWidth: 58 }}>
                     <div style={{ fontFamily: MONO, fontSize: 24, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{st.value}</div>
-                    <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)", marginTop: 8, whiteSpace: "nowrap" }}>{st.label}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)", marginTop: 8, whiteSpace: "nowrap" }}>{st.label}</div>
                   </div>
                 ))}
               </div>
@@ -515,7 +515,7 @@ export default function PlayerDetailV2({
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggleFilters(); } }}
               style={{
                 marginLeft: "auto", marginBottom: 8, display: "flex", alignItems: "center", gap: 8,
-                fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
+                fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase",
                 borderRadius: 4, padding: "7px 12px", cursor: "pointer",
                 color: filtersCount || filtersOpen ? "var(--amber-ink)" : "var(--text-2)",
                 background: filtersOpen ? "var(--surface-2)" : "transparent",
@@ -582,11 +582,11 @@ export default function PlayerDetailV2({
                     fetchedAt } per player+market. */}
                 {verdict.odds
                   ? <div style={{ ...metricValue, color: "var(--dim)" }}>{verdict.odds}</div>
-                  : <div style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.06em", marginTop: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>Coming soon</div>}
+                  : <div style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.02em", marginTop: 10, color: "var(--dim)", whiteSpace: "nowrap" }}>Coming soon</div>}
               </div>
             </div>
             <span className="pp-pd-verdict-sample" style={{
-              flex: "none", fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.1em", textTransform: "uppercase",
+              flex: "none", fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.04em", textTransform: "uppercase",
               color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 4, padding: "11px 14px",
             }}>
               {verdict.sampleVerdict}
@@ -621,7 +621,7 @@ export default function PlayerDetailV2({
               Nothing replaces it here -- two copies of the same control two
               screens apart is worse than one in the right place. */}
           <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 16, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", color: "var(--dim)", lineHeight: 1.6 }}>
+            <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.6 }}>
               {footerNote}
             </span>
           </div>
@@ -644,17 +644,17 @@ export default function PlayerDetailV2({
           <div className="pp-pd-key" style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
             <div style={railLabel}>Reading the graph</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 12 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2)" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2)" }}>
                 <span style={{ width: 8, height: 16, background: "var(--pos-solid)", borderRadius: 2 }} />cleared the line
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2)" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2)" }}>
                 <span style={{ width: 8, height: 16, border: "1.5px solid var(--neg)", borderRadius: 2, boxSizing: "border-box" }} />fell short
               </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-2)" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase", color: "var(--text-2)" }}>
                 <span style={{ width: 16, borderTop: "1.5px dashed var(--text)" }} />the line
               </span>
             </div>
-            <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
+            <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 14, lineHeight: 1.6 }}>
               Bar height is the actual number, so a blowout doesn&rsquo;t read like a squeaker.
             </div>
           </div>
@@ -880,7 +880,7 @@ function GameByGame({
     <div style={{ background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6, padding: "16px 20px 16px" }}>
       <div className="pp-gbg-head" style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 14, marginBottom: 4, borderBottom: "1px solid var(--line)" }}>
         <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 18 }}>Game by game</span>
-        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)" }}>
           oldest to newest · bar height is the number{canZoom && !zoomed ? " · drag to zoom" : ""}
         </span>
         {/* One group holds everything on the right. Each of these used to
@@ -898,7 +898,7 @@ function GameByGame({
               it is a fact about the games already on screen, which is exactly
               the kind of thing the chart should be reading for itself. */}
           {straightRun > 1 && (
-            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
               {straightRun} straight {direction === "under" ? "under" : "over"}
             </span>
           )}
@@ -911,7 +911,7 @@ function GameByGame({
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClearZoom(); } }}
               style={{
                 flex: "none", cursor: "pointer",
-                fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
+                fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase",
                 color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 4, padding: "4px 9px",
               }}
             >
@@ -930,7 +930,7 @@ function GameByGame({
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAddPick(); } }}
               style={{
                 flex: "none", cursor: "pointer", whiteSpace: "nowrap",
-                fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
+                fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase",
                 color: pickAdded ? "var(--amber-ink)" : "#ffffff",
                 background: pickAdded ? "transparent" : "var(--amber)",
                 border: "1px solid var(--amber)", borderRadius: 4, padding: "6px 12px",
@@ -1071,7 +1071,7 @@ function GameByGame({
                        colour, it is a size bigger so it cannot pass for a
                        lowercase letter, and there is a real gap after it. */}
                   {showAbbr && (
-                    <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: ink, whiteSpace: "nowrap" }}>
+                    <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.02em", color: ink, whiteSpace: "nowrap" }}>
                       {venueMark(g.home) && (
                         <span style={{ fontSize: 13, color: "var(--dim)", letterSpacing: 0, marginRight: 2.5 }}>@</span>
                       )}

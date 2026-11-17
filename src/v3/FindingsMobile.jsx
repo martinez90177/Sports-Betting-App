@@ -9,7 +9,7 @@ import { crest } from "./FormPlot.jsx";
 // rows over the list rather than a disclosure that pushes the list below the
 // fold.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The mock's own two chip shapes: a wider one for the split row, a compact one
 // for the two labelled rows under it.
@@ -35,7 +35,7 @@ function segChip(sel) {
   };
 }
 
-const rowLabel = { flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" };
+const rowLabel = { flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" };
 
 // What kind of finding this is, beside the split it was counted over. Both are
 // on the card because they answer different questions -- "a run" versus "over
@@ -149,7 +149,7 @@ export default function FindingsMobile({
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span
                 style={{
-                  fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", padding: "4px 9px",
+                  fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", padding: "4px 9px",
                   borderRadius: 5, flex: "0 0 auto",
                   background: fd.structural ? "rgba(139,152,171,0.14)" : "var(--amber-dim)",
                   color: fd.structural ? "var(--dim)" : "var(--amber-ink)",
@@ -161,7 +161,7 @@ export default function FindingsMobile({
               {fd.thin && (
                 <span
                   style={{
-                    fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "4px 8px",
+                    fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "4px 8px",
                     borderRadius: 5, background: "rgba(232,177,58,0.16)",
                     color: "var(--status-questionable)", flex: "0 0 auto",
                   }}
@@ -212,7 +212,7 @@ export default function FindingsMobile({
             style={{
               minHeight: 48, display: "flex", alignItems: "center", justifyContent: "center",
               border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)",
-              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
             }}
           >
             {`SHOW ${moreCount} MORE`}

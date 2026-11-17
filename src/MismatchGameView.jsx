@@ -12,9 +12,9 @@ import { STATS, positionRanks, leagueAverage } from "./lib/nflAllowed.js";
 // grade.
 // --------------------------------------------------------------------------
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
-const micro = (extra) => ({ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", ...extra });
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
+const micro = (extra) => ({ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)", ...extra });
 
 // The position-and-stat pairs a defense is read on here, each tied to the
 // prop market it speaks to so every soft spot has a bettable target. A
@@ -172,7 +172,7 @@ function RankBadge({ cell }) {
       className="pp-mono"
       title={`${ordinal(cell.rank)} of ${cell.of} · ${cell.value.toFixed(1)} a game over ${cell.games} game${cell.games === 1 ? "" : "s"}`}
       style={{
-        flex: "none", fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em", padding: "3px 7px", borderRadius: 6,
+        flex: "none", fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", padding: "3px 7px", borderRadius: 6,
         color, border: `1px solid ${color}`, whiteSpace: "nowrap",
       }}
     >
@@ -280,7 +280,7 @@ function SoftSpot({ r }) {
         padding: "10px 12px", borderTop: "1px solid var(--line)", marginTop: -1,
       }}
     >
-      <span style={{ fontSize: 12, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.03em", lineHeight: 1.35, minWidth: 0 }}>
+      <span style={{ fontSize: 12, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.01em", lineHeight: 1.35, minWidth: 0 }}>
         {rowLabel(r)}
       </span>
       <span style={{ textAlign: "right", whiteSpace: "nowrap" }}>

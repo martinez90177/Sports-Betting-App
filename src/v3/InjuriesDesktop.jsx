@@ -9,12 +9,12 @@ import { crest } from "./FormPlot.jsx";
 // The frame's rail has no search. The page has one and it filters the wire, so
 // it stays at the top of the rail — the same call as the Games frame.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // Header and rows share one template (`desktop-handoff.md` §1).
 const ROW_COLS = "40px minmax(0, 1fr) 250px 120px 96px";
 
-const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 function railPill(on) {
   return {
@@ -148,13 +148,13 @@ export default function InjuriesDesktop({
             </span>
             <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)" }}>{scopeLabel}</span>
             {playingSoon > 0 && (
-              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)" }}>
+              <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--amber-ink)" }}>
                 {`${playingSoon} PLAYING IN THE NEXT 24 HOURS`}
               </span>
             )}
           </div>
 
-          <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: ROW_COLS, alignItems: "center", columnGap: 14, padding: "10px 24px", background: "var(--surface-1)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+          <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: ROW_COLS, alignItems: "center", columnGap: 14, padding: "10px 24px", background: "var(--surface-1)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
             <span />
             <span>PLAYER</span>
             <span>DETAIL</span>
@@ -207,7 +207,7 @@ export default function InjuriesDesktop({
 
                   <span style={{ display: "flex", justifyContent: "flex-end" }}>
                     {tone ? (
-                      <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", padding: "3px 8px", borderRadius: 5, background: tone.bg, color: tone.fg, whiteSpace: "nowrap" }}>
+                      <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.03em", padding: "3px 8px", borderRadius: 5, background: tone.bg, color: tone.fg, whiteSpace: "nowrap" }}>
                         {String(p.status).toUpperCase()}
                       </span>
                     ) : (

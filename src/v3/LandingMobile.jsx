@@ -22,8 +22,8 @@ import FormPlot, { crest } from "./FormPlot.jsx";
 //      PROJECT_NOTES, "Availability: all four leagues"), so the sentence names
 //      what is actually true instead.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // The three claims are the mock's own copy, kept word for word.
 const CLAIMS = [
@@ -86,9 +86,9 @@ export default function LandingMobile({ hero, onOpenBoard, onOpenSettings, onOpe
         <div style={{ height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 18px" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <PalaceMark variant="nav" />
-            <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
+            <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Prop Palace</span>
           </span>
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 7, padding: "6px 11px" }}>
+          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", color: "var(--amber-ink)", border: "1px solid var(--amber)", borderRadius: 7, padding: "6px 11px" }}>
             21+
           </span>
         </div>
@@ -123,7 +123,7 @@ export default function LandingMobile({ hero, onOpenBoard, onOpenSettings, onOpe
         </div>
 
         <div style={{ padding: "0 20px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" }}>WHAT A ROW LOOKS LIKE</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" }}>WHAT A ROW LOOKS LIKE</span>
 
           {/* Rule 4 on the front page: no hero until the logs load, and the
               card says so rather than showing a skeleton that looks like data.
@@ -195,7 +195,7 @@ export default function LandingMobile({ hero, onOpenBoard, onOpenSettings, onOpe
         </div>
 
         <div style={{ padding: "0 20px 26px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" }}>FOUR LEAGUES</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" }}>FOUR LEAGUES</span>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {LEAGUES.map((l) => (
               <span
@@ -227,7 +227,7 @@ export default function LandingMobile({ hero, onOpenBoard, onOpenSettings, onOpe
           style={{
             minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
             borderRadius: 12, border: "1px solid var(--amber)", background: "var(--amber)",
-            color: "var(--accent-on)", fontFamily: MONO, fontSize: 13, letterSpacing: "0.08em", cursor: "pointer",
+            color: "var(--accent-on)", fontFamily: MONO, fontSize: 13, letterSpacing: "0.03em", cursor: "pointer",
           }}
         >
           OPEN TONIGHT'S BOARD

@@ -8,7 +8,7 @@ import { crest } from "./FormPlot.jsx";
 // `InjuriesPage`'s own. This is the phone's layout: search, two counted filter
 // rows, a sort row, and one flat list — not a table folded onto 430px.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 const STATUS_WORD = { questionable: "Quest", out: "Out", active: "Active" };
 
@@ -40,7 +40,7 @@ function segChip(on) {
 }
 
 const statusPill = (status) => ({
-  fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "4px 8px", borderRadius: 999,
+  fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "4px 8px", borderRadius: 999,
   flex: "0 0 auto", whiteSpace: "nowrap",
   background: status === "out" ? "var(--neg-dim)"
     : status === "questionable" ? "rgba(232,177,58,0.14)" : "var(--pos-dim)",
@@ -105,7 +105,7 @@ export default function InjuriesMobile({
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSetQuery(query ? "" : sampleQuery); } }}
-                style={{ marginLeft: "auto", flex: "0 0 auto", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer" }}
+                style={{ marginLeft: "auto", flex: "0 0 auto", whiteSpace: "nowrap", fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--amber-ink)", cursor: "pointer" }}
               >
                 {query ? "CLEAR" : `TRY \u201C${String(sampleQuery).toUpperCase()}\u201D`}
               </span>
@@ -230,7 +230,7 @@ export default function InjuriesMobile({
           </div>
         ))}
 
-        <div style={{ padding: 16, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", lineHeight: 1.7, color: "var(--dim)" }}>
+        <div style={{ padding: 16, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", lineHeight: 1.7, color: "var(--dim)" }}>
           {coverageNote}
         </div>
       </div>

@@ -220,10 +220,10 @@ function Linescore({ detail, sportLabel, sportTone, periodLabel }) {
         background: "var(--surface-sunken)", borderBottom: "1px solid var(--line)",
       }}>
         <span className="pp-display" style={{ fontWeight: 600, fontSize: 16 }}>Linescore</span>
-        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: sportTone }}>
+        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.05em", textTransform: "uppercase", color: sportTone }}>
           {sportLabel}
         </span>
-        <span className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)", whiteSpace: "nowrap" }}>
+        <span className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", whiteSpace: "nowrap" }}>
           {periodLabel}
         </span>
       </div>
@@ -266,7 +266,7 @@ function Diamond({ situation }) {
   if (situation.first) on.push("1st");
   if (situation.second) on.push("2nd");
   if (situation.third) on.push("3rd");
-  const label = { fontFamily: "'PP At', 'Space Mono', monospace", fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" };
+  const label = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 9.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
   const count = situation.balls == null || situation.strikes == null
     ? null : `${situation.balls}–${situation.strikes}`;
   return (
@@ -298,7 +298,7 @@ function Diamond({ situation }) {
           <div style={{ fontSize: 14, fontWeight: 500, marginTop: 6, whiteSpace: "nowrap" }}>{situation.atBat}</div>
         </div>
       )}
-      <div className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)", lineHeight: 1.5, maxWidth: 190 }}>
+      <div className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.5, maxWidth: 190 }}>
         {on.length ? `Runners on ${on.join(", ")}.` : "Bases empty."}
       </div>
     </div>
@@ -312,7 +312,7 @@ function Decisions({ decisions }) {
     <div style={{ display: "flex", gap: 26, flexWrap: "wrap", padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
       {decisions.map((d) => (
         <div key={d.role}>
-          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>
+          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>
             {role(d.role)}
           </div>
           <div style={{ fontSize: 13, fontWeight: 500, marginTop: 3, whiteSpace: "nowrap" }}>{d.name}</div>
@@ -393,7 +393,7 @@ function PropsInPlay({ game, sport, reads, detail, propsCount, onViewProps, onOp
         background: "var(--surface-sunken)", borderBottom: "1px solid var(--line)",
       }}>
         <span className="pp-display" style={{ fontWeight: 600, fontSize: 16 }}>Props in play</span>
-        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
+        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" }}>
           {isFinal ? "how they finished against the line"
             : started ? "tonight against the line"
             : "season history"}
@@ -405,7 +405,7 @@ function PropsInPlay({ game, sport, reads, detail, propsCount, onViewProps, onOp
             onClick={() => onViewProps(game)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onViewProps(game); } }}
             className="pp-mono"
-            style={{ marginLeft: "auto", cursor: "pointer", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--accent-text)", whiteSpace: "nowrap" }}
+            style={{ marginLeft: "auto", cursor: "pointer", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--accent-text)", whiteSpace: "nowrap" }}
           >
             {/* This used to read "Open in feed →" rather than the mock's
                 "All N props →", because the feed did not open filtered to
@@ -465,14 +465,14 @@ function PropsInPlay({ game, sport, reads, detail, propsCount, onViewProps, onOp
                   <div className="pp-display" style={{ fontWeight: 600, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.name}
                   </div>
-                  <div className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", marginTop: 3, whiteSpace: "nowrap" }}>
+                  <div className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)", marginTop: 3, whiteSpace: "nowrap" }}>
                     {r.team}
                   </div>
                 </div>
               </div>
 
               {!isMobile && (
-                <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   Over {r.line} {r.marketLabel}
                 </span>
               )}
@@ -505,7 +505,7 @@ function PropsInPlay({ game, sport, reads, detail, propsCount, onViewProps, onOp
               )}
 
               <span className="pp-mono" style={{
-                justifySelf: "end", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase",
+                justifySelf: "end", fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase",
                 borderRadius: 999, padding: "5px 10px", whiteSpace: "nowrap",
                 color: verdictFg, border: `1px solid ${verdictBorder}`,
               }}>
@@ -515,7 +515,7 @@ function PropsInPlay({ game, sport, reads, detail, propsCount, onViewProps, onOp
           );
         })}
       </div>
-      <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)", padding: "0 16px 14px", lineHeight: 1.6 }}>
+      <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", padding: "0 16px 14px", lineHeight: 1.6 }}>
         {Number.isFinite(propsCount) && propsCount > 0
           ? `This game can build ${propsCount} props; the ${rows.length} with the deepest samples are shown. `
           : ""}
@@ -542,8 +542,8 @@ function Leaders({ detail, sport, isMobile }) {
             background: "var(--surface-sunken)", borderBottom: "1px solid var(--line)",
           }}>
             <TeamLogo sport={sport} abbr={t.teamAbbr} size={18} />
-            <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--text-2)" }}>{t.teamAbbr}</span>
-            <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>Leaders</span>
+            <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", color: "var(--text-2)" }}>{t.teamAbbr}</span>
+            <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>Leaders</span>
           </div>
           {t.items.map((it) => (
             <div key={`${it.category}-${it.name}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 16px", borderTop: "1px solid var(--line)" }}>
@@ -562,7 +562,7 @@ function Leaders({ detail, sport, isMobile }) {
                     is already the heading two lines above. Printed only when
                     it says something the heading does not. */}
                 {it.category && it.category !== "Leaders" && (
-                  <div className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--dim)" }}>
+                  <div className="pp-mono" style={{ fontSize: 9.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>
                     {it.category}
                   </div>
                 )}
@@ -681,14 +681,14 @@ export default function GameCard({
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <StateSwatch status={game.status} />
             <span className="pp-mono tnum" style={{
-              fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase",
+              fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase",
               whiteSpace: "nowrap", color: stateColor(game.status),
             }}>
               {statusText(game)}
             </span>
           </div>
           <div className="pp-mono" style={{
-            fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)",
+            fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)",
             marginTop: isMobile ? 0 : 6, marginLeft: isMobile ? "auto" : 0,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           }}>
@@ -698,7 +698,7 @@ export default function GameCard({
 
         {!isMobile && (
           <span className="pp-mono" style={{
-            justifySelf: "end", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase",
+            justifySelf: "end", fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase",
             whiteSpace: "nowrap", color: showsGamecast ? "var(--accent-text)" : "var(--text-2)",
           }}>
             {showsGamecast ? "Gamecast" : "Preview"} {open ? "↑" : "↓"}
@@ -752,7 +752,7 @@ export default function GameCard({
           <Leaders detail={detail} sport={sport} isMobile={isMobile} />
 
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginTop: 14 }}>
-            <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", lineHeight: 1.6 }}>
+            <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.6 }}>
               {scoreNote}
             </span>
             {onOpenFull && (
@@ -763,7 +763,7 @@ export default function GameCard({
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenFull(game); } }}
                 className="pp-mono"
                 style={{
-                  marginLeft: "auto", cursor: "pointer", fontSize: 10.5, letterSpacing: "0.12em",
+                  marginLeft: "auto", cursor: "pointer", fontSize: 10.5, letterSpacing: "0.05em",
                   textTransform: "uppercase", color: "var(--accent-text)", whiteSpace: "nowrap",
                 }}
               >

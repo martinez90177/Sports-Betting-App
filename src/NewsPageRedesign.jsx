@@ -38,7 +38,7 @@ function AffectsRow({ affects, onOpenLadder }) {
   if (!affects || !affects.length) return null;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
-      <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.1em", color: "var(--dim)" }}>AFFECTS</span>
+      <span className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)" }}>AFFECTS</span>
       {affects.map((a) => (
         <span key={a.label} style={{ display: "flex", alignItems: "center", gap: 9, border: "1px solid var(--line)", padding: "7px 12px" }}>
           <span style={{ fontSize: 13 }}>{a.label} <span style={{ color: "var(--dim)" }}>{a.line}</span></span>
@@ -59,7 +59,7 @@ function AffectsRow({ affects, onOpenLadder }) {
           does today -- opens this player's hit-rate chart. */}
       {onOpenLadder && (
         <button type="button" onClick={onOpenLadder} className="pp-mono"
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 11.5, letterSpacing: "0.08em", color: "var(--accent-text, #8fa6ff)" }}>
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 11.5, letterSpacing: "0.03em", color: "var(--accent-text, #8fa6ff)" }}>
           VIEW HIT-RATE CHART →
         </button>
       )}
@@ -89,7 +89,7 @@ function FeedItem({ article, player, lead, onOpenLadder, action }) {
         />
       )}
       <div style={{ minWidth: 0 }}>
-        <div className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+        <div className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
           {lead && <span style={{ background: "var(--accent, #3b5bdb)", color: "#fff", padding: "3px 8px" }}>TOP STORY</span>}
           <span>
             {player ? `${player.team} · ${player.position} · ` : ""}
@@ -106,7 +106,7 @@ function FeedItem({ article, player, lead, onOpenLadder, action }) {
         )}
         <AffectsRow affects={player?.affects} onOpenLadder={player && onOpenLadder ? () => onOpenLadder(player) : null} />
         <a href={article.link} target="_blank" rel="noopener noreferrer" className="pp-mono"
-          style={{ display: "inline-flex", alignItems: "center", minHeight: 44, marginTop: 4, fontSize: 11.5, letterSpacing: "0.08em", color: "var(--accent-text)", textDecoration: "none" }}>
+          style={{ display: "inline-flex", alignItems: "center", minHeight: 44, marginTop: 4, fontSize: 11.5, letterSpacing: "0.03em", color: "var(--accent-text)", textDecoration: "none" }}>
           READ FULL STORY →
         </a>
       </div>
@@ -124,7 +124,7 @@ function RailHeader({ title, meta }) {
         <span style={{ width: 4, height: 11, background: "var(--accent, #3b5bdb)", borderRadius: "2px 2px 0 0" }} />
       </span>
       <span className="pp-display" style={{ fontSize: 19 }}>{title}</span>
-      {meta && <span className="pp-mono" style={{ marginLeft: "auto", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--dim)" }}>{meta}</span>}
+      {meta && <span className="pp-mono" style={{ marginLeft: "auto", fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)" }}>{meta}</span>}
     </div>
   );
 }

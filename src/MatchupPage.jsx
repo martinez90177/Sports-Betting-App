@@ -207,7 +207,7 @@ function ProbablePitchers({ game, status }) {
     return (
       <div style={{ padding: "16px 28px", minWidth: 0 }}>
         <div className="pp-mono" style={{
-          fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase",
+          fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase",
           color: "var(--dim)", marginBottom: 10,
         }}>
           {team.abbr}
@@ -559,7 +559,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack(); } }}
           style={{
             display: "inline-flex", alignItems: "center", gap: 7,
-            fontSize: 11.5, letterSpacing: "0.1em", color: "var(--dim)", marginBottom: 18,
+            fontSize: 11.5, letterSpacing: "0.04em", color: "var(--dim)", marginBottom: 18,
           }}
         >
           {embedded ? "× CLOSE" : "← BACK TO GAMES"}
@@ -573,7 +573,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
           </div>
           <div style={{ minWidth: 0 }}>
             <div className="pp-mono" style={{
-              fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase",
+              fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase",
               color: "var(--accent-text)",
             }}>
               <span className="tnum">{game.away.abbr} @ {game.home.abbr}</span>
@@ -613,7 +613,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
                fill; --amber-ink is accent-coloured text *on a dark surface*,
                which on this button would be accent-on-accent. */
             background: "var(--amber)", color: "var(--accent-on)",
-            fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase",
+            fontSize: 12.5, letterSpacing: "0.03em", textTransform: "uppercase",
           }}
         >
           This game’s props
@@ -633,7 +633,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
                 borderTop: i === 1 && isMobile ? "1px solid var(--line)" : "none",
               }}
             >
-              <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>
+              <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>
                 {i === 0 ? "Away" : "Home"}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
@@ -665,7 +665,7 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
                     className="gm-tab pp-mono"
                     style={{
                       padding: "6px 14px", cursor: "pointer",
-                      fontSize: 11.5, letterSpacing: "0.08em",
+                      fontSize: 11.5, letterSpacing: "0.03em",
                       background: depth === n ? "var(--surface-3)" : "transparent",
                       color: depth === n ? "var(--text)" : "var(--dim)",
                     }}

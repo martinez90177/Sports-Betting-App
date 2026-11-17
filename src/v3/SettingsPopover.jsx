@@ -155,7 +155,7 @@ export default function SettingsPopover({ open, onClose, isNarrow, onOpenFullSet
         </div>
 
         <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 12, padding: "13px 18px", borderTop: "1px solid var(--line)" }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", lineHeight: 1.6, color: "var(--dim)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.02em", lineHeight: 1.6, color: "var(--dim)" }}>
             Stored in this browser only.
           </span>
           <span
@@ -163,7 +163,7 @@ export default function SettingsPopover({ open, onClose, isNarrow, onOpenFullSet
             tabIndex={0}
             onClick={() => { requestClose(); onOpenFullSettings && onOpenFullSettings(); }}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); requestClose(); onOpenFullSettings && onOpenFullSettings(); } }}
-            style={{ marginLeft: "auto", minHeight: 34, display: "flex", alignItems: "center", padding: "0 13px", borderRadius: 8, border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap" }}
+            style={{ marginLeft: "auto", minHeight: 34, display: "flex", alignItems: "center", padding: "0 13px", borderRadius: 8, border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             ALL SETTINGS →
           </span>

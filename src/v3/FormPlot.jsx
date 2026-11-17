@@ -18,7 +18,7 @@ import { teamLogo } from "../lib/gamesData.js";
 // and `pedestal = PEDESTAL` reproduces the mock's pixel geometry exactly while
 // the axis stays the app's.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The floor under a bar, shared by both sizes in the mock's `h()`.
 export const PEDESTAL = 9;
@@ -405,7 +405,7 @@ export default function FormPlot({
               }}
             />
             {m.text && (
-              <span style={{ position: "absolute", top: 9, left: m.left, fontFamily: MONO, fontSize: 10, lineHeight: "12px", letterSpacing: "0.04em", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+              <span style={{ position: "absolute", top: 9, left: m.left, fontFamily: MONO, fontSize: 10, lineHeight: "12px", letterSpacing: "0.02em", color: "var(--text-2)", whiteSpace: "nowrap" }}>
                 {m.text}
               </span>
             )}
@@ -642,7 +642,7 @@ export default function FormPlot({
               {lay.abbr && (
                 <span
                   style={{
-                    fontFamily: MONO, fontSize: 10, lineHeight: `${LABEL_LINE}px`, letterSpacing: "0.06em", whiteSpace: "nowrap",
+                    fontFamily: MONO, fontSize: 10, lineHeight: `${LABEL_LINE}px`, letterSpacing: "0.02em", whiteSpace: "nowrap",
                     color: away ? "var(--text-2)" : "var(--dim)", fontWeight: away ? 700 : 400,
                   }}
                 >

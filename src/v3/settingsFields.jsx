@@ -22,8 +22,8 @@ import {
 // Every control still reads and writes the same settings store, so a value set
 // here is the value the desktop page shows.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 const hint = { fontSize: 12.5, lineHeight: 1.5, color: "var(--dim)" };
 const label = { fontSize: 14.5, fontWeight: 600 };
@@ -295,7 +295,7 @@ function AccentSheet({ value, onPick, onReset, onClose }) {
               tabIndex={0}
               onClick={() => { onReset(); setAngle(DEFAULT_ANGLE); }}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onReset(); setAngle(DEFAULT_ANGLE); } }}
-              style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--amber-ink)", flex: "0 0 auto", cursor: "pointer", textAlign: "right" }}
+              style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", color: "var(--amber-ink)", flex: "0 0 auto", cursor: "pointer", textAlign: "right" }}
             >
               RESET TO DEFAULT
             </span>
@@ -303,7 +303,7 @@ function AccentSheet({ value, onPick, onReset, onClose }) {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" }}>OR PICK ONE</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" }}>OR PICK ONE</span>
           <div style={{ display: "flex", gap: 8 }}>
             {PRESETS.map(([hex, deg]) => (
               <div
@@ -335,7 +335,7 @@ function AccentSheet({ value, onPick, onReset, onClose }) {
           style={{
             minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
             borderRadius: 12, border: "1px solid var(--amber)", background: "var(--amber)",
-            color: "var(--accent-on)", fontFamily: MONO, fontSize: 13, letterSpacing: "0.08em", cursor: "pointer",
+            color: "var(--accent-on)", fontFamily: MONO, fontSize: 13, letterSpacing: "0.03em", cursor: "pointer",
           }}
         >
           DONE
@@ -392,7 +392,7 @@ function WheelInline({ value, onPick, onReset }) {
         </div>
         {value && (
           <span role="button" tabIndex={0} onClick={onReset} onKeyDown={(e) => { if (e.key === "Enter") onReset(); }}
-            style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", alignSelf: "flex-start" }}>
+            style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", color: "var(--amber-ink)", cursor: "pointer", alignSelf: "flex-start" }}>
             RESET TO LAPIS
           </span>
         )}
@@ -425,7 +425,7 @@ function WheelRow({ value, onOpen, onReset }) {
           tabIndex={0}
           onClick={(e) => { e.stopPropagation(); onReset(); }}
           onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onReset(); } }}
-          style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--amber-ink)", flex: "0 0 auto", cursor: "pointer" }}
+          style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", color: "var(--amber-ink)", flex: "0 0 auto", cursor: "pointer" }}
         >
           RESET
         </span>

@@ -20,15 +20,15 @@ import useMyPicks from "./useMyPicks.js";
 // same combined number, the same ledger filters. Two derivations would be two
 // answers to "is this leg AGAINST".
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // One template for the slip header and every slip row, so the columns share
 // edges rather than lining up by luck (`desktop-handoff.md` §1).
 const SLIP_COLS = "38px minmax(0, 1fr) 84px 1px 116px 92px 34px";
 const LEDGER_COLS = "74px minmax(0, 1fr) 120px 110px";
 
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 // The three flags, and only three. FITS / CHECK / AGAINST — a leg is never
 // unflagged, because "we have nothing to say about this" is itself one of the
@@ -160,7 +160,7 @@ export default function MyPicksDesktop({
             style={{
               display: "flex", alignItems: "center", gap: 7, minHeight: 32, padding: "0 12px",
               borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-1)",
-              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em",
+              color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em",
               cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
@@ -238,7 +238,7 @@ export default function MyPicksDesktop({
                 <span style={{ fontSize: 12, color: "var(--dim)" }}>{intent.hint}</span>
               </div>
 
-              <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: SLIP_COLS, alignItems: "center", columnGap: 14, padding: "10px 24px", background: "var(--surface-1)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)" }}>
+              <div style={{ flex: "0 0 auto", display: "grid", gridTemplateColumns: SLIP_COLS, alignItems: "center", columnGap: 14, padding: "10px 24px", background: "var(--surface-1)", borderBottom: "1px solid var(--line)", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)" }}>
                 <span />
                 <span>LEG</span>
                 <span style={{ textAlign: "right" }}>YOUR RATE</span>
@@ -275,7 +275,7 @@ export default function MyPicksDesktop({
                           {/* ALT means off the posted line, not "you changed
                               it" — the posted line rides along on the pick. */}
                           {l.alt && (
-                            <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", padding: "2px 5px", borderRadius: 4, background: "var(--amber-dim)", color: "var(--amber-ink)" }}>ALT</span>
+                            <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.03em", padding: "2px 5px", borderRadius: 4, background: "var(--amber-dim)", color: "var(--amber-ink)" }}>ALT</span>
                           )}
                         </span>
                         <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.prop}</span>
@@ -339,7 +339,7 @@ export default function MyPicksDesktop({
                     tabIndex={0}
                     onClick={onClear}
                     onKeyDown={(e) => { if (e.key === "Enter") onClear && onClear(); }}
-                    style={{ minHeight: 36, display: "flex", alignItems: "center", padding: "0 14px", borderRadius: 8, border: "1px solid var(--line)", color: "var(--dim)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer" }}
+                    style={{ minHeight: 36, display: "flex", alignItems: "center", padding: "0 14px", borderRadius: 8, border: "1px solid var(--line)", color: "var(--dim)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer" }}
                   >
                     CLEAR
                   </div>
@@ -352,7 +352,7 @@ export default function MyPicksDesktop({
                     marginLeft: "auto", minHeight: 44, display: "flex", alignItems: "center", gap: 9,
                     padding: "0 18px", borderRadius: 10, border: "1px solid var(--amber)",
                     background: "var(--amber)", color: "var(--accent-on)", textDecoration: "none",
-                    fontFamily: MONO, fontSize: 12.5, letterSpacing: "0.08em",
+                    fontFamily: MONO, fontSize: 12.5, letterSpacing: "0.03em",
                     opacity: bookHref ? 1 : 0.5, pointerEvents: bookHref ? "auto" : "none",
                   }}
                 >
@@ -460,7 +460,7 @@ export default function MyPicksDesktop({
                       <span style={{ fontSize: 12, lineHeight: 1.45, color: "var(--dim)" }}>{m.why}</span>
                     </span>
                     {m.action && (
-                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--amber-ink)", whiteSpace: "nowrap", flex: "0 0 auto" }}>{m.action}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--amber-ink)", whiteSpace: "nowrap", flex: "0 0 auto" }}>{m.action}</span>
                     )}
                   </div>
                 ))}

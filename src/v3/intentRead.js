@@ -70,7 +70,7 @@ export const TARGETS = [100, 300, 600, 1200];
 // literal amber that keep the default palette after someone has switched the
 // outcome colours in Settings.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 export const FLAGS = ["FITS", "CHECK", "AGAINST"];
 
@@ -101,7 +101,7 @@ export const toneOf = (flag) => FLAG_TONE[flag] || FLAG_TONE.CHECK;
 export function flagChipStyle(flag) {
   const tone = toneOf(flag);
   return {
-    fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "3px 7px",
+    fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "3px 7px",
     borderRadius: 4, whiteSpace: "nowrap", lineHeight: 1.2,
     border: `1px solid ${tone}`,
     background: `color-mix(in srgb, ${tone} 14%, transparent)`,

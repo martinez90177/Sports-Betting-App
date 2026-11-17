@@ -12,9 +12,9 @@ import { NFL_TEAM_RANK_ROWS } from "../lib/nflTeamStats.js";
 // offense beside a red defense is the mismatch the table exists to show.
 // These are not availability colours and are never drawn as a dot.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 const toneFor = (cell) => {
   if (!cell || !cell.of) return "var(--text-2)";

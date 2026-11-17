@@ -33,16 +33,16 @@ import { STATUS } from "../lib/teamColors.js";
 // is reproduced exactly; the undrawn ones follow the app's existing pattern,
 // per the bundle README's "what to do when the mock is silent".
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 // The plot box the mock draws on this screen. Its geometry, and the graph
 // itself, live in FormPlot.jsx -- one component for this screen and the feed.
 const PLOT_H = PLOT.player.plotH;
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 
 // Repeated exactly as the file writes them.
-const microLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" };
-const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const microLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" };
+const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 const sheetNote = { fontSize: 12, color: "var(--dim)" };
 const footNote = { fontSize: 12, lineHeight: 1.45, color: "var(--dim)" };
 
@@ -50,7 +50,7 @@ function pill(sel, extra) {
   return Object.assign({
     minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center",
     padding: "0 12px", borderRadius: 8, fontFamily: MONO, fontSize: 13,
-    letterSpacing: "0.04em", cursor: "pointer", whiteSpace: "nowrap",
+    letterSpacing: "0.02em", cursor: "pointer", whiteSpace: "nowrap",
     border: `1px solid ${sel ? "var(--amber)" : "var(--line)"}`,
     background: sel ? "var(--amber-dim)" : "var(--surface-1)",
     color: sel ? "var(--amber-ink)" : "var(--text-2)",
@@ -71,13 +71,13 @@ function chip(sel) {
 // a font-level fix in the app ('PP At'), and the mock reaches for Archivo for
 // the same reason. Kept as the mock draws it.
 const atStyle = {
-  fontFamily: "'Archivo', system-ui, sans-serif", fontSize: 12, fontWeight: 700,
+  fontFamily: "'Inter', system-ui, sans-serif", fontSize: 12, fontWeight: 700,
   color: "var(--amber-ink)", padding: "0 5px", letterSpacing: 0,
 };
 const atStyleLg = { ...atStyle, fontSize: 14, padding: "0 6px" };
 
 const resultPill = (over) => ({
-  fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 8px",
+  fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "4px 8px",
   borderRadius: 999, flex: "0 0 auto",
   background: over ? "var(--pos-dim)" : "var(--neg-dim)",
   color: over ? "var(--pos)" : "var(--neg)",
@@ -129,7 +129,7 @@ function LineupCard({ c, renderAvatar }) {
         {c.status === "out" || c.status === "questionable" ? (
           <span
             style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "3px 6px",
+              fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "3px 6px",
               borderRadius: 999, flex: "0 0 auto",
               background: c.status === "out" ? "rgba(239,91,91,0.22)" : "rgba(232,177,58,0.22)",
               color: c.status === "out" ? "#ffb4b4" : "#f3d79a",
@@ -144,7 +144,7 @@ function LineupCard({ c, renderAvatar }) {
           // somebody else's -- so without this he read as fine.
           <span
             style={{
-              fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em", padding: "3px 6px",
+              fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.02em", padding: "3px 6px",
               borderRadius: 999, flex: "0 0 auto", whiteSpace: "nowrap",
               background: c.badge.tone === "out" ? "rgba(239,91,91,0.22)" : c.badge.tone === "warn" ? "rgba(232,177,58,0.22)" : "var(--surface-2)",
               color: c.badge.tone === "out" ? "#ffb4b4" : c.badge.tone === "warn" ? "#f3d79a" : "var(--dim)",
@@ -158,7 +158,7 @@ function LineupCard({ c, renderAvatar }) {
         {c.name}
       </span>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
-        <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: on ? "#ffffff" : "var(--dim)" }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: "0.03em", color: on ? "#ffffff" : "var(--dim)" }}>
           {c.state}
         </span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: on ? "rgba(255,255,255,0.78)" : "var(--dim)" }}>
@@ -276,7 +276,7 @@ export default function PlayerDetailMobile({
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack && onBack(); } }}
           style={{
             minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", gap: 6, padding: "0 8px",
-            fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--amber-ink)",
+            fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--amber-ink)",
             whiteSpace: "nowrap", cursor: "pointer",
           }}
         >
@@ -317,7 +317,7 @@ export default function PlayerDetailMobile({
             style={{
               minHeight: 44, display: "flex", alignItems: "center", gap: 6, padding: "0 11px",
               borderRadius: 8, border: "1px solid var(--amber)", color: "var(--amber-ink)",
-              fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", whiteSpace: "nowrap",
+              fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", whiteSpace: "nowrap",
               cursor: onOpenSlip ? "pointer" : "default",
             }}
           >
@@ -340,7 +340,7 @@ export default function PlayerDetailMobile({
           style={{
             minHeight: 44, display: "flex", alignItems: "center", padding: "0 12px", borderRadius: 8,
             border: "1px solid var(--amber)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11,
-            letterSpacing: "0.1em", whiteSpace: "nowrap", cursor: "pointer",
+            letterSpacing: "0.04em", whiteSpace: "nowrap", cursor: "pointer",
           }}
         >
           {watching ? "WATCHING" : "+ WATCH"}
@@ -419,7 +419,7 @@ export default function PlayerDetailMobile({
               three short words on two lines instead of two and a half on one. */}
           <span
             style={{
-              fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--dim)",
+              fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)",
               lineHeight: 1.45, minWidth: 0,
             }}
           >
@@ -526,7 +526,7 @@ export default function PlayerDetailMobile({
             style={{
               flex: "1 1 0", minWidth: 0, minHeight: 48, display: "flex", alignItems: "center",
               justifyContent: "center", cursor: "pointer", fontFamily: MONO, fontSize: 11,
-              letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap",
+              letterSpacing: "0.02em", textTransform: "uppercase", whiteSpace: "nowrap",
               color: tab === label ? "var(--amber-ink)" : "var(--dim)",
               borderBottom: `2px solid ${tab === label ? "var(--amber)" : "transparent"}`,
             }}
@@ -685,7 +685,7 @@ export default function PlayerDetailMobile({
                     padding: "8px 9px", display: "flex", flexDirection: "column", gap: 2,
                   }}
                 >
-                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)" }}>{c.label}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--dim)" }}>{c.label}</span>
                   <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700 }}>{c.value}</span>
                 </div>
               ))}
@@ -712,7 +712,7 @@ export default function PlayerDetailMobile({
                 gridColumn: splitTail && i === splitCells.length - 1 ? `span ${splitCols - splitTail + 1}` : undefined,
               }}
             >
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: s.own ? "var(--amber-ink)" : "var(--dim)", whiteSpace: "nowrap" }}>{s.label}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: s.own ? "var(--amber-ink)" : "var(--dim)", whiteSpace: "nowrap" }}>{s.label}</span>
               <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: s.tone }}>{s.value}</span>
               <span style={{ fontFamily: MONO, fontSize: 10, color: "#5c6b7a", whiteSpace: "nowrap" }}>{s.sub}</span>
             </div>
@@ -730,7 +730,7 @@ export default function PlayerDetailMobile({
           {player.seasonStats.map((g) => (
             <div key={g.label} style={{ flex: "1 1 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
               <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700 }}>{g.value}</span>
-              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--dim)" }}>{g.label}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--dim)" }}>{g.label}</span>
             </div>
           ))}
         </div>
@@ -741,7 +741,7 @@ export default function PlayerDetailMobile({
           <span
             style={{
               minHeight: 28, display: "flex", alignItems: "center", padding: "0 10px", borderRadius: 7,
-              fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em",
+              fontFamily: MONO, fontSize: 10, letterSpacing: "0.02em",
               border: `1px solid ${st.dot}`, color: st.dot,
               background: "color-mix(in srgb, currentColor 10%, transparent)",
             }}
@@ -754,7 +754,7 @@ export default function PlayerDetailMobile({
             key={p.label}
             style={{
               minHeight: 28, display: "flex", alignItems: "center", padding: "0 10px", borderRadius: 7,
-              fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em",
+              fontFamily: MONO, fontSize: 10, letterSpacing: "0.02em",
               border: "1px solid var(--line)", color: "var(--text-2)", background: "var(--surface-1)",
             }}
           >
@@ -827,7 +827,7 @@ export default function PlayerDetailMobile({
                   key={label}
                   style={{
                     minHeight: 26, display: "flex", alignItems: "center", padding: "0 9px", borderRadius: 999,
-                    fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", border: "1px solid var(--line)",
+                    fontFamily: MONO, fontSize: 10, letterSpacing: "0.02em", border: "1px solid var(--line)",
                     background: "var(--surface-2)", color: "var(--text-2)",
                   }}
                 >
@@ -874,7 +874,7 @@ export default function PlayerDetailMobile({
                       const w = Math.min(50, Math.abs(br.pct) * 3.2);
                       return (
                         <div key={br.label} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--surface-2)" }}>
-                          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", color: "var(--text-2)", flex: "0 0 96px" }}>
+                          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", color: "var(--text-2)", flex: "0 0 96px" }}>
                             {String(br.label).toUpperCase()}
                           </span>
                           <span style={{ position: "relative", flex: "1 1 auto", height: 8, background: "var(--surface-2)", borderRadius: 2, minWidth: 0 }}>
@@ -924,7 +924,7 @@ export default function PlayerDetailMobile({
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 44,
             }}
           >
-            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--dim)" }}>{m.label}</span>
+            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)" }}>{m.label}</span>
             <span style={{ fontSize: 15, fontWeight: 600, textAlign: "right" }}>{m.value}</span>
           </div>
         ))}
@@ -991,7 +991,7 @@ export default function PlayerDetailMobile({
         <div key={t.abbr} style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", background: "var(--surface-2)", borderBottom: "1px solid var(--line)" }}>
             <span role="img" style={crest(t.slug || t.abbr, t.sport || sport, 22)} />
-            <span style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.12em", color: "var(--text)" }}>{t.abbr}</span>
+            <span style={{ fontFamily: MONO, fontSize: 12, letterSpacing: "0.05em", color: "var(--text)" }}>{t.abbr}</span>
             <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)", marginLeft: "auto" }}>
               {`${t.players.length} ${t.players.length === 1 ? "PLAYER" : "PLAYERS"}`}
             </span>
@@ -1021,7 +1021,7 @@ export default function PlayerDetailMobile({
                 {ps && (
                   <span
                     style={{
-                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "5px 9px",
+                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "5px 9px",
                       borderRadius: 999, flex: "0 0 auto",
                       background: "color-mix(in srgb, currentColor 14%, transparent)", color: ps.dot,
                     }}
@@ -1060,7 +1060,7 @@ export default function PlayerDetailMobile({
     <div style={{ padding: "0 16px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 13px", borderBottom: "1px solid #20242b" }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>EVERY MEETING</span>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" }}>EVERY MEETING</span>
           <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{`LINE ${h2h.line}`}</span>
         </div>
         {h2h.rows.map((m) => (
@@ -1215,7 +1215,7 @@ export default function PlayerDetailMobile({
                     style={{
                       minHeight: 44, display: "flex", alignItems: "center", padding: "0 14px", borderRadius: 8,
                       border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)",
-                      fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+                      fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
                     }}
                   >
                     SAVE
@@ -1324,7 +1324,7 @@ export default function PlayerDetailMobile({
             style={{
               flex: "0 0 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
               padding: "0 20px", borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface-2)",
-              color: "var(--text-2)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.08em", cursor: "pointer",
+              color: "var(--text-2)", fontFamily: MONO, fontSize: 12, letterSpacing: "0.03em", cursor: "pointer",
             }}
           >
             RESET
@@ -1333,7 +1333,7 @@ export default function PlayerDetailMobile({
             onClick={closeSheet}
             style={{
               flex: "1 1 auto", minHeight: 50, display: "flex", alignItems: "center", justifyContent: "center",
-              borderRadius: 12, cursor: "pointer", fontFamily: MONO, fontSize: 13, letterSpacing: "0.08em",
+              borderRadius: 12, cursor: "pointer", fontFamily: MONO, fontSize: 13, letterSpacing: "0.03em",
               border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--text-2)",
             }}
           >
@@ -1391,7 +1391,7 @@ export default function PlayerDetailMobile({
                 onClick={() => setRosterTeam(r.key)}
                 style={{
                   minHeight: 32, display: "flex", alignItems: "center", padding: "0 11px", borderRadius: 999,
-                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
+                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer", whiteSpace: "nowrap",
                   border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
                   background: on ? "var(--amber-dim)" : "var(--surface-1)",
                   color: on ? "var(--amber-ink)" : "var(--text-2)",

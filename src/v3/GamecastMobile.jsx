@@ -10,9 +10,9 @@ import { crest } from "./FormPlot.jsx";
 // array; a market the boxscore does not carry is named as unfollowable rather
 // than estimated from something adjacent.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
-const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 export default function GamecastMobile({
   onBack,
@@ -48,7 +48,7 @@ export default function GamecastMobile({
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack && onBack(); } }}
           style={{
             minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", padding: "0 8px",
-            fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--amber-ink)",
+            fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--amber-ink)",
             whiteSpace: "nowrap", cursor: "pointer",
           }}
         >
@@ -56,7 +56,7 @@ export default function GamecastMobile({
         </span>
         <span
           style={{
-            fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 8px", borderRadius: 5,
+            fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "4px 8px", borderRadius: 5,
             flex: "0 0 auto", background: live ? "rgba(239,91,91,0.16)" : "rgba(139,152,171,0.14)",
             color: live ? "var(--neg)" : "var(--dim)",
           }}
@@ -164,7 +164,7 @@ export default function GamecastMobile({
                   Only a final game can settle one. */}
               <span
                 style={{
-                  fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "3px 7px", borderRadius: 999,
+                  fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "3px 7px", borderRadius: 999,
                   whiteSpace: "nowrap",
                   background: p.passed ? "var(--pos-dim)" : "rgba(139,152,171,0.14)",
                   color: p.passed ? "var(--pos)" : "var(--dim)",
@@ -225,7 +225,7 @@ export default function GamecastMobile({
                   borderBottom: i < leaders.length - 1 ? "1px solid #20242b" : "none",
                 }}
               >
-                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)", flex: "0 0 88px" }}>{l.cat}</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)", flex: "0 0 88px" }}>{l.cat}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 116, flex: "1 1 auto" }}>
                   <span style={{ fontSize: 14, minWidth: 0, overflowWrap: "anywhere" }}>{l.name}</span>
                   <span role="img" style={crest(l.team, sport, 13)} />

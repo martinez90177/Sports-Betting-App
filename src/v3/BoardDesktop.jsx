@@ -30,15 +30,15 @@ import { TONE, TIERS, atStyle, BoardBrief } from "./boardShared.jsx";
 // Detail, so a banner announcing that it is about to would be narrating a
 // thing that already happened. Same category as the file's BOOK_MARKS.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
-const railMicro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const railMicro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 function leagueChip(on) {
   return {
     minHeight: 30, display: "flex", alignItems: "center", padding: "0 13px",
-    borderRadius: 7, fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em",
+    borderRadius: 7, fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em",
     cursor: "pointer", whiteSpace: "nowrap",
     border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
     background: on ? "var(--amber-dim)" : "var(--surface-1)",
@@ -132,7 +132,7 @@ export default function BoardDesktop({
           <div style={{ flex: "0 0 auto", border: "1px solid var(--amber)", borderRadius: 14, background: "var(--surface-1)", overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: "var(--amber-dim)", borderBottom: "1px solid var(--line)" }}>
               <span style={{ width: 12, height: 12, borderRadius: 999, background: "var(--pos)", display: "block", flex: "0 0 auto" }} />
-              <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 600, letterSpacing: "0.14em", color: "var(--amber-ink)" }}>
+              <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 600, letterSpacing: "0.05em", color: "var(--amber-ink)" }}>
                 {String(TIERS[0].title).toUpperCase()}
               </span>
               <span role="img" style={crest(hero.away, sport, 34)} />
@@ -146,7 +146,7 @@ export default function BoardDesktop({
                 tabIndex={0}
                 onClick={() => onOpenGameProps && onOpenGameProps(hero)}
                 onKeyDown={(e) => { if (e.key === "Enter") onOpenGameProps && onOpenGameProps(hero); }}
-                style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 13, fontWeight: 600, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
+                style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 13, fontWeight: 600, letterSpacing: "0.03em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 {/* Read "OPEN MATCHUP →" and went to the Prop Feed, which is
                     the same mislabel the Matchup page's own button carried in
@@ -223,7 +223,7 @@ export default function BoardDesktop({
                           <span
                             key={`${r.label}${i}`}
                             style={{
-                              fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", padding: "4px 8px",
+                              fontFamily: MONO, fontSize: 10, letterSpacing: "0.02em", padding: "4px 8px",
                               borderRadius: 6, background: tone.bg, color: tone.fg, whiteSpace: "nowrap",
                             }}
                           >
@@ -238,7 +238,7 @@ export default function BoardDesktop({
                     {/* Says the card opens, and into what -- a card that did
                         something different on click from what it used to has
                         to say so rather than surprise. */}
-                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--amber-ink)" }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--amber-ink)" }}>
                       {openKey === g.key ? "▴ CLOSE" : g.quiet ? "▾ CLOSEST PROPS" : "▾ WHAT’S BEHIND IT"}
                     </span>
                   </div>

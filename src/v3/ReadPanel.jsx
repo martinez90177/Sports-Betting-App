@@ -17,9 +17,9 @@ import {
 // a leg is AGAINST -- three frames agreeing by construction rather than three
 // copies of the rule agreeing by luck.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 export default function ReadPanel({
   read = [],
@@ -62,7 +62,7 @@ export default function ReadPanel({
                 }}
                 style={{
                   minHeight: 30, display: "flex", alignItems: "center", padding: "0 9px",
-                  borderRadius: 7, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em",
+                  borderRadius: 7, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em",
                   whiteSpace: "nowrap", cursor: "pointer",
                   border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
                   background: on ? "var(--amber-dim)" : "var(--surface-1)",

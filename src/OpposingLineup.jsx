@@ -3,8 +3,8 @@ import PlayerAvatar from "./PlayerAvatar.jsx";
 import { MLB_TEAM_COLORS } from "./lib/teamColors.js";
 import { statcastFor } from "./lib/statcast.js";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // The lineup he is facing, joined to Savant. Competitive brief item 2, mock 3b.
 //
@@ -21,7 +21,7 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 // toggle says how many and opens them.
 
 const HEAD = {
-  fontFamily: MONO, fontSize: 9, letterSpacing: "0.14em",
+  fontFamily: MONO, fontSize: 9, letterSpacing: "0.05em",
   textTransform: "uppercase", color: "var(--dim)",
 };
 const GRID = "26px minmax(0,1fr) 46px 52px 52px 52px 52px";
@@ -99,7 +99,7 @@ export default function OpposingLineup({
   return (
     <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-        <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>
+        <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>
           Expected lineup · {teamLabel || teamAbbr}
         </span>
         {/* Posted or projected, stated. The board already draws this
@@ -108,7 +108,7 @@ export default function OpposingLineup({
             reader deciding off a leadoff spot needs to know which. */}
         <span style={{
           marginLeft: "auto", display: "flex", alignItems: "center", gap: 7,
-          fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--text-2)",
+          fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--text-2)",
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: 999, flex: "none", boxSizing: "border-box",
@@ -176,12 +176,12 @@ export default function OpposingLineup({
               <div style={{ minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
                   <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 13.5, whiteSpace: "nowrap" }}>{b.name}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.08em", color: "var(--dim)", whiteSpace: "nowrap" }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.03em", color: "var(--dim)", whiteSpace: "nowrap" }}>
                     {[b.hand, b.pos].filter(Boolean).join(" · ")}
                   </span>
                 </div>
                 {on && rankLabel.get(b.mlbId) && (
-                  <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--amber-ink)", marginTop: 3 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--amber-ink)", marginTop: 3 }}>
                     {rankLabel.get(b.mlbId)}
                   </div>
                 )}
@@ -217,7 +217,7 @@ export default function OpposingLineup({
           style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", minHeight: "var(--tap, 44px)" }}
         >
           <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--amber-ink)", width: 12 }}>{open ? "−" : "+"}</span>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
             {open ? `Show only the ${flagged.size} that matter` : `Show all ${rows.length} batters`}
           </span>
         </span>

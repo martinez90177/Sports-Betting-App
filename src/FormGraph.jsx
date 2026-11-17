@@ -467,7 +467,7 @@ export default function FeedFormStrip({
                 }}
               >
                 <span style={{ fontSize: 12, fontWeight: 700 }}>{shownRun}</span>
-                <span style={{ fontSize: 8, letterSpacing: "0.08em", marginTop: 2 }}>{shownRunHit ? "STRAIGHT" : "COLD"}</span>
+                <span style={{ fontSize: 8, letterSpacing: "0.03em", marginTop: 2 }}>{shownRunHit ? "STRAIGHT" : "COLD"}</span>
               </span>
             );
           })()}
@@ -510,7 +510,7 @@ export default function FeedFormStrip({
         // which is the gap Alex circled under every row without a streak.
         if (!text) return null;
         return (
-          <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.06em", color: runText ? runInk : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
+          <div className="pp-mono" style={{ fontSize: 12, letterSpacing: "0.02em", color: runText ? runInk : "var(--dim)", whiteSpace: "nowrap", marginTop: 9 }}>
             {text}
           </div>
         );

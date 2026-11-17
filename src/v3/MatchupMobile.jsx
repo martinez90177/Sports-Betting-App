@@ -28,9 +28,9 @@ import TeamRankings from "./TeamRankings.jsx";
 // The mock's own form rows are seeded arithmetic (`us = 1 + ((i * 5 + seed) %
 // 9)`), a placeholder for real results. They come from `fetchRecentForm` here.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
-const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const sectionLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 const footNote = { fontSize: 12.5, lineHeight: 1.5, color: "var(--dim)", textWrap: "pretty" };
 const card = { border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)", overflow: "hidden" };
 
@@ -66,7 +66,7 @@ export default function MatchupMobile({
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onBack && onBack(); } }}
           style={{
             flex: "0 0 auto", minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", padding: "0 8px",
-            fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--amber-ink)",
+            fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--amber-ink)",
             whiteSpace: "nowrap", cursor: "pointer",
           }}
         >
@@ -81,7 +81,7 @@ export default function MatchupMobile({
         <span style={{ flex: "1 1 auto", minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", justifyContent: "center", gap: 9 }}>
           <span
             style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 8px", borderRadius: 5,
+              fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "4px 8px", borderRadius: 5,
               flex: "0 0 auto",
               background: live ? "rgba(239,91,91,0.16)" : "var(--amber-dim)",
               color: live ? "var(--neg)" : "var(--amber-ink)",
@@ -103,7 +103,7 @@ export default function MatchupMobile({
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenBoard(); } }}
             style={{
               flex: "0 0 auto", minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "flex-end",
-              padding: "0 8px", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em",
+              padding: "0 8px", fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em",
               color: "var(--amber-ink)", whiteSpace: "nowrap", cursor: "pointer",
             }}
           >
@@ -200,7 +200,7 @@ export default function MatchupMobile({
                     progress — a Week 1 panel is showing last season, and an
                     unlabelled one would be claiming otherwise. */}
                 {t.season && (
-                  <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", color: "var(--dim)" }}>{t.season}</span>
+                  <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.03em", color: "var(--dim)" }}>{t.season}</span>
                 )}
                 <span style={{ marginLeft: t.season ? 0 : "auto", fontFamily: MONO, fontSize: 11, fontWeight: 700 }}>{t.record}</span>
               </div>
@@ -239,7 +239,7 @@ export default function MatchupMobile({
                           games -- accent-coloured, because it is a mark, not
                           an outcome. */}
                       {!g.home && (
-                        <span style={{ fontFamily: "'Archivo', system-ui, sans-serif", fontSize: 11, fontWeight: 700, color: "var(--amber-ink)", paddingRight: 4, letterSpacing: 0 }}>@</span>
+                        <span style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 11, fontWeight: 700, color: "var(--amber-ink)", paddingRight: 4, letterSpacing: 0 }}>@</span>
                       )}
                       <span>{g.opp}</span>
                     </span>
@@ -269,7 +269,7 @@ export default function MatchupMobile({
                       borderRight: i < 2 ? "1px solid var(--line)" : "none",
                     }}
                   >
-                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)" }}>{c.label}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" }}>{c.label}</span>
                     <span style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700 }}>{c.value}</span>
                   </div>
                 ))}

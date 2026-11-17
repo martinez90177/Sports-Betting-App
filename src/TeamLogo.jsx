@@ -47,7 +47,7 @@ export default function TeamLogo({ sport, abbr, size = 24, title, style, lift = 
         style={{
           display: "inline-flex", alignItems: "center", justifyContent: "center",
           width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.34)),
-          letterSpacing: "0.04em", color: "var(--text-2)", ...style,
+          letterSpacing: "0.02em", color: "var(--text-2)", ...style,
         }}
       >
         {abbr}

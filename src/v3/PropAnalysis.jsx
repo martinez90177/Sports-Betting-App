@@ -5,8 +5,8 @@ import React from "react";
 // sit on each side, and opens in place. Not a model's output and not a
 // prediction: every sentence carries the number it came from.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const MONO = "'Inter', system-ui, sans-serif";
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 function Group({ heading, items }) {
   if (!items.length) return null;
@@ -41,7 +41,7 @@ export default function PropAnalysis({ facts, subtitle }) {
       >
         <span style={micro}>THE CASE</span>
         <span style={{ fontSize: 12.5, color: "var(--text-2)", flex: 1, minWidth: 0 }}>{summary}</span>
-        <span style={{ ...micro, letterSpacing: "0.08em" }}>{open ? "HIDE ▴" : "SHOW ▾"}</span>
+        <span style={{ ...micro, letterSpacing: "0.03em" }}>{open ? "HIDE ▴" : "SHOW ▾"}</span>
       </div>
       {open && (
         <div style={{ borderTop: "1px solid var(--line)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 16 }}>

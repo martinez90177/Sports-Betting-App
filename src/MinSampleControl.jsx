@@ -219,12 +219,12 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>
+        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>
           Minimum sample
           {/* Names the season the scale is cut against, so a chip row that
               changes when you switch sport is explained by the thing beside
               it rather than being a surprise. */}
-          <span style={{ marginLeft: 8, letterSpacing: "0.04em", textTransform: "none", opacity: 0.75 }}>
+          <span style={{ marginLeft: 8, letterSpacing: "0.02em", textTransform: "none", opacity: 0.75 }}>
             of {season} games
           </span>
         </span>
@@ -256,7 +256,7 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
             style={{
               display: "inline-flex", alignItems: "center",
               padding: compact ? "9px 4px" : "11px 4px", fontSize: 11,
-              letterSpacing: "0.1em", textTransform: "uppercase",
+              letterSpacing: "0.04em", textTransform: "uppercase",
               color: saved ? "var(--dim)" : "var(--amber-ink, var(--amber))",
               cursor: saved ? "default" : "pointer",
             }}
@@ -312,7 +312,7 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
             className="pp-mono"
             title={`Only state a rate once a prop has ${n} finished games`}
             style={{
-              fontSize: 10, letterSpacing: "0.06em", cursor: "pointer",
+              fontSize: 10, letterSpacing: "0.02em", cursor: "pointer",
               fontVariantNumeric: "tabular-nums",
               color: !all && value === n ? "var(--amber-ink, var(--amber))" : "var(--dim)",
             }}
@@ -326,12 +326,12 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
            changed itself between sports and said nothing is the same class of
            problem as a rate with no sample. */}
       {carriedNote && (
-        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", color: "var(--amber-ink, var(--amber))", marginTop: 10, lineHeight: 1.5 }}>
+        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", color: "var(--amber-ink, var(--amber))", marginTop: 10, lineHeight: 1.5 }}>
           {carriedNote}
         </div>
       )}
 
-      <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
+      <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
         {all
           ? "Every prop states a rate, however few games are behind it."
           : `Props under ${value} games still appear, without a rate.`}

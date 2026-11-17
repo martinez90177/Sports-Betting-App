@@ -47,7 +47,7 @@ import React from "react";
 // about what is measured moved: still one bar per game, still height = total,
 // still the whole log rather than the window.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The same floor `lib/findings.js` uses. Below it a shape is not a shape.
 // Marked rather than hidden — the rule everywhere else on this site is that a
@@ -206,7 +206,7 @@ export default function ValuePlot({
   return (
     <div style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" }}>
+        <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" }}>
           {`EVERY ${String(label || "TOTAL").toUpperCase()} IN THE LOG, LOW TO HIGH`}
         </span>
         {/* The sample this is drawn over, beside it — the whole log, which is a
@@ -215,7 +215,7 @@ export default function ValuePlot({
           {`${cleared} of ${total} games clear ${line}`}
         </span>
         {total < SUPPORT && (
-          <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.08em", padding: "3px 7px", borderRadius: 5, background: "rgba(232,177,58,0.16)", color: "#e8b13a", whiteSpace: "nowrap", flex: "0 0 auto" }}>
+          <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.03em", padding: "3px 7px", borderRadius: 5, background: "rgba(232,177,58,0.16)", color: "#e8b13a", whiteSpace: "nowrap", flex: "0 0 auto" }}>
             {`THIN · ${total} GAME${total === 1 ? "" : "S"}`}
           </span>
         )}

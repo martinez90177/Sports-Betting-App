@@ -39,7 +39,7 @@ export default function SettingsMobile({ onLeave, returnLabel = "Prop Feed", spo
             onClick={onLeave}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onLeave && onLeave(); } }}
             title={`Close settings and return to ${returnLabel}`}
-            style={{ minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--amber-ink)", whiteSpace: "nowrap", cursor: "pointer" }}
+            style={{ minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--amber-ink)", whiteSpace: "nowrap", cursor: "pointer" }}
           >
             ← BACK
           </span>
@@ -77,7 +77,7 @@ export default function SettingsMobile({ onLeave, returnLabel = "Prop Feed", spo
         <div style={{ padding: "16px 16px 26px", display: "flex", flexDirection: "column", gap: 22 }}>
           <SettingsBody section={section} sportsbooks={sportsbooks} onOpenWheel={() => setWheelOpen(true)} />
 
-          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", lineHeight: 1.7, color: "var(--dim)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", lineHeight: 1.7, color: "var(--dim)" }}>
             {storageNoteFor(section)}
           </span>
         </div>

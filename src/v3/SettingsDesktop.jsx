@@ -50,9 +50,9 @@ export default function SettingsDesktop({ onLeave, returnLabel = "Prop Feed", sp
       {/* Settings is not one of the six nav tabs, so NAV_PAGES excludes it and
           no NavBar renders above this page. The frame draws its own row. */}
       <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 16, padding: "16px 32px", borderBottom: "1px solid var(--line)" }}>
-        <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase" }}>Prop Palace</span>
+        <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: "0.05em", textTransform: "uppercase" }}>Prop Palace</span>
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", color: "var(--dim)" }}>SIGN IN</span>
+          <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", color: "var(--dim)" }}>SIGN IN</span>
           <AgeMark radius={7} />
         </span>
       </div>
@@ -67,7 +67,7 @@ export default function SettingsDesktop({ onLeave, returnLabel = "Prop Feed", sp
               onClick={onLeave}
               onKeyDown={(e) => { if (e.key === "Enter") onLeave && onLeave(); }}
               title={`Close settings and return to ${returnLabel}`}
-              style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
             >
               ← BACK
             </span>
@@ -103,7 +103,7 @@ export default function SettingsDesktop({ onLeave, returnLabel = "Prop Feed", sp
           {/* Where these values live, and it changes on Account because that is
               the tab where "nothing leaves the device" answers a question the
               reader is actually asking. */}
-          <span style={{ marginTop: "auto", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", lineHeight: 1.7, color: "var(--dim)" }}>
+          <span style={{ marginTop: "auto", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", lineHeight: 1.7, color: "var(--dim)" }}>
             {storageNoteFor(section)}
           </span>
         </div>

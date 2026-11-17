@@ -16,11 +16,11 @@ export function MatchupBreadcrumb({ onBack, backLabel = "Games", matchupLabel, p
     <div style={{
       display: "flex", alignItems: "center", gap: 10,
       padding: "12px 20px", borderBottom: "1px solid var(--line)", background: "var(--panel)",
-      fontSize: 11.5, letterSpacing: "0.08em", textTransform: "uppercase",
+      fontSize: 11.5, letterSpacing: "0.03em", textTransform: "uppercase",
     }}>
       <button
         type="button" onClick={onBack}
-        style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 0", flexShrink: 0 }}
+        style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, letterSpacing: "0.03em", textTransform: "uppercase", padding: "4px 0", flexShrink: 0 }}
       >
         ← {backLabel}
       </button>
@@ -32,7 +32,7 @@ export function MatchupBreadcrumb({ onBack, backLabel = "Games", matchupLabel, p
         type="button" onClick={onToggleWatch}
         style={{
           marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-          fontSize: 11.5, letterSpacing: "0.08em", textTransform: "uppercase", padding: "4px 0", flexShrink: 0,
+          fontSize: 11.5, letterSpacing: "0.03em", textTransform: "uppercase", padding: "4px 0", flexShrink: 0,
           color: watching ? "var(--amber)" : "var(--dim)", fontWeight: watching ? 700 : 400,
         }}
       >
@@ -95,7 +95,7 @@ export function MatchupVerdictBlock({ pct, verb, line, sentence, outcomes = [] }
 export function GameLogTable({ title = "Every game behind that number", columns, rows }) {
   return (
     <div style={{ padding: "24px 28px" }}>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 14, textTransform: "uppercase" }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 14, textTransform: "uppercase" }}>
         {title}
       </div>
       <div style={{
@@ -103,7 +103,7 @@ export function GameLogTable({ title = "Every game behind that number", columns,
         padding: "0 0 9px", borderBottom: "1px solid var(--line)",
       }}>
         {columns.map((c) => (
-          <span key={c.key} className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.1em", color: "var(--dim)", textAlign: c.align || "left" }}>
+          <span key={c.key} className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)", textAlign: c.align || "left" }}>
             {c.label}
           </span>
         ))}
@@ -120,7 +120,7 @@ export function GameLogTable({ title = "Every game behind that number", columns,
           {columns.map((c) => {
             if (c.key === "result") {
               return (
-                <span key={c.key} className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.08em", textAlign: c.align || "left", color: r.result === "OVER" ? "var(--pos)" : "var(--neg)" }}>
+                <span key={c.key} className="pp-mono" style={{ fontSize: 11.5, letterSpacing: "0.03em", textAlign: c.align || "left", color: r.result === "OVER" ? "var(--pos)" : "var(--neg)" }}>
                   {r.result}{r.note ? ` · ${r.note}` : ""}
                 </span>
               );
@@ -148,7 +148,7 @@ export function TheRead({ lean, sentence, confidenceTier, confidenceNote }) {
   const dots = { THIN: 1, FAIR: 2, STRONG: 3 }[confidenceTier] || 1;
   return (
     <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--line)" }}>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 10 }}>THE READ</div>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 10 }}>THE READ</div>
       <div className="pp-display" style={{ fontSize: 22, color: leanColor, marginBottom: 10 }}>{leanLabel}</div>
       <div style={{ fontSize: 13.5, lineHeight: 1.55, color: "var(--dim-strong)", marginBottom: 14 }}>{sentence}</div>
       <div style={{ display: "flex", gap: 5, marginBottom: 8 }}>
@@ -156,7 +156,7 @@ export function TheRead({ lean, sentence, confidenceTier, confidenceNote }) {
           <span key={i} style={{ width: 22, height: 4, background: i < dots ? "var(--amber)" : "var(--line)" }} />
         ))}
       </div>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.1em", color: "var(--dim)" }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.04em", color: "var(--dim)" }}>
         CONFIDENCE · {confidenceTier}
       </div>
       {confidenceNote && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 6, lineHeight: 1.5 }}>{confidenceNote}</div>}
@@ -174,7 +174,7 @@ export function TheRead({ lean, sentence, confidenceTier, confidenceNote }) {
 export function MatchupSplits({ rows, footnote }) {
   return (
     <div style={{ padding: "24px 28px", borderBottom: "1px solid var(--line)" }}>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 14 }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 14 }}>
         SPLITS · GAMES COUNTED IN EACH
       </div>
       {rows.map((r, i) => (
@@ -199,7 +199,7 @@ export function ValueDistribution({ title, bins, footnote }) {
   const max = Math.max(1, ...bins.map((b) => b.count));
   return (
     <div style={{ padding: "24px 28px" }}>
-      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.14em", color: "var(--dim)", marginBottom: 14, textTransform: "uppercase" }}>
+      <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", marginBottom: 14, textTransform: "uppercase" }}>
         {title}
       </div>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 64 }}>

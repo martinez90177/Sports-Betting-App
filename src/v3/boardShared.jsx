@@ -10,7 +10,7 @@ import TeamLogo from "../TeamLogo.jsx";
 // drift — a desktop card tinting `out` differently from a phone card would be
 // two answers to the same question.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // One tone per reason kind, as the file writes them. These are chip
 // backgrounds, not outcome colours: `rate` borrows the cleared green because
@@ -31,7 +31,7 @@ const TIERS = [
 ];
 
 const atStyle = {
-  fontFamily: "'Archivo', system-ui, sans-serif", fontWeight: 700,
+  fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 700,
   color: "var(--amber-ink)", padding: "0 5px", fontSize: 12,
 };
 
@@ -138,7 +138,7 @@ function MiniStrip({ games, line, isBinary, direction, height = 54, barWidth = n
 function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", onOpenProp, onOpenGameProps }) {
   // The two column headings (WHY IT LEADS / CLEARED THE BAR). 10px read as a
   // footnote against the 17px titles under them.
-  const microLabel = { fontFamily: MONO, fontSize: wide ? 14 : 11.5, fontWeight: 600, letterSpacing: "0.14em", color: "var(--text-2)" };
+  const microLabel = { fontFamily: MONO, fontSize: wide ? 14 : 11.5, fontWeight: 600, letterSpacing: "0.05em", color: "var(--text-2)" };
   const open = (p) => onOpenProp && onOpenProp(sport, p.playerId, p.marketId);
   const key = (fn) => (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
   const reasons = (card.reasons || []).filter((r) => r.title);
@@ -270,7 +270,7 @@ function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", o
           role="button" tabIndex={0}
           onClick={() => onOpenGameProps && onOpenGameProps(card)} onKeyDown={key(() => onOpenGameProps && onOpenGameProps(card))}
           style={{
-            fontFamily: MONO, fontSize: wide ? 13 : 12, fontWeight: 700, letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
+            fontFamily: MONO, fontSize: wide ? 13 : 12, fontWeight: 700, letterSpacing: "0.03em", cursor: "pointer", whiteSpace: "nowrap",
             flex: wide ? "0 0 auto" : "1 1 100%", textAlign: "center",
             padding: wide ? "13px 22px" : "14px 16px", borderRadius: 9,
             background: "var(--amber)", color: "var(--accent-on)", border: "1px solid var(--amber)",

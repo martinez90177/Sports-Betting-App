@@ -13,10 +13,10 @@ import TeamRankings from "./TeamRankings.jsx";
 // line, no run line, no public split. There is no odds feed here, so there is
 // nothing to show rather than a number borrowed from somewhere else.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
-const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const micro = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 const card = {
   border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)",
   display: "flex", flexDirection: "column",
@@ -90,7 +90,7 @@ export default function MatchupDesktop({
           tabIndex={0}
           onClick={onBack}
           onKeyDown={(e) => { if (e.key === "Enter") onBack && onBack(); }}
-          style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 34, padding: "0 13px 0 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer" }}
+          style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 34, padding: "0 13px 0 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer" }}
         >
           ← GAMES
         </span>
@@ -98,12 +98,12 @@ export default function MatchupDesktop({
         <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span role="img" style={crest(away.abbr, sport, 26)} />
           <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 22 }}>{away.abbr}</span>
-          <span style={{ fontFamily: "'Archivo', system-ui, sans-serif", fontWeight: 700, color: "var(--amber-ink)", padding: "0 5px" }}>@</span>
+          <span style={{ fontFamily: "'Inter', system-ui, sans-serif", fontWeight: 700, color: "var(--amber-ink)", padding: "0 5px" }}>@</span>
           <span style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 22 }}>{home.abbr}</span>
           <span role="img" style={crest(home.abbr, sport, 26)} />
         </span>
         <span style={{
-          fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", padding: "4px 9px", borderRadius: 5,
+          fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", padding: "4px 9px", borderRadius: 5,
           background: live ? "var(--neg-dim)" : "var(--amber-dim)",
           color: live ? "var(--neg)" : "var(--amber-ink)",
         }}>
@@ -116,7 +116,7 @@ export default function MatchupDesktop({
             tabIndex={0}
             onClick={onOpenBoard}
             onKeyDown={(e) => { if (e.key === "Enter") onOpenBoard(); }}
-            style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
+            style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", color: "var(--amber-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
           >
             {/* Says where it goes. It went to the Prop Feed and was labelled
                 "OPEN BOARD", which is a different screen in this app's own
@@ -180,7 +180,7 @@ export default function MatchupDesktop({
                         an unlabelled one would be claiming otherwise. */}
                     {fm.season && (
                       <span style={{
-                        marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em",
+                        marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em",
                         padding: "3px 7px", borderRadius: 5,
                         border: "1px solid var(--line)", color: "var(--text-2)",
                       }}>
@@ -230,7 +230,7 @@ export default function MatchupDesktop({
               <div style={{ display: "grid", gridTemplateColumns: `repeat(${h2h.cells.length}, minmax(0, 1fr))`, gap: 10 }}>
                 {h2h.cells.map((c) => (
                   <div key={c.label} style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>{c.label}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>{c.label}</span>
                     <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700 }}>{c.value}</span>
                   </div>
                 ))}

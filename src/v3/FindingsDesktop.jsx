@@ -7,9 +7,9 @@ import { crest } from "./FormPlot.jsx";
 // two-across grid of finding cards. Same props `FindingsMobile` takes, off the
 // same `lib/findings.js` output — this is a layout, not a second ranking.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
-const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)" };
+const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
 function railPill(on) {
   return {
@@ -140,7 +140,7 @@ export default function FindingsDesktop({
             </span>
             {/* Stated on screen: a thin sample is marked and still shown. It
                 is not quietly dropped, and it is not silently trusted. */}
-            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", color: "var(--dim)" }}>
+            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>
               A THIN SAMPLE IS MARKED, NEVER HIDDEN
             </span>
           </div>
@@ -170,7 +170,7 @@ export default function FindingsDesktop({
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{
-                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", padding: "4px 9px", borderRadius: 5, flex: "0 0 auto",
+                      fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", padding: "4px 9px", borderRadius: 5, flex: "0 0 auto",
                       background: fd.structural ? "rgba(139,152,171,0.14)" : "var(--amber-dim)",
                       color: fd.structural ? "var(--dim)" : "var(--amber-ink)",
                     }}>
@@ -178,7 +178,7 @@ export default function FindingsDesktop({
                     </span>
                     {/* Amber, and it names the sample it is thin on. */}
                     {fd.thin && (
-                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", padding: "4px 8px", borderRadius: 5, background: "rgba(232,177,58,0.16)", color: "var(--status-questionable)" }}>
+                      <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", padding: "4px 8px", borderRadius: 5, background: "rgba(232,177,58,0.16)", color: "var(--status-questionable)" }}>
                         {`THIN · ${fd.n} G`}
                       </span>
                     )}
@@ -217,7 +217,7 @@ export default function FindingsDesktop({
                   tabIndex={0}
                   onClick={onShowMore}
                   onKeyDown={(e) => { if (e.key === "Enter") onShowMore && onShowMore(); }}
-                  style={{ minHeight: 38, display: "flex", alignItems: "center", padding: "0 20px", borderRadius: 8, border: "1px solid var(--amber)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.08em", cursor: "pointer" }}
+                  style={{ minHeight: 38, display: "flex", alignItems: "center", padding: "0 20px", borderRadius: 8, border: "1px solid var(--amber)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.03em", cursor: "pointer" }}
                 >
                   {`SHOW ${moreCount} MORE`}
                 </div>

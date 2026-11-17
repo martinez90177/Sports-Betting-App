@@ -272,36 +272,12 @@ a:focus-visible, div[role="button"]:focus-visible, button:focus-visible,
    (table cells, axis ticks, stat rails) -- default proportional
    figures elsewhere, per the type scale above. */
 .tnum { font-variant-numeric: tabular-nums; }
-/* ---------- the "@" ----------
-   Space Mono's "@" stops working below about 12px. The ring closes up and what
-   survives is a bowl and a tail, which reads as a lowercase "a" -- so every
-   road fixture in the app was wrong at small sizes: "@SD" as "aSD" down a
-   whole game-by-game axis, "PHI @ SEA" as "PHI a SEA" under the venue. Alex:
-   "the @'s are horrific".
-
-   Rather than rewriting every string that contains one -- and there are dozens,
-   in the board's card titles, the slate, the breadcrumb, the feed -- the glyph
-   is taken off Space Mono. `unicode-range` limits this face to U+0040, so it
-   substitutes for the "@" and for nothing else.
-
-   The sources are all `local()`: no download, and if a machine has none of
-   them the browser falls straight through to Space Mono and the app renders
-   exactly as it did before. The failure mode is the status quo.
-
-   It has to be FIRST in every mono stack -- a later family is only consulted
-   for characters the earlier ones do not have, and Space Mono has an "@". */
-@font-face {
-  font-family: 'PP At';
-  src: local('Segoe UI'), local('Helvetica Neue'), local('Arial'), local('Liberation Sans'), local('DejaVu Sans');
-  unicode-range: U+0040;
-}
-
-/* Stat numbers: Space Mono with tabular figures, like every other number in
+/* Stat numbers: Inter with tabular figures, like every other number in
    the product. This was Space Grotesk, a proportional face -- a number in a
    proportional face is a bug, and it meant a card's headline value and the
    stat rail beside it never lined up. */
 .stat-value {
-  font-family: 'PP At', 'Space Mono', ui-monospace, monospace;
+  font-family: 'Inter', system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   font-weight: 700;
@@ -388,7 +364,13 @@ body {
     radial-gradient(900px 700px at 100% 0%, rgba(62,207,142,0.04), transparent 55%),
     var(--bg);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* Inter everywhere, with fixed-width digits so every number column still
+     lines up the way the old monospace face made it, and cv11 for the
+     single-storey "a". */
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+  font-variant-numeric: tabular-nums;
 }
 img { max-width: 100%; }
 .page-shell { padding: 24px 32px; width: 100%; }
@@ -511,10 +493,10 @@ img { max-width: 100%; }
 }
 /* Legacy aliases, remapped to the v2 system rather than hunted down at every
    call site. .oswald was Space Grotesk and .mono was JetBrains Mono; both
-   faces are gone. Display is Bricolage 600, numbers are Space Mono with
-   tabular figures -- any number in a proportional face is a bug. */
-.oswald { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; }
-.mono { font-family: 'PP At', 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+   faces are gone. Everything is Inter now; numbers use its tabular
+   figures so columns line up. */
+.oswald { font-family: 'Inter', system-ui, sans-serif; font-weight: 600; }
+.mono { font-family: 'Inter', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
 
 /* ---------- shared surfaces ----------
    .panel is the background/border/radius trio that was inlined at ~40
@@ -531,7 +513,7 @@ img { max-width: 100%; }
   font-weight: 600;
   color: var(--dim);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
 }
 
 a, div[role="button"], button, .chip, .tab, select.select {
@@ -558,7 +540,7 @@ div[role="button"]:active { transform: scale(0.97); }
   box-shadow: 0 0 0 1px var(--amber) inset;
 }
 .tab {
-  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   letter-spacing: 0.01em;
   padding: 12px 8px;
   border-bottom: 2px solid transparent;
@@ -808,11 +790,15 @@ input.pp-search:focus, input.pp-search:focus-visible {
      tell it compromised the size of the graphs."* At 46 it is 6px, and
      nothing once the window is wide enough for FORM to reach its 250 cap.
      The minima sum to 880, inside the 903 the table gets at the mock's 1440. */
+  /* Nov 2026: Inter replaced the monospace face, and the rate cells need
+     about 54px where Space Mono needed 58 -- those 26px went to the
+     proposition, whose bigger name, crests and matchup line now fit on
+     three lines instead of wrapping to a fourth. */
   grid-template-columns:
     34px
-    minmax(212px, 268px)
+    minmax(238px, 294px)
     minmax(180px, 250px)
-    minmax(380px, 1fr);
+    minmax(354px, 1fr);
   column-gap: 14px;
   padding-left: 16px;
   padding-right: 16px;
@@ -884,10 +870,10 @@ input.pp-search:focus, input.pp-search:focus-visible {
 .market-bar .tab {
   flex: 0 0 auto;
   width: auto;
-  font-family: 'PP At', 'Space Mono', ui-monospace, monospace;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 12.5px;
   font-weight: 400;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   padding: 8px 14px;
   border: 1px solid var(--line);
@@ -925,7 +911,7 @@ input.pp-search:focus, input.pp-search:focus-visible {
 
 @media (max-width: 480px) {
   /* Still a 44px hit area at this size -- 11px line box plus 2 x 12px. */
-  .market-bar .tab { font-size: 11px; padding: 12px 10px; letter-spacing: 0.03em; }
+  .market-bar .tab { font-size: 11px; padding: 12px 10px; letter-spacing: 0.01em; }
   .market-bar--underlined .tab { padding: 12px 6px 10px; }
 }
 
@@ -1013,10 +999,10 @@ input.pp-search:focus, input.pp-search:focus-visible {
   margin-bottom: var(--fp-header-gap);
 }
 .fp-section-title {
-  font-family: 'PP At', 'Space Mono', ui-monospace, monospace;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.10em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-2);
 }
@@ -1094,7 +1080,7 @@ select.select-sm {
   padding: 6px 10px;
   border-radius: 8px;
   font-size: 12px;
-  font-family: 'Archivo', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   cursor: pointer;
 }
 select.select-sm:hover { border-color: var(--amber); }
@@ -1278,7 +1264,7 @@ select.select-sm:focus, select.select-sm:focus-visible {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   flex-shrink: 0; width: 52px; height: 52px; border-radius: 10px; cursor: pointer;
   border: 1px solid var(--amber); color: var(--amber); background: var(--amber-dim);
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.01em;
 }
 .mobile-player-strip-scroll {
   display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; flex: 1;
@@ -1397,7 +1383,7 @@ select.select-sm:focus, select.select-sm:focus-visible {
     margin-bottom: -1px;
     /* The file's own mobile tab type, a step down from the desktop 12/0.12. */
     font-size: 10.5px !important;
-    letter-spacing: 0.1em !important;
+    letter-spacing: 0.04em !important;
   }
   .pp-nav-signin { display: none; }
   /* Same trade the SIGN IN mark makes above: at 390px the top row cannot hold
@@ -1491,13 +1477,13 @@ select.select-sm:focus, select.select-sm:focus-visible {
 
 /* ---------- redesign type + token aliases (design handoff, phase 1) ----------
    The redesign components reach for two classes rather than naming faces
-   inline, so swapping a face later is a one-line change here. Archivo
-   replaces Inter as the body face; the old display/number faces are gone
+   inline, so swapping a face later is a one-line change here. Inter is the
+   only face (Nov 2026, replacing Archivo/Bricolage/Space Mono); the old display/number faces are gone
    defined because .oswald, .mono and .stat-value are still used across the
    existing screens. */
-.pp-display { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-weight: 600; }
-.pp-mono    { font-family: 'PP At', 'Space Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-body        { font-family: 'Archivo', system-ui, sans-serif; }
+.pp-display { font-family: 'Inter', system-ui, sans-serif; font-weight: 600; }
+.pp-mono    { font-family: 'Inter', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+body        { font-family: 'Inter', system-ui, sans-serif; font-weight: 500; }
 
 /* The handoff components read --accent / --accent-text. This app's accent is
    --amber (user-settable via --accent-color in Settings > ColorWheel), so
@@ -1745,7 +1731,7 @@ body        { font-family: 'Archivo', system-ui, sans-serif; }
   .pp-pd-pills { gap: 6px !important; margin-top: 10px !important; }
   .pp-pd-pills > span {
     font-size: 9.5px !important;
-    letter-spacing: 0.06em !important;
+    letter-spacing: 0.02em !important;
     padding: 3px 8px !important;
   }
 }

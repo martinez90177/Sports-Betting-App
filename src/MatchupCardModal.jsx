@@ -14,11 +14,11 @@ import { feedFormScale } from "./FormGraph.jsx";
 // passed in are the ones with no equivalent in the page's own props -- a 72px
 // avatar and the availability word.
 
-const MONO = "'PP At', 'Space Mono', monospace";
-const DISPLAY = "'Bricolage Grotesque', sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 const label = {
-  fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.16em",
+  fontFamily: MONO, fontSize: 9.5, letterSpacing: "0.06em",
   textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap",
 };
 const cellValue = {
@@ -176,10 +176,10 @@ export default function MatchupCardModal({
       >
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 20px", borderBottom: "1px solid var(--line)", background: "var(--surface-1)" }}>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
             Matchup card
           </span>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)" }}>
             Prop Palace · research only
           </span>
           <span
@@ -203,17 +203,17 @@ export default function MatchupCardModal({
             <div style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 30, lineHeight: 1, letterSpacing: "-0.02em" }}>
               {player.name}
             </div>
-            <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-2)", marginTop: 8 }}>
+            <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2)", marginTop: 8 }}>
               {identity}
             </div>
           </div>
           <div style={{ marginLeft: "auto", textAlign: "right" }}>
             {fixtureLine && (
-              <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)" }}>
+              <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>
                 {fixtureLine}
               </div>
             )}
-            <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-2)", marginTop: 7 }}>
+            <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--text-2)", marginTop: 7 }}>
               {propLine}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
@@ -270,7 +270,7 @@ export default function MatchupCardModal({
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-              <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.06em", color: "var(--text-2)" }}>{streakCaption}</span>
+              <span style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.02em", color: "var(--text-2)" }}>{streakCaption}</span>
               <span style={{ fontFamily: MONO, fontSize: 11.5, color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
                 avg {verdict.average} · line {verdict.line}
               </span>
@@ -286,7 +286,7 @@ export default function MatchupCardModal({
               <div style={label}>Defence</div>
               <div style={cellValue}>{(context && context.rank) || "—"}</div>
               {context && context.rankWord && (
-                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 4, whiteSpace: "nowrap", color: context.rankColor }}>
+                <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", textTransform: "uppercase", marginTop: 4, whiteSpace: "nowrap", color: context.rankColor }}>
                   {context.rankWord}
                 </div>
               )}
@@ -300,7 +300,7 @@ export default function MatchupCardModal({
             <div style={{ flex: 1, padding: "12px 14px", borderLeft: "1px solid var(--line)" }}>
               <div style={label}>Status</div>
               <div style={{
-                fontFamily: MONO, fontSize: 12, marginTop: 8, letterSpacing: "0.06em",
+                fontFamily: MONO, fontSize: 12, marginTop: 8, letterSpacing: "0.02em",
                 textTransform: "uppercase", whiteSpace: "nowrap",
                 color: card.status ? card.status.color : "var(--dim)",
               }}>
@@ -311,7 +311,7 @@ export default function MatchupCardModal({
 
           <div style={{ marginTop: 14, padding: 16, background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 6 }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-              <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
+              <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--amber-ink)" }}>
                 The read
               </span>
               <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 20 }}>{verdict.sampleVerdict}</span>
@@ -323,14 +323,14 @@ export default function MatchupCardModal({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderTop: "1px solid var(--line)", background: "var(--surface-1)" }}>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.05em", color: "var(--dim)", lineHeight: 1.5 }}>
+          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.5 }}>
             {new Date().getFullYear()} box scores, finished games only. No picks, no wagers. 21+
           </span>
           <span
             role="button" tabIndex={0} onClick={copyText}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copyText(); } }}
             style={{
-              marginLeft: "auto", flex: "none", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em",
+              marginLeft: "auto", flex: "none", fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em",
               textTransform: "uppercase", color: "var(--text-2)", border: "1px solid var(--line)",
               borderRadius: 4, padding: "9px 13px", cursor: "pointer",
             }}
@@ -341,7 +341,7 @@ export default function MatchupCardModal({
             role="button" tabIndex={0} onClick={onAddPick}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onAddPick && onAddPick(); } }}
             style={{
-              flex: "none", fontFamily: MONO, fontSize: 11, letterSpacing: "0.1em",
+              flex: "none", fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em",
               textTransform: "uppercase", color: "#ffffff", background: "var(--amber)",
               borderRadius: 4, padding: "9px 13px", cursor: "pointer",
             }}

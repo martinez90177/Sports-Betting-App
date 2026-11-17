@@ -21,8 +21,8 @@ import React from "react";
 //   4. `position: relative` on the frame, so the full-view overlay resolves
 //      against it.
 
-const MONO = "'Space Mono', monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // The feed row grid's own minimum: its four tracks' floors (34 + 212 + 180 +
 // 380), three 14px gaps and 16px of padding either side -- see .feed-grid in
@@ -31,7 +31,7 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 const FEED_TABLE_MIN = 34 + 212 + 180 + 380 + 3 * 14 + 2 * 16;
 
 const railLabel = {
-  fontFamily: MONO, fontSize: 10, letterSpacing: "0.16em", color: "var(--dim)",
+  fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)",
 };
 
 // The mock's own `railPill`, value for value. Worth naming rather than
@@ -55,7 +55,7 @@ const railPill = (sel) => ({
 // changes its width and reflows the lines.
 const marketChip = (on, disabled) => ({
   flex: "0 0 auto", minHeight: 28, display: "inline-flex", alignItems: "center", padding: "0 10px",
-  borderRadius: 6, fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em",
+  borderRadius: 6, fontFamily: MONO, fontSize: 11, letterSpacing: "0.02em",
   whiteSpace: "nowrap", cursor: disabled ? "not-allowed" : "pointer",
   border: `1px solid ${on ? "var(--amber)" : "transparent"}`,
   background: on ? "var(--amber-dim)" : "transparent",
@@ -279,7 +279,7 @@ export default function PropFeedDesktop({
             onKeyDown={(e) => { if (e.key === "Enter") onToggleFilters && onToggleFilters(); }}
             style={{
               minHeight: 30, display: "flex", alignItems: "center", gap: 7, padding: "0 13px", borderRadius: 7,
-              fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer",
+              fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer",
               border: `1px solid ${filtersOpen ? "var(--amber)" : "var(--line)"}`,
               background: filtersOpen ? "var(--amber-dim)" : "transparent",
               color: filtersOpen ? "var(--amber-ink)" : "var(--dim)",
@@ -394,7 +394,7 @@ export default function PropFeedDesktop({
                         tabIndex={0}
                         onClick={customWindow.onClear}
                         onKeyDown={(e) => { if (e.key === "Enter") customWindow.onClear(); }}
-                        style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.08em", color: "var(--dim)", cursor: "pointer" }}
+                        style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", color: "var(--dim)", cursor: "pointer" }}
                       >
                         REMOVE COLUMN
                       </span>
@@ -448,7 +448,7 @@ export default function PropFeedDesktop({
                   title="Show the whole slate"
                   style={{
                     flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 7,
-                    fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", whiteSpace: "nowrap",
+                    fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em", whiteSpace: "nowrap",
                     padding: "3px 8px", borderRadius: 6, cursor: "pointer",
                     border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)",
                   }}
@@ -476,7 +476,7 @@ export default function PropFeedDesktop({
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", rowGap: 8 }}>
             {sorts.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0 }}>
-                <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", color: "var(--dim)" }}>SORT</span>
+                <span style={{ flex: "0 0 auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" }}>SORT</span>
                 {sorts.map((s) => (
                   <div
                     key={s.id}
@@ -487,7 +487,7 @@ export default function PropFeedDesktop({
                     onKeyDown={(e) => { if (e.key === "Enter") s.onPick && s.onPick(); }}
                     style={{
                       flex: "0 0 auto", minHeight: 28, display: "flex", alignItems: "center", padding: "0 11px",
-                      borderRadius: 7, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.06em",
+                      borderRadius: 7, fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.02em",
                       whiteSpace: "nowrap", cursor: "pointer",
                       border: `1px solid ${s.active ? "var(--amber)" : "var(--line)"}`,
                       background: s.active ? "var(--amber-dim)" : "transparent",
@@ -536,7 +536,7 @@ export default function PropFeedDesktop({
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); d.onPick && d.onPick(); } }}
                 style={{
                   minHeight: 30, display: "flex", alignItems: "center", padding: "0 13px", borderRadius: 8,
-                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer", whiteSpace: "nowrap",
+                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer", whiteSpace: "nowrap",
                   border: `1px solid ${d.active ? "var(--amber)" : "var(--line-strong)"}`,
                   background: d.active ? "var(--amber-dim)" : "transparent",
                   color: d.active ? "var(--amber-ink)" : "var(--dim)",
@@ -558,7 +558,7 @@ export default function PropFeedDesktop({
                   flex: "0 0 auto",
                   minHeight: 30, display: "flex", alignItems: "center", gap: 8,
                   padding: "0 14px", borderRadius: 8, cursor: "pointer",
-                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", whiteSpace: "nowrap",
+                  fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", whiteSpace: "nowrap",
                   border: `1px solid ${altLines.on ? "var(--amber)" : "var(--line-strong)"}`,
                   background: altLines.on ? "var(--amber-dim)" : "var(--surface-2)",
                   color: altLines.on ? "var(--amber-ink)" : "var(--text-2)",
@@ -611,7 +611,7 @@ export default function PropFeedDesktop({
                 style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "18px 0", cursor: "pointer" }}
               >
                 <span style={{ fontFamily: MONO, fontSize: 11, color: "var(--amber-ink)" }}>‹</span>
-                <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.14em", color: "var(--text-2)", writingMode: "vertical-rl", textOrientation: "mixed" }}>
+                <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.05em", color: "var(--text-2)", writingMode: "vertical-rl", textOrientation: "mixed" }}>
                   {`MY PICKS · ${picks.count || 0}`}
                 </span>
               </div>
@@ -637,7 +637,7 @@ export default function PropFeedDesktop({
                       title="Open the full slip and its read"
                       onClick={picks.onOpenFull}
                       onKeyDown={(e) => { if (e.key === "Enter") picks.onOpenFull(); }}
-                      style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, minHeight: 30, padding: "0 10px", borderRadius: 7, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", cursor: "pointer" }}
+                      style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, minHeight: 30, padding: "0 10px", borderRadius: 7, border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--amber-ink)", fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em", cursor: "pointer" }}
                     >
                       ⤢ FULL VIEW
                     </span>
@@ -654,7 +654,7 @@ export default function PropFeedDesktop({
                         onKeyDown={(e) => { if (e.key === "Enter") t.onPick && t.onPick(); }}
                         style={{
                           flex: "1 1 0", minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center",
-                          fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.1em", cursor: "pointer",
+                          fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.04em", cursor: "pointer",
                           color: t.active ? "var(--text)" : "var(--dim)",
                           borderBottom: t.active ? "2px solid var(--amber)" : "2px solid transparent",
                         }}
@@ -707,7 +707,7 @@ function Btn({ onClick, label, primary }) {
         border: "1px solid var(--amber)", borderRadius: 6,
         background: primary ? "var(--amber)" : "var(--amber-dim)",
         color: primary ? "#ffffff" : "var(--amber-ink)",
-        fontFamily: MONO, fontSize: 11, letterSpacing: "0.08em", cursor: "pointer",
+        fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", cursor: "pointer",
       }}
     >
       {label}

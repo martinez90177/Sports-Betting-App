@@ -61,7 +61,7 @@ function PresetCard({
             {preset.name}
           </span>
           {isDefault && (
-            <span className="oswald" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: "var(--amber)", border: "1px solid var(--amber)", borderRadius: 999, padding: "1px 7px" }}>
+            <span className="oswald" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em", color: "var(--amber)", border: "1px solid var(--amber)", borderRadius: 999, padding: "1px 7px" }}>
               DEFAULT
             </span>
           )}
@@ -180,7 +180,7 @@ export default function FeedPresets({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
-          <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.03em" }}>
+          <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.01em" }}>
             SAVED SCREENS{presets.length ? ` (${presets.length})` : ""}
           </span>
           <div
@@ -199,7 +199,7 @@ export default function FeedPresets({
           {/* Save the current screen. Shown first because the reason to open
               this panel with nothing saved yet is to save something. */}
           <div style={{ marginBottom: 18 }}>
-            <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
+            <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.01em", marginBottom: 8 }}>
               SAVE THIS SCREEN
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -228,7 +228,7 @@ export default function FeedPresets({
             </div>
           </div>
 
-          <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.03em", marginBottom: 8 }}>
+          <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.01em", marginBottom: 8 }}>
             YOUR SCREENS
           </div>
           {presets.length === 0 ? (
@@ -274,7 +274,7 @@ export default function FeedPresets({
             style={{
               textAlign: "center", padding: "11px 0", borderRadius: 8, cursor: "pointer",
               background: "var(--amber)", color: "var(--accent-on)",
-              fontSize: 13, fontWeight: 700, letterSpacing: "0.03em",
+              fontSize: 13, fontWeight: 700, letterSpacing: "0.01em",
             }}
           >
             SHOW {resultCount} {resultCount === 1 ? "PROP" : "PROPS"}

@@ -1,7 +1,7 @@
 import React from "react";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 // Where the game is played, and what that is worth. Competitive brief item 7,
 // mock 3f.
@@ -19,14 +19,14 @@ const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
 // directions they are.
 
 const LABEL = {
-  fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em",
+  fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em",
   textTransform: "uppercase", color: "var(--dim)",
 };
 
 function Cell({ label, value }) {
   return (
     <div>
-      <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--dim)" }}>{label}</div>
+      <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)" }}>{label}</div>
       <div style={{ fontFamily: MONO, fontSize: 15, marginTop: 5, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{value}</div>
     </div>
   );
@@ -78,7 +78,7 @@ export default function GameConditions({
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <span style={{ fontFamily: DISPLAY, fontWeight: 600, fontSize: 17 }}>{venue || "Venue not known"}</span>
         {(fixture || time) && (
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)" }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)" }}>
             {[fixture, time].filter(Boolean).join(" · ")}
           </span>
         )}
@@ -94,7 +94,7 @@ export default function GameConditions({
               <Cell label={c.label} value={c.value} />
             </div>
           ))}
-          <div style={{ marginLeft: "auto", textAlign: "right", fontFamily: MONO, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--dim)", lineHeight: 1.6 }}>
+          <div style={{ marginLeft: "auto", textAlign: "right", fontFamily: MONO, fontSize: 9, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)", lineHeight: 1.6 }}>
             Forecast at kickoff
           </div>
         </div>
@@ -125,7 +125,7 @@ export default function GameConditions({
               const positive = p.value >= 0;
               return (
                 <div key={p.label} style={{ display: "grid", gridTemplateColumns: "90px 1fr 58px", gap: 12, alignItems: "center" }}>
-                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-2)" }}>{p.label}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text-2)" }}>{p.label}</span>
                   <div style={{ position: "relative", height: 6, borderRadius: 3, background: "var(--surface-2)" }}>
                     <span style={{ position: "absolute", left: "50%", top: -3, bottom: -3, width: 1, background: "var(--line)" }} />
                     <div style={{
@@ -152,7 +152,7 @@ export default function GameConditions({
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)", flexWrap: "wrap" }}>
           {verdict && (
             <span style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase",
+              fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase",
               color: "var(--amber-ink, var(--amber))", border: "1px solid var(--amber)",
               borderRadius: 999, padding: "5px 11px", flex: "none",
             }}>

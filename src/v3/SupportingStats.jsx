@@ -20,8 +20,8 @@
 import React from "react";
 import { crest } from "./FormPlot.jsx";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 const num = (v, dp = 1) => (v == null || !Number.isFinite(v) ? null : v.toFixed(dp));
 const pct = (v) => (v == null || !Number.isFinite(v) ? null : `${Math.round(v * 100)}%`);
@@ -197,7 +197,7 @@ export default function SupportingStats({ games, position, teamTotals, opp, spor
   const top = perGame.reduce((m, v) => (v != null && v > m ? v : m), 0) || 1;
   const fmt = (v) => (active.unit === "pct" ? pct(v) : num(v, v != null && v >= 100 ? 0 : 1));
 
-  const label = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.12em", color: "var(--dim)" };
+  const label = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", color: "var(--dim)" };
 
   return (
     <div style={{ flex: "0 0 auto", border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", overflow: "hidden" }}>
@@ -216,7 +216,7 @@ export default function SupportingStats({ games, position, teamTotals, opp, spor
               onClick={() => setMode(id)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setMode(id); } }}
               style={{
-                cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em",
+                cursor: "pointer", fontFamily: MONO, fontSize: 10, letterSpacing: "0.03em",
                 padding: "4px 9px", borderRadius: 6,
                 border: `1px solid ${mode === id ? "var(--amber)" : "var(--line)"}`,
                 background: mode === id ? "var(--amber-dim)" : "transparent",

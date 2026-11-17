@@ -28,8 +28,8 @@ import { formatOdds } from "./odds.js";
 //     numbers it didn't measure; every sentence here is a template filled
 //     from the real rank cells, nothing composed freely.
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
-const DISPLAY = "'Bricolage Grotesque', system-ui, sans-serif";
+const MONO = "'Inter', system-ui, sans-serif";
+const DISPLAY = "'Inter', system-ui, sans-serif";
 
 const TIER_META = {
   SMASH: { label: "SMASH SPOT", color: "var(--pos)" },
@@ -371,7 +371,7 @@ function capturedWhen() {
 }
 
 function micro(extra) {
-  return { fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--dim)", ...extra };
+  return { fontFamily: MONO, fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)", ...extra };
 }
 
 // On a phone the filter rows swipe sideways instead of wrapping: wrapped, the
@@ -412,7 +412,7 @@ function Filter({ label, on, onClick, tone, size }) {
       className="pp-mono"
       style={{
         flex: "none",
-        fontSize: sm ? 10 : 11, letterSpacing: "0.06em", padding: sm ? "5px 9px" : "7px 12px", borderRadius: sm ? 6 : 8,
+        fontSize: sm ? 10 : 11, letterSpacing: "0.02em", padding: sm ? "5px 9px" : "7px 12px", borderRadius: sm ? 6 : 8,
         cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6,
         border: `1px solid ${on ? (tone || "var(--amber)") : sm ? "transparent" : "var(--line)"}`,
         background: on ? "var(--amber-dim)" : sm ? "var(--surface-2)" : "var(--bg)",
@@ -438,7 +438,7 @@ function FilterGroup({ label, hint, narrow, first, children }) {
     >
       <div style={{ ...micro({ fontSize: 9.5, color: "var(--text-2)" }), marginBottom: narrow ? 7 : 0 }}>
         {label}
-        {hint ? <div style={{ fontSize: 9, color: "var(--dim)", letterSpacing: "0.08em", marginTop: 2 }}>{hint}</div> : null}
+        {hint ? <div style={{ fontSize: 9, color: "var(--dim)", letterSpacing: "0.03em", marginTop: 2 }}>{hint}</div> : null}
       </div>
       <div className={narrow ? "nsb" : undefined} style={{ display: "flex", gap: 6, ...swipeRow(narrow) }}>
         {children}
@@ -456,7 +456,7 @@ function Meter({ score, color }) {
       <div style={{ height: 6, borderRadius: 99, background: "var(--surface-3, var(--surface-2))", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: "0 auto 0 0", width: `${pct}%`, borderRadius: 99, background: color }} />
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9.5, color: "var(--dim)", fontFamily: MONO, letterSpacing: "0.08em" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9.5, color: "var(--dim)", fontFamily: MONO, letterSpacing: "0.03em" }}>
         <span>TOUGH</span>
         <span style={{ color }}>{pct}</span>
         <span>SOFT</span>
@@ -481,7 +481,7 @@ function SheetActions({ entry, glance }) {
     }
     setTimeout(() => setSaving(null), 1600);
   };
-  const btn = { display: "inline-flex", alignItems: "center", lineHeight: 1.2, fontSize: 10.5, letterSpacing: "0.06em", padding: "6px 10px", borderRadius: 7, cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface-2)", whiteSpace: "nowrap" };
+  const btn = { display: "inline-flex", alignItems: "center", lineHeight: 1.2, fontSize: 10.5, letterSpacing: "0.02em", padding: "6px 10px", borderRadius: 7, cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface-2)", whiteSpace: "nowrap" };
   const link = `${window.location.origin}${window.location.pathname}#mismatch-${entry.game.id}`;
   const copy = async () => {
     try {
@@ -562,7 +562,7 @@ function BackToTop({ narrow }) {
         position: "fixed", zIndex: 1999, right: narrow ? 16 : 27,
         bottom: narrow ? "calc(env(safe-area-inset-bottom, 0px) + 92px)" : 76,
         display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 14px", borderRadius: 999,
-        fontSize: 11, letterSpacing: "0.08em", cursor: "pointer",
+        fontSize: 11, letterSpacing: "0.03em", cursor: "pointer",
         background: "var(--surface-2)", color: "var(--text)", border: "1px solid var(--line)",
         boxShadow: "0 6px 18px rgba(0, 0, 0, 0.35)",
       }}
@@ -580,7 +580,7 @@ function ActionButton({ label, onClick }) {
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
       className="pp-mono"
       style={{
-        flex: 1, textAlign: "center", fontSize: 11, letterSpacing: "0.06em", padding: "9px 10px", borderRadius: 8,
+        flex: 1, textAlign: "center", fontSize: 11, letterSpacing: "0.02em", padding: "9px 10px", borderRadius: 8,
         cursor: "pointer", border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--text-2)",
       }}
     >
@@ -592,7 +592,7 @@ function ActionButton({ label, onClick }) {
 function StatCell({ label, value, sub, tone }) {
   return (
     <div style={{ background: "var(--surface-2)", borderRadius: 9, padding: "10px 12px", minWidth: 0 }}>
-      <div style={{ ...micro(), fontSize: 10, letterSpacing: "0.1em", lineHeight: 1.4 }}>{label}</div>
+      <div style={{ ...micro(), fontSize: 10, letterSpacing: "0.04em", lineHeight: 1.4 }}>{label}</div>
       <div style={{ fontFamily: DISPLAY, fontWeight: 700, fontSize: 17, marginTop: 4, color: tone || "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {value}
       </div>
@@ -843,7 +843,7 @@ function StatusTag({ status }) {
     <span
       className="pp-mono"
       style={{
-        flex: "none", display: "inline-flex", alignItems: "center", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em",
+        flex: "none", display: "inline-flex", alignItems: "center", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em",
         padding: "3px 7px", borderRadius: 6, lineHeight: 1.2, color: t.color,
         background: `color-mix(in srgb, ${t.color} 14%, transparent)`,
         border: `1px solid color-mix(in srgb, ${t.color} 55%, transparent)`,
@@ -915,7 +915,7 @@ function CompactRow({ card, form, allowed, narrow, onOpen }) {
       {narrow ? (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ textAlign: "right", fontSize: 13.5 }}>
-            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.06em", color: tier.color }}>{tier.label}</div>
+            <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.02em", color: tier.color }}>{tier.label}</div>
             <div style={{ marginTop: 4 }}>{counts || <span style={{ color: "var(--dim)" }}>{lineText}</span>}</div>
           </div>
           <span aria-hidden style={{ color: "var(--text-2)", fontSize: 14 }}>▾</span>
@@ -936,7 +936,7 @@ function CompactRow({ card, form, allowed, narrow, onOpen }) {
           <span
             className="pp-mono"
             style={{
-              justifySelf: "start", fontSize: 10.5, letterSpacing: "0.06em", padding: "5px 9px", borderRadius: 7,
+              justifySelf: "start", fontSize: 10.5, letterSpacing: "0.02em", padding: "5px 9px", borderRadius: 7,
               color: tier.color, border: `1px solid ${tier.color}`, whiteSpace: "nowrap",
             }}
           >
@@ -968,7 +968,7 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
     <span
       className="pp-mono"
       style={{
-        flex: "none", alignSelf: "flex-start", fontSize: 10.5, letterSpacing: "0.06em",
+        flex: "none", alignSelf: "flex-start", fontSize: 10.5, letterSpacing: "0.02em",
         padding: "5px 9px", borderRadius: 7, color: tier.color, border: `1px solid ${tier.color}`, whiteSpace: "nowrap",
       }}
     >
@@ -1140,7 +1140,7 @@ function Card({ card, layout, flashed, onOpenProp, onViewGameProps, form, season
           className="pp-mono"
           style={{
             position: "absolute", top: narrow ? 12 : 14, right: narrow ? 12 : 14, zIndex: 1,
-            display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: "0.06em",
+            display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, letterSpacing: "0.02em",
             padding: "6px 11px", borderRadius: 8, cursor: "pointer",
             border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--text-2)",
           }}
@@ -1298,7 +1298,7 @@ function SearchSummary({ hits, query, onJump, narrow, runCheck }) {
                       key={c.id}
                       className="pp-mono"
                       style={{
-                        display: "inline-flex", gap: 6, alignItems: "center", fontSize: 10.5, letterSpacing: "0.04em",
+                        display: "inline-flex", gap: 6, alignItems: "center", fontSize: 10.5, letterSpacing: "0.02em",
                         padding: "6px 9px", borderRadius: 8, whiteSpace: "nowrap",
                         border: "1px dashed var(--line)", color: "var(--dim)",
                       }}
@@ -1316,7 +1316,7 @@ function SearchSummary({ hits, query, onJump, narrow, runCheck }) {
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onJump(c.id); } }}
                     className="pp-mono"
                     style={{
-                      display: "inline-flex", gap: 6, alignItems: "center", fontSize: 10.5, letterSpacing: "0.04em",
+                      display: "inline-flex", gap: 6, alignItems: "center", fontSize: 10.5, letterSpacing: "0.02em",
                       padding: "6px 9px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap",
                       border: `1px solid ${c.tier === "TOUGH" ? "var(--line)" : t.color}`, color: "var(--text-2)",
                     }}
@@ -1599,7 +1599,7 @@ export default function MismatchReportPage({ onOpenProp, onViewGameProps, fetchL
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setView(id); } }}
                   className="pp-mono"
                   style={{
-                    fontSize: 11, letterSpacing: "0.06em", padding: "7px 14px", borderRadius: 7, cursor: "pointer",
+                    fontSize: 11, letterSpacing: "0.02em", padding: "7px 14px", borderRadius: 7, cursor: "pointer",
                     background: view === id ? "var(--amber-dim)" : "transparent",
                     color: view === id ? "var(--amber-ink)" : "var(--text-2)",
                     border: `1px solid ${view === id ? "var(--amber)" : "transparent"}`,

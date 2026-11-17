@@ -1,6 +1,6 @@
 import React from "react";
 
-const MONO = "'PP At', 'Space Mono', ui-monospace, monospace";
+const MONO = "'Inter', system-ui, sans-serif";
 
 // The other season's rank, under a MATCHUP figure: "2026 so far: #9 of 32
 // after 2 games". It printed as one more dim 10px line, the same weight as the
@@ -15,7 +15,7 @@ export default function SeasonNote({ text, size = 11 }) {
   return (
     <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 5 }}>
       {tag && (
-        <span style={{ fontFamily: MONO, fontSize: size - 1.5, fontWeight: 700, letterSpacing: "0.08em", padding: "2px 7px", borderRadius: 999, background: "color-mix(in srgb, var(--text) 13%, transparent)", color: "var(--text)", whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: MONO, fontSize: size - 1.5, fontWeight: 700, letterSpacing: "0.03em", padding: "2px 7px", borderRadius: 999, background: "color-mix(in srgb, var(--text) 13%, transparent)", color: "var(--text)", whiteSpace: "nowrap" }}>
           {tag.toUpperCase()}
         </span>
       )}
