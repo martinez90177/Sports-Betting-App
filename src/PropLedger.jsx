@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell, LabelList
 } from "recharts";
@@ -20531,12 +20532,12 @@ const FEED_SORT_MODES = [
     // The default, and the ordering the screen is built to argue for.
     id: "hit", label: "Best hit rate", flip: "Worst hit rate",
     metric: (r, win) => r[win], defaultDir: "desc",
-    description: "Ranks by the hit rate in whichever window is selected. Click again for the worst -- a line a player almost never clears is an edge on the Under, not an absence of one.",
+    description: "Highest hit rate in the selected window first.",
   },
   {
     id: "role", label: "Biggest role", flip: "Smallest role",
     metric: (r) => (r.role ?? -1), defaultDir: "desc",
-    description: "Ranks by how much of the game the player actually plays -- minutes in basketball, plate appearances in baseball, touches in football. A measure of role, not of betting popularity: no wagering data exists here. Click again for the smallest roles.",
+    description: "Players with the biggest workload first: minutes, plate appearances or touches.",
   },
   {
     // matchupScore, not rank: it's negated on Under rows (see
@@ -20544,17 +20545,17 @@ const FEED_SORT_MODES = [
     // you're looking at" -- a soft defense helps an Over and hurts an Under.
     id: "matchup", label: "Easiest matchup", flip: "Toughest matchup",
     metric: (r) => (r.matchupScore ?? r.rank), defaultDir: "desc",
-    description: "Ranks by how vulnerable the opponent is in that specific stat, not by their overall record -- a team can be bottom-five against passing yards and top-five against the run. Click again for the toughest, which is where an Under starts.",
+    description: "Softest defense against this specific stat first.",
   },
   {
     id: "variance", label: "Most consistent", flip: "Most volatile",
     metric: (r) => r.variance, defaultDir: "asc",
-    description: "Ranks by how little a player's results swing game to game. Click again for the most volatile -- boom-or-bust is exactly what you want on a long alt line, and exactly what you don't on a short one.",
+    description: "Players whose results swing least game to game first.",
   },
   {
     id: "trend", label: "Trending up", flip: "Trending down",
     metric: (r) => (r.l5 == null || r.l20 == null ? null : r.l5 - r.l20), defaultDir: "desc",
-    description: "Ranks by recent form (L5) against season-long form (L20) -- who is heating up relative to their own baseline. Click again for who is cooling off.",
+    description: "Last 5 games running hottest against their last 20 first.",
   },
 ];
 
@@ -20578,6 +20579,67 @@ const FEED_PILL = (on) => ({
   border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`,
 });
 const FEED_SECTION_LABEL = { fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
+
+// ---- The Filters dialog ----------------------------------------------------
+// One solid box over a dimmed page: a header, cards for each control, and a
+// footer that says how many props survive. It used to be two stitched halves
+// inside a translucent layer, which let the feed bleed through as a dark band
+// and read as a settings dump rather than a product surface.
+const FILTER_CARD = { background: "var(--surface-2)", border: "1px solid var(--line)", borderRadius: 10, padding: "14px 16px", minWidth: 0 };
+const FILTER_TITLE = { fontSize: 14, fontWeight: 650, color: "var(--text)" };
+const FILTER_META = { fontSize: 12, fontWeight: 500, color: "var(--dim)", fontVariantNumeric: "tabular-nums" };
+const FILTER_NOTE = { fontSize: 12, color: "var(--dim)", lineHeight: 1.5, marginTop: 10 };
+const FILTER_SEG = { display: "inline-flex", flexWrap: "wrap", gap: 2, padding: 3, marginTop: 10, borderRadius: 9, background: "var(--bg)", border: "1px solid var(--line)", maxWidth: "100%" };
+const FILTER_SEG_BTN = (on) => ({
+  display: "inline-flex", alignItems: "center", gap: 6,
+  fontSize: 13, fontWeight: 600, padding: "7px 14px", borderRadius: 6,
+  cursor: "pointer", whiteSpace: "nowrap", userSelect: "none",
+  background: on ? "var(--amber)" : "transparent",
+  color: on ? "var(--accent-on, #fff)" : "var(--text-2)",
+  transition: "background 120ms ease, color 120ms ease",
+});
+
+function FeedFiltersDialog({ open, onClose, children }) {
+  // Only a press that starts on the backdrop closes it. A slider dragged out
+  // past the dialog's edge ends with a click on the backdrop too, and that
+  // must not throw the panel away mid-adjustment.
+  const downOnBackdrop = React.useRef(false);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  if (!open) return null;
+  return createPortal(
+    <div
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 3000,
+        background: "rgba(4,5,7,0.7)", backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
+        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        padding: "64px 24px 24px", overflowY: "auto",
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Filters"
+        style={{
+          width: "100%", maxWidth: 880, maxHeight: "calc(100vh - 88px)",
+          display: "flex", flexDirection: "column", isolation: "isolate",
+          background: "var(--surface-1)", border: "1px solid var(--line)", borderRadius: 14,
+          boxShadow: "0 28px 72px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.02)",
+          overflow: "hidden",
+        }}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 const FEED_RAIL_LABEL = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" };
 const FEED_CELL_LABEL = { fontFamily: "'Inter', system-ui, sans-serif", fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--dim)", whiteSpace: "nowrap" };
@@ -20972,6 +21034,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // page flow -- see feedActiveFilterCount below for the badge shown on its
   // trigger.
   const [feedFiltersOpen, setFeedFiltersOpen] = useState(false);
+  const closeFeedFilters = useCallback(() => setFeedFiltersOpen(false), []);
   // On mobile this box renders as a bottom sheet over the feed (see its
   // render site below) rather than the plain inline disclosure it is on
   // desktop, so it needs the same scroll lock every other sheet in this app
@@ -22840,16 +22903,21 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedFiltersPanel = (
     <>
       {feedFiltersOpen && !isNarrow && (
-      <div style={{ marginTop: 12, padding: "16px 18px 0", background: "var(--surface-sunken)", border: "1px solid var(--amber)", borderBottom: "none", borderRadius: "6px 6px 0 0" }}>
-        {/* marginBottom matches the 14px the panel below rules its own
-             sections apart by, so the header divider and the first control
-             under it keep the same rhythm as every divider further down. */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, paddingBottom: 12, borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
-          <span className="pp-display" style={{ fontWeight: 600, fontSize: 16 }}>Filters</span>
-          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>rates always read the full log</span>
-          <span role="button" tabIndex={0} onClick={resetFeedFilters} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); resetFeedFilters(); } }} className="pp-mono" style={{ marginLeft: "auto", fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--amber-ink, var(--amber))", cursor: "pointer" }}>Reset</span>
-          <span role="button" tabIndex={0} onClick={() => setFeedFiltersOpen(false)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(false); } }} className="pp-mono" style={{ fontSize: 14, color: "var(--text-2)", cursor: "pointer" }}>×</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 22px 16px", borderBottom: "1px solid var(--line)", flex: "0 0 auto" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+          <span style={{ fontWeight: 700, fontSize: 19, color: "var(--text)", letterSpacing: "-0.01em" }}>Filters</span>
+          {/* What none of this changes: every rate still counts the player's
+               whole log. These only decide which props show and in what order. */}
+          <span style={{ fontSize: 12.5, color: "var(--dim)" }}>Choose which props show and how they sort. Hit rates always count every game.</span>
         </div>
+        <span role="button" tabIndex={0} onClick={resetFeedFilters} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); resetFeedFilters(); } }}
+          style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600, color: "var(--amber-ink, var(--amber))", cursor: "pointer", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", whiteSpace: "nowrap" }}>
+          Reset all
+        </span>
+        <span role="button" tabIndex={0} aria-label="Close filters" onClick={() => setFeedFiltersOpen(false)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(false); } }}
+          style={{ width: 36, height: 36, display: "grid", placeItems: "center", borderRadius: 8, border: "1px solid var(--line)", fontSize: 20, lineHeight: 1, color: "var(--text-2)", cursor: "pointer", flex: "0 0 auto" }}>
+          ×
+        </span>
       </div>
       )}
       {feedFiltersOpen && isNarrow && (
@@ -22866,12 +22934,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         borderRadius: "16px 16px 0 0", boxShadow: "0 -12px 32px rgba(0,0,0,0.5)",
         padding: "16px", paddingBottom: "max(16px, env(safe-area-inset-bottom))",
       } : {
-        // Not a card. This is the lower half of the Filters panel above it,
-        // so it continues that box rather than opening a second one.
-        margin: "0 0 16px", padding: "0 18px 16px",
-        background: "var(--surface-sunken)",
-        border: "1px solid var(--amber)", borderTop: "none",
-        borderRadius: "0 0 6px 6px",
+        // The dialog's scrolling body; FeedFiltersDialog draws the box.
+        flex: "1 1 auto", overflowY: "auto", padding: "18px 22px 20px",
       }}>
         {/* card 3a: everything the old always-visible stacked column held
             (market, side, sample window, lines mode, team/game, Screens, the
@@ -22950,7 +23014,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             state. It sits above SORT BY because it changes what the rows are
             allowed to say, not merely what order they come in. */}
         {!isNarrow && (
-          <div style={{ padding: "0 2px 14px", borderBottom: "1px solid var(--line)", marginBottom: 14 }}>
+          <div style={FILTER_CARD}>
             <MinSampleControl
               sport={sport}
               value={minGames}
@@ -22988,16 +23052,16 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       <div style={{
         display: "grid",
         gridTemplateColumns: isNarrow ? "1fr" : (sport === "mlb" ? "1fr 1fr 1fr" : "1fr 1fr"),
-        gap: "16px 24px", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)",
+        gap: 14, marginTop: 14,
       }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <span className="pp-mono" style={FEED_SECTION_LABEL}>Defence vs. this market</span>
-            <span className="pp-mono tnum" style={{ fontSize: 10, color: "var(--dim)" }}>
+        <div style={FILTER_CARD}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <span style={FILTER_TITLE}>Opponent defense</span>
+            <span style={FILTER_META}>
               #{rankLo}&ndash;#{rankHi} of {maxRank}
             </span>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+          <div style={FILTER_SEG}>
             {defTierBands.map((b) => {
               const on = rankLo === b.lo && rankHi === b.hi;
               return (
@@ -23008,8 +23072,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                   tabIndex={0}
                   onClick={() => { setRankLo(b.lo); setRankHi(b.hi); }}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRankLo(b.lo); setRankHi(b.hi); } }}
-                  className="pp-mono"
-                  style={FEED_PILL(on)}
+                  style={FILTER_SEG_BTN(on)}
                 >
                   {b.label}
                 </span>
@@ -23019,20 +23082,19 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
           {/* #1 is the toughest defence for this stat, which runs backwards to
               the word -- said once, here, rather than as a parenthetical
               beside every number. */}
-          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
-            Ranked on this market alone, not the opponent&rsquo;s record. #1 is the toughest,
-            and the tiers flip with the side you are reading.
+          <div style={FILTER_NOTE}>
+            Ranked on this stat only. #1 is the toughest defense.
           </div>
         </div>
 
-        <div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-            <span className="pp-mono" style={FEED_SECTION_LABEL}>Role</span>
-            <span className="pp-mono" style={{ fontSize: 10, color: "var(--dim)" }}>
+        <div style={FILTER_CARD}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <span style={FILTER_TITLE}>Role</span>
+            <span style={FILTER_META}>
               {roleUnit(sport)} per game
             </span>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+          <div style={FILTER_SEG}>
             {roleTiers(sport).map((t) => {
               const on = roleTier === t.id;
               return (
@@ -23043,8 +23105,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                   tabIndex={0}
                   onClick={() => setRoleTier(t.id)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRoleTier(t.id); } }}
-                  className="pp-mono"
-                  style={FEED_PILL(on)}
+                  style={FILTER_SEG_BTN(on)}
                 >
                   {/* The tier name, then the threshold as a bare number.
                        It used to read "Contributors 6+" -- three things said
@@ -23054,7 +23115,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                        the header now and the number rides here, quieter. */}
                   {t.label}
                   {t.min != null && (
-                    <span style={{ marginLeft: 6, fontSize: 9.5, opacity: 0.7, fontVariantNumeric: "tabular-nums" }}>{t.min}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 500, opacity: 0.7, fontVariantNumeric: "tabular-nums" }}>{t.min}+</span>
                   )}
                 </span>
               );
@@ -23065,17 +23126,17 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               -- that this is size of role, not prominence. The old version
               spent three lines denying it was betting volume, which raised the
               idea in order to reject it. Not naming it is the stronger move. */}
-          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
-            A starter on a bad team logs the same {roleUnit(sport)} as a star.
+          <div style={FILTER_NOTE}>
+            Size of role, not star power.
           </div>
         </div>
 
         {/* MLB only: every other sport's rows carry no lineupConfirmed flag at
             all, so there is nothing honest this could filter on for them. */}
         {sport === "mlb" && (
-          <div>
-            <span className="pp-mono" style={FEED_SECTION_LABEL}>Lineups</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+          <div style={FILTER_CARD}>
+            <span style={FILTER_TITLE}>Lineups</span>
+            <div style={FILTER_SEG}>
               {[[false, "All batters"], [true, "Posted only"]].map(([v, label]) => (
                 <span
                   key={label}
@@ -23084,28 +23145,25 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                   tabIndex={0}
                   onClick={() => setPostedLineupsOnly(v)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPostedLineupsOnly(v); } }}
-                  className="pp-mono"
-                  style={FEED_PILL(postedLineupsOnly === v)}
+                  style={FILTER_SEG_BTN(postedLineupsOnly === v)}
                 >
                   {label}
                 </span>
               ))}
             </div>
-            <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+            <div style={FILTER_NOTE}>
               Posted only drops anyone still on a projected order.
             </div>
           </div>
         )}
       </div>
 
-      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          <span className="pp-mono" style={FEED_SECTION_LABEL}>Sort by</span>
-          <span className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--dim)" }}>
-            hit rate leads; these break its ties
-          </span>
+      <div style={{ ...FILTER_CARD, marginTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <span style={FILTER_TITLE}>Sort by</span>
+          <span style={FILTER_META}>Hit rate first, then this</span>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 9 }}>
+        <div style={FILTER_SEG}>
           {FEED_SORT_MODES.map((mo) => {
             const on = sortMode === mo.id;
             // Clicking the mode you are already on flips its direction. One
@@ -23123,8 +23181,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                 onClick={pick}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } }}
                 title={on ? "Click again to flip the direction" : mo.description}
-                className="pp-mono"
-                style={{ ...FEED_PILL(on), display: "flex", alignItems: "center", gap: 7 }}
+                style={FILTER_SEG_BTN(on)}
               >
                 {mo.label}
                 {on && <span style={{ opacity: 0.85 }}>{sortDir === "desc" ? "↓" : "↑"}</span>}
@@ -23135,29 +23192,28 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         {/* The active mode's own explanation, always on. It used to be three
             paragraphs behind an "i" button, which meant the one sentence that
             applied right now was the one you could not see. */}
-        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
+        <div style={FILTER_NOTE}>
           {(FEED_SORT_MODES.find((mo) => mo.id === sortMode) || {}).description}
           {" "}
-          {sortDir === "desc" ? "High to low." : "Low to high."} Click the selected pill to flip it.
+          <span style={{ color: "var(--text-2)" }}>{sortDir === "desc" ? "High to low" : "Low to high"}</span> &middot; click the selected option to flip it.
         </div>
       </div>
 
-      <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+      <div style={{ ...FILTER_CARD, marginTop: 14 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <span className="pp-mono" style={{ ...FEED_SECTION_LABEL, whiteSpace: "nowrap" }}>Odds range</span>
+          <span style={{ ...FILTER_TITLE, whiteSpace: "nowrap" }}>Odds range</span>
           {(oddsMinX !== 4 || oddsMaxX !== 96) && (
             <span
               role="button"
               tabIndex={0}
               onClick={() => { setOddsMinX(4); setOddsMaxX(96); }}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOddsMinX(4); setOddsMaxX(96); } }}
-              className="pp-mono"
-              style={{ fontSize: 10, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--accent-text, var(--amber))", cursor: "pointer" }}
+              style={{ fontSize: 12.5, fontWeight: 600, color: "var(--amber-ink, var(--amber))", cursor: "pointer" }}
             >
               Reset
             </span>
           )}
-          <div style={{ flex: "1 1 220px", minWidth: 180 }}>
+          <div style={{ flex: "1 1 220px", minWidth: 180, padding: "0 8px" }}>
             <ThresholdSlider
               min={4}
               max={96}
@@ -23172,7 +23228,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               compact
             />
           </div>
-          <span className="pp-mono tnum" style={{ fontSize: 13, color: "var(--accent-text, var(--amber))", whiteSpace: "nowrap", minWidth: 118, textAlign: "right" }}>
+          <span className="tnum" style={{ fontSize: 14, fontWeight: 650, color: "var(--text)", whiteSpace: "nowrap", minWidth: 118, textAlign: "right" }}>
             {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMinX)), oddsFormat)} to {formatOdds(probToAmericanOdds(oddsSliderProb(oddsMaxX)), oddsFormat)}
           </span>
         </div>
@@ -23180,12 +23236,20 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
             soon" because no book is wired up yet, so a filter that silently
             removed rows on a price nothing on screen shows would be the one
             control in here a reader could not check. */}
-        <div className="pp-mono" style={{ fontSize: 10, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 9, lineHeight: 1.5 }}>
-          This app&rsquo;s own implied price, from the hit rate &mdash; the odds column is not
-          wired to a book yet. It will read the real number when one is.
+        <div style={FILTER_NOTE}>
+          Implied from each prop&rsquo;s hit rate until a sportsbook feed is connected.
         </div>
       </div>
       </div>
+      )}
+      {feedFiltersOpen && !isNarrow && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 22px", borderTop: "1px solid var(--line)", background: "var(--surface-1)", flex: "0 0 auto" }}>
+          <span style={{ fontSize: 13, color: "var(--dim)" }}>{resultCount}</span>
+          <span role="button" tabIndex={0} onClick={() => setFeedFiltersOpen(false)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(false); } }}
+            style={{ fontSize: 13.5, fontWeight: 650, padding: "9px 22px", borderRadius: 8, background: "var(--amber)", color: "var(--accent-on, #fff)", cursor: "pointer" }}>
+            Show results
+          </span>
+        </div>
       )}
     </>
   );
@@ -23460,11 +23524,11 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               ? "Every leg states the games it was counted over. Nothing here is priced by a book."
               : "Add a prop with the + on any row. It stays here while you keep reading.",
         }}
-        overlays={feedFiltersOpen ? (
-          <div style={{ position: "absolute", inset: 0, zIndex: 70, overflowY: "auto", background: "rgba(5,6,8,0.82)", padding: "18px 24px 32px" }}>
-            <div style={{ maxWidth: 980, margin: "0 auto" }}>{feedFiltersPanel}</div>
-          </div>
-        ) : null}
+        overlays={
+          <FeedFiltersDialog open={feedFiltersOpen} onClose={closeFeedFilters}>
+            {feedFiltersPanel}
+          </FeedFiltersDialog>
+        }
       />
     </>
   );

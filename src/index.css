@@ -1806,3 +1806,22 @@ body        { font-family: 'Inter', system-ui, sans-serif; font-weight: 500; }
    the launcher even scrolled all the way down, which no amount of scrolling
    could fix. 20 + 44 + 20 of air. */
 :root { --fab-clear: 84px; }
+
+/* A range input that draws only its thumb. The track and fill are painted by
+   the component underneath, so the browser's own white track never shows. */
+.pp-range { -webkit-appearance: none; appearance: none; background: transparent; outline: none; }
+.pp-range::-webkit-slider-runnable-track { background: transparent; height: 4px; border: none; }
+.pp-range::-moz-range-track { background: transparent; height: 4px; border: none; }
+.pp-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; margin-top: -7px; border-radius: 50%;
+  background: var(--amber); border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45); cursor: grab;
+}
+.pp-range::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--amber); border: 3px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45); cursor: grab;
+}
+.pp-range:active::-webkit-slider-thumb { cursor: grabbing; }
+.pp-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in oklab, var(--amber) 40%, transparent); }

@@ -189,13 +189,12 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
       title={title}
-      className="pp-mono"
       style={{
-        display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
-        fontSize: 12, borderRadius: 4, padding: compact ? "9px 12px" : "11px 14px",
+        display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", userSelect: "none",
+        fontSize: 13, fontWeight: 600, borderRadius: 6, padding: compact ? "7px 12px" : "10px 14px",
         background: active ? "var(--amber)" : "transparent",
-        color: active ? "var(--accent-on)" : "var(--text-2, var(--dim))",
-        border: `1px solid ${active ? "var(--amber)" : "var(--line)"}`,
+        color: active ? "var(--accent-on, #fff)" : "var(--text-2, var(--dim))",
+        transition: "background 120ms ease, color 120ms ease",
       }}
     >
       {label}
@@ -206,7 +205,7 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
           role="button"
           aria-label={`Remove the ${label} preset`}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          style={{ opacity: 0.7, fontWeight: 700 }}
+          style={{ opacity: 0.6, fontWeight: 500, fontSize: 14, lineHeight: 1 }}
         >
           ×
         </span>
@@ -215,25 +214,29 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
   );
 
   const saved = presets.includes(value);
+  // Where a value sits on the 1..max track, in percent. The fill, the thumb
+  // and the stop labels all read this, so they line up.
+  const pct = (n) => Math.max(0, Math.min(100, ((n - 1) / Math.max(1, scaleMax - 1)) * 100));
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-        <span className="pp-mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--dim)" }}>
+        <span style={{ fontSize: 14, fontWeight: 650, color: "var(--text)" }}>
           Minimum sample
           {/* Names the season the scale is cut against, so a chip row that
               changes when you switch sport is explained by the thing beside
               it rather than being a surprise. */}
-          <span style={{ marginLeft: 8, letterSpacing: "0.02em", textTransform: "none", opacity: 0.75 }}>
-            of {season} games
+          <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: "var(--dim)" }}>
+            of a {season}-game season
           </span>
         </span>
-        <span className="pp-mono" style={{ fontSize: 14, color: "var(--amber-ink, var(--amber))" }}>
+        <span className="tnum" style={{ fontSize: 15, fontWeight: 700, color: "var(--amber-ink, var(--amber))" }}>
           {all ? "No minimum" : `${shown}+ games`}
         </span>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 10 }}>
+      <div style={{ display: "inline-flex", flexWrap: "wrap", gap: 2, padding: 3, borderRadius: 9, background: "var(--bg)", border: "1px solid var(--line)" }}>
         {presets.map((n) =>
           chip(
             `${n}+`,
@@ -244,6 +247,7 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
           )
         )}
         {chip("All", all, () => onChange(MIN_SAMPLE_ALL), null, "State a rate on any sample, however small")}
+      </div>
         {/* Reads `saved` rather than offering to add a duplicate, which is the
             behaviour the handoff specifies for this link. */}
         {!all && (
@@ -252,16 +256,14 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
             tabIndex={0}
             onClick={() => { if (!saved) onSetPresets([...presets, value].sort((a, b) => a - b)); }}
             onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !saved) { e.preventDefault(); onSetPresets([...presets, value].sort((a, b) => a - b)); } }}
-            className="pp-mono"
             style={{
               display: "inline-flex", alignItems: "center",
-              padding: compact ? "9px 4px" : "11px 4px", fontSize: 11,
-              letterSpacing: "0.04em", textTransform: "uppercase",
+              padding: "4px 2px", fontSize: 12.5, fontWeight: 600,
               color: saved ? "var(--dim)" : "var(--amber-ink, var(--amber))",
               cursor: saved ? "default" : "pointer",
             }}
           >
-            {saved ? "saved" : `save ${value}+`}
+            {saved ? "✓ Saved preset" : `+ Save ${value}+ as a preset`}
           </span>
         )}
       </div>
@@ -275,17 +277,18 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
 
            44px of height for the same reason it had it before: the track is a
            touch target, and only the 4px rail is painted. */}
-      <div style={{ position: "relative", height: 44, marginTop: 12, display: "flex", alignItems: "center" }}>
+      <div style={{ position: "relative", height: compact ? 36 : 44, marginTop: compact ? 6 : 12, display: "flex", alignItems: "center" }}>
         <span style={{
           position: "absolute", left: 0, right: 0, height: 4, borderRadius: 999,
           background: "var(--line)", pointerEvents: "none",
         }} />
         <span style={{
           position: "absolute", left: 0, height: 4, borderRadius: 999,
-          width: all ? 0 : `${Math.max(0, Math.min(100, ((shown - 1) / Math.max(1, scaleMax - 1)) * 100))}%`,
+          width: all ? 0 : `calc(9px + (100% - 18px) * ${pct(shown) / 100})`,
           background: "var(--amber)", pointerEvents: "none",
         }} />
         <input
+          className="pp-range"
           type="range"
           min={1}
           max={scaleMax}
@@ -295,13 +298,15 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
           onChange={(e) => onChange(Number(e.target.value))}
           onMouseMove={(e) => setHover(Number(e.target.value))}
           onMouseLeave={() => setHover(null)}
-          style={{ position: "relative", width: "100%", margin: 0, height: 44, cursor: "pointer" }}
+          style={{ position: "relative", width: "100%", margin: 0, height: compact ? 36 : 44, cursor: "pointer" }}
         />
       </div>
 
       {/* The stops, clickable in their own right -- a labelled number you can
-           read but not press is a worse control than one you can. */}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 2 }}>
+           read but not press is a worse control than one you can. Each sits
+           under the point on the track it names; spacing them evenly put the
+           9 label nowhere near the 9 on the slider. */}
+      <div style={{ position: "relative", height: 16, marginTop: 2 }}>
         {stops.map((n) => (
           <span
             key={n}
@@ -309,10 +314,11 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
             tabIndex={0}
             onClick={() => onChange(n)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChange(n); } }}
-            className="pp-mono"
             title={`Only state a rate once a prop has ${n} finished games`}
             style={{
-              fontSize: 10, letterSpacing: "0.02em", cursor: "pointer",
+              position: "absolute", top: 0, left: `calc(9px + (100% - 18px) * ${pct(n) / 100})`,
+              transform: "translateX(-50%)",
+              fontSize: 12, fontWeight: !all && value === n ? 700 : 500, cursor: "pointer",
               fontVariantNumeric: "tabular-nums",
               color: !all && value === n ? "var(--amber-ink, var(--amber))" : "var(--dim)",
             }}
@@ -326,12 +332,12 @@ export default function MinSampleControl({ value, onChange, presets, onSetPreset
            changed itself between sports and said nothing is the same class of
            problem as a rate with no sample. */}
       {carriedNote && (
-        <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", color: "var(--amber-ink, var(--amber))", marginTop: 10, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: "var(--amber-ink, var(--amber))", marginTop: 10, lineHeight: 1.5 }}>
           {carriedNote}
         </div>
       )}
 
-      <div className="pp-mono" style={{ fontSize: 11, letterSpacing: "0.02em", color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 10, lineHeight: 1.5 }}>
         {all
           ? "Every prop states a rate, however few games are behind it."
           : `Props under ${value} games still appear, without a rate.`}
