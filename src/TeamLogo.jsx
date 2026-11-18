@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { logoFit } from "./lib/logoFit.js";
 import { teamLogo } from "./lib/gamesData.js";
 
 // A team's real crest, for every place the v2 mocks draw a lettered badge.
@@ -31,7 +32,10 @@ import { teamLogo } from "./lib/gamesData.js";
 const LIFT = "drop-shadow(0 0 1px color-mix(in srgb, var(--text) 70%, transparent))"
   + " drop-shadow(0 0 2px color-mix(in srgb, var(--text) 28%, transparent))";
 
-export default function TeamLogo({ sport, abbr, size = 24, title, style, lift = false }) {
+export default function TeamLogo({ sport, abbr, size: askedSize = 24, title, style, lift = false }) {
+  // Same floor as v3 crest(): under 18px a padded ESPN logo is unreadable.
+  const size = Math.max(askedSize, 18);
+  const fit = logoFit(sport, abbr, size);
   const [failed, setFailed] = useState(false);
   // A new team in the same slot has to try its own asset rather than inherit
   // the previous one's failure -- these sit in rails and rows that recycle.
@@ -60,12 +64,14 @@ export default function TeamLogo({ sport, abbr, size = 24, title, style, lift = 
       src={teamLogo(sport, abbr)}
       alt={title || abbr}
       title={title || abbr}
-      width={size}
-      height={size}
+      width={fit.width}
+      height={fit.height}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
       style={{
-        display: "block", width: size, height: size, objectFit: "contain", flexShrink: 0,
+        // Wide logos get a wider box and are cropped to their own artwork
+        // (lib/logoFit.js), so they read at the height of everyone else.
+        display: "block", width: fit.width, height: fit.height, objectFit: fit.image === size ? "contain" : "cover", flexShrink: 0,
         ...(lift ? { filter: LIFT } : null),
         ...style,
       }}

@@ -15,6 +15,7 @@ import { formatOdds, americanToDecimal, decimalToAmerican, probToAmericanOdds, O
 // file and is still used by the slip.
 import { SlipLeg } from "./AltLineLadder.jsx";
 import {
+  teamInfo as gamesTeamInfo,
   fetchMlbSlate, fetchWnbaSlate, fetchNbaSlate, fetchNflCurrentWeekSlate, fetchNbaOpenerDay,
   dayKey as slateDayKey,
 } from "./lib/gamesData.js";
@@ -1749,7 +1750,10 @@ function buildLineupSheet({
     const W = ok(w), WO = ok(wo);
     if (W.length < 2 || WO.length < 2) return null;
     const m = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
-    return { delta: Math.round((m(WO) - m(W)) * 10) / 10, without: WO.length };
+    const delta = Math.round((m(WO) - m(W)) * 10) / 10;
+    // Under half a unit is noise, not an effect worth a chip.
+    if (Math.abs(delta) < 0.5) return null;
+    return { delta, without: WO.length };
   };
   const stateOf = (pid) => { const m = modeOf(pid); return m === "with" ? "WITH" : m === "without" ? "W/O" : "ANY"; };
 
@@ -3227,7 +3231,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         espnId: player.espnId,
         mlbId: player.mlbId,
         teamLabel: v2OwnRoster.label,
-        identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
+        identity: [(player.team && gamesTeamInfo("nba", player.team).full !== player.team ? gamesTeamInfo("nba", player.team).full : v2OwnRoster.label), HOOPS_POSITION_WORD[player.pos] || player.pos,
           matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
         statusPill: null,
         pills: usagePills({ sport: "nba", games: filtered, market }),
@@ -3318,7 +3322,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
-      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. A sportsbook price shows only where the book has posted one, and says which book.`}
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
       pickAdded={isPagePickAdded}
     />
@@ -9655,7 +9659,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         espnId: player.espnId,
         mlbId: player.mlbId,
         teamLabel: v2OwnRoster.label,
-        identity: [v2OwnRoster.label, NFL_POSITION_WORD[player.pos] || player.pos,
+        identity: [(player.team && gamesTeamInfo("nfl", player.team).full !== player.team ? gamesTeamInfo("nfl", player.team).full : v2OwnRoster.label), NFL_POSITION_WORD[player.pos] || player.pos,
           matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
         statusPill: null,
         pills: usagePills({ sport: "nfl", games: filtered, position: player.pos }),
@@ -9716,7 +9720,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
-      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. A sportsbook price shows only where the book has posted one, and says which book.`}
       // The volume behind the prop, off the same filtered games the chart
       // draws. See SupportingStats -- nothing in it needs a feed this app does
       // not already have.
@@ -11746,7 +11750,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         espnId: player.espnId,
         mlbId: player.mlbId,
         teamLabel: v2OwnRoster.label,
-        identity: [v2OwnRoster.label, HOOPS_POSITION_WORD[player.pos] || player.pos,
+        identity: [(player.team && gamesTeamInfo("wnba", player.team).full !== player.team ? gamesTeamInfo("wnba", player.team).full : v2OwnRoster.label), HOOPS_POSITION_WORD[player.pos] || player.pos,
           matchup.date ? new Date(matchup.date).getFullYear() : null].filter(Boolean).join(" \u00b7 "),
         statusPill: statusOf(player) ? <StatusPill status={statusOf(player)} /> : null,
         pills: usagePills({ sport: "wnba", games: filtered, market }),
@@ -11835,7 +11839,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         line: v2LiveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: v2Adjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
-      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      footerNote={`${allGames.length} games logged \u00b7 ${values.length} in this window. Counts finished games only \u2014 no live or projected numbers. A sportsbook price shows only where the book has posted one, and says which book.`}
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
       pickAdded={isPagePickAdded}
     />
@@ -13758,20 +13762,22 @@ const MLB_ODDS_MARKET_KEY = { h: "batter_hits", hr: "batter_home_runs" };
 // sport file does the same ("wide receiver", "forward"), so each page needs
 // its own map rather than printing the abbreviation the roster stores.
 const MLB_POSITION_WORD = {
-  C: "catcher", "1B": "first base", "2B": "second base", "3B": "third base",
-  SS: "shortstop", LF: "left field", CF: "center field", RF: "right field",
-  DH: "designated hitter", SP: "starting pitcher", RP: "relief pitcher", P: "pitcher",
+  C: "Catcher", "1B": "First Base", "2B": "Second Base", "3B": "Third Base",
+  SS: "Shortstop", LF: "Left Field", CF: "Center Field", RF: "Right Field",
+  DH: "Designated Hitter", SP: "Starting Pitcher", RP: "Relief Pitcher", P: "Pitcher",
 };
 const NFL_POSITION_WORD = {
-  QB: "quarterback", RB: "running back", FB: "fullback", WR: "wide receiver",
-  TE: "tight end", K: "kicker", DEF: "defense",
+  QB: "Quarterback", RB: "Running Back", FB: "Fullback", WR: "Wide Receiver",
+  TE: "Tight End", K: "Kicker", DEF: "Defense",
 };
 // Both basketball files write the same words, so one map serves them. The
-// mocks say plain "forward" and "guard" rather than the roster's SF/PF/SG/PG.
+// mocks say plain "Forward" and "Guard" rather than the roster's SF/PF/SG/PG.
+// Title case: these print as a label on the player header ("New Orleans
+// Pelicans · Guard"), not inside a sentence.
 const HOOPS_POSITION_WORD = {
-  PG: "guard", SG: "guard", G: "guard", "G-F": "guard",
-  SF: "forward", PF: "forward", F: "forward", "F-C": "forward",
-  C: "center",
+  PG: "Guard", SG: "Guard", G: "Guard", "G-F": "Guard",
+  SF: "Forward", PF: "Forward", F: "Forward", "F-C": "Forward",
+  C: "Center",
 };
 
 // Jersey numbers. statsapi carries `primaryNumber` on /people/{id} -- the mock
@@ -15892,7 +15898,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
             reading one as another. The footer names which of the three it is
             and what the other one is. */}
         <span className="pp-mono" style={{ flex: 1, minWidth: 220, fontSize: 11.5, letterSpacing: "0.02em", color: "var(--dim)", lineHeight: 1.6 }}>
-          {`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+          {`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. A sportsbook price shows only where the book has posted one, and says which book.`}
         </span>
         <button
           type="button"
@@ -16960,7 +16966,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
         line: liveLine, marketLine: effectiveLine, isBinary, direction: "over",
         adjusted: lineIsAdjusted, onDragLine: (v) => setDragLine(v), draggable: !isNarrow,
       }}
-      footerNote={`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. Live odds are coming; this is not a live odds feed.`}
+      footerNote={`${allGames.length} games logged · ${values.length} in this window. Counts finished games only — no live or projected numbers. A sportsbook price shows only where the book has posted one, and says which book.`}
       onAddPick={() => onTogglePick && onTogglePick(buildPagePick())}
       pickAdded={isPagePickAdded}
     />
@@ -26530,7 +26536,10 @@ export default function PropLedger() {
   // this line. Referencing them earlier is a temporal-dead-zone ReferenceError
   // that builds clean and throws at runtime, which is this repo's signature
   // failure (see docs/PROJECT_NOTES.md).
-  const [boardSport, setBoardSport] = useState("nfl");
+  // Follows the sport that plays today (the Prop Feed's default) until the
+  // reader picks one here.
+  const [boardSportPicked, setBoardSport] = useState(null);
+  const boardSport = boardSportPicked || feedSport;
 
   // One MLB fetch for both surfaces that can ask for it. Either the feed or
   // the board being on MLB is reason enough to load, and neither one owns the
@@ -26842,9 +26851,22 @@ export default function PropLedger() {
       fetchMLBDaySlate().catch(() => []),
       fetchWNBALiveSlate().catch(() => null),
       fetchNFLWeekSlate().catch(() => []),
-    ]).then(([mlbGames, wnba, nflGames]) => {
+      // The NBA was missing from this list, so every NBA player on the page
+      // read "No game on this slate" on a night with twelve games.
+      fetchNBALiveSlate().catch(() => null),
+    ]).then(([mlbGames, wnba, nflGames, nba]) => {
       if (cancelled) return;
       const m = new Map();
+      // Each team's next game that is not over, the earliest one first.
+      ((nba && nba.matchups) || [])
+        .filter((g) => g.state !== "post")
+        .slice()
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .forEach((g) => {
+          [g.teamA?.abbr, g.teamB?.abbr].forEach((ab) => {
+            if (ab && !m.has(`nba:${ab}`)) m.set(`nba:${ab}`, g.date);
+          });
+        });
       (mlbGames || []).forEach((g) => {
         if (g.awayAbbr) m.set(`mlb:${g.awayAbbr}`, g.date);
         if (g.homeAbbr) m.set(`mlb:${g.homeAbbr}`, g.date);

@@ -564,6 +564,10 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         // The props on this card that actually face that defence in that
         // market -- the reason is about them, so the brief names them.
         const facing = g.rows.filter((r) => r.opp === softest.opp && r.marketId === softest.marketId).slice(0, 4);
+        // The season as people write it: "2026-27" for basketball, where the
+        // raw number is the year the season ends. NFL rows carry no text, so
+        // their year prints as it is.
+        const seasonWord = softest.rankSeasonText || softest.rankSeason;
         reasons.push({
           props: facing.map((r) => ({
             key: r.key, playerId: r.playerId, marketId: r.marketId, name: r.name,
@@ -573,9 +577,9 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
           // NFL ranks name their season (see nflDefSplit in PropLedger): in
           // September the one deciding "soft" is last season's, and a chip
           // that did not say so would read as this season's.
-          label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}${softest.rankSeason ? ` · ${softest.rankSeason}` : ""}`,
-          title: `${softest.opp || "Opponent"} ranks #${softest.rank} of ${teamCount}${softest.rankSeason ? ` in ${softest.rankSeason}` : ""}${softest.rankOther ? `. ${softest.rankOther}` : ""}`,
-          cite: `Softest defence any prop on this card faces, measured in ${softest.marketLabel || "that prop’s own market"} rather than overall${softest.rankSeason ? `, on the ${softest.rankSeason} season${softest.rankOther ? ` (${softest.rankOther})` : ""}` : ""}.`,
+          label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}${softest.rankSeason ? ` · ${seasonWord}` : ""}`,
+          title: `${softest.opp || "Opponent"} ranks #${softest.rank} of ${teamCount}${softest.rankSeason ? ` in ${seasonWord}` : ""}${softest.rankOther ? `. ${softest.rankOther}` : ""}`,
+          cite: `Softest defence any prop on this card faces, measured in ${softest.marketLabel || "that prop’s own market"} rather than overall${softest.rankSeason ? `, on the ${seasonWord} season${softest.rankOther ? ` (${softest.rankOther})` : ""}` : ""}.`,
         });
       }
 

@@ -423,7 +423,7 @@ export default function PlayerDetailMobile({
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-          <span role="img" aria-label={player.team || ""} style={crest(player.team, sport, 20)} />
+          <span role="img" aria-label={player.team || ""} style={crest(player.team, sport, 24)} />
           {/* Wraps rather than truncates.
 
               "Detroit Lions · quarterback · 2026" is wider than a 375px phone
@@ -432,7 +432,7 @@ export default function PlayerDetailMobile({
               three short words on two lines instead of two and a half on one. */}
           <span
             style={{
-              fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)",
+              fontFamily: MONO, fontSize: 12.5, fontWeight: 600, letterSpacing: "0.01em", color: "var(--text-2)",
               lineHeight: 1.45, minWidth: 0,
             }}
           >

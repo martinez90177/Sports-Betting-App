@@ -2,6 +2,7 @@ import React from "react";
 import { feedFormScale } from "../FormGraph.jsx";
 import { seasonLabel } from "../LogScope.jsx";
 import { teamLogo } from "../lib/gamesData.js";
+import { logoFit } from "../lib/logoFit.js";
 
 // The v3 form graph, at whichever size a screen asks for.
 //
@@ -184,11 +185,18 @@ function dateParts(iso) {
 // nothing rather than defaulting to one.
 export function crest(slug, sport, size) {
   if (!slug || !sport) return { display: "none" };
-  const px = `${size || 28}px`;
+  // ESPN's logos carry transparent padding, so a crest draws visibly smaller
+  // than its box. Under 18px it stops being recognisable at all -- a floor
+  // here keeps every crest on the site legible, whatever size a caller asks.
+  const n = Math.max(size || 28, 18);
+  // Wide logos (the Pelicans, the Jets...) get a wider box and a bigger image,
+  // so they read at the same height as everyone else -- see lib/logoFit.js.
+  const fit = logoFit(sport, slug, n);
   return {
-    display: "block", flex: "0 0 auto", width: px, height: px,
+    display: "block", flex: "0 0 auto", width: `${fit.width}px`, height: `${fit.height}px`,
     backgroundImage: `url(${teamLogo(sport, String(slug))})`,
-    backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center",
+    backgroundSize: fit.image === n ? "contain" : `${fit.image}px ${fit.image}px`,
+    backgroundRepeat: "no-repeat", backgroundPosition: "center",
   };
 }
 

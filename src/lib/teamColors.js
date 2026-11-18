@@ -11,8 +11,12 @@
 // callers pass the map for their sport, or a `sport` key that selects it.
 
 // ---------- NBA ----------
+// Checked against the colors ESPN publishes for each team (2026-11-18),
+// which track rebrands -- Utah's purple, the Clippers' navy, the Pelicans'
+// gold. Where ESPN's second color is plain white or black, the team's own
+// accent is kept instead.
 export const NBA_TEAM_COLORS = {
-  ATL: { primary: "#E03A3E", secondary: "#26282A" },
+  ATL: { primary: "#C8102E", secondary: "#FDB927" },
   BOS: { primary: "#007A33", secondary: "#BA9653" },
   BKN: { primary: "#000000", secondary: "#777D84" },
   CHA: { primary: "#1D1160", secondary: "#00788C" },
@@ -24,23 +28,23 @@ export const NBA_TEAM_COLORS = {
   GSW: { primary: "#1D428A", secondary: "#FFC72C" },
   HOU: { primary: "#CE1141", secondary: "#000000" },
   IND: { primary: "#002D62", secondary: "#FDBB30" },
-  LAC: { primary: "#C8102E", secondary: "#1D428A" },
+  LAC: { primary: "#12173F", secondary: "#C8102E" },
   LAL: { primary: "#552583", secondary: "#FDB927" },
   MEM: { primary: "#5D76A9", secondary: "#12173F" },
   MIA: { primary: "#98002E", secondary: "#F9A01B" },
   MIL: { primary: "#00471B", secondary: "#EEE1C6" },
-  MIN: { primary: "#0C2340", secondary: "#236192" },
-  NOP: { primary: "#0C2340", secondary: "#C8102E" },
-  NYK: { primary: "#006BB6", secondary: "#F58426" },
+  MIN: { primary: "#266092", secondary: "#79BC43" },
+  NOP: { primary: "#0A2240", secondary: "#B4975A" },
+  NYK: { primary: "#1D428A", secondary: "#F58426" },
   OKC: { primary: "#007AC1", secondary: "#EF3B24" },
-  ORL: { primary: "#0077C0", secondary: "#C4CED4" },
-  PHI: { primary: "#006BB6", secondary: "#ED174C" },
+  ORL: { primary: "#0150B5", secondary: "#9CA0A3" },
+  PHI: { primary: "#1D428A", secondary: "#E01234" },
   PHX: { primary: "#1D1160", secondary: "#E56020" },
   POR: { primary: "#E03A3E", secondary: "#000000" },
   SAC: { primary: "#5A2D81", secondary: "#63727A" },
-  SAS: { primary: "#8A8D8F", secondary: "#000000" },
+  SAS: { primary: "#000000", secondary: "#C4CED4" },
   TOR: { primary: "#CE1141", secondary: "#000000" },
-  UTA: { primary: "#002B5C", secondary: "#F9A01B" },
+  UTA: { primary: "#4E008E", secondary: "#79A3DC" },
   WAS: { primary: "#002B5C", secondary: "#E31837" },
 };
 
@@ -54,13 +58,13 @@ export const NFL_TEAM_COLORS = {
   CHI: { primary: "#0B162A", secondary: "#C83803" },
   CIN: { primary: "#FB4F14", secondary: "#000000" },
   CLE: { primary: "#311D00", secondary: "#FF3C00" },
-  DAL: { primary: "#041E42", secondary: "#869397" },
+  DAL: { primary: "#002A5C", secondary: "#B0B7BC" },
   DEN: { primary: "#FB4F14", secondary: "#002244" },
   DET: { primary: "#0076B6", secondary: "#B0B7BC" },
   GB: { primary: "#203731", secondary: "#FFB612" },
-  HOU: { primary: "#03202F", secondary: "#A71930" },
-  IND: { primary: "#002C5F", secondary: "#A2AAAD" },
-  JAX: { primary: "#101820", secondary: "#D7A22A" },
+  HOU: { primary: "#03202F", secondary: "#EB0028" },
+  IND: { primary: "#003B75", secondary: "#A2AAAD" },
+  JAX: { primary: "#007487", secondary: "#D7A22A" },
   KC: { primary: "#E31837", secondary: "#FFB81C" },
   LV: { primary: "#000000", secondary: "#A5ACAF" },
   LAC: { primary: "#0080C6", secondary: "#FFC20E" },
@@ -161,8 +165,13 @@ export function neonizeColor(hex) {
   else if (max === g) h = (b - r) / d + 2;
   else h = (r - g) / d + 4;
   h *= 60; if (h < 0) h += 360;
-  s = Math.min(1, s * 1.35);
-  const lOut = Math.min(0.62, Math.max(0.46, l * 1.08));
+  // A gentle lift, not a repaint. This used to push every color to at least
+  // 46% lightness and 1.35x saturation, which turned navy into royal blue --
+  // the Pelicans' navy and gold read as bright blue, and every navy club
+  // (Twins, Yankees, Bears) lost its identity. Dark colors now rise only far
+  // enough to clear a dark page (30%), and the hue stays the team's own.
+  s = Math.min(1, s * 1.1);
+  const lOut = Math.min(0.6, Math.max(0.3, l));
   const c2 = (1 - Math.abs(2 * lOut - 1)) * s;
   const x = c2 * (1 - Math.abs((h / 60) % 2 - 1));
   const m2 = lOut - c2 / 2;

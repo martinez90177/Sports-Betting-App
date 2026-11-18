@@ -837,8 +837,8 @@ export default function PlayerDetailDesktop({
             {player && player.jersey && <span style={{ fontFamily: MONO, fontSize: 22, color: "var(--dim)" }}>{`#${player.jersey}`}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span role="img" style={crest(player && player.team, sport, 15)} />
-            <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.04em", color: "var(--dim)" }}>{player && player.identity}</span>
+            <span role="img" style={crest(player && player.team, sport, 26)} />
+            <span style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: 600, letterSpacing: "0.01em", color: "var(--text-2)" }}>{player && player.identity}</span>
             {st && <span style={pill(st.dot, "color-mix(in srgb, currentColor 14%, transparent)")}>{st.label}</span>}
           </div>
           {player && player.pills && player.pills.length > 0 && (
@@ -1290,7 +1290,11 @@ export default function PlayerDetailDesktop({
                   {c.badge.label}
                 </span>
               )}
-              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: "0.02em", flex: "0 0 auto", color: on ? "#ffffff" : "var(--dim)" }}>{c.state}</span>
+              {/* "ANY" is the resting state, so it is left unsaid -- the room
+                  goes to the teammate's name. WITH / W/O still show. */}
+              {c.state !== "ANY" && (
+                <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, letterSpacing: "0.02em", flex: "0 0 auto", color: on ? "#ffffff" : "var(--dim)" }}>{c.state}</span>
+              )}
               <span style={{ fontFamily: MONO, fontSize: 9.5, flex: "0 0 auto", color: on ? "rgba(255,255,255,0.78)" : "var(--dim)" }}>{c.games}</span>
             </div>
           );

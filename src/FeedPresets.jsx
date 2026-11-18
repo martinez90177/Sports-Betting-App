@@ -57,11 +57,11 @@ function PresetCard({
         style={{ padding: "12px 14px", cursor: "pointer" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span className="oswald" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.02em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 14.5, fontWeight: 650, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {preset.name}
           </span>
           {isDefault && (
-            <span className="oswald" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em", color: "var(--amber)", border: "1px solid var(--amber)", borderRadius: 999, padding: "1px 7px" }}>
+            <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em", color: "var(--amber)", border: "1px solid var(--amber)", borderRadius: 999, padding: "1px 7px" }}>
               DEFAULT
             </span>
           )}
@@ -179,15 +179,15 @@ export default function FeedPresets({
         aria-label="Saved screens"
         style={{
           position: "fixed", zIndex: Z_DIALOG,
-          background: "var(--panel)", border: "1px solid var(--line)",
-          boxShadow: "0 18px 48px rgba(0,0,0,0.5)",
+          background: "var(--surface-1)", border: "1px solid var(--line)",
+          boxShadow: "0 28px 72px rgba(0,0,0,0.6)",
           display: "flex", flexDirection: "column", overflow: "hidden", outline: "none",
           ...placement,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
-          <span className="oswald" style={{ fontSize: 16, fontWeight: 700, letterSpacing: "0.01em" }}>
-            SAVED SCREENS{presets.length ? ` (${presets.length})` : ""}
+          <span style={{ fontSize: 18, fontWeight: 700, color: "var(--text)" }}>
+            Saved screens{presets.length ? ` (${presets.length})` : ""}
           </span>
           <div
             onClick={requestClose}
@@ -205,26 +205,24 @@ export default function FeedPresets({
           {/* Save the current screen. Shown first because the reason to open
               this panel with nothing saved yet is to save something. */}
           <div style={{ marginBottom: 18 }}>
-            <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.01em", marginBottom: 8 }}>
-              SAVE THIS SCREEN
+            <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)", marginBottom: 8 }}>
+              Save this screen
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <input
-                className="select"
                 value={name}
                 placeholder="Name it — e.g. Sunday NFL"
                 maxLength={40}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") saveCurrent(); }}
-                style={{ flex: 1, minWidth: 0 }}
+                style={{ flex: 1, minWidth: 0, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)", fontSize: 13.5, outline: "none" }}
               />
               <div
                 role="button"
                 tabIndex={0}
                 onClick={saveCurrent}
                 onKeyDown={(e) => { if (e.key === "Enter") saveCurrent(); }}
-                className={`chip${name.trim() ? " active" : ""}`}
-                style={{ cursor: name.trim() ? "pointer" : "default", opacity: name.trim() ? 1 : 0.5, flexShrink: 0 }}
+                style={{ cursor: name.trim() ? "pointer" : "default", flexShrink: 0, padding: "9px 16px", borderRadius: 8, fontSize: 13.5, fontWeight: 650, background: name.trim() ? "var(--amber)" : "var(--surface-2)", color: name.trim() ? "var(--accent-on, #fff)" : "var(--dim)", border: "1px solid var(--line)" }}
               >
                 Save
               </div>
@@ -234,8 +232,8 @@ export default function FeedPresets({
             </div>
           </div>
 
-          <div className="oswald" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--dim)", letterSpacing: "0.01em", marginBottom: 8 }}>
-            YOUR SCREENS
+          <div style={{ fontSize: 14, fontWeight: 650, color: "var(--text)", marginBottom: 8 }}>
+            Your screens
           </div>
           {presets.length === 0 ? (
             <div style={{ color: "var(--dim)", fontSize: 12.5, lineHeight: 1.5, padding: "10px 0 4px" }}>
@@ -285,14 +283,13 @@ export default function FeedPresets({
             tabIndex={0}
             onClick={requestClose}
             onKeyDown={(e) => { if (e.key === "Enter") requestClose(); }}
-            className="oswald cta-btn"
             style={{
               textAlign: "center", padding: "11px 0", borderRadius: 8, cursor: "pointer",
               background: "var(--amber)", color: "var(--accent-on)",
-              fontSize: 13, fontWeight: 700, letterSpacing: "0.01em",
+              fontSize: 13.5, fontWeight: 650,
             }}
           >
-            SHOW {resultCount} {resultCount === 1 ? "PROP" : "PROPS"}
+            Show {resultCount} {resultCount === 1 ? "prop" : "props"}
           </div>
         </div>
       </div>

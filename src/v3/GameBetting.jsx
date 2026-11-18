@@ -175,7 +175,7 @@ export default function GameBetting({ sport, away, home, lines, awayHist, homeHi
           <span style={meta}>{lines ? `${lines.book} · current line` : "No line posted for this game yet."}</span>
         </div>
         {lines && (
-          <div style={{ display: "grid", gridTemplateColumns: isPhone ? "auto repeat(3, minmax(0, 1fr))" : "160px repeat(3, minmax(0, 1fr))", gap: isPhone ? 6 : 8, alignItems: "stretch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isPhone ? "auto repeat(3, minmax(0, 1fr))" : "200px repeat(3, minmax(0, 170px))", gap: isPhone ? 6 : 10, alignItems: "stretch" }}>
             <span />
             <span style={{ ...th, textAlign: "center", padding: 0 }}>Spread</span>
             <span style={{ ...th, textAlign: "center", padding: 0 }}>Moneyline</span>
