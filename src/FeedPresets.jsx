@@ -37,7 +37,7 @@ function Chip({ k, v }) {
 
 function PresetCard({
   preset, isApplied, isDefault, describeArgs,
-  onApply, onRename, onDelete, onSetDefault, onShare, sharedJustNow,
+  onApply, onRename, onDelete, onSetDefault, onShare, sharedJustNow, onToggleAlert,
 }) {
   const chips = describePreset(preset.filters, describeArgs);
   return (
@@ -65,6 +65,11 @@ function PresetCard({
               DEFAULT
             </span>
           )}
+          {preset.alert && (
+            <span title="New props on this screen are flagged when you open it" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.02em", color: "var(--pos)", border: "1px solid var(--pos)", borderRadius: 999, padding: "1px 7px" }}>
+              ALERTS ON
+            </span>
+          )}
           <span style={{ marginLeft: "auto", color: "var(--dim)", fontSize: 15, flexShrink: 0 }}>›</span>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
@@ -73,6 +78,7 @@ function PresetCard({
       </div>
       <div style={{ display: "flex", borderTop: "1px solid var(--line)" }}>
         {[
+          { label: preset.alert ? "Alerts off" : "Alert me", fn: onToggleAlert },
           { label: sharedJustNow ? "Copied" : "Share", fn: onShare },
           { label: isDefault ? "Unset default" : "Set default", fn: onSetDefault },
           { label: "Rename", fn: onRename },
@@ -248,6 +254,15 @@ export default function FeedPresets({
                 sharedJustNow={p.id === sharedId}
                 onApply={() => { onApply(p.filters); requestClose(); }}
                 onShare={() => share(p)}
+                onToggleAlert={() => {
+                  const on = !p.alert;
+                  setPresets(presets.map((x) => (x.id === p.id ? { ...x, alert: on } : x)));
+                  // Asked once, when an alert is first switched on, so a tab left
+                  // open in the background can say when new props match.
+                  try {
+                    if (on && typeof Notification !== "undefined" && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+                  } catch { /* not supported */ }
+                }}
                 onSetDefault={() => setDefaultPresetId(p.id === defaultPresetId ? null : p.id)}
                 onRename={() => {
                   const next = window.prompt("Rename this screen:", p.name);
@@ -309,6 +324,37 @@ export function SharedScreenBanner({ shared, onApply, onDismiss }) {
         <div role="button" tabIndex={0} onClick={onDismiss} className="chip" style={{ cursor: "pointer" }}>
           Dismiss
         </div>
+      </div>
+    </div>
+  );
+}
+
+// New props on an alerted saved screen since the reader last looked.
+// "Seen" is this browser's own memory of the screen's props (see
+// useScreenAlert in PropLedger), so it is per device and needs no account.
+export function ScreenAlertBanner({ name, items = [], onMarkSeen }) {
+  if (!items.length) return null;
+  const shown = items.slice(0, 4);
+  return (
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+        margin: "10px 16px", padding: "11px 14px", borderRadius: 10,
+        border: "1px solid color-mix(in srgb, var(--pos) 55%, transparent)",
+        background: "color-mix(in srgb, var(--pos) 10%, var(--surface-1))",
+      }}
+    >
+      <span aria-hidden style={{ fontSize: 15 }}>🔔</span>
+      <div style={{ flex: 1, minWidth: 200, fontSize: 13, lineHeight: 1.45 }}>
+        <strong>{items.length} new {items.length === 1 ? "prop" : "props"}</strong> on <strong>{name}</strong> since you last looked
+        <span style={{ color: "var(--dim)" }}>
+          {" — "}{shown.map((i) => i.label).join(" · ")}{items.length > shown.length ? ` · +${items.length - shown.length} more` : ""}
+        </span>
+      </div>
+      <div role="button" tabIndex={0} onClick={onMarkSeen}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onMarkSeen(); } }}
+        className="chip active" style={{ cursor: "pointer", flexShrink: 0 }}>
+        Mark as seen
       </div>
     </div>
   );

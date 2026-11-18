@@ -25,7 +25,7 @@ import { ledgerCalibration, CALIBRATION_THIN, CALIBRATION_SLACK } from "./lib/ca
 import SettingsMobile from "./v3/SettingsMobile.jsx";
 import SettingsPopover from "./v3/SettingsPopover.jsx";
 import SettingsDesktop from "./v3/SettingsDesktop.jsx";
-import FeedPresets, { SharedScreenBanner } from "./FeedPresets.jsx";
+import FeedPresets, { SharedScreenBanner, ScreenAlertBanner } from "./FeedPresets.jsx";
 import { loadPresets, savePresets, filtersEqual, decodeShareLink } from "./presets.js";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 import PalaceMark from "./PalaceMark.jsx";
@@ -44,6 +44,10 @@ import MyPicksMobile from "./v3/MyPicksMobile.jsx";
 import MyPicksDesktop from "./v3/MyPicksDesktop.jsx";
 import ReadPanel from "./v3/ReadPanel.jsx";
 import PropAnalysis from "./v3/PropAnalysis.jsx";
+import VsDefense from "./v3/VsDefense.jsx";
+import OpportunityShare from "./v3/OpportunityShare.jsx";
+import { fetchTeamLineHistory } from "./lib/gameLines.js";
+import { fetchBookMilestones, bookPriceForOver } from "./lib/espnProps.js";
 import { buildPropFacts } from "./lib/propFacts.js";
 import useMyPicks from "./v3/useMyPicks.js";
 import V3Shell, { SlipDock } from "./v3/Shell.jsx";
@@ -580,6 +584,69 @@ function nbaScriptMatch(g, script) {
   if (script === "lost") return g.result === "L";
   if (script === "close") return Math.abs(g.teamScore - g.oppScore) <= NBA_CLOSE_MARGIN;
   return true;
+}
+
+// ---- game context: favored, underdog, back-to-back -------------------------
+// Off the team's own schedule and each game's closing line (lib/gameLines.js),
+// keyed by the Eastern game day the logs already use. A game with no closing
+// line on record is in neither Favored nor Underdog.
+// The book's milestone prices for one game (lib/espnProps.js).
+function useBookMilestones(sport, eventId) {
+  const [m, setM] = useState(null);
+  React.useEffect(() => {
+    if (!eventId) { setM(null); return undefined; }
+    let alive = true;
+    fetchBookMilestones(sport, eventId).then((v) => { if (alive) setM(v); });
+    return () => { alive = false; };
+  }, [sport, eventId]);
+  return m;
+}
+const CTX_SCRIPTS = ["fav", "dog", "b2b"];
+const ET_DAY_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+function useTeamGameContext(sport, team) {
+  const [ctx, setCtx] = useState(null);
+  React.useEffect(() => {
+    if (!team) { setCtx(null); return undefined; }
+    let alive = true;
+    fetchTeamLineHistory(sport, team).then((h) => {
+      if (!alive || !h) return;
+      const byDay = {};
+      let prevDay = null;
+      h.games.forEach((g) => {
+        const day = ET_DAY_FMT.format(new Date(g.date));
+        const spread = g.line && g.line.spread != null ? g.line.spread : null;
+        const fav = spread != null ? spread < 0 : g.line && g.line.ml != null ? g.line.ml < 0 : null;
+        let b2b = false;
+        if (prevDay) {
+          const gap = (Date.parse(`${day}T12:00:00Z`) - Date.parse(`${prevDay}T12:00:00Z`)) / 86400000;
+          b2b = gap === 1;
+        }
+        byDay[day] = { fav, b2b };
+        prevDay = day;
+      });
+      setCtx({ team, byDay });
+    });
+    return () => { alive = false; };
+  }, [sport, team]);
+  return ctx;
+}
+function gameCtxMatch(ctx, game, script) {
+  const c = ctx && ctx.byDay[game.date];
+  if (!c) return false;
+  if (script === "fav") return c.fav === true;
+  if (script === "dog") return c.fav === false;
+  if (script === "b2b") return c.b2b;
+  return true;
+}
+function gameCtxCounts(ctx, games, withB2B) {
+  if (!ctx) return null;
+  const n = { fav: 0, dog: 0, b2b: 0 };
+  games.forEach((g) => {
+    if (gameCtxMatch(ctx, g, "fav")) n.fav += 1;
+    if (gameCtxMatch(ctx, g, "dog")) n.dog += 1;
+    if (withB2B && gameCtxMatch(ctx, g, "b2b")) n.b2b += 1;
+  });
+  return n.fav + n.dog > 0 ? n : null;
 }
 
 function parseNBAGameLogResponse(data, season) {
@@ -1123,6 +1190,8 @@ function nbaNextGameForTeam(abbr) {
     date: game.date,
     label: game.label,
     seasonType: game.seasonType,
+    // ESPN's event id, the tail of the slate id, for the book price lookup.
+    eventId: game.id ? String(game.id).split("-").pop() : null,
   };
 }
 
@@ -1661,8 +1730,27 @@ function buildLineupSheet({
   // opening the desktop filter panel does. Without it the cards would all read
   // the full game count until something else happened to request it.
   onOpen,
+  // (game) => this player's number in the market on screen. With it, every
+  // card also says how much that number moves in games the teammate missed.
+  valueOf = null,
 }) {
   const modeOf = (pid) => (chips.find((c) => c.pid === pid) || {}).mode || null;
+  // His average without this teammate minus his average with him, in the
+  // market on screen. Needs two games on each side to say anything.
+  const impactOf = (pid) => {
+    if (!valueOf) return null;
+    const w = [], wo = [];
+    games.forEach((g) => {
+      const played = playedInGame(g, pid);
+      if (played === true) w.push(valueOf(g));
+      else if (played === false) wo.push(valueOf(g));
+    });
+    const ok = (xs) => xs.filter((v) => Number.isFinite(v));
+    const W = ok(w), WO = ok(wo);
+    if (W.length < 2 || WO.length < 2) return null;
+    const m = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
+    return { delta: Math.round((m(WO) - m(W)) * 10) / 10, without: WO.length };
+  };
   const stateOf = (pid) => { const m = modeOf(pid); return m === "with" ? "WITH" : m === "without" ? "W/O" : "ANY"; };
 
   const cycle = (person) => () => onChange((prev) => {
@@ -1704,6 +1792,7 @@ function buildLineupSheet({
       badge: person.badge || null,
       state,
       games: `${games.filter((g) => passesOne(g, person.pid, state)).length} G`,
+      impact: impactOf(person.pid),
       onCycle: cycle(person),
     };
   };
@@ -2134,6 +2223,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // together -- rather than each surface being taught the filter separately
   // and one of them being missed.
   const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
+  // Each of this team's games this season with its closing line, so the chart
+  // can be cut to games the team was favored in, an underdog in, or played on
+  // the second night of a back-to-back (see gameCtxMatch).
+  const gameCtx = useTeamGameContext("nba", player && player.team);
+  // DraftKings' milestone prices for his next game, for the IMPLIED cell.
+  const bookMilestones = useBookMilestones("nba", (nbaNextGameForTeam(player && player.team) || {}).eventId);
 
   // Season average per rail player in the selected market (see railSeasonAvg).
   // NBA logs are generated from each player's static base line, so this is
@@ -2276,7 +2371,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       if (side === "home" && !game.home) return false;
       if (side === "away" && game.home) return false;
       if (game.minutes < minMinutes || game.minutes > maxMinutes) return false;
-      if (script !== "all" && !nbaScriptMatch(game, script)) return false;
+      if (script !== "all" && !(CTX_SCRIPTS.includes(script) ? gameCtxMatch(gameCtx, game, script) : nbaScriptMatch(game, script))) return false;
       return true;
     });
     // Before the window, so "L10 without Brunson" means the last ten games he
@@ -2285,7 +2380,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, script, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp, applyRange, teammateSplits.apply]);
+  }, [allGames, side, opponent, script, oppView, minMinutes, maxMinutes, lastN, h2h3yGames, oppHistory, currentSeasonVsOpp, applyRange, teammateSplits.apply, gameCtx]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -2870,18 +2965,47 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     if (c.unknown === c.all) return null;
     const n = (k) => `${k} ${k === 1 ? "game" : "games"}`;
     const opt = (id, label, count) => ({ id, label, count: n(count), active: script === id, onPick: () => setScript(id) });
+    const ctx = gameCtxCounts(gameCtx, allGames, true);
     return {
-      title: "GAME RESULT",
-      options: [opt("all", "All", c.all), opt("won", "Won", c.won), opt("lost", "Lost", c.lost), opt("close", "Close", c.close)],
+      title: "GAME CONTEXT",
+      options: [
+        opt("all", "All", c.all), opt("won", "Won", c.won), opt("lost", "Lost", c.lost), opt("close", "Close", c.close),
+        ...(ctx ? [opt("fav", "Favored", ctx.fav), opt("dog", "Underdog", ctx.dog), opt("b2b", "Back-to-back", ctx.b2b)] : []),
+      ],
       note: [
         `Close: decided by ${NBA_CLOSE_MARGIN} points or fewer.`,
+        ctx ? "Favored and underdog go by the closing spread; back-to-back is the second night of two." : null,
         c.unknown > 0 ? `${c.unknown} of ${c.all} games have no final score on record and count only under All.` : null,
       ].filter(Boolean).join(" "),
     };
-  }, [allGames, script]);
+  }, [allGames, script, gameCtx]);
   // THE CASE: why this line could go over and why it could go under, written
   // from counted numbers only (lib/propFacts.js). Off the scoped log rather than
   // the reader's window, so it does not change its mind when a chip moves.
+  // Every player who has faced tonight's opponent this season, with what he
+  // put up and his own season average beside it (VsDefense). Off the logs the
+  // feed already loads; a player with under five games this season is left
+  // out, because his "average" is not one yet.
+  const v3VsDef = (() => {
+    if (!player || !gameOppAbbr || market === "dd" || market === "td") return null;
+    const season = currentNBASeason();
+    const rows = [];
+    nbaPlayerPool().forEach((p) => {
+      if (p.team === gameOppAbbr) return;
+      const games = getNBAGames(p).filter((g) => g.season === season && g.seasonType !== "post" && (g.minutes || 0) >= 10);
+      if (games.length < 5) return;
+      const vals = games.map((g) => statValue(g, market, rebSplit));
+      const avg = vals.reduce((a, v) => a + v, 0) / vals.length;
+      games.forEach((g, i) => {
+        if (g.opp !== gameOppAbbr) return;
+        rows.push({
+          key: `${p.id}-${g.date}`, name: p.name, team: p.team, pos: p.pos || "", group: nbaPosGroup(p.pos),
+          date: axisDateShort(g.date), sortDate: g.date, value: vals[i], avg, diff: vals[i] - avg,
+        });
+      });
+    });
+    return rows.sort((a, b) => (a.sortDate < b.sortDate ? 1 : -1));
+  })();
   const v3Facts = (() => {
     if (!player) return null;
     const mean = (xs) => xs.reduce((a, v) => a + v, 0) / xs.length;
@@ -2967,8 +3091,12 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       oppLabel: (opponentCandidates[0] || {}).team || null,
       statusOf: nbaStatusOf,
       onOpen: () => setTeammateDataWanted(true),
+      valueOf: (g) => statValue(g, market, rebSplit),
     });
-  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates]);
+  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates, market, rebSplit]);
+  // The teammate cards carry an impact number on desktop too, which needs the
+  // participation record the phone sheet asks for when it opens.
+  React.useEffect(() => { if (!isNarrow) setTeammateDataWanted(true); }, [isNarrow, setTeammateDataWanted]);
 
   const v2Page = (
     <PlayerDetailV2
@@ -3002,7 +3130,20 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       windows={v3Windows}
       splits={v3Splits}
       script={v3Script}
-      extraBlocks={<PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} ai={player ? { sport: "nba", player: player.name, team: player.team, market: String(marketLabel || "") } : null} />}
+      bookPrice={bookPriceForOver(bookMilestones, player && player.espnId, market, v2LiveLine)}
+      extraBlocks={
+        <>
+          <PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} ai={player ? { sport: "nba", player: player.name, team: player.team, market: String(marketLabel || "") } : null} />
+          {v3VsDef && (
+            <VsDefense
+              sport="nba" opp={gameOppAbbr} marketShort={NBA_MARKET_SHORT[market] || String(marketLabel || "")}
+              line={v2LiveLine} rows={v3VsDef} isPhone={isNarrow}
+              groups={[{ id: "G", short: "Guards", label: "guards" }, { id: "F", short: "Forwards", label: "forwards" }, { id: "C", short: "Centers", label: "centers" }, { id: "ALL", short: "All", label: "players" }]}
+              defaultGroup={nbaPosGroup(player && player.pos) === "ALL" ? "ALL" : nbaPosGroup(player && player.pos)}
+            />
+          )}
+        </>
+      }
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -8437,6 +8578,9 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     [currentSeasonLog, priorSeasonLog, player]
   );
   const allGames = useMemo(() => scopeGames(logGames, logScope), [logGames, logScope]);
+  // Favored / underdog by each game's closing line (see useTeamGameContext).
+  const gameCtx = useTeamGameContext("nfl", player && player.team);
+  const bookMilestones = useBookMilestones("nfl", (nflNextGameForTeam(player && player.team) || {}).eventId);
 
   // Season average per rail player, in that player's own market -- the
   // selected one where his position can be bet in it, his position's headline
@@ -8579,7 +8723,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       if (side === "home" && !game.home) return false;
       if (side === "away" && game.home) return false;
       if (opponent !== "all" && game.opp !== opponent) return false;
-      if (script !== "all" && !nflScriptMatch(game, script)) return false;
+      if (script !== "all" && !(CTX_SCRIPTS.includes(script) ? gameCtxMatch(gameCtx, game, script) : nflScriptMatch(game, script))) return false;
       // A game with no recorded snap share can't be shown to satisfy a
       // non-default snap filter, so it's excluded rather than waved through.
       // Previously the `snapPct !== null` guard exempted those games
@@ -8599,7 +8743,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     if (lastN !== "all") g = g.slice(-lastN);
     g = applyRange(g);
     return g;
-  }, [allGames, side, opponent, script, minSnapPct, maxSnapPct, snapFilterActive, lastN, applyRange, teammateSplits.apply]);
+  }, [allGames, side, opponent, script, minSnapPct, maxSnapPct, snapFilterActive, lastN, applyRange, teammateSplits.apply, gameCtx]);
 
   // On narrow (phone-width) screens, beyond a Last-10 sample per-bar team
   // logos/abbreviations can't stay legible, so the x-axis switches to sparse
@@ -9214,20 +9358,68 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     if (c.unknown === c.all) return null;
     const n = (k) => `${k} ${k === 1 ? "game" : "games"}`;
     const opt = (id, label, count) => ({ id, label, count: n(count), active: script === id, onPick: () => setScript(id) });
+    const ctx = gameCtxCounts(gameCtx, allGames, false);
     return {
-      title: "GAME RESULT",
+      title: "GAME CONTEXT",
       options: [
         opt("all", "All", c.all),
         opt("won", "Won", c.won),
         opt("lost", "Lost", c.lost),
         opt("close", "1 score", c.close),
+        ...(ctx ? [opt("fav", "Favored", ctx.fav), opt("dog", "Underdog", ctx.dog)] : []),
       ],
       note: [
         `1 score: decided by ${NFL_ONE_SCORE} points or fewer.`,
+        ctx ? "Favored and underdog go by the closing spread." : null,
         c.unknown > 0 ? `${c.unknown} of ${c.all} games have no final score on record and count only under All.` : null,
       ].filter(Boolean).join(" "),
     };
-  }, [allGames, script]);
+  }, [allGames, script, gameCtx]);
+  // Every player who has faced this week's opponent this season, against his
+  // own season average (VsDefense). A player whose average in this market is
+  // zero is not a real part of it and is left out.
+  const v3VsDefNFL = (() => {
+    const opp = nflNext ? nflNext.opp : gameOppAbbr;
+    if (!player || !opp) return null;
+    const season = currentNFLSeason();
+    const rows = [];
+    nflPlayerPool().forEach((p) => {
+      if (p.team === opp || !["QB", "RB", "WR", "TE"].includes(p.pos)) return;
+      const games = getNFLGames(p).filter((g) => g.season === season && g.seasonType !== "post");
+      if (games.length < 3) return;
+      const vals = games.map((g) => statValueNFL(g, market));
+      if (vals.some((v) => !Number.isFinite(v))) return;
+      const avg = vals.reduce((a, v) => a + v, 0) / vals.length;
+      if (!(avg > 0)) return;
+      games.forEach((g, i) => {
+        if (g.opp !== opp) return;
+        rows.push({
+          key: `${p.id}-${g.date}`, name: p.name, team: p.team, pos: p.pos, group: p.pos,
+          date: axisDateShort(g.date), sortDate: g.date, value: vals[i], avg, diff: vals[i] - avg,
+        });
+      });
+    });
+    return rows.sort((a, b) => (a.sortDate < b.sortDate ? 1 : -1));
+  })();
+  // The offense's targets and carries, game by game, for OpportunityShare.
+  // Every rostered skill player's log this season, joined on game day.
+  const v3Opportunity = (() => {
+    if (!player || !player.team) return null;
+    const season = currentNFLSeason();
+    const roster = nflPlayerPool().filter((p) => p.team === player.team && ["QB", "RB", "WR", "TE"].includes(p.pos));
+    const byDate = {};
+    roster.forEach((p) => {
+      getNFLGames(p).forEach((g) => {
+        if (g.season !== season || g.seasonType === "post") return;
+        if (g.team && g.team !== player.team) return; // a game for a former team
+        const d = (byDate[g.date] = byDate[g.date] || { date: g.date, players: {} });
+        d.players[p.id] = { tgt: g.tgt || 0, rushAtt: g.rushAtt || 0 };
+      });
+    });
+    const teamGames = Object.values(byDate).sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (!teamGames.length) return null;
+    return { teamGames, roster: roster.map((p) => ({ id: p.id, name: p.name, pos: p.pos })) };
+  })();
   // THE CASE for this line, from counted numbers only (lib/propFacts.js), off
   // the scoped log rather than the reader's window.
   const v3Facts = (() => {
@@ -9327,8 +9519,12 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       oppLabel: (opponentCandidates[0] || {}).team || null,
       statusOf: nflStatusOf,
       onOpen: () => setTeammateDataWanted(true),
+      valueOf: (g) => statValueNFL(g, market),
     });
-  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates, opponentCandidates]);
+  }, [teammateSplits.supported, teammateSplits.byEvent, teammateChips, allGames, teammateCandidates, opponentCandidates, market]);
+  // The teammate cards carry an impact number on desktop too, which needs the
+  // participation record the phone sheet asks for when it opens.
+  React.useEffect(() => { if (!isNarrow) setTeammateDataWanted(true); }, [isNarrow, setTeammateDataWanted]);
 
   const v2Page = (
     <PlayerDetailV2
@@ -9524,9 +9720,25 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       // The volume behind the prop, off the same filtered games the chart
       // draws. See SupportingStats -- nothing in it needs a feed this app does
       // not already have.
+      bookPrice={bookPriceForOver(bookMilestones, player && player.espnId, market, v2LiveLine)}
       extraBlocks={
         <>
           <PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} ai={player ? { sport: "nfl", player: player.name, team: player.team, market: String(marketLabel || "") } : null} />
+          {v3VsDefNFL && (
+            <VsDefense
+              sport="nfl" opp={nflNext ? nflNext.opp : gameOppAbbr} marketShort={String(marketLabel || "")}
+              line={v2LiveLine} rows={v3VsDefNFL} isPhone={isNarrow}
+              groups={[{ id: "QB", short: "QB", label: "quarterbacks" }, { id: "RB", short: "RB", label: "running backs" }, { id: "WR", short: "WR", label: "receivers" }, { id: "TE", short: "TE", label: "tight ends" }, { id: "ALL", short: "All", label: "players" }]}
+              defaultGroup={["QB", "RB", "WR", "TE"].includes(player.pos) ? player.pos : "ALL"}
+            />
+          )}
+          {v3Opportunity && (
+            <OpportunityShare
+              team={player.team} teamGames={v3Opportunity.teamGames} roster={v3Opportunity.roster}
+              subjectId={player.id} defaultKind={player.pos === "RB" || player.pos === "QB" && ["rushYds", "rushAtt", "longRush", "passRushYds"].includes(market) ? "carries" : "targets"}
+              isPhone={isNarrow}
+            />
+          )}
           <SupportingStats
             games={filtered}
             position={player.pos}
@@ -22131,6 +22343,51 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
     return copy;
   }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort, minGames, linesMode]);
 
+  // Alerts on a saved screen: while a screen with alerts on is the one on
+  // screen, any prop on it that was not there the last time the reader marked
+  // it seen is flagged in a banner -- and, if the tab is in the background and
+  // the reader allowed it, in a browser notification.
+  const alertPreset = useMemo(
+    () => presets.find((p) => p.alert && filtersEqual(p.filters, feedFilters)) || null,
+    [presets, feedFilters]
+  );
+  const [alertSeenTick, setAlertSeenTick] = useState(0);
+  const alertKeyOf = (id) => `propPalaceAlertSeen:${id}`;
+  const screenAlertItems = useMemo(() => {
+    if (!alertPreset || !sortedRows.length) return [];
+    let seen = null;
+    try { seen = JSON.parse(localStorage.getItem(alertKeyOf(alertPreset.id)) || "null"); } catch { seen = null; }
+    // The first look at a newly alerted screen is the baseline, not news.
+    if (!Array.isArray(seen)) {
+      try { localStorage.setItem(alertKeyOf(alertPreset.id), JSON.stringify(sortedRows.map((r) => r.key))); } catch {}
+      return [];
+    }
+    const had = new Set(seen);
+    return sortedRows.filter((r) => !had.has(r.key)).map((r) => ({ key: r.key, label: `${r.name} ${r.subtitle}` }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertPreset, sortedRows, alertSeenTick]);
+  const markAlertSeen = useCallback(() => {
+    if (!alertPreset) return;
+    try { localStorage.setItem(alertKeyOf(alertPreset.id), JSON.stringify(sortedRows.map((r) => r.key))); } catch {}
+    setAlertSeenTick((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertPreset, sortedRows]);
+  const notifiedCount = React.useRef(0);
+  React.useEffect(() => {
+    const n = screenAlertItems.length;
+    if (n > notifiedCount.current && alertPreset && typeof document !== "undefined" && document.hidden) {
+      try {
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          new Notification(`PropPalace · ${alertPreset.name}`, { body: `${n} new ${n === 1 ? "prop" : "props"} on this screen` });
+        }
+      } catch { /* not supported */ }
+    }
+    notifiedCount.current = n;
+  }, [screenAlertItems.length, alertPreset]);
+  const screenAlertBanner = alertPreset ? (
+    <ScreenAlertBanner name={alertPreset.name} items={screenAlertItems} onMarkSeen={markAlertSeen} />
+  ) : null;
+
   // Renders a growing slice rather than the full (sometimes 2,000+ row) list
   // at once -- MLB in particular mounts a DOM row per player x market, and
   // React.memo on FeedRow only helps re-renders, not the cost of the initial
@@ -22898,6 +23155,8 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // ten-column table folded onto 430px to the mock's stack of touch cards.
   if (isPhone) {
     return (
+      <>
+      {screenAlertBanner}
       <PropFeedMobile
         sport={sport}
         sports={FEED_SPORTS.filter((s) => s.available).map((s) => s.id)}
@@ -22980,6 +23239,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         }}
         isAdded={(r) => pickIds.has(feedPickId(sport, r))}
       />
+      </>
     );
   }
 
@@ -23006,8 +23266,16 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
                whole log. These only decide which props show and in what order. */}
           <span style={{ fontSize: 12.5, color: "var(--dim)" }}>Choose which props show and how they sort. Hit rates always count every game.</span>
         </div>
+        {/* Saved screens live here on desktop: save the filters you just set,
+            apply one, or switch on its alerts. */}
+        <span role="button" tabIndex={0}
+          onClick={() => { setFeedFiltersOpen(false); setPresetsOpen(true); }}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(false); setPresetsOpen(true); } }}
+          style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600, color: "var(--text)", cursor: "pointer", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", whiteSpace: "nowrap" }}>
+          Saved screens{presets.length ? ` (${presets.length})` : ""}
+        </span>
         <span role="button" tabIndex={0} onClick={resetFeedFilters} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); resetFeedFilters(); } }}
-          style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600, color: "var(--amber-ink, var(--amber))", cursor: "pointer", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", whiteSpace: "nowrap" }}>
+          style={{ fontSize: 13, fontWeight: 600, color: "var(--amber-ink, var(--amber))", cursor: "pointer", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--line)", whiteSpace: "nowrap" }}>
           Reset all
         </span>
         <span role="button" tabIndex={0} aria-label="Close filters" onClick={() => setFeedFiltersOpen(false)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFeedFiltersOpen(false); } }}
@@ -23468,6 +23736,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
         onApply={() => { applyFeedFilters(sharedScreen.filters); setSharedScreen(null); }}
         onDismiss={() => setSharedScreen(null)}
       />
+      {screenAlertBanner}
       <FeedPresets
         open={presetsOpen}
         onClose={() => setPresetsOpen(false)}
@@ -25963,8 +26232,8 @@ export default function PropLedger() {
       slateKey = key;
       const byTeam = {};
       toPlay.forEach((g) => {
-        byTeam[g.away.abbr] = { opp: g.home.abbr, home: false, date: g.startsAt };
-        byTeam[g.home.abbr] = { opp: g.away.abbr, home: true, date: g.startsAt };
+        byTeam[g.away.abbr] = { opp: g.home.abbr, home: false, date: g.startsAt, eventId: g.espnEventId || null };
+        byTeam[g.home.abbr] = { opp: g.away.abbr, home: true, date: g.startsAt, eventId: g.espnEventId || null };
       });
       NFL_LIVE_SLATE_BY_TEAM = byTeam;
       // Which teams are done for the week, as opposed to never having been on

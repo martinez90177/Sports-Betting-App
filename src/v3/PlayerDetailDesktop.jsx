@@ -212,6 +212,9 @@ export default function PlayerDetailDesktop({
   // about what thin means.
   minSample = 0,
   workload = null,
+  // A sportsbook's own price for the over at this line, when one is posted
+  // ({ american, prob, label, book }); see lib/espnProps.js.
+  bookPrice = null,
 }) {
   const games = (chart && chart.games) || [];
   const line = chart ? chart.line : null;
@@ -739,7 +742,15 @@ export default function PlayerDetailDesktop({
     { key: "line", label: "LINE", value: verdict ? verdict.line : "—", sub: String(marketLabel || "").toUpperCase(), tone: null },
     { key: "avg", label: "AVERAGE", value: avg == null ? "—" : avg.toFixed(1), sub: vsLine(avg) || "NO GAMES IN WINDOW", subTone: sideTone(avg) },
     { key: "median", label: "MEDIAN", value: median == null ? "—" : fmtStat(median), sub: vsLine(median) || "NO GAMES IN WINDOW", subTone: sideTone(median) },
-    { key: "implied", label: "IMPLIED", value: impliedText, sub: shown.length ? `FROM ${shown.length} GAMES` : "NO GAMES IN WINDOW", tone: null },
+    bookPrice
+      ? {
+        key: "implied", label: `${bookPrice.book === "DraftKings" ? "DK" : bookPrice.book} PRICE · ${bookPrice.label}`,
+        value: formatOdds(bookPrice.american),
+        sub: `${Math.round(bookPrice.prob * 100)}% IMPLIED${shown.length ? ` · HIT ${Math.round((hits / shown.length) * 100)}%` : ""}`,
+        subTone: shown.length ? (hits / shown.length > bookPrice.prob ? "var(--pos)" : hits / shown.length < bookPrice.prob ? "var(--neg)" : null) : null,
+        tone: null,
+      }
+      : { key: "implied", label: "IMPLIED", value: impliedText, sub: shown.length ? `FROM ${shown.length} GAMES` : "NO GAMES IN WINDOW", tone: null },
     {
       key: "matchup",
       label: "MATCHUP",
@@ -1258,6 +1269,19 @@ export default function PlayerDetailDesktop({
               <span style={{ flex: "1 1 auto", minWidth: 0, fontSize: 12.5, color: on ? "#f4f7fb" : "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {c.name}
               </span>
+              {/* How this player's number moves in games the teammate missed. */}
+              {c.impact && c.impact.delta !== 0 && (
+                <span
+                  title={`${c.impact.delta > 0 ? "Up" : "Down"} ${Math.abs(c.impact.delta)} on average in the ${c.impact.without} games ${c.name} missed`}
+                  style={{
+                    fontSize: 10.5, fontWeight: 700, padding: "2px 5px", borderRadius: 4, flex: "0 0 auto", fontVariantNumeric: "tabular-nums",
+                    color: on ? "#ffffff" : c.impact.delta > 0 ? "var(--pos)" : "var(--neg)",
+                    background: on ? "rgba(0,0,0,0.24)" : `color-mix(in srgb, ${c.impact.delta > 0 ? "var(--pos)" : "var(--neg)"} 14%, transparent)`,
+                  }}
+                >
+                  {c.impact.delta > 0 ? "+" : "−"}{Math.abs(c.impact.delta)}
+                </span>
+              )}
               {/* Why this row is not what it looks like: IL, optioned, or gone
                   from the roster entirely. Without it a traded player sat here
                   reading exactly like an available one. */}

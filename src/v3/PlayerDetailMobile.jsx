@@ -161,6 +161,12 @@ function LineupCard({ c, renderAvatar }) {
         <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, letterSpacing: "0.03em", color: on ? "#ffffff" : "var(--dim)" }}>
           {c.state}
         </span>
+        {/* How his number moves in games this teammate missed. */}
+        {c.impact && c.impact.delta !== 0 && (
+          <span style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: on ? "#ffffff" : c.impact.delta > 0 ? "var(--pos)" : "var(--neg)" }}>
+            {c.impact.delta > 0 ? "+" : "−"}{Math.abs(c.impact.delta)} w/o
+          </span>
+        )}
         <span style={{ fontFamily: MONO, fontSize: 10, color: on ? "rgba(255,255,255,0.78)" : "var(--dim)" }}>
           {c.games}
         </span>
@@ -233,6 +239,13 @@ export default function PlayerDetailMobile({
   //
   // { rows: [{ key, date, starter, value, over }], line }
   h2h = null,
+  // The page's extra sections (The Case with AI analysis, the stat-vs-this-
+  // defense table, supporting stats). The desktop draws them under the
+  // chart; here they sit at the foot of the Matchup tab.
+  extraBlocks = null,
+  // A sportsbook's own price for the over at this line ({ american, prob,
+  // label, book }), shown in the IMPLIED cell when one is posted.
+  bookPrice = null,
 }) {
   const [tab, setTab] = React.useState("Form");
   const [gameMenu, setGameMenu] = React.useState(false);
@@ -452,10 +465,12 @@ export default function PlayerDetailMobile({
         <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{String(marketLabel || "").toUpperCase()}</span>
       </div>
       <div style={{ padding: "11px 12px", display: "flex", flexDirection: "column", gap: 3, borderRight: "1px solid var(--line)" }}>
-        <span style={microLabel}>IMPLIED</span>
-        <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700 }}>{impliedText}</span>
-        <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>
-          {games.length ? `FROM ${games.length} GAMES` : "NO GAMES IN WINDOW"}
+        <span style={microLabel}>{bookPrice ? `DK · ${bookPrice.label}` : "IMPLIED"}</span>
+        <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700 }}>{bookPrice ? formatOdds(bookPrice.american) : impliedText}</span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: bookPrice && games.length ? (hits / games.length > bookPrice.prob ? "var(--pos)" : hits / games.length < bookPrice.prob ? "var(--neg)" : "var(--dim)") : "var(--dim)" }}>
+          {bookPrice
+            ? `${Math.round(bookPrice.prob * 100)}% IMPLIED${games.length ? ` · HIT ${Math.round((hits / games.length) * 100)}%` : ""}`
+            : games.length ? `FROM ${games.length} GAMES` : "NO GAMES IN WINDOW"}
         </span>
       </div>
       <div style={{ padding: "11px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1466,6 +1481,9 @@ export default function PlayerDetailMobile({
         )}
         {tab === "Form" && h2hBody}
         {tab === "Matchup" && matchupBody}
+        {tab === "Matchup" && extraBlocks && (
+          <div style={{ padding: "0 12px 16px", display: "flex", flexDirection: "column", gap: 12 }}>{extraBlocks}</div>
+        )}
         {tab === "Log" && logBody}
         {tab === "Injuries" && injuriesBody}
         {tab === "News" && newsBody}
