@@ -1825,3 +1825,7 @@ body        { font-family: 'Inter', system-ui, sans-serif; font-weight: 500; }
 }
 .pp-range:active::-webkit-slider-thumb { cursor: grabbing; }
 .pp-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in oklab, var(--amber) 40%, transparent); }
+
+/* The player page's folded right column tab: brighter on hover so it reads as a control. */
+.pp-edge-tab:hover { background: color-mix(in srgb, var(--amber) 22%, var(--bg)) !important; }
+.pp-edge-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }

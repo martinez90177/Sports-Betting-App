@@ -2386,7 +2386,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   const playerOnTeamA = matchup.teamA.players.some((p) => p.id === playerId);
   const gameOppRoster = playerOnTeamA ? matchup.teamB : matchup.teamA;
   const gameOppAbbr = gameOppRoster.players[0]?.team;
-  const gameOppDef = gameOppAbbr ? getNBADefRank(market, gameOppAbbr) : null;
+  const gameOppDef = gameOppAbbr ? getNBADefRank(market, gameOppAbbr, player && player.pos) : null;
   // The slate row for this fixture, if the slate has it (see
   // usePlayerSlateGame). Out of season -- or when the log's opponent is not
   // who the slate has this team facing -- this stays null and the kickoff
@@ -2901,9 +2901,13 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       .map((x) => ({ name: x.t.name }));
     // The only defence number measured is points allowed, so it is offered on
     // the markets it describes and left out of the rest rather than stretched.
-    const def = gameOppDef && ["pts", "pra", "pr", "pa"].includes(market)
-      ? { rank: gameOppDef.rank, of: TEAMS.length, season: gameOppDef.season ? seasonLabel(gameOppDef.season, "nba") : null, scope: "points allowed" }
-      : null;
+    // By position and market once the box-score table is in; before that the
+    // only measured number is points allowed, offered only where it applies.
+    const def = gameOppDef && gameOppDef.byPos
+      ? { rank: gameOppDef.rank, of: gameOppDef.of, season: gameOppDef.season ? seasonLabel(gameOppDef.season, "nba") : null, scope: gameOppDef.scope }
+      : gameOppDef && ["pts", "pra", "pr", "pa"].includes(market)
+        ? { rank: gameOppDef.rank, of: TEAMS.length, season: gameOppDef.season ? seasonLabel(gameOppDef.season, "nba") : null, scope: "points allowed" }
+        : null;
     return buildPropFacts({ series, line: v2LiveLine, unit: String(marketLabel || "").toLowerCase(), def, oppAbbr: gameOppAbbr, outs, homeTonight, volume });
   })();
   const v3RenderAvatar = (p, size) => (
@@ -3060,7 +3064,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       } : null}
       context={{
         allowsLabel: `${gameOppAbbr || "OPP"} allows`,
-        allows: gameOppDef && gameOppDef.rating != null ? String(gameOppDef.rating) : null,
+        allows: gameOppDef && gameOppDef.rating != null ? (gameOppDef.byPos ? `${gameOppDef.rating} ${NBA_MARKET_SHORT[market] || ""} to ${NBA_POS_WORD[gameOppDef.byPos]}` : String(gameOppDef.rating)) : null,
         rank: gameOppDef ? `#${gameOppDef.rank} of ${TEAMS.length}` : null,
         rankWord: gameOppTier || null,
         rankSeason: gameOppDef && gameOppDef.season ? seasonLabel(gameOppDef.season, "nba") : null,
@@ -16811,7 +16815,59 @@ const nbaDefCategoryCache = {};
 // table that looks more precise and is entirely invented.
 let nbaTeamDefReal = null;
 
-function getNBADefRank(market, opp) {
+// What each defence allows per game to guards, forwards and centres, market by
+// market, counted from every box score this season (api/nba-allowed.js). When
+// it has loaded, a rank is "#27 in points allowed to guards" rather than one
+// points-allowed number stretched over every market.
+let nbaAllowedReal = null;
+const NBA_ALLOWED_TTL_MS = 30 * 60 * 1000;
+const NBA_POS_WORD = { G: "guards", F: "forwards", C: "centers", ALL: "all players" };
+const NBA_MARKET_SHORT = { pts: "PTS", reb: "REB", ast: "AST", stl: "STL", blk: "BLK", stk: "STL+BLK", pra: "PRA", pr: "PTS+REB", pa: "PTS+AST", ra: "REB+AST", "3pm": "3PM" };
+function nbaPosGroup(pos) {
+  const p = String(pos || "").toUpperCase();
+  if (!p) return "ALL";
+  if (p === "C") return "C";
+  if (p === "PG" || p === "SG" || p.startsWith("G")) return "G";
+  if (p === "SF" || p === "PF" || p.startsWith("F")) return "F";
+  return "ALL";
+}
+async function fetchNBAAllowed() {
+  const key = "nba_allowed_v1";
+  try {
+    const hit = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (hit && Date.now() - hit.at < NBA_ALLOWED_TTL_MS) return hit.data;
+  } catch {}
+  try {
+    const res = await fetch("/api/nba-allowed");
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Only a table with nearly the whole league in it is worth ranking on.
+    if (!data || !data.teams || Object.keys(data.teams).length < 28) return null;
+    try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), data })); } catch {}
+    return data;
+  } catch {
+    return null;
+  }
+}
+function nbaAllowedCell(market, opp, pos) {
+  const t = nbaAllowedReal && nbaAllowedReal.teams && nbaAllowedReal.teams[opp];
+  if (!t) return null;
+  const grp = nbaPosGroup(pos);
+  const cell = (t[grp] && t[grp][market]) || null;
+  return cell ? { ...cell, grp } : null;
+}
+
+function getNBADefRank(market, opp, pos = null) {
+  // By position and market where the box-score table has it.
+  const cell = nbaAllowedCell(market, opp, pos);
+  if (cell) {
+    return {
+      rank: cell.rank, of: nbaAllowedReal.of || TEAMS.length, rating: cell.avg,
+      season: nbaAllowedReal.season, prev: null, games: nbaAllowedReal.teams[opp].games,
+      byPos: cell.grp,
+      scope: `${NBA_MARKET_SHORT[market] || market} allowed to ${NBA_POS_WORD[cell.grp]}`,
+    };
+  }
   // Real, or nothing. This used to fall through to a per-market seeded table
   // (and to TEAM_DEF for dd/td), which put an invented "#19 of 30" beside a
   // real opponent until ESPN's standings landed -- and permanently on any
@@ -16828,7 +16884,9 @@ function nbaDefIsPointsAllowed(opp) {
   return !!(nbaTeamDefReal && nbaTeamDefReal[opp]);
 }
 
-function nbaDefCategoryLabel(market) {
+function nbaDefCategoryLabel(market, pos = null, opp = null) {
+  const cell = opp ? nbaAllowedCell(market, opp, pos) : null;
+  if (cell) return `${NBA_MARKET_SHORT[market] || market} allowed to ${NBA_POS_WORD[cell.grp]}`;
   return NBA_MARKET_DEF_LABEL[market] || "overall defense";
 }
 
@@ -19980,7 +20038,7 @@ function buildNBAFeedRows() {
     const nextOpp = nextGame ? nextGame.opp : null;
     MARKETS.forEach((m) => {
       const isBinary = m.id === "dd" || m.id === "td";
-      const def = nextOpp ? getNBADefRank(m.id, nextOpp) : null;
+      const def = nextOpp ? getNBADefRank(m.id, nextOpp, player.pos) : null;
       const rank = def ? def.rank : null;
       const tier = rank == null ? null : defTier(rank, TEAMS.length);
       const values = games.map((g) => statValue(g, m.id));
@@ -20007,7 +20065,7 @@ function buildNBAFeedRows() {
         // slate: unknown venue prints neither, the same rule the availability
         // dot follows.
         homeGame: nextGame ? nextGame.home : null,
-        rank, tier, rankLabel: nbaDefCategoryLabel(m.id),
+        rank, tier, rankLabel: nbaDefCategoryLabel(m.id, player.pos, nextOpp),
         // Which season the rank is from: last season's until nearly every team
         // has ten games of the new one, and the badge says so rather than
         // letting a 2025-26 rank read as current.
@@ -21099,7 +21157,9 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   const feedCustom = useCustomWindow(sport);
   // The mock frame 1c opens with its rail showing.
   const [feedRailOpen, setFeedRailOpen] = useState(true);
-  const [feedPicksOpen, setFeedPicksOpen] = useState(true);
+  // Open on a wide screen; on a laptop (under 1400px) it starts as the thin
+  // My Picks strip so the hit-rate columns are not clipped. One click opens it.
+  const [feedPicksOpen, setFeedPicksOpen] = useState(() => typeof window === "undefined" || window.innerWidth >= 1400);
   // "near" is today and tomorrow; "all" is the whole schedule. Near by
   // default, because a prop for a game three weeks out is not what this screen
   // is for -- see FEED_LOOKAHEAD_MS.
@@ -23119,7 +23179,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               the word -- said once, here, rather than as a parenthetical
               beside every number. */}
           <div style={FILTER_NOTE}>
-            Ranked on this stat only. #1 is the toughest defense.
+            Ranked on this stat, against the player's position. #1 is the toughest defense.
           </div>
         </div>
 
@@ -26085,6 +26145,12 @@ export default function PropLedger() {
     fetchNBATeamDefense().then((byTeam) => {
       if (cancelled || !byTeam) return;
       nbaTeamDefReal = byTeam;
+      bumpNbaRefresh();
+    });
+    // Position-and-market ranks, from the box-score table.
+    fetchNBAAllowed().then((data) => {
+      if (cancelled || !data) return;
+      nbaAllowedReal = data;
       bumpNbaRefresh();
     });
 

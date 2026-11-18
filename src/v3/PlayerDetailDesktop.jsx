@@ -9,6 +9,7 @@ import { STATUS } from "../lib/teamColors.js";
 import ValuePlot from "./ValuePlot.jsx";
 import WindowNumber from "./WindowNumber.jsx";
 import SeasonNote from "./SeasonNote.jsx";
+import useIsNarrow from "../lib/useIsNarrow.js";
 
 // A transcription of frame `1a` in `v3 Mocks/PropPalace Desktop v3.dc.html`,
 // the largest frame in the bundle.
@@ -223,6 +224,21 @@ export default function PlayerDetailDesktop({
   // quarterback opened from the rail -- same market, same ten games -- and
   // showed him a slice nobody had asked for.
   const [zoom, setZoom] = React.useState(null);
+  // Laptop widths: below 1400px the three columns squeeze the chart, so the
+  // right column (Switch player, teammates, injuries) folds into a panel
+  // opened from the top bar.
+  const railFolded = useIsNarrow(1399);
+  const [railOpen, setRailOpen] = React.useState(false);
+  React.useEffect(() => { if (!railFolded) setRailOpen(false); }, [railFolded]);
+  // Picking someone from the panel opens their page; the panel's job is done.
+  const playerKey = player && (player.id || player.name);
+  React.useEffect(() => { setRailOpen(false); }, [playerKey]);
+  // Where the panel starts: under the nav and the crumb bar.
+  const [railTop, setRailTop] = React.useState(96);
+  const gridRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    if (railOpen && gridRef.current) setRailTop(gridRef.current.offsetTop);
+  }, [railOpen]);
   const seriesKey = games.map((g) => `${g.iso || g.date}:${g.v}`).join("|");
   React.useEffect(() => { setZoom(null); }, [seriesKey, marketLabel]);
   const shown = zoom ? games.slice(zoom[0], zoom[1] + 1) : games;
@@ -483,7 +499,27 @@ export default function PlayerDetailDesktop({
           )}
         </span>
       </span>
-      <span style={{ flex: "0 0 auto", display: "flex", justifyContent: "flex-end" }}>
+      <span style={{ flex: "0 0 auto", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        {/* On a laptop the Switch player column folds into a panel; this
+            opens it. */}
+        {railFolded && (
+          <span
+            role="button"
+            tabIndex={0}
+            aria-expanded={railOpen}
+            onClick={() => setRailOpen((v) => !v)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRailOpen((v) => !v); } }}
+            style={{
+              fontFamily: MONO, fontSize: 11, letterSpacing: "0.03em", padding: "7px 13px", borderRadius: 7,
+              cursor: "pointer", whiteSpace: "nowrap",
+              border: `1px solid ${railOpen ? "var(--amber)" : "var(--line)"}`,
+              background: railOpen ? "var(--amber-dim)" : "var(--surface-1)",
+              color: railOpen ? "var(--amber-ink)" : "var(--text-2)",
+            }}
+          >
+            {railOpen ? "✕ CLOSE" : "PLAYERS & INJURIES"}
+          </span>
+        )}
         <span
           role="button"
           tabIndex={0}
@@ -1482,7 +1518,11 @@ export default function PlayerDetailDesktop({
 
   // Rule 3: a rail that is not there loses its track, rather than becoming a
   // zero-width column that puts the next one in the wrong place.
-  const cols = [leftRail ? "236px" : null, "minmax(0, 1fr)", rightRail ? "268px" : null].filter(Boolean).join(" ");
+  // How many players this matchup's injury report lists, for the edge tab.
+  const injuryCount = (injuryTeams || []).reduce((n, t) => n + ((t && t.players) ? t.players.length : 0), 0);
+  // On a laptop the right column folds away (see railFolded) and the centre
+  // takes its width.
+  const cols = [leftRail ? "236px" : null, "minmax(0, 1fr)", rightRail ? (railFolded ? "52px" : "268px") : null].filter(Boolean).join(" ");
 
   return (
     <div
@@ -1497,11 +1537,66 @@ export default function PlayerDetailDesktop({
       {nav}
       {crumb}
 
-      <div style={{ flex: "1 1 auto", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr)", gridTemplateColumns: cols }}>
+      <div ref={gridRef} style={{ flex: "1 1 auto", minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr)", gridTemplateColumns: cols }}>
         {leftRail}
         {centre}
-        {rightRail}
+        {!railFolded && rightRail}
+        {/* Laptop widths: the folded column leaves a tab on the right edge,
+            the same kind of strip the feed's My Picks dock collapses to. */}
+        {railFolded && rightRail && (
+          <div
+            role="button"
+            tabIndex={0}
+            aria-expanded={railOpen}
+            aria-label="Open players and injuries"
+            onClick={() => setRailOpen((v) => !v)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setRailOpen((v) => !v); } }}
+            className="pp-edge-tab"
+            style={{
+              borderLeft: "2px solid var(--amber)", minHeight: 0, cursor: "pointer",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "16px 0",
+              background: railOpen
+                ? "color-mix(in srgb, var(--amber) 24%, var(--bg))"
+                : "color-mix(in srgb, var(--amber) 13%, var(--bg))",
+              transition: "background 140ms ease",
+            }}
+          >
+            <span style={{
+              width: 30, height: 30, borderRadius: 999, display: "grid", placeItems: "center", flex: "0 0 auto",
+              background: "var(--amber)", color: "var(--accent-on, #fff)", fontSize: 16, fontWeight: 800, lineHeight: 1,
+              boxShadow: "0 2px 10px color-mix(in srgb, var(--amber) 45%, transparent)",
+            }}>
+              {railOpen ? "›" : "‹"}
+            </span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: "0.07em", color: "var(--amber-ink, var(--amber))", writingMode: "vertical-rl", textOrientation: "mixed", whiteSpace: "nowrap" }}>
+              PLAYERS &amp; INJURIES
+            </span>
+            {injuryCount > 0 && (
+              <span title={`${injuryCount} listed on the injury report`} style={{
+                minWidth: 26, padding: "3px 5px", borderRadius: 6, textAlign: "center",
+                fontSize: 11, fontWeight: 700, color: "var(--neg)",
+                background: "color-mix(in srgb, var(--neg) 16%, transparent)",
+              }}>
+                {injuryCount}
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* The folded right column, as a panel over the page's right edge. */}
+      {railFolded && railOpen && rightRail && (
+        <>
+          <div onClick={() => setRailOpen(false)} style={{ position: "absolute", top: 0, left: 0, bottom: 0, right: 52, zIndex: 55, background: "rgba(5,6,8,0.45)" }} />
+          <div style={{
+            position: "absolute", zIndex: 56, right: 52, bottom: 0, top: railTop, width: 300,
+            display: "flex", flexDirection: "column", minHeight: 0,
+            background: "var(--bg)", boxShadow: "-18px 0 40px rgba(0,0,0,0.45)",
+          }}>
+            {rightRail}
+          </div>
+        </>
+      )}
 
       {/* The bar-detail card. It resolves against the frame because the frame
           is `position: relative` -- rule 4. */}
