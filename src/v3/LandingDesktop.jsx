@@ -58,8 +58,8 @@ const CLAIMS = [
     tone: "var(--amber-ink)",
   },
   {
-    title: "No odds feed, no prices",
-    body: "Where a book price would go, this shows your own rate converted to odds — and says no book priced it.",
+    title: "Real lines, labelled",
+    body: "Game lines are the sportsbook's own numbers, named by book. Where no book has priced a prop, the rate is converted to odds and says so.",
     tone: "var(--status-questionable)",
   },
 ];
@@ -108,7 +108,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
               Your own hit-rate research, before you place it.
             </h2>
             <span style={{ fontSize: 15, lineHeight: 1.6, color: "var(--text-2)", maxWidth: 560, textWrap: "pretty" }}>
-              Every number here is a count of finished games. No model, no projections, no picks sold to you — and no odds feed, so nothing borrows a price from somewhere else.
+              Every number here is a count of finished games. No model, no projections, no picks sold to you — and every price says which book posted it.
             </span>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {LEAGUES.map(([label, meta]) => (

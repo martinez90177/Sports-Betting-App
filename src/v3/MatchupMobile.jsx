@@ -6,10 +6,9 @@ import TeamRankings from "./TeamRankings.jsx";
 
 // A transcription of frame `3c` in `v3 Mocks/PropPalace Mobile v3.dc.html`.
 //
-// Pre-game, and only what exists without an odds feed. The frame's own closing
-// sentence is the whole brief: no money line, no run line, no public split,
-// because this app reads no odds feed and a number borrowed from somewhere
-// else is worse than an absent one.
+// Pre-game. Lines and betting records come from the book's own numbers as
+// ESPN carries them (see GameBetting / lib/gameLines.js); there is still no
+// public-betting split, because no free feed carries one.
 //
 // One section drops rather than renders empty, which is what the desktop page
 // already does and for the same reason:
@@ -55,6 +54,7 @@ export default function MatchupMobile({
   onOpenRead,
   slipDock = null,
   ranks = null,            // NFL only, see TeamRankings
+  betting = null,          // lines and betting records (GameBetting)
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
@@ -162,6 +162,8 @@ export default function MatchupMobile({
           {probableNote && <span style={footNote}>{probableNote}</span>}
         </div>
       )}
+
+      {betting && <div style={{ padding: "16px 16px 0" }}>{betting}</div>}
 
       <div style={{ padding: "16px 16px 0", display: "flex", flexDirection: "column", gap: 9 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
@@ -357,9 +359,6 @@ export default function MatchupMobile({
             </div>
           ))}
         </div>
-        <span style={footNote}>
-          No money line, run line or public split here — this app reads no odds feed, so there is nothing to show rather than a number borrowed from somewhere else.
-        </span>
       </div>
 
       {slipDock}

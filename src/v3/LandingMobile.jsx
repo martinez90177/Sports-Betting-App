@@ -38,8 +38,8 @@ const CLAIMS = [
     tone: "var(--amber-ink)",
   },
   {
-    title: "No odds feed, no prices",
-    body: "Where a book price would go, this shows your own rate converted to odds — and says no book priced it.",
+    title: "Real lines, labelled",
+    body: "Game lines are the sportsbook's own numbers, named by book. Where no book has priced a prop, the rate is converted to odds and says so.",
     tone: "var(--status-questionable)",
   },
 ];

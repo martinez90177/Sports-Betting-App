@@ -1,6 +1,29 @@
 import React from "react";
 import { useSettings } from "../settings.jsx";
-import { INTENTS, TARGETS, intentRead, intentMoves, readSummary } from "./intentRead.js";
+import { INTENTS, TARGETS, intentRead, intentMoves, readSummary, slipChecks, weakestLeg, TEAM_COUNT } from "./intentRead.js";
+import { feedIsHit } from "../lib/altLines.js";
+
+const medianOf = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+// Recent form and the typical result, off exactly the games the pick was
+// counted over (logValues, oldest first). Nothing here is estimated: a pick
+// added before logValues existed simply carries nulls and the checks that
+// need them stay quiet.
+function countedShape(p) {
+  const vals = Array.isArray(p.logValues) ? p.logValues.filter(Number.isFinite) : [];
+  if (!vals.length || !Number.isFinite(p.line)) return { last5Over: null, last5N: null, median: null };
+  const dir = p.direction || "over";
+  const last5 = vals.slice(-5);
+  return {
+    last5Over: last5.filter((v) => feedIsHit(v, p.line, p.isBinary, dir)).length,
+    last5N: last5.length,
+    median: p.isBinary ? null : medianOf(vals),
+  };
+}
 
 // Everything both My Picks frames derive from the slip.
 //
@@ -62,6 +85,10 @@ export default function useMyPicks({
     // PropLedger). Absent on legs added from the feed's + button, which has no
     // participation record loaded to count one from.
     roleNote: p.roleNote || null,
+    line: Number.isFinite(p.line) ? p.line : null,
+    direction: p.direction || "over",
+    isBinary: !!p.isBinary,
+    ...countedShape(p),
     odds: p.odds,
     opp: p.opp,
     avatar: p.avatar,
@@ -82,6 +109,28 @@ export default function useMyPicks({
   const short = am == null || am < target;
   const sameGame = correlationGroups.length;
   const moves = intentMoves(read, intent, { short, target, am, sameGame });
+  const checks = slipChecks(view);
+  const weakest = weakestLeg(read, view);
+
+  // What the AI review is sent: the same counted numbers the cards show, per
+  // leg, plus the slip-level facts. /api/slip refuses any sentence carrying a
+  // number that is not in here.
+  const slipPacket = view.length ? {
+    intent: intent.label,
+    intentHint: intent.hint,
+    target,
+    combinedRate,
+    am,
+    sameGame,
+    sharedTeams: checks.map((c) => c.text),
+    legs: view.map((l, i) => ({
+      name: l.name, team: l.team || null, prop: l.prop || "", line: l.line,
+      opp: l.opp || null, hits: l.hits, n: l.n,
+      last5Over: l.last5Over, last5N: l.last5N, median: l.median,
+      defRank: l.defRank, defOf: l.defRank != null ? (TEAM_COUNT[l.sport] || 30) : null,
+      flag: read[i].flag, say: read[i].say, alt: l.alt, avail: l.avail,
+    })),
+  } : null;
 
   const matches = (p, label) =>
     label === "All"
@@ -111,6 +160,7 @@ export default function useMyPicks({
     target, setTarget,
     ledgerFilter, setLedgerFilter,
     view, combinedRate, read, rs, moves, short, am, sameGame,
+    checks, weakest, slipPacket,
     ledgerRows, ledgerCount,
   };
 }

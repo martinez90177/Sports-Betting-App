@@ -62,7 +62,7 @@ export const DEFAULTS = {
     negColor: null,
   },
   betting: {
-    defaultSport: "auto", // "auto" keeps defaultFeedSport()'s seasonal pick
+    defaultSport: "auto", // "auto" opens on whichever sport plays today (resolveTonightSport)
     sportsbook: "draftkings",
     bankroll: null, // dollars; null = units-only, the pre-existing behavior
     unitSize: 10, // dollars per unit when bankroll mode is "fixed"

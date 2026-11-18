@@ -1,5 +1,6 @@
 import React from "react";
 import { crest } from "./FormPlot.jsx";
+import { fmtAmerican, fmtSpread } from "../lib/gameLines.js";
 
 // A transcription of frame `2b` in `v3 Mocks/PropPalace Desktop v3.dc.html`.
 //
@@ -9,11 +10,10 @@ import { crest } from "./FormPlot.jsx";
 //
 // ---- Two departures ----
 //
-// The frame's team rows carry a moneyline — `al: "−138", hl: "+118"`. There is
-// no odds feed here (`docs/PROJECT_NOTES.md`, "Free data only no fake edge":
-// real book odds exist in exactly one place, and it is not this page), so the
-// column is not drawn. Inventing a price to fill a column is the one thing
-// this app does not do.
+// The frame's team rows carry a moneyline. They draw one now, with the
+// spread and total, from DraftKings' numbers as ESPN's scoreboard carries them
+// (lib/gameLines.js). A game the book has not posted shows no cells rather
+// than an invented price.
 //
 // The frame's rail has no search. The page does, it works, and it filters the
 // slate — so it stays, at the top of the rail. Dropping a working control to
@@ -23,6 +23,17 @@ const MONO = "'Inter', system-ui, sans-serif";
 const DISPLAY = "'Inter', system-ui, sans-serif";
 
 const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
+
+// One book number on a game card: the line on top, its price under it. All
+// squares are one fixed size so the three columns line up under their labels.
+const LINE_W = 70;
+const lineCell = {
+  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1,
+  width: LINE_W, height: 42, boxSizing: "border-box", padding: "3px 4px", borderRadius: 7,
+  background: "var(--surface-2)", border: "1px solid var(--line)",
+  fontSize: 13, lineHeight: 1.2, fontVariantNumeric: "tabular-nums", color: "var(--text)", whiteSpace: "nowrap",
+};
+const hasLines = (g) => g.teams.some((t) => t.spread != null || t.ml != null || t.totalSide != null);
 
 function railPill(on) {
   return {
@@ -278,9 +289,19 @@ export default function GamesDesktop({
                       )}
                     </div>
 
+                    {/* Column labels over the line squares, sportsbook style. */}
+                    {hasLines(g) && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 14px 2px" }}>
+                        <span style={{ flex: "1 1 auto", fontSize: 10.5, color: "var(--dim)" }}>{g.book || ""}</span>
+                        {["Spread", "Money", "Total"].map((l) => (
+                          <span key={l} style={{ width: LINE_W, textAlign: "center", fontSize: 10.5, fontWeight: 600, color: "var(--dim)" }}>{l}</span>
+                        ))}
+                        {(g.live || g.done) && <span style={{ minWidth: 30 }} />}
+                      </div>
+                    )}
                     {g.teams.map((tm, i) => (
-                      <div key={tm.side} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: i === 0 ? "1px solid #20242b" : "none" }}>
-                        <span role="img" style={crest(tm.abbr, g.sport, 26)} />
+                      <div key={tm.side} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: i === 0 ? "1px solid #20242b" : "none" }}>
+                        <span role="img" style={crest(tm.abbr, g.sport, 30)} />
                         <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: "1 1 auto" }}>
                           <span style={{ fontSize: 14, fontWeight: tm.winning ? 700 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {tm.name || tm.abbr}
@@ -291,9 +312,29 @@ export default function GamesDesktop({
                             <span style={{ fontFamily: MONO, fontSize: 10, color: "var(--dim)" }}>{tm.record}</span>
                           )}
                         </span>
-                        <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, flex: "0 0 auto", color: tm.score == null ? "var(--dim)" : tm.winning ? "var(--text)" : "var(--text-2)" }}>
-                          {tm.score == null ? "—" : tm.score}
-                        </span>
+                        {/* The book's spread, moneyline and this side of the total. */}
+                        {hasLines(g) && (
+                          <span style={{ display: "flex", gap: 6, flex: "0 0 auto" }}>
+                            <span style={lineCell}>
+                              <span style={{ fontWeight: 650 }}>{fmtSpread(tm.spread)}</span>
+                              <span style={{ fontSize: 10.5, color: "var(--dim)" }}>{tm.spreadOdds != null ? fmtAmerican(tm.spreadOdds) : ""}</span>
+                            </span>
+                            <span style={lineCell}>
+                              <span style={{ fontWeight: 650 }}>{fmtAmerican(tm.ml)}</span>
+                            </span>
+                            <span style={lineCell}>
+                              <span style={{ fontWeight: 650 }}>{tm.totalSide || "—"}</span>
+                              <span style={{ fontSize: 10.5, color: "var(--dim)" }}>{tm.totalOdds != null ? fmtAmerican(tm.totalOdds) : ""}</span>
+                            </span>
+                          </span>
+                        )}
+                        {/* The score slot only once there is a score; before
+                            tip-off it was an empty dash beside the lines. */}
+                        {(g.live || g.done) && (
+                          <span style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, flex: "0 0 auto", minWidth: 26, textAlign: "right", color: tm.score == null ? "var(--dim)" : tm.winning ? "var(--text)" : "var(--text-2)" }}>
+                            {tm.score == null ? "—" : tm.score}
+                          </span>
+                        )}
                       </div>
                     ))}
 

@@ -123,7 +123,10 @@ const articleFor = (word) =>
 const fmtAmerican = (v) => (v == null || !Number.isFinite(v) ? "—" : v > 0 ? `+${v}` : `−${Math.abs(v)}`);
 
 // The league's own size, so a rank is stated against the right denominator.
-const TEAM_COUNT = { nfl: 32, mlb: 30, nba: 30, wnba: 15 };
+export const TEAM_COUNT = { nfl: 32, mlb: 30, nba: 30, wnba: 15 };
+
+// One decimal at most, and no trailing ".0" -- a typical game of 241 reads as 241.
+const num = (v) => String(Math.round(v * 10) / 10);
 
 // One leg against one objective.
 export function intentRead(l, intent, roleNote) {
@@ -185,6 +188,33 @@ export function intentRead(l, intent, roleNote) {
       say: "This leg sits on a dragged line, not the posted one, so it does not belong in a straight parlay.",
       cite: `line moved off the posted number · ${sample}`,
     };
+  }
+
+  // Recent slide: the last five cleared far less often than the window says.
+  // The window rate is what the slip quotes, so a leg that has gone cold
+  // inside it is worth reading before it is placed.
+  if (l.rate != null && l.n >= 8 && l.last5N === 5 && l.last5Over != null && l.rate - l.last5Over / 5 >= 0.3) {
+    return {
+      ...base,
+      flag: "CHECK",
+      say: `Cooling off: cleared it in ${l.last5Over} of the last 5, against ${l.hits} of ${l.n} across the window the rate is quoted on.`,
+      cite: `counted: last 5 ${l.last5Over} of 5 · ${sample}`,
+    };
+  }
+
+  // Thin cushion: the typical game lands right on the line, so the leg rests
+  // on an ordinary night rather than a good one. Signed by the side, so an
+  // under is read against the same rule.
+  if (l.median != null && l.line != null && !l.isBinary) {
+    const room = l.direction === "under" ? l.line - l.median : l.median - l.line;
+    if (room > 0 && room <= Math.max(l.line * 0.05, 0.5)) {
+      return {
+        ...base,
+        flag: "CHECK",
+        say: `Thin cushion: the typical game (${num(l.median)}) sits only ${num(room)} ${l.direction === "under" ? "under" : "over"} the ${num(l.line)} line, so an ordinary night decides it.`,
+        cite: `counted: median ${num(l.median)} over the window · ${sample}`,
+      };
+    }
   }
 
   if (intent.id === "alt" && !l.alt) {
@@ -271,6 +301,67 @@ export function intentMoves(read, intent, { short, target, am, sameGame }) {
     });
   }
   return out;
+}
+
+// Slip-level facts no single leg can see: the same player twice, and two legs
+// that lean on one team's output in one market (two backs from one backfield,
+// two receivers splitting the same targets). Counted from the slip itself.
+export function slipChecks(view) {
+  const out = [];
+  const byPlayer = new Map();
+  view.forEach((l) => {
+    const k = l.playerId || `${l.sport}:${l.name}`;
+    byPlayer.set(k, [...(byPlayer.get(k) || []), l]);
+  });
+  byPlayer.forEach((legs) => {
+    if (legs.length > 1) {
+      out.push({
+        title: `${legs[0].name} twice`,
+        text: `${legs[0].name} carries ${legs.length} legs. One quiet night sinks all of them together.`,
+      });
+    }
+  });
+  const byTeamMarket = new Map();
+  view.forEach((l) => {
+    if (!l.team || !l.marketId) return;
+    const k = `${l.sport}:${l.team}:${l.marketId}`;
+    byTeamMarket.set(k, [...(byTeamMarket.get(k) || []), l]);
+  });
+  byTeamMarket.forEach((legs) => {
+    const names = [...new Set(legs.map((l) => l.name))];
+    if (names.length > 1) {
+      const market = String(legs[0].prop || "").replace(/^(Over|Under)\s+[\d.]+\s+/i, "") || "the same market";
+      out.push({
+        title: `Two ${legs[0].team} legs in one market`,
+        text: `${names.join(" and ")} both need ${legs[0].team}'s ${market}. They share the same volume, so one can eat into the other.`,
+      });
+    }
+  });
+  return out;
+}
+
+// The one leg most likely to break the slip: anything AGAINST first, then the
+// lowest-rated CHECK, then the lowest rate on the slip. Only on two or more
+// legs -- a one-leg slip has no weakest link, only itself.
+export function weakestLeg(read, view) {
+  if (read.length < 2) return null;
+  const rateOf = (r) => {
+    const l = view.find((v) => v.id === r.key);
+    return l && l.rate != null ? l.rate : 1;
+  };
+  const rank = { AGAINST: 0, CHECK: 1, FITS: 2 };
+  const pick = [...read].sort((a, b) => (rank[a.flag] - rank[b.flag]) || (rateOf(a) - rateOf(b)))[0];
+  if (!pick) return null;
+  const rate = rateOf(pick);
+  return {
+    key: pick.key,
+    name: pick.name,
+    prop: pick.prop,
+    flag: pick.flag,
+    why: pick.flag === "FITS"
+      ? `Lowest rate on the slip at ${Math.round(rate * 100)}%. Nothing counted argues against it; it is simply the leg with the least room.`
+      : pick.say,
+  };
 }
 
 // The headline over the leg cards, and the counts beside it.

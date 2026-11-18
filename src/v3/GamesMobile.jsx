@@ -1,5 +1,16 @@
 import React from "react";
 import { crest } from "./FormPlot.jsx";
+import { fmtAmerican, fmtSpread } from "../lib/gameLines.js";
+
+// Fixed-size line squares so the three columns sit under their labels.
+const M_LINE_W = 58;
+const mLineCell = {
+  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1,
+  width: M_LINE_W, height: 40, boxSizing: "border-box", padding: "3px 2px", borderRadius: 7,
+  background: "var(--surface-2)", border: "1px solid var(--line)",
+  fontSize: 12, lineHeight: 1.2, fontVariantNumeric: "tabular-nums", color: "var(--text)", whiteSpace: "nowrap",
+};
+const mHasLines = (g) => g.teams.some((t) => t.spread != null || t.ml != null || t.totalSide != null);
 
 // A transcription of frame `2a` in `v3 Mocks/PropPalace Mobile v3.dc.html`.
 //
@@ -228,11 +239,20 @@ export default function GamesMobile({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column" }}>
+                {mHasLines(g) && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "10px 14px 0" }}>
+                    <span style={{ flex: "1 1 auto", fontSize: 10.5, color: "var(--dim)" }}>{g.book || ""}</span>
+                    {["Spread", "Money", "Total"].map((l) => (
+                      <span key={l} style={{ width: M_LINE_W, textAlign: "center", fontSize: 10.5, fontWeight: 600, color: "var(--dim)" }}>{l}</span>
+                    ))}
+                    {(g.live || g.done) && <span style={{ minWidth: 32 }} />}
+                  </div>
+                )}
                 {g.teams.map((tm) => (
                   <div
                     key={tm.side}
                     style={{
-                      display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", minHeight: 44,
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", minHeight: 44,
                       borderBottom: tm.side === "away" ? "1px solid #20242b" : "none",
                     }}
                   >
@@ -249,17 +269,34 @@ export default function GamesMobile({
                       </span>
                       {tm.record && <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)" }}>{tm.record}</span>}
                     </span>
-                    {/* A scheduled card shows no score -- an em dash in the
-                        grey the mock uses for "nothing here yet", not a 0. */}
-                    <span
-                      style={{
-                        fontFamily: MONO, fontSize: 20, fontWeight: 700, flex: "0 0 auto",
-                        minWidth: 26, textAlign: "right",
-                        color: tm.score == null ? "#3a4048" : tm.winning ? "var(--pos)" : "var(--text-2)",
-                      }}
-                    >
-                      {tm.score == null ? "—" : tm.score}
-                    </span>
+                    {mHasLines(g) && (
+                      <span style={{ display: "flex", gap: 5, flex: "0 0 auto" }}>
+                        <span style={mLineCell}>
+                          <span style={{ fontWeight: 650 }}>{fmtSpread(tm.spread)}</span>
+                          <span style={{ fontSize: 10, color: "var(--dim)" }}>{tm.spreadOdds != null ? fmtAmerican(tm.spreadOdds) : ""}</span>
+                        </span>
+                        <span style={mLineCell}>
+                          <span style={{ fontWeight: 650 }}>{fmtAmerican(tm.ml)}</span>
+                        </span>
+                        <span style={mLineCell}>
+                          <span style={{ fontWeight: 650 }}>{tm.totalSide || "—"}</span>
+                          <span style={{ fontSize: 10, color: "var(--dim)" }}>{tm.totalOdds != null ? fmtAmerican(tm.totalOdds) : ""}</span>
+                        </span>
+                      </span>
+                    )}
+                    {/* No score slot until there is a score: before tip-off
+                        it was an empty dash sitting beside the lines. */}
+                    {(g.live || g.done) && (
+                      <span
+                        style={{
+                          fontFamily: MONO, fontSize: 20, fontWeight: 700, flex: "0 0 auto",
+                          minWidth: 26, textAlign: "right",
+                          color: tm.score == null ? "#3a4048" : tm.winning ? "var(--pos)" : "var(--text-2)",
+                        }}
+                      >
+                        {tm.score == null ? "—" : tm.score}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>

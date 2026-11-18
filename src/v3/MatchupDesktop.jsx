@@ -55,6 +55,8 @@ export default function MatchupDesktop({
   // NFL only: each side's offense against the other's defense. See
   // TeamRankings.
   ranks = null,
+  // Lines and betting records (GameBetting), drawn by the page.
+  betting = null,
 }) {
   const frameRef = React.useRef(null);
   const [height, setHeight] = React.useState(null);
@@ -148,6 +150,8 @@ export default function MatchupDesktop({
         {probableNote && (
           <span style={{ flex: "0 0 auto", fontSize: 11.5, lineHeight: 1.45, color: "var(--dim)" }}>{probableNote}</span>
         )}
+
+        {betting && <div style={{ flex: "0 0 auto" }}>{betting}</div>}
 
         {/* ---- recent form ----------------------------------------------- */}
         {form.length > 0 && (
@@ -302,9 +306,6 @@ export default function MatchupDesktop({
               </div>
             ))}
 
-            <span style={{ fontSize: 11.5, lineHeight: 1.45, color: "var(--dim)" }}>
-              No money line, run line or public split here — this app reads no odds feed, so there is nothing to show rather than a number borrowed from somewhere else.
-            </span>
           </div>
         </div>
 

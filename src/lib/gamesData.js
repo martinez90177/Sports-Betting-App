@@ -14,6 +14,8 @@
 // is none -- a fabricated slate on screen for half a second is still a
 // fabricated slate.
 
+import { parseEspnOdds } from "./gameLines.js";
+
 // ---------------------------------------------------------------- logos
 
 const MLB_LOGO_SLUG = {
@@ -600,6 +602,9 @@ function espnSlate(sport, events) {
           }
         : null,
       probables: null,
+      // DraftKings moneyline, spread and total as ESPN carries them; null when
+      // the provider posted none. See lib/gameLines.js.
+      lines: parseEspnOdds(comp),
       status,
       periodLabel: isLive ? espnPeriodLabel(comp, sport) : null,
       isLive,

@@ -11,6 +11,9 @@
     },
     "api/case.js": {
       "maxDuration": 30
+    },
+    "api/slip.js": {
+      "maxDuration": 30
     }
   }
 }

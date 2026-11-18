@@ -54,7 +54,7 @@ export const LEANS = [
 ];
 
 export const SPORT_OPTIONS = [
-  { id: "auto", label: "Auto (in season)" },
+  { id: "auto", label: "Auto (whatever plays today)" },
   { id: "nfl", label: "NFL" },
   { id: "mlb", label: "MLB" },
   { id: "nba", label: "NBA" },
@@ -471,7 +471,7 @@ export function BettingSection({ settings, sportsbooks }) {
 
   return (
     <>
-      <Field label="Default sport" hint="Which board the app opens on. Auto picks whatever is in season.">
+      <Field label="Default sport" hint="Which board the app opens on. Auto opens NFL on game days and NBA on the rest.">
         <select className="select" value={b.defaultSport} onChange={(e) => set("defaultSport", e.target.value)} style={{ width: "100%" }}>
           {SPORT_OPTIONS.map((s) => (
             <option key={s.id} value={s.id}>{s.label}</option>

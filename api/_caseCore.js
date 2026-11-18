@@ -98,7 +98,7 @@ export function allowedNumbers(packet) {
 
 // Digits inside a word -- "Q4", "3PM", "D2" -- are part of the word, not a stat.
 // Ordinals ("5th") are the exception: that is a rank, and a rank is checked.
-const numbersIn = (text) => (String(text).replace(/\b[A-Za-z]+\d+[A-Za-z]*\b|\b\d+(?!(?:st|nd|rd|th)\b)[A-Za-z]+\b/g, " ").match(NUM) || []).map(norm);
+export const numbersIn = (text) => (String(text).replace(/\b[A-Za-z]+\d+[A-Za-z]*\b|\b\d+(?!(?:st|nd|rd|th)\b)[A-Za-z]+\b/g, " ").match(NUM) || []).map(norm);
 
 // Words that mean the writer is talking about its own input, not the prop.
 const JARGON = /\b(packet|json|block|data)\b/i;

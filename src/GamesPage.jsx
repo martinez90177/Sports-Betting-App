@@ -247,10 +247,11 @@ const STATE_LEGEND = [
   ["Final", GAME_STATUS.FINAL],
 ];
 
-export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onOpenProp, onOpenBoard, slipLegs = [] }) {
+export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onOpenProp, onOpenBoard, slipLegs = [], defaultSport = "mlb" }) {
   const isMobile = useIsNarrow(720);
   const isPhone = useIsPhone();
-  const [sport, setSport] = useState("mlb");
+  // Opens on the sport that plays today, the same one the Prop Feed opened on.
+  const [sport, setSport] = useState(defaultSport || "mlb");
   const [query, setQuery] = useState("");
   // The open game is tracked by id, not by the object captured at click time:
   // the live poller replaces the slate objects every 20s, and holding a
@@ -898,9 +899,17 @@ export default function GamesPage({ onViewProps, getTopProps, getPropsCount, onO
         // one out worth fixing rather than matching.
         cta: live ? "GAMECAST →" : done ? "SEE RESULTS →" : "OPEN MATCHUP →",
         teams: [
-          { side: "away", abbr: aw.abbr, name: aw.name || aw.full, record: aw.record, score: live || done ? aw.score : null, winning: lead === "away" },
-          { side: "home", abbr: hm.abbr, name: hm.name || hm.full, record: hm.record, score: live || done ? hm.score : null, winning: lead === "home" },
+          { side: "away", abbr: aw.abbr, name: aw.name || aw.full, record: aw.record, score: live || done ? aw.score : null, winning: lead === "away",
+            spread: g.lines ? g.lines.spread.away : null, spreadOdds: g.lines ? g.lines.spread.awayOdds : null, ml: g.lines ? g.lines.ml.away : null,
+            // The total, shown as the Over on the away row and the Under on the home row.
+            totalSide: g.lines && g.lines.total.line != null ? `O ${g.lines.total.line}` : null, totalOdds: g.lines ? g.lines.total.overOdds : null },
+          { side: "home", abbr: hm.abbr, name: hm.name || hm.full, record: hm.record, score: live || done ? hm.score : null, winning: lead === "home",
+            spread: g.lines ? g.lines.spread.home : null, spreadOdds: g.lines ? g.lines.spread.homeOdds : null, ml: g.lines ? g.lines.ml.home : null,
+            totalSide: g.lines && g.lines.total.line != null ? `U ${g.lines.total.line}` : null, totalOdds: g.lines ? g.lines.total.underOdds : null },
         ],
+        // The book's total and who posted it, for the card's header line.
+        total: g.lines ? g.lines.total.line : null,
+        book: g.lines ? g.lines.book : null,
         raw: g,
       };
     });

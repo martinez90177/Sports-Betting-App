@@ -8,6 +8,8 @@ import MatchupMobile from "./v3/MatchupMobile.jsx";
 import MatchupDesktop from "./v3/MatchupDesktop.jsx";
 import { mlbPitchHandCache, fetchMLBPitcherHands } from "./lib/mlbPitchers.js";
 import { fetchNflTeamRankings, nflSeasonNow } from "./lib/nflTeamStats.js";
+import { fetchTeamLineHistory } from "./lib/gameLines.js";
+import GameBetting from "./v3/GameBetting.jsx";
 
 // "2-1" / "1-1-1" -> games played. The slate carries each team's record, which
 // is enough to decide which season the rankings open on without asking ESPN.
@@ -314,6 +316,23 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.sport, rankSeason]);
 
+  // Each team's results this season against its closing lines, for the
+  // betting block. null while loading, "error" when the schedule did not load.
+  const bettingSport = ["nba", "nfl", "wnba"].includes(game.sport);
+  const [lineHist, setLineHist] = useState({ away: null, home: null });
+  useEffect(() => {
+    if (!bettingSport) return undefined;
+    let cancelled = false;
+    setLineHist({ away: null, home: null });
+    Promise.all([
+      fetchTeamLineHistory(game.sport, game.away.abbr),
+      fetchTeamLineHistory(game.sport, game.home.abbr),
+    ]).then(([away, home]) => {
+      if (!cancelled) setLineHist({ away: away || "error", home: home || "error" });
+    });
+    return () => { cancelled = true; };
+  }, [bettingSport, game.sport, game.away.abbr, game.home.abbr]);
+
   useEffect(() => {
     if (!getTopProps) { setTopProps(null); return undefined; }
     let cancelled = false;
@@ -454,6 +473,17 @@ export default function MatchupPage({ game, isMobile, embedded, onBack, onViewPr
 
     const v3Shared = {
       sport: game.sport,
+      betting: bettingSport ? (
+        <GameBetting
+          sport={game.sport}
+          away={{ abbr: game.away.abbr, name: game.away.name || game.away.full }}
+          home={{ abbr: game.home.abbr, name: game.home.name || game.home.full }}
+          lines={game.lines || null}
+          awayHist={lineHist.away}
+          homeHist={lineHist.home}
+          isPhone={isPhone}
+        />
+      ) : null,
       onBack,
       onOpenBoard: onViewProps ? () => onViewProps(game) : null,
       state: timeLabel(game.startsAt),

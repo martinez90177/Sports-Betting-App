@@ -2998,7 +2998,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       windows={v3Windows}
       splits={v3Splits}
       script={v3Script}
-      extraBlocks={<PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} />}
+      extraBlocks={<PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} ai={player ? { sport: "nba", player: player.name, team: player.team, market: String(marketLabel || "") } : null} />}
       bottomStrip={v2MobileNav}
       crumbFixture={v2Fixture}
       crumbSelect={
@@ -9522,7 +9522,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       // not already have.
       extraBlocks={
         <>
-          <PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} />
+          <PropAnalysis facts={v3Facts} subtitle={`${marketLabel} · line ${v2LiveLine}`} ai={player ? { sport: "nfl", player: player.name, team: player.team, market: String(marketLabel || "") } : null} />
           <SupportingStats
             games={filtered}
             position={player.pos}
@@ -20495,8 +20495,44 @@ const FEED_SPORTS = [
 // PropLedger). Out of season the feed does not go blank -- it names the next
 // kickoff and offers the slate (see the empty state) -- so this stays honest
 // in February too.
+//
+// Alex, 2026-11-17: football is on three days a week, so opening on it every
+// day sends people to a feed with nothing tonight. The feed now opens on the
+// sport that actually plays today (Eastern): NFL when it has a game, otherwise
+// NBA, then MLB, then WNBA. This first answer is a weekday guess so the page
+// can draw at once; resolveTonightSport() then checks the real schedules.
 function defaultFeedSport() {
-  return "nfl";
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short" }).format(new Date());
+  return ["Sun", "Mon", "Thu"].includes(wd) ? "nfl" : "nba";
+}
+
+// The order a day's sports are preferred in when more than one plays.
+const TONIGHT_ORDER = [
+  ["nfl", "football/nfl"],
+  ["nba", "basketball/nba"],
+  ["mlb", "baseball/mlb"],
+  ["wnba", "basketball/wnba"],
+];
+
+// Which sport has games today (Eastern), off each league's own scoreboard.
+// Resolves to null when nothing could be read, so the caller keeps its guess
+// rather than switching on a failed request.
+async function resolveTonightSport() {
+  const day = nbaEtDayKey(0);
+  const counts = await Promise.all(TONIGHT_ORDER.map(async ([, path]) => {
+    try {
+      const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${path}/scoreboard?dates=${day}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      // Preseason is not a slate anyone bets (seasonType 1).
+      return (data?.events || []).filter((e) => e?.season?.type !== 1).length;
+    } catch {
+      return null;
+    }
+  }));
+  if (counts.every((c) => c == null)) return null;
+  const hit = TONIGHT_ORDER.find((_, i) => counts[i] > 0);
+  return hit ? hit[0] : null;
 }
 
 // How many teams' worth of defensive ranks exist for each sport -- sets the
@@ -23499,6 +23535,10 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               short={dockRead.short}
               target={dockRead.target}
               calLine={dockRead.calLine}
+              moves={dockRead.moves}
+              weakest={dockRead.weakest}
+              checks={dockRead.checks}
+              slipPacket={dockRead.slipPacket}
             />
           ) : openPicks.length ? openPicks.map((pk) => (
             <div key={pk.id} style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-1)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -25620,10 +25660,25 @@ export default function PropLedger() {
   // the setting existed. Deliberately only an initial value: changing the
   // setting shouldn't yank the board out from under someone mid-session, it
   // should decide where the next visit opens.
-  const [feedSport, setFeedSport] = useState(() => {
+  const [feedSport, setFeedSportRaw] = useState(() => {
     const pref = settings.betting.defaultSport;
     return pref && pref !== "auto" ? pref : defaultFeedSport();
   });
+  // Once the reader picks a sport, the schedule check below never overrides it.
+  const feedSportChosen = React.useRef(false);
+  const setFeedSport = useCallback((s) => { feedSportChosen.current = true; setFeedSportRaw(s); }, []);
+  // On "Auto", swap the weekday guess for the sport that really plays today.
+  React.useEffect(() => {
+    const pref = settings.betting.defaultSport;
+    if (pref && pref !== "auto") return undefined;
+    let alive = true;
+    resolveTonightSport().then((s) => {
+      if (alive && s && !feedSportChosen.current) setFeedSportRaw(s);
+    });
+    return () => { alive = false; };
+    // First load only, like the initial value above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [myPicks, setMyPicks] = useState(() => {
     try { return JSON.parse(localStorage.getItem("propLedgerPicks") || "[]"); } catch { return []; }
@@ -26888,7 +26943,7 @@ export default function PropLedger() {
           onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
-          <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} slipLegs={myPicks.filter((p) => !p.result)} /></LazyPane>
+          <LazyPane minHeight={400}><GamesPage onViewProps={goToGameProps} getTopProps={getTopPropsForMatchup} getPropsCount={getPropsCountForGame} onOpenProp={goToProp} onOpenBoard={() => setPage("board")} slipLegs={myPicks.filter((p) => !p.result)} defaultSport={feedSport} /></LazyPane>
         </MaybeV3Shell>
       )}
 
