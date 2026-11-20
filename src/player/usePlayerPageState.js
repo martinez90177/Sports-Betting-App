@@ -23,7 +23,8 @@
 // the lineup cache are baseball. Those stay on their own pages -- a shared hook
 // carrying every sport's private state would be four pages in a trenchcoat.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
+import { PlayerRouteReport } from "../lib/route.js";
 import { LOG_SCOPE_DEFAULT } from "../LogScope.jsx";
 import { DEFAULT_WINDOW, DEFAULT_MIN_SAMPLE } from "../v3/playerDetailProps.js";
 
@@ -74,6 +75,14 @@ export default function usePlayerPageState({ sport, initialPlayerId, initialMark
   // page's own position guard -- is covered by one rule instead of each
   // remembering. This is the fix that had to be written four times before.
   useEffect(() => { setDragLine(null); }, [market, playerId]);
+
+  // Keeps the address bar on what the page is showing (see src/lib/route.js).
+  // A dragged line wins over a picked one, the same order the chart reads them.
+  const reportRoute = useContext(PlayerRouteReport);
+  const routeLine = dragLine ?? line;
+  useEffect(() => {
+    if (reportRoute) reportRoute({ sport, playerId, market, line: routeLine });
+  }, [reportRoute, sport, playerId, market, routeLine]);
 
   return {
     playerId, setPlayerId,

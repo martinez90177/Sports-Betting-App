@@ -5,6 +5,12 @@
       "schedule": "0 7 * * *"
     }
   ],
+  "rewrites": [
+    {
+      "source": "/((?!api/|assets/)[^.]*)",
+      "destination": "/index.html"
+    }
+  ],
   "functions": {
     "api/nfl-allowed.js": {
       "maxDuration": 60

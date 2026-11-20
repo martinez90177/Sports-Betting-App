@@ -542,10 +542,10 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
           </span>
           <div style={{ display: "flex", gap: 10 }}>
             <div
-              onClick={() => onOpenProp(sport, r.playerId, r.marketId)}
+              onClick={() => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team, line: Number(r.line) })}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenProp(sport, r.playerId, r.marketId); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team, line: Number(r.line) }); } }}
               style={{
                 flex: "1 1 0", minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center",
                 borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface-1)",

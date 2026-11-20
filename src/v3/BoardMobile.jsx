@@ -211,7 +211,7 @@ export default function BoardMobile({
                 {g.hero && g.props.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--surface-2)", display: "flex", flexDirection: "column" }}>
                     {g.props.map((p) => (
-                      <PropRow key={p.key} p={p} sport={sport} onOpen={() => onOpenProp(sport, p.playerId, p.marketId)} />
+                      <PropRow key={p.key} p={p} sport={sport} onOpen={() => onOpenProp(sport, p.playerId, p.marketId, { name: p.name, line: Number(p.line) })} />
                     ))}
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "nowrap", padding: "12px 14px", minHeight: 44 }}>
                       <span

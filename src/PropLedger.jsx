@@ -87,6 +87,7 @@ import usePlayerPageState from "./player/usePlayerPageState.js";
 import { GameLogTable } from "./player/MatchupPlayerBlocks.jsx";
 import { InjuryAndNews, MissingAround, MatchupContextRow } from "./PlayerContextBlocks.jsx";
 import { fetchNews, timeAgo } from "./lib/newsdata.js";
+import { parseRoute, buildPath, jumpLine, PlayerRouteReport } from "./lib/route.js";
 // MLB availability lives in lib because the matchup overview needs it too and
 // cannot import from this file (see the note at the top of mlbStatus.js). The
 // roster-status cache is a single module instance, so the feed's prefetch and
@@ -2108,7 +2109,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       const live = matchups.find(
         (m) => m.teamA.players.some((p) => p.id === pending.id) || m.teamB.players.some((p) => p.id === pending.id)
       );
-      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(null); setOpponent("all"); return; }
+      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(pending.line ?? null); setOpponent("all"); return; }
       // Not on this slate. Move the game forward so the rails aren't showing a
       // stale card, but leave the player alone.
       setMatchupId(first.id);
@@ -2135,10 +2136,10 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       (m) => m.teamA.players.some((p) => p.id === jumpTo.playerId) || m.teamB.players.some((p) => p.id === jumpTo.playerId)
     );
     if (jumpMatchup) setMatchupId(jumpMatchup.id);
-    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null };
+    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null, line: jumpLine(jumpTo) };
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
-    setLine(null);
+    setLine(jumpLine(jumpTo));
     setOpponent("all");
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8480,7 +8481,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     }
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
-    setLine(null);
+    setLine(jumpLine(jumpTo));
     setOpponent("all");
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -10744,7 +10745,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         (m) => m.teamA.players.some((p) => p.id === pending.id) || m.teamB.players.some((p) => p.id === pending.id)
       );
       // On the live slate after all: take that game and keep the player.
-      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(null); setOpponent("all"); return; }
+      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(pending.line ?? null); setOpponent("all"); return; }
       // Not playing today. Move the *game* forward so the rails aren't showing
       // a stale slate, but leave the player alone -- the guard further down
       // says they aren't on today's card rather than swapping someone in.
@@ -10769,10 +10770,10 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       (m) => m.teamA.players.some((p) => p.id === jumpTo.playerId) || m.teamB.players.some((p) => p.id === jumpTo.playerId)
     );
     if (jumpMatchup) setMatchupId(jumpMatchup.id);
-    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null };
+    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null, line: jumpLine(jumpTo) };
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
-    setLine(null);
+    setLine(jumpLine(jumpTo));
     setOpponent("all");
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -14853,7 +14854,7 @@ function MLBPropsPage({ jumpTo, pickIds, onTogglePick, watchIds, onToggleWatch, 
     }
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
-    setLine(null);
+    setLine(jumpLine(jumpTo));
     setH2h(false);
     // A jump names a player, not a game -- drop any doubleheader pin so the
     // page lands on that team's next game rather than a half of someone
@@ -18876,7 +18877,7 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
   // Guarded on playerId for the same reason chartBtn is: a row with no player
   // page behind it must not look clickable.
   const openChart = r.playerId
-    ? () => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team })
+    ? () => onOpenProp(sport, r.playerId, r.marketId, { name: r.name, team: r.team, line: Number(r.line) })
     : null;
 
   const propositionBlock = (
@@ -25892,6 +25893,39 @@ const V3_PHONE_PAGES = new Set(["feed", "board", "games", "findings", "news", "i
 // slate says it should.
 const NEEDS_INJURY_WIRE = new Set(["news", "injuries", "board"]);
 
+// The address the app was opened on (see src/lib/route.js). Read once per
+// load: after that the shell writes the address, it doesn't take orders from it
+// except on Back/Forward.
+const BOOT_ROUTE = typeof window !== "undefined" ? parseRoute(window.location.pathname, window.location.search) : null;
+
+// The player page a link opens, as the jumpTo every sport page already takes.
+function routeJump(route) {
+  if (!route || !PLAYER_PAGES.has(route.page)) return null;
+  return {
+    sport: route.page,
+    playerId: route.playerId,
+    market: route.market || NEWS_DEFAULT_MARKET[route.page],
+    line: route.line,
+    nonce: Date.now(),
+    meta: null,
+  };
+}
+
+// The player's name for the readable part of a link. Null when the pools
+// don't know the id (a live-only MLB arrival, say); the link works without it.
+function playerNameForRoute(sport, id) {
+  try {
+    const pool = sport === "nfl" ? nflPlayerPool()
+      : sport === "nba" ? nbaPlayerPool()
+      : sport === "wnba" ? ALL_WNBA_PLAYERS
+      : ALL_MLB_PLAYERS;
+    const p = pool.find((x) => x.id === id);
+    return p ? p.name : null;
+  } catch {
+    return null;
+  }
+}
+
 // Wraps a page in the v3 mobile chassis, or renders it bare. A component
 // rather than a ternary at each call site so a page keeps ONE element
 // identity across the breakpoint -- switching between two different trees
@@ -25922,6 +25956,8 @@ export default function PropLedger() {
     // A shared Mismatches game link (#mismatch-<id>) opens on that page, even
     // for a first visit -- the link is the thing they were sent to look at.
     if (/^#mismatch-/.test(window.location.hash)) return "mismatches";
+    // Any other link to a screen opens that screen, first visit or not.
+    if (BOOT_ROUTE) return BOOT_ROUTE.page;
     if (isFirstRun()) return "landing";
     return PAGE_IDS.has(startPage) ? startPage : DEFAULTS.display.startPage;
   });
@@ -25996,11 +26032,13 @@ export default function PropLedger() {
   // setting shouldn't yank the board out from under someone mid-session, it
   // should decide where the next visit opens.
   const [feedSport, setFeedSportRaw] = useState(() => {
+    if (BOOT_ROUTE && BOOT_ROUTE.page === "feed" && BOOT_ROUTE.sport) return BOOT_ROUTE.sport;
     const pref = settings.betting.defaultSport;
     return pref && pref !== "auto" ? pref : defaultFeedSport();
   });
   // Once the reader picks a sport, the schedule check below never overrides it.
-  const feedSportChosen = React.useRef(false);
+  // A link naming the league counts as picking it.
+  const feedSportChosen = React.useRef(!!(BOOT_ROUTE && BOOT_ROUTE.page === "feed" && BOOT_ROUTE.sport));
   const setFeedSport = useCallback((s) => { feedSportChosen.current = true; setFeedSportRaw(s); }, []);
   // On "Auto", swap the weekday guess for the sport that really plays today.
   React.useEffect(() => {
@@ -26394,7 +26432,9 @@ export default function PropLedger() {
   // is what the plan says to load first. It is finished, so its logs cannot
   // change and the cache TTL is long.
   const [nbaDataVersion, bumpNbaRefresh] = React.useReducer((c) => c + 1, 0);
-  const [mismatchSport, setMismatchSport] = React.useState("nfl");
+  const [mismatchSport, setMismatchSport] = React.useState(
+    () => (BOOT_ROUTE && BOOT_ROUTE.page === "mismatches" && BOOT_ROUTE.sport) || "nfl"
+  );
   React.useEffect(() => {
     let cancelled = false;
 
@@ -26526,7 +26566,7 @@ export default function PropLedger() {
   // player/market state internally (see e.g. NBAPropsPage/WNBAPropsPage),
   // so this just hands each page a jumpTo object (nonce forces the effect
   // to fire even if the same prop is clicked twice in a row).
-  const [jumpTo, setJumpTo] = useState(null);
+  const [jumpTo, setJumpTo] = useState(() => routeJump(BOOT_ROUTE));
   // The board keeps its own sport, independent of the feed's: they are
   // separate surfaces doing separate jobs, and switching league on one has no
   // business moving the other.
@@ -26538,7 +26578,9 @@ export default function PropLedger() {
   // failure (see docs/PROJECT_NOTES.md).
   // Follows the sport that plays today (the Prop Feed's default) until the
   // reader picks one here.
-  const [boardSportPicked, setBoardSport] = useState(null);
+  const [boardSportPicked, setBoardSport] = useState(
+    () => (BOOT_ROUTE && BOOT_ROUTE.page === "board" && BOOT_ROUTE.sport) || null
+  );
   const boardSport = boardSportPicked || feedSport;
 
   // One MLB fetch for both surfaces that can ask for it. Either the feed or
@@ -26647,9 +26689,147 @@ export default function PropLedger() {
       setPage("feed");
       return;
     }
-    setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, nonce: Date.now(), meta });
+    // The line rides along when the caller knows it (a feed or board row), so
+    // the page opens on the prop that was clicked rather than its own default.
+    const line = meta && typeof meta.line === "number" && Number.isFinite(meta.line) ? meta.line : null;
+    awaitJump(targetSport, targetPlayerId);
+    setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, line, nonce: Date.now(), meta });
     setPage(targetSport);
   };
+
+  // ---- The address bar (see src/lib/route.js) ----------------------------
+  //
+  // Every screen writes its own path, so a screen can be linked to, reloaded
+  // and stepped out of with Back. Moving to another screen (or another player)
+  // adds a history entry; changing league or line on the same screen rewrites
+  // the current one, so Back goes to the previous screen rather than through
+  // every league toggle.
+  //
+  // What the open player page last said it is showing. Until it confirms the
+  // player a jump asked for, its reports are the page's own default selection
+  // from before the jump landed, and would put the wrong player in the link.
+  const playerRouteRef = React.useRef(null);
+  const awaitingJumpRef = React.useRef(BOOT_ROUTE && PLAYER_PAGES.has(BOOT_ROUTE.page) ? BOOT_ROUTE.playerId : null);
+  const awaitingSinceRef = React.useRef(Date.now());
+  // Only when the page will actually move: re-opening the player already on
+  // screen at the same market and line changes nothing, so no report would
+  // come to clear the wait.
+  function awaitJump(sport, playerId) {
+    const cur = playerRouteRef.current;
+    if (pageRef.current === sport && cur && cur.playerId === playerId) return;
+    awaitingJumpRef.current = playerId;
+    awaitingSinceRef.current = Date.now();
+  }
+  const syncedPageRef = React.useRef(null);
+  const syncedJumpRef = React.useRef(null);
+  const fromPopRef = React.useRef(false);
+
+  const pathFor = (pg) => {
+    if (PLAYER_PAGES.has(pg)) {
+      const rep = playerRouteRef.current;
+      const r = awaitingJumpRef.current == null && rep && rep.sport === pg
+        ? rep
+        : (jumpTo && jumpTo.sport === pg
+          ? { playerId: jumpTo.playerId, market: jumpTo.market, line: jumpLine(jumpTo) }
+          : null);
+      if (!r || !r.playerId) return window.location.pathname + window.location.search;
+      // The address bar's own slug last: a link that arrived with one keeps it
+      // for a live-only player the pools can't name.
+      const here = window.location.pathname.split("/").filter(Boolean);
+      const name = playerNameForRoute(pg, r.playerId)
+        || (jumpTo && jumpTo.playerId === r.playerId && jumpTo.meta && jumpTo.meta.name)
+        || (here[0] === pg && decodeURIComponent(here[1] || "") === r.playerId ? here[3] : null)
+        || null;
+      return buildPath({ page: pg, playerId: r.playerId, market: r.market, line: r.line, name });
+    }
+    if (pg === "feed") return buildPath({ page: pg, sport: feedSport });
+    if (pg === "board") return buildPath({ page: pg, sport: boardSport });
+    if (pg === "mismatches") return buildPath({ page: pg, sport: mismatchSport });
+    return buildPath({ page: pg });
+  };
+  // The debounced writer below runs after renders it didn't see.
+  const pathForRef = React.useRef(pathFor);
+  pathForRef.current = pathFor;
+
+  // Rewrites the current entry. Keeps history.state, which the filter sheet
+  // and the MLB detail panel use to mark the entries they push, and keeps a
+  // hash that hasn't been read yet (a #mismatch- link, say).
+  const replaceUrl = (path) => {
+    if (path === window.location.pathname + window.location.search) return;
+    try {
+      window.history.replaceState(window.history.state, "", path + window.location.hash);
+    } catch { /* Safari throttles history writes; the next one catches up */ }
+  };
+
+  React.useEffect(() => {
+    const path = pathForRef.current(page);
+    const jumpNonce = jumpTo ? jumpTo.nonce : null;
+    const newScreen = syncedPageRef.current !== null && syncedPageRef.current !== page;
+    const newPlayer = PLAYER_PAGES.has(page) && syncedJumpRef.current !== jumpNonce && syncedPageRef.current !== null;
+    if (!fromPopRef.current && (newScreen || newPlayer) && path !== window.location.pathname + window.location.search) {
+      try { window.history.pushState(null, "", path); } catch { /* see replaceUrl */ }
+    } else {
+      replaceUrl(path);
+    }
+    syncedPageRef.current = page;
+    syncedJumpRef.current = jumpNonce;
+    fromPopRef.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, feedSport, boardSport, mismatchSport, jumpTo]);
+
+  const urlTimerRef = React.useRef(0);
+  const reportPlayerRoute = useCallback((rep) => {
+    if (!rep || rep.sport !== pageRef.current) return;
+    if (awaitingJumpRef.current != null) {
+      // A page that could not place the player (an MLB roster that has
+      // since dropped him, say) settles on someone else; after a few seconds
+      // its reports are believed again rather than the link freezing.
+      const stale = Date.now() - awaitingSinceRef.current > 4000;
+      if (rep.playerId !== awaitingJumpRef.current && !stale) return;
+      awaitingJumpRef.current = null;
+    }
+    playerRouteRef.current = rep;
+    // A dragged line reports on every step of the drag.
+    clearTimeout(urlTimerRef.current);
+    urlTimerRef.current = setTimeout(() => {
+      const pg = pageRef.current;
+      if (PLAYER_PAGES.has(pg)) replaceUrl(pathForRef.current(pg));
+    }, 250);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  React.useEffect(() => () => clearTimeout(urlTimerRef.current), []);
+
+  // Back and Forward. The address is the instruction here: work out the screen
+  // it names and go there. An entry whose address matches what is already on
+  // screen -- the filter sheet's and MLB panel's own entries -- changes
+  // nothing, and those components handle their own pop.
+  React.useEffect(() => {
+    const onPop = () => {
+      const r = parseRoute(window.location.pathname, window.location.search);
+      const target = r ? r.page : (isFirstRun() ? "landing" : (PAGE_IDS.has(startPage) ? startPage : DEFAULTS.display.startPage));
+      let changed = false;
+      if (r && PLAYER_PAGES.has(target)) {
+        const cur = playerRouteRef.current;
+        const same = pageRef.current === target && cur && cur.playerId === r.playerId
+          && (!r.market || cur.market === r.market) && (cur.line ?? null) === (r.line ?? null);
+        if (!same) {
+          const j = routeJump(r);
+          awaitJump(target, j.playerId);
+          setJumpTo(j);
+          changed = true;
+        }
+      }
+      if (r && r.sport) {
+        if (target === "feed" && r.sport !== feedSport) { feedSportChosen.current = true; setFeedSportRaw(r.sport); changed = true; }
+        if (target === "board" && r.sport !== boardSport) { setBoardSport(r.sport); changed = true; }
+        if (target === "mismatches" && r.sport !== mismatchSport) { setMismatchSport(r.sport); changed = true; }
+      }
+      if (target !== pageRef.current) { setPage(target); changed = true; }
+      if (changed) fromPopRef.current = true;
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [startPage, feedSport, boardSport, mismatchSport]);
 
   // "Open prop feed" on the Matchup Overview and the Gamecast. Lands on the
   // right sport's feed, filtered to the one game it was opened from.
@@ -26942,6 +27122,7 @@ export default function PropLedger() {
     // header, sticky filter bar, roster dock -- up under the status bar and
     // rubber-banded it back. The settings frame above already uses dvh here;
     // this is the same fix on the container every other screen renders in.
+    <PlayerRouteReport.Provider value={reportPlayerRoute}>
     <div style={{ minHeight: isPhoneShell ? "100dvh" : "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "inherit" }}>
       <div style={{ maxWidth: 1600, margin: "0 auto" }}>
 
@@ -27370,5 +27551,6 @@ export default function PropLedger() {
         onOpenFullSettings={openFullSettings}
       />
     </div>
+    </PlayerRouteReport.Provider>
   );
 }

@@ -139,7 +139,7 @@ function BoardBrief({ card, sport, wide = true, whyLabel = "WHAT'S BEHIND IT", o
   // The two column headings (WHY IT LEADS / CLEARED THE BAR). 10px read as a
   // footnote against the 17px titles under them.
   const microLabel = { fontFamily: MONO, fontSize: wide ? 14 : 11.5, fontWeight: 600, letterSpacing: "0.05em", color: "var(--text-2)" };
-  const open = (p) => onOpenProp && onOpenProp(sport, p.playerId, p.marketId);
+  const open = (p) => onOpenProp && onOpenProp(sport, p.playerId, p.marketId, { name: p.name, line: Number(p.line) });
   const key = (fn) => (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
   const reasons = (card.reasons || []).filter((r) => r.title);
 
