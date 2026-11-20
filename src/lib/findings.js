@@ -88,10 +88,20 @@ function isStructural(values, line, isBinary, rate) {
   const hi = Math.max(...values);
   if (line <= 0.5 && (lo > line || hi < line)) return true;
 
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
+  // A line nowhere near what he actually puts up. "Over 1.5 rebounds in 22
+  // straight" for a center averaging 5.5 is the same non-news as the 0.5
+  // case one rung up: the ladder's bottom rung, cleared because it sits under
+  // half his own average, and no book prices it as a bet anyone would take.
+  // It led the NBA findings list until this (Alex's site review, 2026-11-20).
+  // Over: a line under half the run's average. Under: one over double it.
+  if (mean > 0 && rate >= 0.95 && line < mean * 0.5) return true;
+  if (mean > 0 && rate <= 0.05 && line > mean * 2) return true;
+
   // And the flat-log case the deviation test was reaching for: the same
   // number every game, with the line clear of it. Kept for lines above 0.5,
   // where the rule above does not apply.
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance = values.reduce((a, v) => a + (v - mean) ** 2, 0) / values.length;
   return Math.sqrt(variance) < 0.34 && Math.abs(mean - line) > 0.4;
 }
@@ -207,8 +217,8 @@ function findingsForRow(row, sport) {
       // receptions in 14 straight" is a real read on a player and stays.
       pool: run,
       sentence: cleared
-        ? `${name} has cleared ${prop.replace(/^Over\s+/i, "")} in ${plural(runLen, `straight ${one}`, `straight ${many}`)}, averaging ${avg.toFixed(1)} over the run.`
-        : `${name} has fallen short of ${prop.replace(/^Over\s+/i, "")} in ${plural(runLen, `straight ${one}`, `straight ${many}`)}, averaging ${avg.toFixed(1)} over the run.`,
+        ? `${name} has cleared ${prop.replace(/^Over\s+/i, "")} in ${plural(runLen, `straight ${one}`, `straight ${many}`)}${isBinary ? "" : `, averaging ${avg.toFixed(1)} over the run`}.`
+        : `${name} has fallen short of ${prop.replace(/^Over\s+/i, "")} in ${plural(runLen, `straight ${one}`, `straight ${many}`)}${isBinary ? "" : `, averaging ${avg.toFixed(1)} over the run`}.`,
     });
   }
 
@@ -231,8 +241,8 @@ function findingsForRow(row, sport) {
         bars: pool.slice(-12),
         pool,
         sentence: cleared
-          ? `${name} has cleared ${prop.replace(/^Over\s+/i, "")} in ${hits} of ${plural(pool.length, `${id} ${one}`, `${id} ${many}`)}, averaging ${avg.toFixed(1)}.`
-          : `${name} has cleared ${prop.replace(/^Over\s+/i, "")} in only ${hits} of ${plural(pool.length, `${id} ${one}`, `${id} ${many}`)}, averaging ${avg.toFixed(1)}.`,
+          ? `${name} has cleared ${prop.replace(/^Over\s+/i, "")} in ${hits} of ${plural(pool.length, `${id} ${one}`, `${id} ${many}`)}${isBinary ? "" : `, averaging ${avg.toFixed(1)}`}.`
+          : `${name} has cleared ${prop.replace(/^Over\s+/i, "")} in only ${hits} of ${plural(pool.length, `${id} ${one}`, `${id} ${many}`)}${isBinary ? "" : `, averaging ${avg.toFixed(1)}`}.`,
       });
     });
   }

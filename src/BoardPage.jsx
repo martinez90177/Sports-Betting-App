@@ -502,18 +502,31 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
       //    row whose raw rate touches 70% fires on all sixteen games and the
       //    tiers collapse into one. 7-of-10 is 70% and establishes nothing;
       //    the bound is what separates it from 35-of-50.
-      const strong = g.rows.filter((r) => {
+      const strongList = g.rows.map((r) => {
         const s = rateFor(r, activeSplits);
-        if (!s || s.rate == null || s.n < minGames) return false;
-        return wilsonLower(s.over, s.n) >= 0.7;
-      }).length;
+        if (!s || s.rate == null || s.n < minGames) return null;
+        const lb = wilsonLower(s.over, s.n);
+        return lb >= 0.7 ? { r, s, lb } : null;
+      }).filter(Boolean).sort((a, b) => b.lb - a.lb);
+      const strong = strongList.length;
+      // The cite names the props behind the count -- who, which line, how
+      // many games -- rather than how the count is computed. Alex's site
+      // review (2026-11-20): the method belongs in "how it works", not in the
+      // reason a game leads. One per player, the two most solid.
+      const leaders = [];
+      strongList.forEach((x) => {
+        if (leaders.length < 2 && !leaders.some((l) => l.r.name === x.r.name)) leaders.push(x);
+      });
+      const leaderText = leaders
+        .map(({ r, s }) => `${r.name} ${String(r.subtitle || r.marketLabel || "").replace(/^Over /, "over ")} (${s.over} of ${s.n})`)
+        .join(", ");
       if (strong > 0) reasons.push({
         kind: "rate",
         label: `${strong} PROP${strong === 1 ? "" : "S"} AT 70%+`,
         // title/cite are the hero card WHY IT LEADS list. Every cite names
         // the count behind the reason rather than restating the chip.
         title: `${strong} prop${strong === 1 ? "" : "s"} at 70%+`,
-        cite: `Wilson lower bound over ${minGames}+ games, so 7 of 10 does not qualify and 35 of 50 does.`,
+        cite: `Led by ${leaderText}. Each has cleared in at least 70% of ${minGames}+ games, and the bigger the sample the more it counts.`,
       });
 
       // 2. The availability feed, both sides. Only MLB and the WNBA publish
@@ -529,7 +542,9 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         kind: "out",
         label: `${outCount} OUT`,
         title: `${outCount} listed out`,
-        cite: `From the availability report for ${teamA || "both sides"} and ${teamB || "their opponent"} — counted, not inferred from a news item.`,
+        cite: outPlayers.length
+          ? `${outPlayers.slice(0, 3).map((p) => p.name).join(", ")}${outPlayers.length > 3 ? ` and ${outPlayers.length - 3} more` : ""} ${outPlayers.length === 1 ? "is" : "are"} listed out on the official report.`
+          : `Listed out on the official report for ${teamA || "one side"} or ${teamB || "the other"}.`,
         players: outPlayers.map((p) => ({
           key: p.key || `${p.team}:${p.name}`,
           name: p.name,
@@ -579,7 +594,12 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
           // that did not say so would read as this season's.
           label: `${softest.opp || "OPP"} #${softest.rank} OF ${teamCount}${softest.rankSeason ? ` · ${seasonWord}` : ""}`,
           title: `${softest.opp || "Opponent"} ranks #${softest.rank} of ${teamCount}${softest.rankSeason ? ` in ${seasonWord}` : ""}${softest.rankOther ? `. ${softest.rankOther}` : ""}`,
-          cite: `Softest defence any prop on this card faces, measured in ${softest.marketLabel || "that prop’s own market"} rather than overall${softest.rankSeason ? `, on the ${seasonWord} season${softest.rankOther ? ` (${softest.rankOther})` : ""}` : ""}.`,
+          cite: (() => {
+            const fromWorst = teamCount - softest.rank + 1;
+            const worst = fromWorst === 1 ? "the worst" : `${fromWorst}${fromWorst === 2 ? "nd" : fromWorst === 3 ? "rd" : "th"}-worst`;
+            const what = softest.rankLabel && softest.rankLabel !== "overall defense" ? softest.rankLabel : (softest.marketLabel || "this market");
+            return `${softest.opp || "This defence"} is ${worst} in the league on ${what}${softest.rankSeason ? ` this season` : ""}, the softest matchup on this card. ${facing.length} prop${facing.length === 1 ? "" : "s"} here face${facing.length === 1 ? "s" : ""} it.`;
+          })(),
         });
       }
 

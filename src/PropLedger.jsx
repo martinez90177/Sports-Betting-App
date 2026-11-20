@@ -7484,8 +7484,15 @@ function frameSplitCells(logGames, valueOf, hit, sport, minSample = 0, custom = 
 
   // Home and away read off the same boolean the SPLITS radio filters on, so
   // the cell and the split can never disagree about which games are which.
-  cells.push(cell("HOME", games.filter((g) => g.home === true)));
-  cells.push(cell("AWAY", games.filter((g) => g.home === false)));
+  //
+  // This season's games only, and labelled so. They used to count the whole
+  // log under a bare "HOME" beside two single-season cells -- 14/50 on a
+  // 14-game season reads as a mistake (site review, 2026-11-20).
+  const nowYear = years[0];
+  const venueGames = Number.isFinite(nowYear) ? games.filter((g) => Number(g.season) === nowYear) : games;
+  const venueTag = Number.isFinite(nowYear) ? ` '${seasonLabel(nowYear, sport).slice(2)}` : "";
+  cells.push(cell(`HOME${venueTag}`, venueGames.filter((g) => g.home === true)));
+  cells.push(cell(`AWAY${venueTag}`, venueGames.filter((g) => g.home === false)));
   return cells;
 }
 
@@ -17375,12 +17382,14 @@ function buildWNBAFeedRows() {
         // would either be blank or be the main line's number wearing a
         // different line's label.
         opps: games.map((g) => g.opp),
+        // Parallel too: the Board's track record replays each game by date.
+        dates: games.map((g) => g.date),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
         role: roleValue({ sport: "wnba", games }),
         direction: "over", matchupScore: rank,
-        recent: feedRecentGames(games, values),
+        recent: feedRecentGames(games, values, FEED_FORM_GAMES, { minutes: true }),
         // How a saved pick off this row gets settled later -- see gradePick.
         // Real ESPN game logs on the live 2026 season, so these are gradable.
         gradeKind: "wnba", gradeId: player.espnId,
@@ -19617,7 +19626,10 @@ const flipRate = (v) => (v == null ? null : 1 - v);
 // MLB builds a row per player x market (thousands of rows), and the strip only
 // ever draws ten. `values` is index-aligned with `games` in every builder.
 const FEED_FORM_GAMES = 10;
-function feedRecentGames(games, values, n = FEED_FORM_GAMES) {
+// `minutes` carries each game's minutes for basketball, where a short night
+// (an injury exit, a blowout) explains a miss the number alone cannot. MLB's
+// logs reuse the `minutes` key for plate appearances, so it is opt-in.
+function feedRecentGames(games, values, n = FEED_FORM_GAMES, { minutes = false } = {}) {
   const start = Math.max(0, values.length - n);
   return values.slice(start).map((v, i) => {
     const g = games[start + i] || {};
@@ -19627,7 +19639,7 @@ function feedRecentGames(games, values, n = FEED_FORM_GAMES) {
     // field we forgot to carry.
     // `po` rides along for the same reason `home` does: the form strip has to
     // mark a playoff game, and it only ever sees this projection of the log.
-    return { v, opp: g.opp, date: g.date, home: g.home, po: g.seasonType === "post" };
+    return { v, opp: g.opp, date: g.date, home: g.home, po: g.seasonType === "post", min: minutes && Number.isFinite(g.minutes) ? g.minutes : null };
   });
 }
 
@@ -19892,6 +19904,53 @@ function flipFeedRowToUnder(r) {
 // ties count as hits), so a real hot streak still prices as a favorite
 // (negative) and a cold one as an underdog (positive), the way a book's line
 // actually behaves, instead of every row skewing to the same side.
+// How the board's kind of prop actually did, game by game, over the last week
+// (two for the NFL). Each finished game in the window is replayed with only
+// what was known before it: the line the feed would have set off the log up
+// to that game, and whether the player had cleared it in 8 or more of his
+// previous 10. Every one that had is graded against the game that followed.
+// Measured from the same logs the feed reads -- no stored picks, nothing
+// projected -- so it is a record of the method, not of anyone's bets.
+// The board's own exclusions apply (see boardPageRows): no basketball 0.5
+// lines, nothing under half the player's recent average.
+const TRACK_DAYS = { nba: 7, wnba: 7, nfl: 14 };
+function feedTrackRecord(rows, sport, now = Date.now()) {
+  const days = TRACK_DAYS[sport];
+  if (!days) return null;
+  const cutoff = ET_DAY_FMT.format(new Date(now - days * 24 * 60 * 60 * 1000));
+  const basketball = sport === "nba" || sport === "wnba";
+  let n = 0;
+  let hits = 0;
+  const byMarket = new Map();
+  rows.forEach((r) => {
+    const { values, dates } = r;
+    if (!values || !dates || values.length !== dates.length) return;
+    for (let i = 10; i < values.length; i++) {
+      const d = dates[i];
+      if (!d || d < cutoff) continue;
+      const prior = values.slice(0, i);
+      const line = r.isBinary ? 0.5 : fairFeedLine(prior);
+      const cleared = r.isBinary ? (v) => v === 1 : (v) => v > line;
+      const last10 = prior.slice(-10);
+      if (last10.filter(cleared).length < 8) continue;
+      if (!r.isBinary) {
+        if (basketball && line <= 0.5) continue;
+        const avg = last10.reduce((a, b) => a + b, 0) / last10.length;
+        if (avg > 0 && line < avg * 0.5) continue;
+      }
+      const won = cleared(values[i]);
+      n += 1;
+      if (won) hits += 1;
+      const k = r.marketLabel || r.marketId;
+      const m = byMarket.get(k) || { label: k, n: 0, hits: 0 };
+      m.n += 1;
+      if (won) m.hits += 1;
+      byMarket.set(k, m);
+    }
+  });
+  return { sport, days, n, hits, markets: [...byMarket.values()].sort((a, b) => b.n - a.n) };
+}
+
 function fairFeedLine(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = sorted[Math.floor((sorted.length - 1) / 2)];
@@ -20362,12 +20421,14 @@ function buildNBAFeedRows() {
         // would either be blank or be the main line's number wearing a
         // different line's label.
         opps: games.map((g) => g.opp),
+        // Parallel too: the Board's track record replays each game by date.
+        dates: games.map((g) => g.date),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
         role: roleValue({ sport: "nba", games }),
         direction: "over", matchupScore: rank,
-        recent: feedRecentGames(games, values),
+        recent: feedRecentGames(games, values, FEED_FORM_GAMES, { minutes: true }),
         // Gradable now that the log is a real ESPN box score. Stamped only
         // when this row actually came from one: a player still on the seeded
         // fallback (`espnId` present but no real log fetched) gets no
@@ -20528,6 +20589,8 @@ function buildNFLFeedRows() {
         // would either be blank or be the main line's number wearing a
         // different line's label.
         opps: games.map((g) => g.opp),
+        // Parallel too: the Board's track record replays each game by date.
+        dates: games.map((g) => g.date),
         values, line, isBinary, variance,
         // How much of the game this player is actually on the floor for --
         // see lib/role.js. Role, not popularity: there is no wagering feed.
@@ -25966,6 +26029,7 @@ const PAGE_IDS = new Set(PAGES.filter((p) => p.id !== "landing").map((p) => p.id
 // them this one too would put two lockups on one screen. Derived from NAV_TABS
 // so the set and the row it describes cannot drift apart.
 const NAV_PAGES = new Set(NAV_TABS.map((t) => t.id));
+
 // The four player-detail pages the shell can actually render. goToProp checks
 // against this so a caller with a bad sport lands on the feed rather than on a
 // page value nothing matches. They also get no nav row (their mock opens on a
@@ -26011,6 +26075,52 @@ function playerNameForRoute(sport, id) {
   } catch {
     return null;
   }
+}
+
+// The Board's track record strip (see feedTrackRecord). Absent until there is
+// something graded: an empty record is not news.
+function BoardTrackRecord({ track, isPhone }) {
+  if (!track || !track.n) return null;
+  const rate = track.hits / track.n;
+  const tone = rate >= 0.7 ? "var(--pos)" : rate >= 0.55 ? "var(--status-questionable, #e8b13a)" : "var(--neg)";
+  const markets = track.markets.filter((m) => m.n >= 5).slice(0, isPhone ? 3 : 5);
+  return (
+    <div
+      title={`Every prop that had cleared in 8 or more of its last 10 games going into a game in the last ${track.days} days, at the line the feed set from the games before it, graded against that game's box score. Players on today's rosters.`}
+      style={{
+        margin: isPhone ? "12px 14px 0" : "16px 24px 0",
+        padding: isPhone ? "12px 14px" : "14px 20px",
+        border: "1px solid var(--line)", borderRadius: 12, background: "var(--surface-1)",
+        display: "flex", flexWrap: "wrap", alignItems: "center", gap: isPhone ? "8px 14px" : "10px 28px",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.04em", color: "var(--dim)", textTransform: "uppercase" }}>
+          {`${track.sport ? `${track.sport.toUpperCase()} · ` : ""}How 8-of-10 props did · last ${track.days} days`}
+        </span>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontSize: isPhone ? 22 : 26, fontWeight: 700, color: tone, fontVariantNumeric: "tabular-nums" }}>{Math.round(rate * 100)}%</span>
+          <span style={{ fontSize: 13, color: "var(--text-2, var(--dim))", fontVariantNumeric: "tabular-nums" }}>{`${track.hits} of ${track.n} cleared`}</span>
+        </span>
+      </div>
+      {markets.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {markets.map((m) => (
+            <span
+              key={m.label}
+              style={{
+                fontSize: 12, padding: "4px 9px", borderRadius: 999, border: "1px solid var(--line)",
+                color: "var(--text)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {`${m.label} ${Math.round((m.hits / m.n) * 100)}%`}
+              <span style={{ color: "var(--dim)", marginLeft: 5 }}>{`${m.hits}/${m.n}`}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Wraps a page in the v3 mobile chassis, or renders it bare. A component
@@ -26097,7 +26207,9 @@ export default function PropLedger() {
   // on today's slate having games left -- the front page must never be empty
   // for a reason as arbitrary as the hour of day. Built only when that page is
   // actually open.
-  const landingRows = useMemo(() => (page === "landing" ? buildNFLFeedRows() : []), [page]);
+  // Tagged with their league: the builders leave `sport` off, and the hero
+  // card's crest and its click both read it.
+  const landingRows = useMemo(() => (page === "landing" ? buildNFLFeedRows().map((r) => ({ ...r, sport: "nfl" })) : []), [page]);
 
 
   // Theme, accent colour and the default sportsbook used to be three pieces
@@ -26731,6 +26843,42 @@ export default function PropLedger() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, boardSport, nflDataVersion, wnbaDataVersion, nbaDataVersion, mlb.mlbRows, mlb.mlbStatusVersion]);
 
+  // What the board ranks. Basketball's 0.5 lines -- one steal, one assist, one
+  // three -- clear most nights for
+  // most rotation players, so they filled the board's "cleared the bar"
+  // column ("Naji Marshall Over 0.5 Stocks") ahead of every prop someone
+  // would actually bet. They stay on the Prop Feed, where the reader chose
+  // the market; the board is the shortlist and leaves them off.
+  // Baseball keeps its 0.5 lines: Over 0.5 hits is the main batter prop.
+  //
+  // And any rung under half the player's own average over his last ten: "Jake
+  // LaRavia Over 0.5 Assists" while he averages 2.9 is the bottom of his
+  // ladder, not a read on him. Same test Findings holds its near-certainties
+  // back on (lib/findings.js).
+  const boardPageRows = useMemo(() => {
+    if (boardSport === "mlb") return boardRows;
+    const basketball = boardSport === "nba" || boardSport === "wnba";
+    return boardRows.filter((r) => {
+      if (r.isBinary) return true;
+      const line = Number(r.line);
+      if (basketball && line <= 0.5) return false;
+      const recent = (r.values || []).slice(-10);
+      if (!recent.length) return true;
+      const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+      return !(avg > 0 && line < avg * 0.5);
+    });
+  }, [boardRows, boardSport]);
+
+  // The track record above the board: the whole league's log, not tonight's
+  // slate, replayed over the last week (see feedTrackRecord).
+  const boardTrack = useMemo(() => {
+    if (page !== "board") return null;
+    if (boardSport === "nba") return feedTrackRecord(buildNBAFeedRows(), "nba");
+    if (boardSport === "wnba") return feedTrackRecord(buildWNBAFeedRows(), "wnba");
+    if (boardSport === "nfl") return feedTrackRecord(buildNFLFeedRows(), "nfl");
+    return null;
+  }, [page, boardSport, nflDataVersion, wnbaDataVersion, nbaDataVersion]);
+
   // The day's slate for whichever league the board is showing, keyed by team
   // abbreviation.
   //
@@ -26765,6 +26913,21 @@ export default function PropLedger() {
   }, [page, boardSport]);
 
   const goToProp = (targetSport, targetPlayerId, targetMarket, meta) => {
+    // Several desktop frames (Findings, Injuries, My Picks, the landing
+    // hero) hand over the whole row instead of its parts. Read as a sport,
+    // that object matched no player page and every one of those clicks
+    // landed on the feed. Unpacked here, once, rather than at each caller.
+    if (targetSport && typeof targetSport === "object") {
+      const o = targetSport;
+      // Feed rows carry no `sport`, but their key starts with it ("nba_…").
+      const sport = o.sport || (String(o.key || "").match(/^(nfl|nba|wnba|mlb)_/) || [])[1];
+      const market = o.marketId || o.market
+        || (o.affects && o.affects[0] && o.affects[0].marketId)
+        || NEWS_DEFAULT_MARKET[sport];
+      const n = o.line == null ? NaN : Number(o.line);
+      goToProp(sport, o.playerId, market, { name: o.name, team: o.team, line: Number.isFinite(n) && !o.isBinary ? n : null });
+      return;
+    }
     // A sport this shell has no page for would set `page` to something no
     // branch below matches, and the app would render an empty div -- no nav,
     // no error, nothing to click. That is what a missing `row.sport` on the
@@ -27382,11 +27545,12 @@ export default function PropLedger() {
           onOpenSettings={() => setSettingsOpen((v) => !v)}
           slipDock={<SlipDock label={`MY PICKS · ${myPicks.filter((p) => !p.result).length}`} onClick={openPicksPage} />}
         >
+        <BoardTrackRecord track={boardTrack} isPhone={isPhoneShell} />
         <LazyPane minHeight={400}>
           <BoardPage
             isPhone={isPhoneShell}
             injuryRows={newsInjuryWireAll}
-            rows={boardRows}
+            rows={boardPageRows}
             sport={boardSport}
             sports={FEED_SPORTS}
             onSetSport={setBoardSport}

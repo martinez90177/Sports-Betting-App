@@ -150,7 +150,7 @@ export default function LandingDesktop({ hero, onOpenBoard, onOpenSettings, onOp
                       <span style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{hero.name}</span>
                       {hero.team && <span role="img" style={crest(hero.team, hero.sport, 15)} />}
                     </span>
-                    <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }}>{hero.prop}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 12, color: "var(--text-2)" }}>{`${hero.direction === "under" ? "UNDER" : "OVER"} ${liveLine} ${String(hero.marketLabel || "").toUpperCase()}`}</span>
                   </span>
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}>
                     <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: games.length && hits / games.length >= 0.7 ? "var(--pos)" : "var(--text)" }}>

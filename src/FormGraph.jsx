@@ -293,7 +293,7 @@ export default function FeedFormStrip({
             return (
               <div
                 key={i}
-                title={`${g.opp ? `${venueWord(g.home)}${g.opp} · ` : ""}${g.v}${g.po ? " · playoff game" : ""}`}
+                title={`${g.opp ? `${venueWord(g.home)}${g.opp} · ` : ""}${g.v}${g.min != null ? ` · ${g.min} min` : ""}${g.po ? " · playoff game" : ""}`}
                 style={{
                   // Explicit column, not auto-placement. The dashed-rule
                   // overlay below is explicitly placed across columns 1..n, and
