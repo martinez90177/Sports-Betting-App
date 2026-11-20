@@ -456,6 +456,7 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
           >
             {`${r.direction === "under" ? "UNDER" : "OVER"} ${liveLine} ${String(r.marketLabel || "").toUpperCase()}`}
           </span>
+          {r.matchupNode && <div style={{ overflow: "hidden" }}>{r.matchupNode}</div>}
         </div>
         <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, width: 62 }}>
           {/* A thin sample prints `too few`, not a percentage -- the number
@@ -471,6 +472,16 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
           <span style={{ fontFamily: MONO, fontSize: 10, color: "#5c6b7a", whiteSpace: "nowrap" }}>
             {shownRate == null ? `${r.team} · ${shownN}` : `${r.team} · ${windowHits}/${shownN}`}
           </span>
+          {/* DraftKings' price for this exact line, when it posts one. Green
+              when the rate above beats the chance the price implies. */}
+          {r.book && (
+            <span
+              title={`DraftKings prices ${r.book.label} at ${formatOdds(r.book.american)}, a ${Math.round(r.book.prob * 100)}% chance.`}
+              style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", color: shownRate != null && shownRate > r.book.prob ? "var(--pos)" : "var(--dim)" }}
+            >
+              {`DK ${formatOdds(r.book.american)}`}
+            </span>
+          )}
         </div>
       </div>
 
@@ -538,7 +549,9 @@ function FeedCard({ r, sport, sampleWindow, open, onToggle, rateColor, onOpenPro
           {/* No book prices anything -- there is no odds feed. The cell above
               is this app's own rate converted, and this line says so. */}
           <span style={{ fontFamily: MONO, fontSize: 10, lineHeight: 1.6, color: "var(--dim)" }}>
-            Implied from this window's rate. No book priced this.
+            {r.book
+              ? `Implied from this window's rate. DraftKings prices ${r.book.label} at ${formatOdds(r.book.american)} (${Math.round(r.book.prob * 100)}%).`
+              : "Implied from this window's rate. No book priced this."}
           </span>
           <div style={{ display: "flex", gap: 10 }}>
             <div

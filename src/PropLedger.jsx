@@ -603,6 +603,30 @@ function useBookMilestones(sport, eventId) {
   }, [sport, eventId]);
   return m;
 }
+// The same milestone prices, for every game a feed list touches. One request
+// per game (cached ten minutes in espnProps.js), and only for the leagues
+// ESPN carries DraftKings milestones for.
+function feedRowEventId(sport, r) {
+  const g = sport === "nba" ? nbaNextGameForTeam(r.team) : sport === "nfl" ? nflNextGameForTeam(r.team) : null;
+  return g && g.eventId ? String(g.eventId) : null;
+}
+function useFeedBookPrices(sport, rows) {
+  const ids = useMemo(() => {
+    if (sport !== "nba" && sport !== "nfl") return "";
+    const s = new Set();
+    rows.forEach((r) => { const id = feedRowEventId(sport, r); if (id) s.add(id); });
+    return [...s].sort().join(",");
+  }, [sport, rows]);
+  const [byEvent, setByEvent] = useState({});
+  React.useEffect(() => {
+    if (!ids) { setByEvent({}); return undefined; }
+    let alive = true;
+    Promise.all(ids.split(",").map((id) => fetchBookMilestones(sport, id).then((v) => [id, v])))
+      .then((pairs) => { if (alive) setByEvent(Object.fromEntries(pairs)); });
+    return () => { alive = false; };
+  }, [sport, ids]);
+  return byEvent;
+}
 const CTX_SCRIPTS = ["fav", "dog", "b2b"];
 const ET_DAY_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
 function useTeamGameContext(sport, team) {
@@ -18926,6 +18950,21 @@ const FeedRow = React.memo(function FeedRow({ r, sport, status, sampleWindow, mi
       </div>
       <div className="pp-mono" style={{ display: "flex", alignItems: "center", gap: 7, fontSize: isNarrow ? 13 : 14, fontWeight: 600, letterSpacing: "0.02em", textTransform: "uppercase", color: "var(--text)", marginTop: 5 }}>
         <span>{r.subtitle}</span>
+        {/* DraftKings' own price for this exact line, when it posts one. Green
+            when the hit rate in the chosen window beats the chance the price
+            implies. Nothing at all when DK hasn't priced the line. */}
+        {r.book && (() => {
+          const rate = r[sampleWindow];
+          const beats = rate != null && rate > r.book.prob;
+          return (
+            <span
+              title={`DraftKings prices ${r.book.label} ${r.marketLabel || ""} at ${formatOdds(r.book.american)}, a ${Math.round(r.book.prob * 100)}% chance.${rate != null ? ` Hit rate in this window: ${Math.round(rate * 100)}%.` : ""}`}
+              style={{ whiteSpace: "nowrap", fontWeight: 600, fontSize: "0.86em", color: beats ? "var(--pos)" : "var(--dim)" }}
+            >
+              DK {formatOdds(r.book.american)}
+            </span>
+          );
+        })()}
         {/* Read-only, so a pill -- the handoff reserves full pills for badges
             and rounded rectangles for anything pressable. Frame 1c badges its
             slip legs MAIN and ALT; only ALT is drawn here, because on a list
@@ -20870,6 +20909,14 @@ const FEED_SORT_MODES = [
     metric: (r) => (r.l5 == null || r.l20 == null ? null : r.l5 - r.l20), defaultDir: "desc",
     description: "Last 5 games running hottest against their last 20 first.",
   },
+  {
+    // Hit rate minus the chance DraftKings' price implies. Only rows DK has
+    // priced at exactly this line have one; the rest sort last rather than
+    // being guessed at.
+    id: "value", label: "Best value", flip: "Worst value",
+    metric: (r, win) => (r.book && r[win] != null ? r[win] - r.book.prob : null), defaultDir: "desc",
+    description: "Biggest gap between the hit rate and DraftKings' price first. Lines DraftKings hasn't priced go last.",
+  },
 ];
 
 // L5/L10/L20 sample-size window -- a single global switcher (not per row)
@@ -22185,8 +22232,19 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
   // among equal hit rates using that mode's metric, so e.g. "Easiest
   // Matchup" surfaces the easiest matchup among the 100% hits first, then
   // the easiest among the 90% hits, and so on, instead of ignoring % entirely.
+  // DraftKings' price for each row's exact line, where it posts one (see
+  // useFeedBookPrices). Overs only: a milestone ("13+ points") is one-sided.
+  const bookByEvent = useFeedBookPrices(sport, filteredRows);
+  const pricedRows = useMemo(() => filteredRows.map((r) => {
+    if (r.isBinary || r.direction === "under") return r;
+    const id = feedRowEventId(sport, r);
+    const m = id ? bookByEvent[id] : null;
+    const book = m ? bookPriceForOver(m, r.espnId, r.marketId, Number(r.line)) : null;
+    return book ? { ...r, book } : r;
+  }), [filteredRows, bookByEvent, sport]);
+
   const sortedRows = useMemo(() => {
-    const copy = [...filteredRows];
+    const copy = [...pricedRows];
     // A clicked table-column header (see FeedTableHeader/onSortColumn)
     // overrides the Sort By dropdown entirely -- sorts by exactly that
     // column's own value, independent of whatever sampleWindow is active,
@@ -22348,7 +22406,7 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
       return sortDir === "desc" ? bHit - aHit : aHit - bHit;
     });
     return copy;
-  }, [filteredRows, sampleWindow, sortMode, sortDir, columnSort, minGames, linesMode]);
+  }, [pricedRows, filteredRows, sampleWindow, sortMode, sortDir, columnSort, minGames, linesMode]);
 
   // Alerts on a saved screen: while a screen with alerts on is the one on
   // screen, any prop on it that was not there the last time the reader marked
@@ -23179,6 +23237,35 @@ function PropFeedPage({ onOpenProp, pickIds, onTogglePick, nflDataVersion, wnbaD
               size={36} inset={2} status={resolveRowStatus(r)} surface="var(--bg)"
             />
           ),
+          // Tonight's matchup, as the desktop row's line under the prop writes
+          // it: venue, opponent crest, this season's defence rank against the
+          // market, and the word for it. The phone card had only the player's
+          // own team, so the matchup -- half of why a prop is on the list --
+          // was desktop-only.
+          matchupNode: r.opp ? (() => {
+            const read = r.rank != null ? feedMatchupRead(r.rank, sport, direction) : null;
+            const tone = read ? tierColor(read) : null;
+            return (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.02em" }}>
+                <span>{venueWord(r.homeGame)}</span>
+                <TeamLogo sport={sport} abbr={r.opp} size={15} style={{ flexShrink: 0 }} />
+                <span>{r.opp}</span>
+                {r.rank != null && (
+                  <span
+                    title={`This opponent is #${r.rank} of ${feedTeamCount(sport)} against ${r.rankLabel}${r.rankSeason ? ` in ${r.rankSeasonText || r.rankSeason}` : ""}.`}
+                    style={{
+                      padding: "1px 5px", borderRadius: 4, fontSize: 10.5, fontWeight: 800, letterSpacing: 0,
+                      background: tone ? `color-mix(in srgb, ${tone} 14%, transparent)` : "transparent",
+                      color: tone || "var(--text)", border: `1px solid ${tone || "var(--line)"}`,
+                    }}
+                  >
+                    D #{r.rank}
+                  </span>
+                )}
+                {read && <span style={{ color: tone || "var(--dim)", fontWeight: 700 }}>{read}</span>}
+              </span>
+            );
+          })() : null,
         }))}
         totalRows={sortedRows.length}
         loadedCount={visibleRows.length}
