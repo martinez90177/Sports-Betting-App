@@ -185,12 +185,14 @@ export default function InjuriesPage({
       coverageNote: (() => {
         const live = coveredSports.filter((sp) => !dormantSports.some((d) => d.id === sp.id));
         const one = dormantSports.length === 1;
+        // Plain words (site review, 2026-11-23): which leagues are listed,
+        // which are between seasons, and which have no report at all.
         const dormant = dormantSports.length
-          ? `${andList(dormantSports.map((sp) => sp.label))} ${one ? "has" : "have"} not started ${one ? "its" : "their"} season, so ${one ? "its" : "their"} designations are last season's and are not listed. `
+          ? `${andList(dormantSports.map((sp) => sp.label))} ${one ? "is" : "are"} between seasons, so ${one ? "its" : "their"} old list is hidden. `
           : "";
         const rest = uncoveredSports.length
-          ? `${andList(live.map((sp) => sp.label))} publish an availability feed this app can read. ${andList(uncoveredSports.map((sp) => sp.label))} ${uncoveredSports.length === 1 ? "does" : "do"} not, so ${uncoveredSports.length === 1 ? "it is" : "they are"} named here rather than shown as leagues with nobody hurt.`
-          : `${andList(live.map((sp) => sp.label))} ${live.length > 1 ? "all " : ""}publish an availability designation this app reads. A league showing nobody here has nobody designated, not nobody checked.`;
+          ? `Listed from ${andList(live.map((sp) => sp.label))} official injury reports. ${andList(uncoveredSports.map((sp) => sp.label))} ${uncoveredSports.length === 1 ? "has" : "have"} no report we can read.`
+          : `Listed from the ${andList(live.map((sp) => sp.label))} official injury reports.`;
         return dormant + rest;
       })(),
       loading,

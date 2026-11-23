@@ -23,6 +23,9 @@
     },
     "api/nba-allowed.js": {
       "maxDuration": 60
+    },
+    "api/nba-logs.js": {
+      "maxDuration": 60
     }
   }
 }

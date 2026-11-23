@@ -396,7 +396,8 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
           ? wilsonLower(Math.round(s.rate * s.n), s.n)
           : -1;
         return { r, support };
-      }).sort((a, b) => b.support - a.support);
+      // Main players lead (see boardPageRows' featured band), then support.
+      }).sort((a, b) => (b.r.featured ? 1 : 0) - (a.r.featured ? 1 : 0) || b.support - a.support);
       const rows = scored.map((x) => x.r);
       const strongest = scored.length ? scored[0].support : -1;
       // The slate row for this game -- and only if it is genuinely the same
@@ -507,7 +508,7 @@ export default function BoardPage({ rows = [], groups = [], sport, sports = [], 
         if (!s || s.rate == null || s.n < minGames) return null;
         const lb = wilsonLower(s.over, s.n);
         return lb >= 0.7 ? { r, s, lb } : null;
-      }).filter(Boolean).sort((a, b) => b.lb - a.lb);
+      }).filter(Boolean).sort((a, b) => (b.r.featured ? 1 : 0) - (a.r.featured ? 1 : 0) || b.lb - a.lb);
       const strong = strongList.length;
       // The cite names the props behind the count -- who, which line, how
       // many games -- rather than how the count is computed. Alex's site

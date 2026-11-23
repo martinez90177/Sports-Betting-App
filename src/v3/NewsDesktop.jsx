@@ -101,10 +101,10 @@ export default function NewsDesktop({
                 </div>
               );
             })}
-            {/* The screen says what it is for. Nothing in the wire is counted
-                into a rate, and the sentence stops the reader looking for one. */}
+            {/* Plain words: what the list is and its order (site review,
+                2026-11-23, replaced a line about method). */}
             <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>
-              NEWS IS CONTEXT — NO ITEM MOVES A HIT RATE
+              NEWEST FIRST
             </span>
           </div>
 

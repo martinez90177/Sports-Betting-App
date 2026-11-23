@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { fetchNews } from "./lib/newsdata.js";
+import { fetchLeagueNews, leaguesInSeason } from "./lib/espnNews.js";
 import PlayerAvatar, { StatusPill } from "./PlayerAvatar.jsx";
 import { useIsPhone } from "./lib/useIsNarrow.js";
 import NewsMobile from "./v3/NewsMobile.jsx";
@@ -187,7 +187,8 @@ export default function NewsPageRedesign({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchNews({ q: query, category: "sports", limit: 20 }).then((res) => {
+    // The leagues in season, each from its own ESPN news feed (lib/espnNews.js).
+    fetchLeagueNews(leaguesInSeason(), 30).then((res) => {
       if (cancelled) return;
       setArticles(res.articles);
       setError(res.articles.length ? null : res.error);

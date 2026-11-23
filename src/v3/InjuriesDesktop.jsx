@@ -195,7 +195,7 @@ export default function InjuriesDesktop({
                     <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)", whiteSpace: "nowrap" }}>{p.team}</span>
                   </span>
 
-                  <span style={{ fontSize: 12, color: "var(--dim)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span title={p.injuryNote || undefined} style={{ fontSize: 12.5, color: "var(--text-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.detail || ""}
                   </span>
 

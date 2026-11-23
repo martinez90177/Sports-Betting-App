@@ -220,6 +220,10 @@ export default function InjuriesMobile({
                   {[r.position, r.propLine].filter(Boolean).join(" · ")}
                 </span>
               )}
+              {/* The injury and the expected return, off the league report. */}
+              {r.detail && (
+                <span style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.4 }}>{r.detail}</span>
+              )}
               {/* A team with no game on a slate we hold says so, rather than
                   sorting as though it played at the epoch. */}
               <span style={{ fontFamily: MONO, fontSize: 10, color: r.playingSoon ? "var(--status-questionable)" : "var(--dim)" }}>

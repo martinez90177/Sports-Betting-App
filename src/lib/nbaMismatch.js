@@ -59,14 +59,20 @@ export function pickDefenseSeason(players, currentSeason) {
     : { season: currentSeason - 1, isCurrent: false };
 }
 
-export function buildNbaDefense(players, season) {
+// A player counts once he has `minGames` of the graded season. Twenty suits a
+// finished season, but the page switches to the new season once teams have ten
+// games (GAMES_NEEDED), when nobody has twenty -- so the current season used
+// the 20-game floor, counted nobody, and the page said "still loading" from
+// mid-November on. The current season takes the same floor as the switch.
+export const MIN_GAMES_CURRENT = GAMES_NEEDED - 2;
+export function buildNbaDefense(players, season, minGames = MIN_GAMES) {
   const acc = {};
   let playerGames = 0;
   let used = 0;
   players.forEach((p) => {
     const grp = groupOf(p.pos);
     const games = (p.games || []).filter((g) => g.season === season && regular(g) && g.minutes >= 1);
-    if (!grp || games.length < MIN_GAMES) return;
+    if (!grp || games.length < minGames) return;
     const avgMin = games.reduce((a, g) => a + g.minutes, 0) / games.length;
     if (avgMin < MIN_MINUTES) return;
     used += 1;
@@ -112,7 +118,7 @@ export function softSpots(defense, team, limit = 4) {
 // The attacking team's players to look at against those spots: his own position
 // group, rotation minutes, not listed out, ordered by what he averages in that
 // stat this (ranked) season.
-export function playersToLook(players, team, spots, season, statusFor, perSpot = 2, cap = 3) {
+export function playersToLook(players, team, spots, season, statusFor, perSpot = 2, cap = 3, minGames = MIN_GAMES) {
   const taken = new Set();
   const picks = [];
   spots.forEach((spot) => {
@@ -120,7 +126,7 @@ export function playersToLook(players, team, spots, season, statusFor, perSpot =
       .filter((p) => p.team === team && groupOf(p.pos) === spot.group.id && !taken.has(p.id))
       .map((p) => {
         const games = (p.games || []).filter((g) => g.season === season && regular(g) && g.minutes >= 1);
-        if (games.length < MIN_GAMES) return null;
+        if (games.length < minGames) return null;
         const min = games.reduce((a, g) => a + g.minutes, 0) / games.length;
         if (min < 20) return null;
         const status = statusFor ? statusFor(p.espnId) : undefined;

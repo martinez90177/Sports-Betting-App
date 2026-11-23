@@ -243,12 +243,9 @@ export default function GamesDesktop({
             <span style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--dim)" }}>
               {`${games.length} ${games.length === 1 ? "game" : "games"}`}
             </span>
-            {/* Said on the screen, not only in a comment: a game is live
-                because the provider says so, never because the clock passed
-                its start time. */}
-            <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, letterSpacing: "0.04em", color: "var(--dim)" }}>
-              LIVE STATE COMES FROM THE PROVIDER, NEVER THE CLOCK
-            </span>
+            {/* The rule still holds -- a game is live because the provider
+                says so, never the clock -- but it belongs in the code, not on
+                the screen (site review, 2026-11-23). */}
           </div>
 
           <div className="nsb" style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: "18px 24px var(--fab-clear)" }}>
@@ -259,7 +256,10 @@ export default function GamesDesktop({
               <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--dim)", maxWidth: 520 }}>{emptyCopy}</div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+            {/* As many 400px-and-up cards as fit, not a fixed three: at three the
+                cards were ~250px on a laptop and clipped team names and the
+                total ("Comman…", site review 2026-11-23). */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 400px), 1fr))", gap: 14 }}>
               {games.map((g) => {
                 const tone = statusTone(g);
                 const props = propsCountFor ? propsCountFor(g) : null;

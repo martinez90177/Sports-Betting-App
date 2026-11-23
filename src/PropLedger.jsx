@@ -88,6 +88,7 @@ import { GameLogTable } from "./player/MatchupPlayerBlocks.jsx";
 import { InjuryAndNews, MissingAround, MatchupContextRow } from "./PlayerContextBlocks.jsx";
 import { fetchNews, timeAgo } from "./lib/newsdata.js";
 import { parseRoute, buildPath, jumpLine, PlayerRouteReport } from "./lib/route.js";
+import { fetchInjuryDetails, injuryDetailLine } from "./lib/injuryDetails.js";
 // MLB availability lives in lib because the matchup overview needs it too and
 // cannot import from this file (see the note at the top of mlbStatus.js). The
 // roster-status cache is a single module instance, so the feed's prefetch and
@@ -805,6 +806,54 @@ async function fetchNBAPlayerGameLog(espnId, season = currentNBASeason()) {
 // to count, so without this fallback every NBA player came back empty on
 // October 1 and the whole feed read "0 of 0 props" -- the NBA's version of the
 // NFL's Week 1 cliff.
+// The whole league's logs for one season in one request (api/nba-logs.js),
+// parsed by the same parser as a direct fetch. Null when the route cannot be
+// reached, and the caller then fetches player by player as before.
+//
+// The route packs each game into one row (see its header); this rebuilds the
+// ESPN shape parseNBAGameLogResponse reads, field for field.
+function unpackNbaLog(rows, names, types) {
+  const events = {};
+  const byType = new Map();
+  rows.forEach((r) => {
+    const [eventId, gameDate, atVs, gameResult, homeTeamId, homeTeamScore, awayTeamScore, oppAbbr, teamAbbr, teamId, t, ...stats] = r;
+    events[eventId] = {
+      gameDate, atVs, gameResult, homeTeamId, homeTeamScore, awayTeamScore,
+      opponent: oppAbbr ? { abbreviation: oppAbbr } : undefined,
+      team: teamAbbr || teamId ? { abbreviation: teamAbbr, id: teamId } : undefined,
+    };
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t).push({ eventId, stats });
+  });
+  return {
+    names,
+    events,
+    seasonTypes: [...byType.entries()].map(([t, evs]) => ({ displayName: types[t], categories: [{ events: evs }] })),
+  };
+}
+async function fetchNBALogBundle(season, parts = 1) {
+  try {
+    const answers = await Promise.all(Array.from({ length: parts }, (_, part) =>
+      fetch(`/api/nba-logs?season=${season}${parts > 1 ? `&part=${part}&parts=${parts}` : ""}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)));
+    if (!answers.some(Boolean)) return null;
+    const out = {};
+    answers.filter(Boolean).forEach((j) => {
+      Object.entries(j.players || {}).forEach(([id, rows]) => {
+        const raw = unpackNbaLog(rows, (j.namesFor && j.namesFor[id]) || j.names || [], j.types || []);
+        const games = parseNBAGameLogResponse(raw, season);
+        if (!games.length) return;
+        out[id] = games;
+        nbaGameLogCache.set(`${id}:${season}`, { games, fetchedAt: Date.now() });
+      });
+    });
+    return out;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchNBAPlayerGameLogForDisplay(espnId) {
   const season = currentNBASeason();
   const current = await fetchNBAPlayerGameLog(espnId, season);
@@ -2047,6 +2096,10 @@ function PlayerPropContextBlocks({
   );
 }
 
+// How long a linked player is held while the live rosters load (see
+// NBAPropsPage's player fallback).
+const NBA_JUMP_ROSTER_WAIT_MS = 10000;
+
 function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, onToggleWatch, watched, onRemoveWatch, onOpenProp, onBack, onOpenSlip, onNavigate, onHome, onOpenSettings }) {
 
   // The real schedule, over the invented pairings. NBA_MATCHUPS stays as the
@@ -2125,6 +2178,23 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // first player here would overwrite the player just clicked.
   React.useEffect(() => {
     if (!liveMatchups) return;
+    // A jump not yet placed in a game is looked for again on every change of
+    // slate or rosters, not only when the selected game disappears. A link
+    // opened cold lands before the rosters do: the first pass finds the
+    // player in no game, the page parks on the night's first one, and since
+    // that game is valid the early return below used to stop it ever looking
+    // again -- Naz Reid's link showed POR @ PHI over him all night.
+    const pendingJump = jumpRequest.current;
+    if (pendingJump && !pendingJump.placed) {
+      const home = matchups.find(
+        (m) => m.teamA.players.some((p) => p.id === pendingJump.id) || m.teamB.players.some((p) => p.id === pendingJump.id)
+      );
+      if (home) {
+        pendingJump.placed = true;
+        if (home.id !== matchupId) setMatchupId(home.id);
+        return;
+      }
+    }
     if (matchups.some((m) => m.id === matchupId)) return;
     const first = matchups.find((m) => m.teamA.players.length || m.teamB.players.length) || matchups[0];
     if (!first) return;
@@ -2133,7 +2203,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       const live = matchups.find(
         (m) => m.teamA.players.some((p) => p.id === pending.id) || m.teamB.players.some((p) => p.id === pending.id)
       );
-      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(pending.line ?? null); setOpponent("all"); return; }
+      if (live) { pending.placed = true; setMatchupId(live.id); setPlayerId(pending.id); setLine(pending.line ?? null); setOpponent("all"); return; }
       // Not on this slate. Move the game forward so the rails aren't showing a
       // stale card, but leave the player alone.
       setMatchupId(first.id);
@@ -2160,7 +2230,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       (m) => m.teamA.players.some((p) => p.id === jumpTo.playerId) || m.teamB.players.some((p) => p.id === jumpTo.playerId)
     );
     if (jumpMatchup) setMatchupId(jumpMatchup.id);
-    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null, line: jumpLine(jumpTo) };
+    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null, line: jumpLine(jumpTo), placed: !!jumpMatchup, at: Date.now() };
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(jumpLine(jumpTo));
@@ -2213,9 +2283,23 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     const pool = nbaPlayerPool();
     return pool.find((p) => p.id === playerId) || (matchup.teamA.players[0]) || pool[0] || null;
   }, [playerId, dataVersion, matchup]);
+  // Not while a jump is still waiting on the rosters: a link opened cold asks
+  // for a live-roster player before the pool has him, and committing the
+  // fallback here made the page switch to that fallback for good (Naz Reid's
+  // link opened Jalen Brunson on a phone). Bounded, so a player who never
+  // turns up still gives way rather than leaving a name over another's chart.
+  const [jumpWaitTick, setJumpWaitTick] = useState(0);
+  const jumpWaiting = !!jumpRequest.current && jumpRequest.current.id === playerId
+    && Date.now() - (jumpRequest.current.at || 0) < NBA_JUMP_ROSTER_WAIT_MS;
   React.useEffect(() => {
-    if (player && player.id !== playerId) setPlayerId(player.id);
-  }, [player, playerId]);
+    if (player && player.id !== playerId && !jumpWaiting) setPlayerId(player.id);
+    if (jumpWaiting) {
+      // Re-check once the wait runs out, in case the rosters never answer.
+      const t = setTimeout(() => setJumpWaitTick((n) => n + 1), NBA_JUMP_ROSTER_WAIT_MS);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [player, playerId, jumpWaiting, jumpWaitTick]);
   const jerseyNumber = useEspnJersey("nba", player && player.espnId);
 
   // This season's log. Kept separate from the scoped view below because the
@@ -10769,6 +10853,19 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
   // is therefore re-resolved against the live slate rather than discarded.
   React.useEffect(() => {
     if (!liveMatchups || !liveMatchups.length) return;
+    // Same retry as the NBA page: an unplaced jump is looked for again on
+    // every slate change, so a cold link finds its game once rosters land.
+    const pendingJump = jumpRequest.current;
+    if (pendingJump && !pendingJump.placed) {
+      const home = liveMatchups.find(
+        (m) => m.teamA.players.some((p) => p.id === pendingJump.id) || m.teamB.players.some((p) => p.id === pendingJump.id)
+      );
+      if (home) {
+        pendingJump.placed = true;
+        if (home.id !== matchupId) setMatchupId(home.id);
+        return;
+      }
+    }
     if (liveMatchups.some((m) => m.id === matchupId)) return;
     const pending = jumpRequest.current;
     if (pending) {
@@ -10776,7 +10873,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
         (m) => m.teamA.players.some((p) => p.id === pending.id) || m.teamB.players.some((p) => p.id === pending.id)
       );
       // On the live slate after all: take that game and keep the player.
-      if (live) { setMatchupId(live.id); setPlayerId(pending.id); setLine(pending.line ?? null); setOpponent("all"); return; }
+      if (live) { pending.placed = true; setMatchupId(live.id); setPlayerId(pending.id); setLine(pending.line ?? null); setOpponent("all"); return; }
       // Not playing today. Move the *game* forward so the rails aren't showing
       // a stale slate, but leave the player alone -- the guard further down
       // says they aren't on today's card rather than swapping someone in.
@@ -10801,7 +10898,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       (m) => m.teamA.players.some((p) => p.id === jumpTo.playerId) || m.teamB.players.some((p) => p.id === jumpTo.playerId)
     );
     if (jumpMatchup) setMatchupId(jumpMatchup.id);
-    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null, line: jumpLine(jumpTo) };
+    jumpRequest.current = { id: jumpTo.playerId, name: (jumpTo.meta && jumpTo.meta.name) || null, line: jumpLine(jumpTo), placed: !!jumpMatchup, at: Date.now() };
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(jumpLine(jumpTo));
@@ -25536,6 +25633,9 @@ function newsNameKey(s) {
   return String(s || "")
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    // A possessive is the name plus "s" once the apostrophe goes ("Bam
+    // Adebayo's triple-double" -> "adebayos"), so it never matched.
+    .replace(/['’]s\b/g, "")
     .replace(/[.'’`]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -26414,8 +26514,17 @@ export default function PropLedger() {
   // started with forever, since the player object's identity never changes
   // (only switching to a *different* player would otherwise pick up real
   // data, by accident of that useMemo recomputing for a new key).
+  // Which leagues' data this tab has needed so far. Each league's loader below
+  // used to start on mount whatever the reader was looking at, so an NBA feed
+  // also pulled every NFL player's log -- hundreds of requests on a phone for
+  // a league that was never on screen (site review, 2026-11-23). A league is
+  // added the first time something shows it (see sportsOnScreen) and never
+  // removed, so moving between screens does not reload anything.
+  const [wantedSports, setWantedSports] = useState(() => ({}));
   const [nflDataVersion, bumpNflRefresh] = React.useReducer((c) => c + 1, 0);
   React.useEffect(() => {
+    // Only once this league is on screen (see wantedSports).
+    if (!wantedSports.nfl) return undefined;
     let cancelled = false;
 
     fetchNFLTeamDefense().then((byTeam) => {
@@ -26621,7 +26730,7 @@ export default function PropLedger() {
       clearInterval(slateTimer);
       document.removeEventListener("visibilitychange", onTabBack);
     };
-  }, []);
+  }, [wantedSports.nfl]);
 
   // NBA: the sport that had no real data at all until this. Live rosters give
   // us who is on each team; ESPN's gamelog gives us what they did. Both are the
@@ -26635,6 +26744,8 @@ export default function PropLedger() {
     () => (BOOT_ROUTE && BOOT_ROUTE.page === "mismatches" && BOOT_ROUTE.sport) || "nfl"
   );
   React.useEffect(() => {
+    // Only once this league is on screen (see wantedSports).
+    if (!wantedSports.nba) return undefined;
     let cancelled = false;
 
     const loadLog = (player) => {
@@ -26693,10 +26804,36 @@ export default function PropLedger() {
     const onTabBack = () => { if (document.visibilityState === "visible") refreshSlate(); };
     document.addEventListener("visibilitychange", onTabBack);
 
+    // The league in one request first (api/nba-logs.js). Whoever it carries is
+    // filled in at once, and loadLog skips them below; it only fetches players
+    // the bundle missed, or everyone if the bundle never answers. Waited on for
+    // at most a few seconds, so a slow or missing route costs that and no more.
+    const nbaSeasonNow = currentNBASeason();
+    const bundleGate = Promise.race([
+      fetchNBALogBundle(nbaSeasonNow).then((cur) => {
+        if (cancelled || !cur || !Object.keys(cur).length) return;
+        Object.entries(cur).forEach(([id, games]) => {
+          if (!NBA_REAL_GAME_LOGS[id]) NBA_REAL_GAME_LOGS[id] = games;
+        });
+        bumpNbaRefresh();
+        // Last season behind it, for the rolling windows -- the same rule
+        // loadLog applies, for the players this bundle filled.
+        fetchNBALogBundle(nbaSeasonNow - 1, 3).then((prior) => {
+          if (cancelled || !prior) return;
+          Object.entries(prior).forEach(([id, games]) => {
+            const now = NBA_REAL_GAME_LOGS[id];
+            if (now && newestSeason(now) === nbaSeasonNow && !NBA_PRIOR_GAME_LOGS[id]) NBA_PRIOR_GAME_LOGS[id] = games;
+          });
+          bumpNbaRefresh();
+        });
+      }),
+      new Promise((resolve) => setTimeout(resolve, 12000)),
+    ]).catch(() => {});
+
     // The four hand-written teams first: they are on screen immediately, and
     // every one of them carries an espnId, so their generated logs can be
     // replaced with real ones before the league-wide fetch even returns.
-    runPooled(ALL_NBA_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog);
+    bundleGate.then(() => { if (!cancelled) runPooled(ALL_NBA_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog); });
 
     fetchLeagueRosters("nba", {
       slugFor: (p) => NBA_SLUG_BY_ESPN_ID[p.espnId],
@@ -26713,7 +26850,7 @@ export default function PropLedger() {
       NBA_ROSTER_COVERAGE = { teamsLoaded: res.teamsLoaded, teamsTotal: res.teamsTotal };
       NBA_ROSTER_STATUS = res.byId || {};
       bumpNbaRefresh();
-      runPooled(NBA_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog);
+      bundleGate.then(() => { if (!cancelled) runPooled(NBA_LIVE_PLAYERS, LOG_FETCH_CONCURRENCY, loadLog); });
     });
 
     return () => {
@@ -26722,13 +26859,15 @@ export default function PropLedger() {
       clearInterval(slateTimer);
       document.removeEventListener("visibilitychange", onTabBack);
     };
-  }, []);
+  }, [wantedSports.nba]);
 
   // Same pattern again for WNBA -- live season, so both the game logs and
   // the defense ranking use short TTLs and can refresh more than once per
   // tab (see fetchWNBAPlayerGameLog/fetchWNBATeamDefense).
   const [wnbaDataVersion, bumpWnbaRefresh] = React.useReducer((c) => c + 1, 0);
   React.useEffect(() => {
+    // Only once this league is on screen (see wantedSports).
+    if (!wantedSports.wnba) return undefined;
     let cancelled = false;
 
     fetchWNBATeamDefense().then((byTeam) => {
@@ -26759,7 +26898,7 @@ export default function PropLedger() {
     });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [wantedSports.wnba]);
 
   // "View Chart" jump from the Prop Feed -- every sport page owns its own
   // player/market state internally (see e.g. NBAPropsPage/WNBAPropsPage),
@@ -26858,7 +26997,7 @@ export default function PropLedger() {
   const boardPageRows = useMemo(() => {
     if (boardSport === "mlb") return boardRows;
     const basketball = boardSport === "nba" || boardSport === "wnba";
-    return boardRows.filter((r) => {
+    const kept = boardRows.filter((r) => {
       if (r.isBinary) return true;
       const line = Number(r.line);
       if (basketball && line <= 0.5) return false;
@@ -26866,6 +27005,27 @@ export default function PropLedger() {
       if (!recent.length) return true;
       const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
       return !(avg > 0 && line < avg * 0.5);
+    });
+    // Main players first. "Featured" is the Prop Feed's own band: the top 40%
+    // of workload (minutes, touches) among players at the same position in
+    // the same market. The board ranks those ahead of everyone else, so a
+    // backup center's 9-of-10 no longer leads a card over a starter's
+    // (Mo Bamba and Jaxson Hayes led the Nov 20 board).
+    const byGroup = new Map();
+    kept.forEach((r) => {
+      if (r.role == null) return;
+      const k = `${r.marketId}|${r.pos || ""}`;
+      if (!byGroup.has(k)) byGroup.set(k, []);
+      byGroup.get(k).push(r.role);
+    });
+    const cut = new Map();
+    byGroup.forEach((vals, k) => {
+      const s = vals.slice().sort((a, b) => a - b);
+      cut.set(k, s[Math.min(s.length - 1, Math.floor(0.6 * s.length))]);
+    });
+    return kept.map((r) => {
+      const c = cut.get(`${r.marketId}|${r.pos || ""}`);
+      return { ...r, featured: r.role != null && c != null && r.role >= c };
     });
   }, [boardRows, boardSport]);
 
@@ -27117,6 +27277,34 @@ export default function PropLedger() {
   // cached anyway). Re-polled on the same TTL as everywhere else so a
   // same-day IL move or call-up reaches search without a reload.
   const [searchOpened, setSearchOpened] = useState(false);
+
+  // Which leagues the current screen shows -- what wantedSports grows from.
+  // A screen about one league asks for that league; the multi-league screens
+  // (Games, Injuries, News, My Picks, Settings) and an opened search ask for
+  // all three, and an ungraded pick asks for its own league so it can settle.
+  // MLB is not here: its feed data already loads only on demand.
+  const sportsOnScreen = useMemo(() => {
+    const s = new Set();
+    const all = () => ["nfl", "nba", "wnba"].forEach((x) => s.add(x));
+    if (page === "feed") s.add(feedSport);
+    else if (page === "board" || page === "findings") s.add(boardSport);
+    else if (PLAYER_PAGES.has(page)) s.add(page);
+    else if (page === "mismatches") s.add(mismatchSport);
+    else if (page === "landing") s.add("nfl");
+    else all();
+    if (searchOpened) all();
+    myPicks.forEach((pk) => { if (!pk.result && pk.sport) s.add(pk.sport); });
+    return [...s].sort().join(",");
+  }, [page, feedSport, boardSport, mismatchSport, searchOpened, myPicks]);
+  React.useEffect(() => {
+    setWantedSports((cur) => {
+      const missing = sportsOnScreen.split(",").filter((x) => x && !cur[x]);
+      if (!missing.length) return cur;
+      const next = { ...cur };
+      missing.forEach((x) => { next[x] = true; });
+      return next;
+    });
+  }, [sportsOnScreen]);
   const [mlbActiveIds, setMlbActiveIds] = useState(null);
   React.useEffect(() => {
     if (!searchOpened) return;
@@ -27199,9 +27387,15 @@ export default function PropLedger() {
   );
 
   const resolveNewsPlayer = React.useCallback((article) => {
+    // ESPN tags the players a story is about; take the first one we carry.
+    // Only then fall back to finding a name in the headline.
+    const ids = (article && article.athleteIds) || [];
+    const tagged = ids.length
+      ? newsPlayerPool.find((e) => e.espnId && ids.includes(String(e.espnId)) && (!article.sport || e.sport === article.sport))
+      : null;
     const title = ` ${newsNameKey(article && article.title)} `;
-    if (title.trim().length < 3) return null;
-    const entry = newsPlayerPool.find((e) => title.includes(` ${e.nameKey} `));
+    if (!tagged && title.trim().length < 3) return null;
+    const entry = tagged || newsPlayerPool.find((e) => title.includes(` ${e.nameKey} `));
     if (!entry) return null;
     const key = `${entry.sport}:${entry.playerId}`;
     return {
@@ -27219,6 +27413,22 @@ export default function PropLedger() {
     [page, newsPlayerPool, newsAffects, newsWatching]
   );
   const newsInjuryWire = useMemo(() => newsInjuryWireAll.slice(0, NEWS_WIRE_LIMIT), [newsInjuryWireAll]);
+
+  // The injury report behind the dots (lib/injuryDetails.js), for the
+  // Injuries page's DETAIL column and each row's note.
+  const [injuryDetails, setInjuryDetails] = useState(() => ({}));
+  React.useEffect(() => {
+    if (page !== "injuries") return undefined;
+    let cancelled = false;
+    Promise.all(["nba", "nfl", "wnba"].map((sp) => fetchInjuryDetails(sp).then((m) => [sp, m])))
+      .then((pairs) => { if (!cancelled) setInjuryDetails(Object.fromEntries(pairs)); });
+    return () => { cancelled = true; };
+  }, [page]);
+  const injuryRowsDetailed = useMemo(() => newsInjuryWireAll.map((r) => {
+    const info = r.espnId && injuryDetails[r.sport] ? injuryDetails[r.sport].get(String(r.espnId)) : null;
+    if (!info) return r;
+    return { ...r, detail: injuryDetailLine(info), injuryNote: info.note };
+  }), [newsInjuryWireAll, injuryDetails]);
 
   // When each team next plays, for the Injuries page's "playing next" sort.
   //
@@ -27266,10 +27476,20 @@ export default function PropLedger() {
             .filter((i) => Date.parse(i?.date) >= cutoff).length;
         })
         .catch(() => 0);
-    Promise.all([fetchNbaOpenerDay(), recentDesignations()]).then(([opener, recent]) => {
-      if (cancelled || !opener) return;
+    // The WNBA by the same test, on its own report: in November its newest
+    // designation is from September, and 44 players listed out of a season
+    // that ended reads as news (site review, 2026-11-23).
+    const wnbaRecent = () => fetchInjuryDetails("wnba").then((m) => {
+      const cutoff = Date.now() - 21 * 86400000;
+      return [...m.values()].filter((i) => Date.parse(i.date) >= cutoff).length;
+    }).catch(() => 0);
+    Promise.all([fetchNbaOpenerDay(), recentDesignations(), wnbaRecent()]).then(([opener, recent, wnba]) => {
+      if (cancelled) return;
       const today = new Date().toISOString().slice(0, 10);
-      setDormantSports(today < opener && recent < 10 ? [{ id: "nba", label: "NBA" }] : []);
+      const out = [];
+      if (opener && today < opener && recent < 10) out.push({ id: "nba", label: "NBA" });
+      if (wnba < 3) out.push({ id: "wnba", label: "WNBA" });
+      setDormantSports(out);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [page]);
@@ -27656,7 +27876,7 @@ export default function PropLedger() {
         >
         <LazyPane minHeight={400}>
           <InjuriesPage
-            rows={newsInjuryWireAll.filter((r) => !dormantSports.some((d) => d.id === r.sport))}
+            rows={injuryRowsDetailed.filter((r) => !dormantSports.some((d) => d.id === r.sport))}
             kickoffFor={(sp, team) => injurySlate.get(`${sp}:${team}`) || null}
             coveredSports={INJURY_FEED_SPORTS}
             uncoveredSports={INJURY_FEED_MISSING}
@@ -27754,7 +27974,7 @@ export default function PropLedger() {
             injuryWireMore={newsInjuryWireMore}
             onOpenLadder={openNewsPlayer}
             slipLegs={myPicks.filter((x) => !x.result)}
-            footnote="Headlines cache for ~45 minutes to stay within Newsdata's free-tier request limit."
+            footnote="Headlines from each league's ESPN news feed, newest first."
           />
         </LazyPane>
         </MaybeV3Shell>

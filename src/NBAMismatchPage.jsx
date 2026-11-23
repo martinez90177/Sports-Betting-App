@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import PlayerAvatar from "./PlayerAvatar.jsx";
 import { seasonLabel } from "./LogScope.jsx";
 import {
-  NBA_GROUPS, NBA_MISMATCH_STATS, pickDefenseSeason, buildNbaDefense, softSpots, playersToLook,
+  NBA_GROUPS, NBA_MISMATCH_STATS, pickDefenseSeason, buildNbaDefense, softSpots, playersToLook, MIN_GAMES_CURRENT,
 } from "./lib/nbaMismatch.js";
 
 // The NBA's Mismatches page.
@@ -39,7 +39,7 @@ function Side({ attack, defend, spots, picks, label, logoFor, onOpenPlayer }) {
       </div>
       {spots.length === 0 ? (
         <div style={{ fontSize: 12, color: "var(--dim)" }}>
-          {defend} has no soft spot on {label}: nothing in the bottom eight by a real margin above the norm.
+          {defend} has no soft spot in {label}: nothing ranks in the league&apos;s bottom eight by a real margin.
         </div>
       ) : (
         <>
@@ -82,7 +82,10 @@ export default function NBAMismatchPage({ players, games, season: currentSeason,
   const [statId, setStatId] = useState("pts");
 
   const pick = useMemo(() => pickDefenseSeason(players, currentSeason), [players, currentSeason, dataVersion]);
-  const defense = useMemo(() => buildNbaDefense(players, pick.season), [players, pick.season, dataVersion]);
+  const defense = useMemo(
+    () => buildNbaDefense(players, pick.season, pick.isCurrent ? MIN_GAMES_CURRENT : undefined),
+    [players, pick.season, pick.isCurrent, dataVersion]
+  );
   const label = seasonLabel(pick.season, "nba");
 
   const days = useMemo(() => {
@@ -138,9 +141,9 @@ export default function NBAMismatchPage({ players, games, season: currentSeason,
                   </div>
                   <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
                     <Side attack={away} defend={home} spots={awaySpots} label={label} logoFor={logoFor}
-                      picks={playersToLook(players, away, awaySpots, pick.season, statusFor)} onOpenPlayer={onOpenProp} />
+                      picks={playersToLook(players, away, awaySpots, pick.season, statusFor, 2, 3, pick.isCurrent ? MIN_GAMES_CURRENT : undefined)} onOpenPlayer={onOpenProp} />
                     <Side attack={home} defend={away} spots={homeSpots} label={label} logoFor={logoFor}
-                      picks={playersToLook(players, home, homeSpots, pick.season, statusFor)} onOpenPlayer={onOpenProp} />
+                      picks={playersToLook(players, home, homeSpots, pick.season, statusFor, 2, 3, pick.isCurrent ? MIN_GAMES_CURRENT : undefined)} onOpenPlayer={onOpenProp} />
                   </div>
                 </div>
               );

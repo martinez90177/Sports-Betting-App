@@ -6,7 +6,7 @@ import react from "@vitejs/plugin-react";
 // This runs the listed ones in the dev server. It is an allowlist on purpose:
 // the others spend paid API credits (odds, news) and stay unreachable locally,
 // exactly as before.
-const DEV_API = new Set(["nfl-allowed"]);
+const DEV_API = new Set(["nfl-allowed", "nba-logs"]);
 function devApi() {
   return {
     name: "dev-api",
