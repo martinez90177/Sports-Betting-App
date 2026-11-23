@@ -80,9 +80,14 @@ export default function usePlayerPageState({ sport, initialPlayerId, initialMark
   // A dragged line wins over a picked one, the same order the chart reads them.
   const reportRoute = useContext(PlayerRouteReport);
   const routeLine = dragLine ?? line;
+  // The "without" chips ride in the link too: "Mitchell without Garland" is a
+  // different page from Mitchell, and a shared link should open the same one.
+  const routeWithout = teammateChips.filter((c) => c.mode === "without").map((c) => c.pid).join(",");
   useEffect(() => {
-    if (reportRoute) reportRoute({ sport, playerId, market, line: routeLine });
-  }, [reportRoute, sport, playerId, market, routeLine]);
+    if (reportRoute) {
+      reportRoute({ sport, playerId, market, line: routeLine, without: routeWithout ? routeWithout.split(",") : [] });
+    }
+  }, [reportRoute, sport, playerId, market, routeLine, routeWithout]);
 
   return {
     playerId, setPlayerId,

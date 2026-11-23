@@ -87,7 +87,7 @@ import usePlayerPageState from "./player/usePlayerPageState.js";
 import { GameLogTable } from "./player/MatchupPlayerBlocks.jsx";
 import { InjuryAndNews, MissingAround, MatchupContextRow } from "./PlayerContextBlocks.jsx";
 import { fetchNews, timeAgo } from "./lib/newsdata.js";
-import { parseRoute, buildPath, jumpLine, PlayerRouteReport } from "./lib/route.js";
+import { parseRoute, buildPath, jumpLine, jumpWithout, PlayerRouteReport } from "./lib/route.js";
 import { fetchInjuryDetails, injuryDetailLine } from "./lib/injuryDetails.js";
 // MLB availability lives in lib because the matchup overview needs it too and
 // cannot import from this file (see the note at the top of mlbStatus.js). The
@@ -1798,6 +1798,22 @@ function espnAbsenceRows({ absent = [], allGames = [], byEvent, valueOf, line, h
 //   * one tap is with, two is without, three clears. Same three states as
 //     the desktop tiles, and the same chips array behind them, so the two
 //     controls cannot disagree about what is set.
+// A player's name from his ESPN id, out of the league pools. For a chip that
+// arrived by link before any roster on the page lists him.
+function nameForEspnId(sport, pid) {
+  if (!pid) return null;
+  try {
+    const pool = sport === "nfl" ? nflPlayerPool()
+      : sport === "nba" ? nbaPlayerPool()
+      : sport === "wnba" ? ALL_WNBA_PLAYERS
+      : [];
+    const p = pool.find((x) => String(x.espnId || (sport === "nfl" ? NFL_ESPN_ID[x.id] : "") || "") === String(pid));
+    return p ? p.name : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildLineupSheet({
   chips = [], onChange, games = [], playedInGame,
   mates = [], opps = [], teamLabel, oppLabel, sport, statusOf,
@@ -1887,7 +1903,23 @@ function buildLineupSheet({
     // asks of the whole log -- who was out that night. One record, so the
     // card and the chips can never disagree.
     playedInGame,
-    activeCount: active.length,
+    // Counted off the chips, not the cards: a chip can name someone the
+    // grids do not list (an NFL page opened on a team whose game is off the
+    // slate has no roster grid at all), and it still filters -- so it still
+    // has to show, and still has to be clearable.
+    activeCount: chips.length,
+    // The lineup in force, in words, for the chart header: "Without Ja
+    // Morant", "With Lillard · Without Morant". Null with no chip set.
+    activeLabel: chips.length
+      ? ["with", "without"]
+          .map((m) => {
+            const names = chips.filter((c) => c.mode === m)
+              .map((c) => c.name || (all.find((p) => p.pid === c.pid) || {}).name || nameForEspnId(sport, c.pid) || "a teammate");
+            return names.length ? `${m === "with" ? "With" : "Without"} ${names.join(", ")}` : null;
+          })
+          .filter(Boolean)
+          .join(" · ")
+      : null,
     onOpen,
     onReset: () => onChange([]),
     // No pronoun. These grids render on all four sport pages and "his" is
@@ -2234,6 +2266,7 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(jumpLine(jumpTo));
+    setTeammateChips(jumpWithout(jumpTo));
     setOpponent("all");
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2426,6 +2459,14 @@ function NBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
   // Everyone on this player's side currently listed out or questionable, from
   // the roster fetch on mount. Real designations only -- an empty availability
   // map yields no absences rather than a guessed list.
+  // A chip that arrived by link or from the Injuries page carries only an id;
+  // it takes its name from this roster once the roster has him.
+  React.useEffect(() => {
+    const byPid = new Map(teammateCandidates.map((c) => [c.pid, c.name]));
+    if (!teammateChips.some((c) => !c.name && byPid.get(c.pid))) return;
+    setTeammateChips((prev) => prev.map((c) => (c.name ? c : { ...c, name: byPid.get(c.pid) || c.name })));
+  }, [teammateChips, teammateCandidates, setTeammateChips]);
+
   const absentTeammates = useMemo(
     () => teammateCandidates.filter((pl) => {
       const st = nbaStatusOf(pl);
@@ -8597,6 +8638,7 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(jumpLine(jumpTo));
+    setTeammateChips(jumpWithout(jumpTo));
     setOpponent("all");
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8813,6 +8855,14 @@ function NFLPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, on
       .filter((pl) => nflEspnId(pl))
       .map((pl) => ({ ...pl, pid: String(nflEspnId(pl)) }));
   }, [playerSide, teamRoster, oppRoster]);
+
+  // A chip that arrived by link or from the Injuries page carries only an id;
+  // it takes its name from this roster once the roster has him.
+  React.useEffect(() => {
+    const byPid = new Map(teammateCandidates.map((c) => [c.pid, c.name]));
+    if (!teammateChips.some((c) => !c.name && byPid.get(c.pid))) return;
+    setTeammateChips((prev) => prev.map((c) => (c.name ? c : { ...c, name: byPid.get(c.pid) || c.name })));
+  }, [teammateChips, teammateCandidates, setTeammateChips]);
 
   const absentTeammates = useMemo(
     () => teammateCandidates.filter((pl) => {
@@ -10902,6 +10952,7 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
     setPlayerId(jumpTo.playerId);
     setMarket(jumpTo.market);
     setLine(jumpLine(jumpTo));
+    setTeammateChips(jumpWithout(jumpTo));
     setOpponent("all");
     setTimeout(() => chartRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -11078,6 +11129,14 @@ function WNBAPropsPage({ jumpTo, dataVersion, pickIds, onTogglePick, watchIds, o
       .map((p) => ({ ...p, pid: String(p.espnId) })),
     [playerSide, playerId]
   );
+
+  // A chip that arrived by link or from the Injuries page carries only an id;
+  // it takes its name from this roster once the roster has him.
+  React.useEffect(() => {
+    const byPid = new Map(teammateCandidates.map((c) => [c.pid, c.name]));
+    if (!teammateChips.some((c) => !c.name && byPid.get(c.pid))) return;
+    setTeammateChips((prev) => prev.map((c) => (c.name ? c : { ...c, name: byPid.get(c.pid) || c.name })));
+  }, [teammateChips, teammateCandidates, setTeammateChips]);
 
   const absentTeammates = useMemo(
     () => teammateCandidates
@@ -25704,7 +25763,35 @@ function buildNewsPlayerPool() {
 // real logs too, but they hang off the day's slate fetch (see
 // buildMLBFeedRows), which the News tab doesn't load; those players still get
 // a face and a status, just no AFFECTS row until phase 3 wires the ladder data.
-function buildNewsAffects() {
+// Every league's feed rows once, for the two readers below.
+function buildNewsFeedRows() {
+  return { nfl: buildNFLFeedRows(), wnba: buildWNBAFeedRows(), nba: buildNBAFeedRows() };
+}
+
+// The NFL rows the "without him" pick reads. Not the feed's: the feed drops a
+// team once its game this week is played, so by Monday nearly every injured
+// player had no teammate to point at -- and the games he misses are next
+// week's question anyway. Same logs, same values, same line rule as the feed.
+function buildNFLLeadRows() {
+  const rows = [];
+  nflPlayerPool().forEach((player) => {
+    if (!["QB", "RB", "WR", "TE"].includes(player.pos)) return;
+    const games = nflFeedGames(player);
+    if (!games.length) return;
+    ["passYds", "rushYds", "recYds"].forEach((marketId) => {
+      if (!NFL_MARKETS.some((m) => m.id === marketId && m.pos.includes(player.pos))) return;
+      const values = games.map((g) => statValueNFL(g, marketId));
+      rows.push({
+        playerId: player.id, marketId, name: player.name, team: player.team, pos: player.pos,
+        espnId: player.espnId || NFL_ESPN_ID[player.id] || null,
+        values, line: fairFeedLine(values), isBinary: false,
+      });
+    });
+  });
+  return rows;
+}
+
+function buildNewsAffects(rowsBySport) {
   const byPlayer = new Map();
   const add = (sport, r) => {
     if (!r.playerId || !r.nAll || !Number.isFinite(r.all)) return;
@@ -25720,9 +25807,7 @@ function buildNewsAffects() {
     });
     byPlayer.set(key, list);
   };
-  buildNFLFeedRows().forEach((r) => add("nfl", r));
-  buildWNBAFeedRows().forEach((r) => add("wnba", r));
-  buildNBAFeedRows().forEach((r) => add("nba", r));
+  ["nfl", "wnba", "nba"].forEach((sport) => (rowsBySport[sport] || []).forEach((r) => add(sport, r)));
   // Deepest sample first, then the highest rate; three chips is what the row
   // has room for at 1280px.
   byPlayer.forEach((list) => {
@@ -25737,6 +25822,67 @@ function buildNewsAffects() {
 // every visit (all 15 rosters are fetched on mount); MLB only once an MLB page
 // has been open. NBA and NFL have no availability feed at all and return
 // undefined, which renders no dot rather than a green one.
+// The teammate whose page is worth reading without an injured player -- the
+// Injuries page's "without him" link. Measured, never guessed: averages over
+// each player's last ten games in the feed's own rows.
+//
+// Basketball: only when the injured player is one of his team's five leading
+// scorers (a twelfth man's absence moves nobody), and the link goes to the
+// team's leading scorer among the rest, on Points.
+// Football: by position. A starting QB out sends you to his top receiver on
+// Rec Yds; a top-two back out, to the other leading back on Rush Yds; a
+// top-three pass-catcher out, to the top pass-catcher left, on Rec Yds.
+//
+// Players listed out themselves are passed over. Null when nothing qualifies.
+const LEAD_WINDOW = 10;
+function leadAvg(r) {
+  const v = (r.values || []).slice(-LEAD_WINDOW);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : -Infinity;
+}
+function pickWithoutTeammate(rowsBySport, injured) {
+  if (!injured || !injured.espnId) return null;
+  const rows = (rowsBySport && rowsBySport[injured.sport]) || [];
+  const team = (marketId, keep = () => true) => rows
+    .filter((r) => r.team === injured.team && r.marketId === marketId && keep(r))
+    .sort((a, b) => leadAvg(b) - leadAvg(a));
+  const isHim = (r) => r.playerId === injured.playerId;
+  const available = (r) => !isHim(r) && pickStatus({ sport: injured.sport, espnId: r.espnId }) !== "out";
+  const within = (list, n) => list.slice(0, n).some(isHim);
+  let marketId = null;
+  let pool = [];
+  if (injured.sport === "nba" || injured.sport === "wnba") {
+    marketId = "pts";
+    const scorers = team(marketId);
+    if (!within(scorers, 5)) return null;
+    pool = scorers;
+  } else if (injured.sport === "nfl") {
+    const pos = String(injured.position || "").toUpperCase();
+    if (pos === "QB") {
+      if (!within(team("passYds"), 1)) return null;
+      marketId = "recYds";
+      pool = team(marketId);
+    } else if (pos === "RB") {
+      const backs = team("rushYds", (r) => r.pos === "RB");
+      if (!within(backs, 2)) return null;
+      marketId = "rushYds";
+      pool = backs;
+    } else if (pos === "WR" || pos === "TE") {
+      const catchers = team("recYds", (r) => r.pos === "WR" || r.pos === "TE");
+      if (!within(catchers, 3)) return null;
+      marketId = "recYds";
+      pool = catchers;
+    } else {
+      return null;
+    }
+  }
+  const lead = pool.find(available);
+  if (!lead) return null;
+  return {
+    sport: injured.sport, playerId: lead.playerId, marketId, name: lead.name, team: lead.team,
+    line: lead.isBinary ? null : lead.line,
+  };
+}
+
 function newsPlayerStatus(entry) {
   return pickStatus({ sport: entry.sport, espnId: entry.espnId, gradeId: entry.mlbId });
 }
@@ -26157,6 +26303,9 @@ function routeJump(route) {
     playerId: route.playerId,
     market: route.market || NEWS_DEFAULT_MARKET[route.page],
     line: route.line,
+    // Names come from the page's own roster once it loads (see each page's
+    // teammate-name fill); the id is all a link carries.
+    without: (route.without || []).map((pid) => ({ pid, name: "" })),
     nonce: Date.now(),
     meta: null,
   };
@@ -27102,8 +27251,11 @@ export default function PropLedger() {
     // The line rides along when the caller knows it (a feed or board row), so
     // the page opens on the prop that was clicked rather than its own default.
     const line = meta && typeof meta.line === "number" && Number.isFinite(meta.line) ? meta.line : null;
+    // Teammates to count games without -- the Injuries page's "without him"
+    // link. `{ pid: espnId, name }` each.
+    const without = meta && Array.isArray(meta.without) ? meta.without : [];
     awaitJump(targetSport, targetPlayerId);
-    setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, line, nonce: Date.now(), meta });
+    setJumpTo({ sport: targetSport, playerId: targetPlayerId, market: targetMarket, line, without, nonce: Date.now(), meta });
     setPage(targetSport);
   };
 
@@ -27140,7 +27292,7 @@ export default function PropLedger() {
       const r = awaitingJumpRef.current == null && rep && rep.sport === pg
         ? rep
         : (jumpTo && jumpTo.sport === pg
-          ? { playerId: jumpTo.playerId, market: jumpTo.market, line: jumpLine(jumpTo) }
+          ? { playerId: jumpTo.playerId, market: jumpTo.market, line: jumpLine(jumpTo), without: jumpWithout(jumpTo).map((c) => c.pid) }
           : null);
       if (!r || !r.playerId) return window.location.pathname + window.location.search;
       // The address bar's own slug last: a link that arrived with one keeps it
@@ -27150,7 +27302,7 @@ export default function PropLedger() {
         || (jumpTo && jumpTo.playerId === r.playerId && jumpTo.meta && jumpTo.meta.name)
         || (here[0] === pg && decodeURIComponent(here[1] || "") === r.playerId ? here[3] : null)
         || null;
-      return buildPath({ page: pg, playerId: r.playerId, market: r.market, line: r.line, name });
+      return buildPath({ page: pg, playerId: r.playerId, market: r.market, line: r.line, without: r.without, name });
     }
     if (pg === "feed") return buildPath({ page: pg, sport: feedSport });
     if (pg === "board") return buildPath({ page: pg, sport: boardSport });
@@ -27221,7 +27373,8 @@ export default function PropLedger() {
       if (r && PLAYER_PAGES.has(target)) {
         const cur = playerRouteRef.current;
         const same = pageRef.current === target && cur && cur.playerId === r.playerId
-          && (!r.market || cur.market === r.market) && (cur.line ?? null) === (r.line ?? null);
+          && (!r.market || cur.market === r.market) && (cur.line ?? null) === (r.line ?? null)
+          && (cur.without || []).join(",") === (r.without || []).join(",");
         if (!same) {
           const j = routeJump(r);
           awaitJump(target, j.playerId);
@@ -27375,10 +27528,11 @@ export default function PropLedger() {
     () => (NEEDS_INJURY_WIRE.has(page) ? buildNewsPlayerPool() : []),
     [page, wnbaDataVersion]
   );
-  const newsAffects = useMemo(
-    () => (NEEDS_INJURY_WIRE.has(page) ? buildNewsAffects() : new Map()),
+  const newsFeedRows = useMemo(
+    () => (NEEDS_INJURY_WIRE.has(page) ? buildNewsFeedRows() : { nfl: [], wnba: [], nba: [] }),
     [page, nflDataVersion, wnbaDataVersion, nbaDataVersion]
   );
+  const newsAffects = useMemo(() => buildNewsAffects(newsFeedRows), [newsFeedRows]);
   // "Watching" is the app's own slip: a saved, still-unsettled pick on that
   // player. There is no separate watchlist to read.
   const newsWatching = useMemo(
@@ -27424,11 +27578,39 @@ export default function PropLedger() {
       .then((pairs) => { if (!cancelled) setInjuryDetails(Object.fromEntries(pairs)); });
     return () => { cancelled = true; };
   }, [page]);
+  // The rows the "without him" link picks from: the feed's for basketball,
+  // the logs straight for the NFL (see buildNFLLeadRows).
+  const injuryLeadRows = useMemo(
+    () => (page === "injuries" ? { ...newsFeedRows, nfl: buildNFLLeadRows() } : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [page, newsFeedRows, nflDataVersion]
+  );
   const injuryRowsDetailed = useMemo(() => newsInjuryWireAll.map((r) => {
     const info = r.espnId && injuryDetails[r.sport] ? injuryDetails[r.sport].get(String(r.espnId)) : null;
-    if (!info) return r;
-    return { ...r, detail: injuryDetailLine(info), injuryNote: info.note };
-  }), [newsInjuryWireAll, injuryDetails]);
+    // Out or questionable only: a healthy player on the wire (a pick of
+    // yours) has no games "without him" worth reading.
+    const lead = page === "injuries" && (r.status === "out" || r.status === "questionable")
+      ? pickWithoutTeammate(injuryLeadRows, r)
+      : null;
+    if (!info && !lead) return r;
+    return {
+      ...r,
+      ...(info ? { detail: injuryDetailLine(info), injuryNote: info.note } : {}),
+      ...(lead ? { withoutLead: lead } : {}),
+    };
+  }), [newsInjuryWireAll, injuryDetails, injuryLeadRows, page]);
+
+  // Opens the teammate's page counting only the games the injured player
+  // missed -- the chip the page's own teammate filter would set.
+  const openWithoutLead = React.useCallback((r) => {
+    const lead = r && r.withoutLead;
+    if (!lead) return;
+    goToProp(lead.sport, lead.playerId, lead.marketId, {
+      name: lead.name, team: lead.team, line: lead.line,
+      without: [{ pid: String(r.espnId), name: r.name }],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // When each team next plays, for the Injuries page's "playing next" sort.
   //
@@ -27882,6 +28064,7 @@ export default function PropLedger() {
             uncoveredSports={INJURY_FEED_MISSING}
             dormantSports={dormantSports}
             onOpenProp={goToProp}
+            onOpenWithout={openWithoutLead}
             loading={newsInjuryWireAll.length === 0}
           />
         </LazyPane>

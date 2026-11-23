@@ -9,6 +9,8 @@
 //   /games /findings /injuries /news /settings /picks
 //   /nba/<playerId>/<market>/<name-slug>?line=12.5
 //                             a player page, on one market, at one line
+//   ...&without=4432158      the same, counting only games that teammate
+//                             (by ESPN id) missed
 //
 // The name slug is for the reader of the link only; it is never read back.
 // Player ids stay the lookup key because names are not unique and ids are
@@ -47,9 +49,12 @@ export function parseRoute(pathname, search = "") {
   if (ROUTE_SPORTS.has(head)) {
     if (!a) return null;
     const route = { page: head, sport: head, playerId: a, market: b || null, line: null };
-    const raw = new URLSearchParams(search).get("line");
+    const params = new URLSearchParams(search);
+    const raw = params.get("line");
     const n = raw === null || raw === "" ? NaN : Number(raw);
     if (Number.isFinite(n)) route.line = n;
+    const without = String(params.get("without") || "").split(",").filter((id) => /^\d+$/.test(id));
+    if (without.length) route.without = without;
     return route;
   }
   if (PLAIN_PAGES.has(head)) {
@@ -70,7 +75,10 @@ export function buildPath(route) {
     if (route.market) p += `/${encodeURIComponent(route.market)}`;
     const slug = route.market ? slugify(route.name) : "";
     if (slug) p += `/${slug}`;
-    if (Number.isFinite(route.line)) p += `?line=${route.line}`;
+    const query = [];
+    if (Number.isFinite(route.line)) query.push(`line=${route.line}`);
+    if (route.without && route.without.length) query.push(`without=${route.without.join(",")}`);
+    if (query.length) p += `?${query.join("&")}`;
     return p;
   }
   if (!PLAIN_PAGES.has(page)) return "/";
@@ -85,6 +93,16 @@ export function buildPath(route) {
 export function jumpLine(jumpTo) {
   const n = jumpTo && jumpTo.line;
   return typeof n === "number" && Number.isFinite(n) ? n : null;
+}
+
+// The "without" teammate chips a jump asks a player page to open with, in
+// the shape the pages hold them. Empty for an ordinary jump, so a page opened
+// on a new player never carries the last player's teammates over.
+export function jumpWithout(jumpTo) {
+  const list = jumpTo && Array.isArray(jumpTo.without) ? jumpTo.without : [];
+  return list
+    .filter((w) => w && w.pid)
+    .map((w) => ({ pid: String(w.pid), name: w.name || "", mode: "without" }));
 }
 
 // How a player page tells the shell what it is showing, so the address

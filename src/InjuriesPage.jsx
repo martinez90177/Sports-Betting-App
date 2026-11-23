@@ -80,6 +80,9 @@ export default function InjuriesPage({
   // "playing next" sort rather than offering one that cannot work.
   kickoffFor = null,
   onOpenProp,
+  // Opens the injured player's leading teammate counting only the games he
+  // missed (row.withoutLead, picked in PropLedger's pickWithoutTeammate).
+  onOpenWithout = null,
   loading = false,
 }) {
   const [sport, setSport] = useState("all");
@@ -197,6 +200,7 @@ export default function InjuriesPage({
       })(),
       loading,
       onOpenProp: onOpenProp ? (r) => onOpenProp(r) : null,
+      onOpenWithout,
       kickoffLabelFor: kickoffLabel,
     };
 

@@ -12,7 +12,7 @@ import { crest } from "./FormPlot.jsx";
 const MONO = "'Inter', system-ui, sans-serif";
 
 // Header and rows share one template (`desktop-handoff.md` §1).
-const ROW_COLS = "40px minmax(0, 1fr) 250px 120px 96px";
+const ROW_COLS = "40px minmax(0, 1fr) 250px 170px 120px 96px";
 
 const railLabel = { fontFamily: MONO, fontSize: 10, letterSpacing: "0.06em", color: "var(--dim)" };
 
@@ -34,6 +34,12 @@ const STATUS_TONE = {
   active: { fg: "#3ecf8e", bg: "rgba(62,207,142,0.14)" },
 };
 
+// "Donovan Mitchell" -> "D. Mitchell".
+function shortName(name) {
+  const parts = String(name || "").trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : parts[0] || "";
+}
+
 export default function InjuriesDesktop({
   query = "",
   onSetQuery,
@@ -53,6 +59,7 @@ export default function InjuriesDesktop({
   coverageNote,
   loading = false,
   onOpenProp,
+  onOpenWithout,
   kickoffLabelFor,
   renderAvatar,
 }) {
@@ -158,6 +165,7 @@ export default function InjuriesDesktop({
             <span />
             <span>PLAYER</span>
             <span>DETAIL</span>
+            <span>WITHOUT HIM</span>
             <span>PLAYING NEXT</span>
             <span style={{ textAlign: "right" }}>STATUS</span>
           </div>
@@ -197,6 +205,24 @@ export default function InjuriesDesktop({
 
                   <span title={p.injuryNote || undefined} style={{ fontSize: 12.5, color: "var(--text-2)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {p.detail || ""}
+                  </span>
+
+                  {/* His leading teammate, read over the games he missed. */}
+                  <span style={{ minWidth: 0 }}>
+                    {p.withoutLead && onOpenWithout ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onOpenWithout(p); }}
+                        title={`${p.withoutLead.name} in the games ${p.name} missed`}
+                        style={{
+                          maxWidth: "100%", padding: "3px 9px", borderRadius: 6, cursor: "pointer",
+                          border: "1px solid var(--line)", background: "var(--surface-1)", color: "var(--text-2)",
+                          fontFamily: MONO, fontSize: 11.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        }}
+                      >
+                        {`${shortName(p.withoutLead.name)} →`}
+                      </button>
+                    ) : null}
                   </span>
 
                   {/* "No game on this slate" rather than a blank: not playing

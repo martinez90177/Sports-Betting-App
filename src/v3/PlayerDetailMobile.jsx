@@ -576,7 +576,11 @@ export default function PlayerDetailMobile({
             empty sheet is worse than no chip. */}
         {lineups && (
           <div onClick={() => { if (lineups.onOpen) lineups.onOpen(); setSheet("lineups"); }} style={chip(lineups.activeCount > 0)}>
-            {(lineups.activeCount ? `Lineups · ${lineups.activeCount}` : "Lineups")} ▾
+            {/* One chip in force names itself ("Without Ja Morant"), so a page
+                opened from the Injuries link says what it is counting. */}
+            {(lineups.activeCount === 1 && lineups.activeLabel
+              ? lineups.activeLabel
+              : lineups.activeCount ? `Lineups · ${lineups.activeCount}` : "Lineups")} ▾
           </div>
         )}
         <div

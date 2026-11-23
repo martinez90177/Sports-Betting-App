@@ -48,6 +48,12 @@ const statusPill = (status) => ({
     : status === "questionable" ? "var(--status-questionable)" : "var(--pos)",
 });
 
+// "Donovan Mitchell" -> "D. Mitchell".
+function shortName(name) {
+  const parts = String(name || "").trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(" ")}` : parts[0] || "";
+}
+
 export default function InjuriesMobile({
   query,
   onSetQuery,
@@ -68,6 +74,7 @@ export default function InjuriesMobile({
   coverageNote,
   loading = false,
   onOpenProp,
+  onOpenWithout,
   kickoffLabelFor,
 }) {
   return (
@@ -226,8 +233,23 @@ export default function InjuriesMobile({
               )}
               {/* A team with no game on a slate we hold says so, rather than
                   sorting as though it played at the epoch. */}
-              <span style={{ fontFamily: MONO, fontSize: 10, color: r.playingSoon ? "var(--status-questionable)" : "var(--dim)" }}>
-                {kickoffLabelFor ? kickoffLabelFor(r) : ""}
+              <span style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: r.playingSoon ? "var(--status-questionable)" : "var(--dim)", whiteSpace: "nowrap" }}>
+                  {kickoffLabelFor ? kickoffLabelFor(r) : ""}
+                </span>
+                {/* His leading teammate over the games he missed -- on the
+                    kickoff line, so the row grows no taller. */}
+                {r.withoutLead && onOpenWithout && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); onOpenWithout(r); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onOpenWithout(r); } }}
+                    style={{ fontFamily: MONO, fontSize: 10.5, color: "var(--amber-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, cursor: "pointer" }}
+                  >
+                    {`${shortName(r.withoutLead.name)} without him →`}
+                  </span>
+                )}
               </span>
             </span>
             <span style={statusPill(r.status)}>{STATUS_WORD[r.status] || r.status}</span>

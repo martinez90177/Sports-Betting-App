@@ -1010,6 +1010,21 @@ export default function PlayerDetailDesktop({
                     ? `${shown.length} OF ${games.length} GAMES · ${String(shown[0].date).toUpperCase()} – ${String(shown[shown.length - 1].date).toUpperCase()}`
                     : `${shown.length} GAMES`}
                 </span>
+                {/* A teammate filter in force -- set from the rail, or by the
+                    Injuries page's "without him" link -- named where the
+                    count it changes is, and cleared from here. */}
+                {lineups && lineups.activeLabel && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Clear the teammate filter"
+                    onClick={() => lineups.onReset && lineups.onReset()}
+                    onKeyDown={(e) => { if (e.key === "Enter") lineups.onReset && lineups.onReset(); }}
+                    style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", fontFamily: MONO, fontSize: 10.5, letterSpacing: "0.03em", padding: "4px 9px", borderRadius: 6, border: "1px solid var(--amber)", background: "var(--amber-dim)", color: "var(--amber-ink)", cursor: "pointer" }}
+                  >
+                    {`${lineups.activeLabel.toUpperCase()} ✕`}
+                  </span>
+                )}
                 {zoom && (
                   <span
                     role="button"
